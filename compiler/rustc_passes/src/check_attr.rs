@@ -387,6 +387,7 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
             AttributeKind::RustcPassIndirectlyInNonRusticAbis(..) => (),
             AttributeKind::RustcPreserveUbChecks => (),
             AttributeKind::RustcProcMacroDecls => (),
+            AttributeKind::RustcRDRTestAttr(..) => (),
             AttributeKind::RustcReallocator => (),
             AttributeKind::RustcRegions => (),
             AttributeKind::RustcReservationImpl(..) => (),
