@@ -502,16 +502,12 @@ impl NodeInfo {
         node: &DepNode,
         index: DepNodeIndex,
         value_fingerprint: Fingerprint,
-        prev_index: SerializedDepNodeIndex,
-        colors: &DepNodeColorMap,
-        previous: &SerializedDepGraph,
+        edges: &[DepNodeIndex],
     ) -> usize {
-        let edges = previous.edge_targets_from(prev_index);
-        let edge_count = edges.size_hint().0;
+        let edge_count = edges.len();
 
         // Find the highest edge in the new dep node indices
-        let edge_max =
-            edges.clone().map(|i| colors.current(i).unwrap().as_u32()).max().unwrap_or(0);
+        let edge_max = edges.iter().map(|x| x.as_u32()).max().unwrap_or(0);
 
         let header =
             SerializedNodeHeader::new(node, index, value_fingerprint, edge_max, edge_count);
@@ -523,10 +519,10 @@ impl NodeInfo {
         }
 
         let bytes_per_index = header.bytes_per_index();
-        for node_index in edges {
-            let node_index = colors.current(node_index).unwrap();
+        for edge in edges {
+            let edge = edge.as_u32();
             e.write_with(|dest| {
-                *dest = node_index.as_u32().to_le_bytes();
+                *dest = edge.to_le_bytes();
                 bytes_per_index
             });
         }
@@ -623,7 +619,7 @@ impl EncoderState {
         node: &DepNode,
         index: DepNodeIndex,
         edge_count: usize,
-        edges: impl FnOnce(&Self) -> Vec<DepNodeIndex>,
+        edges: &[DepNodeIndex],
         retained_graph: &Option<Lock<RetainedDepGraph>>,
         local: &mut LocalEncoderState,
     ) {
@@ -631,14 +627,11 @@ impl EncoderState {
         local.edge_count += edge_count;
 
         if let Some(retained_graph) = &retained_graph {
-            // Call `edges` before the outlined code to allow the closure to be optimized out.
-            let edges = edges(self);
-
             // Outline the build of the full dep graph as it's typically disabled and cold.
             outline(move || {
                 // Do not ICE when a query is called from within `with_query`.
                 if let Some(retained_graph) = &mut retained_graph.try_lock() {
-                    retained_graph.push(index, *node, &edges);
+                    retained_graph.push(index, *node, edges);
                 }
             });
         }
@@ -676,14 +669,7 @@ impl EncoderState {
     ) {
         node.encode(&mut local.encoder, index);
         self.flush_mem_encoder(&mut *local);
-        self.record(
-            &node.node,
-            index,
-            node.edges.len(),
-            |_| node.edges[..].to_vec(),
-            retained_graph,
-            &mut *local,
-        );
+        self.record(&node.node, index, node.edges.len(), &node.edges, retained_graph, &mut *local);
     }
 
     /// Encodes a node that was promoted from the previous graph. It reads the information directly from
@@ -698,34 +684,15 @@ impl EncoderState {
         index: DepNodeIndex,
         prev_index: SerializedDepNodeIndex,
         retained_graph: &Option<Lock<RetainedDepGraph>>,
-        colors: &DepNodeColorMap,
         local: &mut LocalEncoderState,
+        edges: &[DepNodeIndex],
     ) {
         let node = self.previous.index_to_node(prev_index);
         let value_fingerprint = self.previous.value_fingerprint_for_index(prev_index);
-        let edge_count = NodeInfo::encode_promoted(
-            &mut local.encoder,
-            node,
-            index,
-            value_fingerprint,
-            prev_index,
-            colors,
-            &self.previous,
-        );
+        let edge_count =
+            NodeInfo::encode_promoted(&mut local.encoder, node, index, value_fingerprint, edges);
         self.flush_mem_encoder(&mut *local);
-        self.record(
-            node,
-            index,
-            edge_count,
-            |this| {
-                this.previous
-                    .edge_targets_from(prev_index)
-                    .map(|i| colors.current(i).unwrap())
-                    .collect()
-            },
-            retained_graph,
-            &mut *local,
-        );
+        self.record(node, index, edge_count, edges, retained_graph, &mut *local);
     }
 
     fn finish(&self, profiler: &SelfProfilerRef, current: &CurrentDepGraph) -> FileEncodeResult {
@@ -940,6 +907,7 @@ impl GraphEncoder {
         &self,
         prev_index: SerializedDepNodeIndex,
         colors: &DepNodeColorMap,
+        edges: &[DepNodeIndex],
     ) -> Option<DepNodeIndex> {
         let _prof_timer = self.profiler.generic_activity("incr_comp_encode_dep_graph");
 
@@ -955,8 +923,8 @@ impl GraphEncoder {
                     index,
                     prev_index,
                     &self.retained_graph,
-                    colors,
                     &mut *local,
+                    edges,
                 );
                 Some(index)
             }
