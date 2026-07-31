@@ -174,11 +174,13 @@ impl QueryKey for SimplifiedType {
 }
 
 impl QueryKey for ExpnId {
-    type LocalQueryKey = LocalExpnId;
-
     fn default_span(&self, _: TyCtxt<'_>) -> Span {
         self.expn_data().call_site
     }
+}
+
+impl AsLocalQueryKey for ExpnId {
+    type LocalQueryKey = LocalExpnId;
 
     #[inline(always)]
     fn as_local_key(&self) -> Option<Self::LocalQueryKey> {
