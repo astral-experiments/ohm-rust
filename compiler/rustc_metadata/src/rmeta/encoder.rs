@@ -23,6 +23,7 @@ use rustc_hir_pretty::id_to_string;
 use rustc_middle::dep_graph::WorkProductId;
 use rustc_middle::ich::StableHashState;
 use rustc_middle::metadata::ModChild;
+use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use rustc_middle::middle::dependency_format::Linkage;
 use rustc_middle::middle::exported_symbols::SymbolExportLevel;
 use rustc_middle::middle::privacy::EffectiveVisibilities;
@@ -1800,6 +1801,27 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         );
     }
 
+    fn encode_diagnostic_span(
+        &mut self,
+        def_id: DefId,
+        span: Span,
+        hash_location: bool,
+    ) -> LazyValue<Span> {
+        // Definition spans are used for diagnostics and source locations, but their syntax
+        // context can also participate in hygienic name lookup through `def_ident_span`.
+        let ctxt = if self.is_proc_macro { SyntaxContext::root() } else { span.ctxt() };
+        self.with_record_mode(RecordMode::From(def_id.into()), |this| {
+            this.record_encoded_index(ctxt);
+            // Reification shims use a tracked function's definition span as an observable
+            // `Location::caller()`, so this source location is not merely diagnostic.
+            if hash_location {
+                this.record_encoded_index(span.shrink_to_lo());
+            }
+        });
+
+        self.with_record_mode(RecordMode::None, |this| this.lazy(span))
+    }
+
     fn encode_def_ids<'h>(&mut self, hcx: &mut impl PublicApiHashState<'h>) {
         self.encode_info_for_mod(CRATE_DEF_ID, hcx);
 
@@ -1852,12 +1874,13 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
 
             if should_encode_span(def_kind) {
                 let def_span = tcx.def_span(local_id);
-                record!(
-                    self.tables.def_span[def_id] <- def_span,
-                    hcx,
-                    def_span,
-                    |_| RecordMode::None
-                );
+                let hash_location = def_kind.has_codegen_attrs()
+                    && tcx
+                        .codegen_fn_attrs(def_id)
+                        .flags
+                        .contains(CodegenFnAttrFlags::TRACK_CALLER);
+                let def_span = self.encode_diagnostic_span(def_id, def_span, hash_location);
+                self.tables.def_span.set_some_unhashed(def_id.index, def_span);
             }
             if should_encode_attrs(def_kind) {
                 self.encode_attrs(local_id, hcx);
@@ -1868,12 +1891,8 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             if should_encode_span(def_kind)
                 && let Some(ident_span) = tcx.def_ident_span(def_id)
             {
-                record!(
-                    self.tables.def_ident_span[def_id] <- ident_span,
-                    hcx,
-                    ident_span,
-                    |_| RecordMode::None
-                );
+                let ident_span = self.encode_diagnostic_span(def_id, ident_span, false);
+                self.tables.def_ident_span.set_some_unhashed(def_id.index, ident_span);
             }
             if def_kind.has_codegen_attrs() {
                 record!(self.tables.codegen_fn_attrs[def_id] <- self.tcx.codegen_fn_attrs(def_id), hcx);
@@ -2495,12 +2514,12 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             }
 
             self.tables.def_kind.set_some_local_hashed(CRATE_DEF_ID, DefKind::Mod, hcx);
-            record!(
-                self.tables.def_span[LOCAL_CRATE.as_def_id()] <- tcx.def_span(LOCAL_CRATE.as_def_id()),
-                hcx,
+            let def_span = self.encode_diagnostic_span(
+                LOCAL_CRATE.as_def_id(),
                 tcx.def_span(LOCAL_CRATE.as_def_id()),
-                |_| RecordMode::None
+                false,
             );
+            self.tables.def_span.set_some_unhashed(CRATE_DEF_ID.local_def_index, def_span);
             self.encode_attrs(LOCAL_CRATE.as_def_id().expect_local(), hcx);
             let vis = tcx.local_visibility(CRATE_DEF_ID);
             record!(self.tables.visibility[LOCAL_CRATE.as_def_id()] <- vis.map_id(|def_id| def_id.local_def_index), hcx, vis);
@@ -2555,18 +2574,10 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 );
                 self.encode_attrs(id, hcx);
                 record!(self.tables.def_keys[def_id] <- def_key, hcx, def_id);
-                record!(
-                    self.tables.def_ident_span[def_id] <- span,
-                    hcx,
-                    span,
-                    |_| RecordMode::None
-                );
-                record!(
-                    self.tables.def_span[def_id] <- span,
-                    hcx,
-                    span,
-                    |_| RecordMode::None
-                );
+                let ident_span = self.encode_diagnostic_span(def_id, span, false);
+                self.tables.def_ident_span.set_some_unhashed(def_id.index, ident_span);
+                let def_span = self.encode_diagnostic_span(def_id, span, false);
+                self.tables.def_span.set_some_unhashed(def_id.index, def_span);
                 record!(self.tables.visibility[def_id] <- Visibility::Public, hcx, Visibility::<DefId>::Public);
                 if let Some(stability) = stability {
                     record!(self.tables.lookup_stability[def_id] <- stability, hcx);
