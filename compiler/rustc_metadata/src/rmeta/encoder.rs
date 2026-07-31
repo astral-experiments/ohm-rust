@@ -2542,7 +2542,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 record!(self.tables.def_keys[def_id] <- def_key, hcx, def_id);
                 record!(self.tables.def_ident_span[def_id] <- span, hcx);
                 record!(self.tables.def_span[def_id] <- span, hcx);
-                record!(self.tables.visibility[def_id] <- ty::Visibility::Public, hcx, ty::Visibility::<DefId>::Public);
+                record!(self.tables.visibility[def_id] <- Visibility::Public, hcx, Visibility::<DefId>::Public);
                 if let Some(stability) = stability {
                     record!(self.tables.lookup_stability[def_id] <- stability, hcx);
                 }

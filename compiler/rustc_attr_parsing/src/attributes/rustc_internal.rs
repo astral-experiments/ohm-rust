@@ -299,7 +299,6 @@ impl AttributeParser for RustcRDRTestAttributeParser {
         (
             &[sym::rustc_public_hash_changed],
             template!(List: &[r#"cfg = "...", crate_name = "...""#]),
-            unstable!(rustc_attrs),
             |this, cx, args| {
                 this.items.extend(parse_rdr_fields(cx, args).map(|(cfg, crate_name)| {
                     (cx.attr_span, RDRFields { cfg, crate_name, changed: true })
@@ -309,7 +308,6 @@ impl AttributeParser for RustcRDRTestAttributeParser {
         (
             &[sym::rustc_public_hash_unchanged],
             template!(List: &[r#"cfg = "...", crate_name = "...""#]),
-            unstable!(rustc_attrs),
             |this, cx, args| {
                 this.items.extend(parse_rdr_fields(cx, args).map(|(cfg, crate_name)| {
                     (cx.attr_span, RDRFields { cfg, crate_name, changed: false })
