@@ -306,7 +306,9 @@ pub(crate) struct CrateRoot {
     rdr_hashes: Option<ItemPublicHashes>,
 }
 
-/// All hashes here are equal to the hash from the crate header (the `crate_hash` query) when the public-api-hash unstable feature is disabled.
+/// The full and public crate hashes stored in the metadata header.
+///
+/// Both fields equal the legacy `crate_hash` when `-Zpublic-api-hash` is disabled.
 #[derive(MetadataEncodable, BlobDecodable, Clone, Copy, Eq, PartialEq, Hash)]
 pub(crate) struct CrateHashes {
     /// Hash of the crate contents, including private items. For proc macros this includes the
@@ -314,11 +316,11 @@ pub(crate) struct CrateHashes {
     /// types than proc macro, it only includes the public hash of dependencies. This is only
     /// readable by queries in downstream dependencies if the crate querying is a proc macro.
     pub(crate) private_hash: Svh,
-    /// Hash of most data in rmeta. same as `private_hash` if the `public-api-hash` option is
-    /// disabled.
+    /// Hash of downstream-observable reachable metadata plus graph-independent global metadata.
+    /// This is the same as `private_hash` if the `public-api-hash` option is disabled.
     ///
     /// The public hash contains `StableCrateId`, so two crates in the dependency graph should not
-    /// have the same public hash just because they have the same "public api". This is asserted
+    /// have the same public hash just because they have the same "public API". This is asserted
     /// while loading: if two crates have the same public hash but different private hashes, the
     /// resolver reports that there are multiple candidates available for a crate and compilation
     /// aborts.
@@ -328,6 +330,10 @@ pub(crate) struct CrateHashes {
 /// On-disk representation of `DefId`.
 /// This creates a type-safe way to enforce that we remap the CrateNum between the on-disk
 /// representation and the compilation session.
+///
+/// `index` stores a raw [`DefIndex`] in legacy metadata and the crate-local half of a
+/// `DefPathHash` when public API hashing is enabled. Decoding selects the representation using
+/// `CrateRoot::public_api_hash_opt_enabled`.
 #[derive(Copy, Clone)]
 pub(crate) struct RawDefId {
     krate: u32,
@@ -354,6 +360,7 @@ impl RawDefId {
 #[derive(Encodable, BlobDecodable)]
 pub(crate) struct CrateDep {
     pub name: Symbol,
+    /// The dependency's public hash, which equals its full hash in legacy metadata.
     pub hash: Svh,
     pub host_hash: Option<Svh>,
     pub kind: CrateDepKind,
@@ -416,14 +423,8 @@ macro_rules! define_tables {
             ) -> GraphHashed<LazyTables>
             {
                 let tables = LazyTables {
-                    $($name1: {
-                        let table = self.$name1.encode(buf);
-                        table.0
-                    },)+
-                    $($name2: {
-                        let table = self.$name2.encode(buf);
-                        table.0
-                    },)+
+                    $($name1: self.$name1.encode(buf).0,)+
+                    $($name2: self.$name2.encode(buf).0,)+
                 };
                 GraphHashed(tables)
             }
@@ -432,8 +433,8 @@ macro_rules! define_tables {
 }
 
 // When adding a new field, use `RDRHashAll` as the hasher and include a `// FIXME do we need to
-// hash this comment?` to note that it wasn't reviewed for public api hashing. The docs of
-// `HashableCrateHeader` contains more information about public api hashing.
+// hash this comment?` to note that it wasn't reviewed for public API hashing. The docs of
+// `HashableCrateRoot` contain more information about public API hashing.
 define_tables! {
 - defaulted:
     intrinsic: Table<RDRHashAll, DefIndex, Option<LazyValue<ty::IntrinsicDef>>>,

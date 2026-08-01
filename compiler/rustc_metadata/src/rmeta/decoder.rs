@@ -378,10 +378,6 @@ impl<T: ParameterizedOverTcx> LazyArray<T> {
 }
 
 impl<'a, 'tcx> MetadataDecodeContext<'a, 'tcx> {
-    fn hash_to_def_index(&self, cnum: CrateNum, hash: Hash64) -> DefIndex {
-        self.cdata.hash_to_def_index(cnum, hash, self.tcx)
-    }
-
     #[inline]
     fn map_encoded_cnum_to_current(&self, cnum: CrateNum) -> CrateNum {
         self.cdata.map_encoded_cnum_to_current(cnum)
@@ -482,7 +478,7 @@ impl<'a, 'tcx> SpanDecoder for MetadataDecodeContext<'a, 'tcx> {
         let krate = CrateNum::decode(self);
         let index = if self.cdata.root.public_api_hash_opt_enabled {
             let hash = Hash64::decode(self);
-            self.hash_to_def_index(krate, hash)
+            self.cdata.hash_to_def_index(krate, hash, self.tcx)
         } else {
             DefIndex::decode(self)
         };

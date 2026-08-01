@@ -30,6 +30,7 @@ pub struct StableHashState<'a, const HASH_SPANS_AS_PARENTLESS: bool = false> {
 }
 
 impl<'a> StableHashState<'a, false> {
+    /// Switches to hashing spans without their parent definitions, matching their rmeta encoding.
     pub fn hash_spans_as_parentless(self) -> StableHashState<'a, true> {
         let Self { untracked, incremental_ignore_spans, caching_source_map, stable_hash_controls } =
             self;

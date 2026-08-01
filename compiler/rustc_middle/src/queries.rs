@@ -2052,29 +2052,35 @@ rustc_queries! {
         separate_provide_extern
     }
 
-    /// Returns the public api hash from a dependency metadata. Does not work for the local crate.
+    /// Returns the public API hash from dependency metadata. Does not work for the local crate.
     query public_api_hash(_: CrateNum) -> Svh {
         eval_always
         desc { "looking up the hash a crate" }
         separate_provide_extern
     }
 
-    /// Returns the public api hash of an extern DefId, panics for the local crate
+    /// Returns the public API hash of a reachable external `DefId`.
+    ///
+    /// Falls back to the crate public hash for legacy metadata and panics for local or private
+    /// definitions.
     query extern_def_public_hash(def_id: DefId) -> Fingerprint {
         eval_always
         desc { "looking up public hash of {}", tcx.def_path_str(def_id) }
         separate_provide_extern
     }
 
-    /// Returns the public api hash of an extern ExpnId, panics for the local crate
+    /// Returns the public API hash of a reachable external `ExpnId`.
+    ///
+    /// Falls back to the crate public hash for legacy metadata and panics for local or private
+    /// expansions.
     query extern_expn_public_hash(_: ExpnId) -> Fingerprint {
         eval_always
         desc { "looking up public hash of an expansion" }
         separate_provide_extern
     }
 
-    /// Returns the global part of the public api hash. This covers the items in the rmeta which
-    /// requires a recompile of all downstream crates.
+    /// Returns the global part of the public API hash. This covers rmeta items which require a
+    /// recompile of all downstream crates.
     ///
     /// For example adding lang items requires all downstream crates to check that there are no
     /// conflicting implementations for that lang item. But adding a regular public item only

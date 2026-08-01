@@ -511,6 +511,7 @@ impl<H: TablePublicApiHasher<I>, I: Idx, const N: usize, T> TableBuilder<H, I, O
 where
     Option<T>: FixedSizeEncoding<ByteArray = [u8; N]>,
 {
+    /// Stores an optional entry and associates `hashed` with the entry's graph node.
     #[inline(always)]
     pub(crate) fn set_some_hashed<'a, HashedT>(
         &mut self,
@@ -529,6 +530,7 @@ where
 impl<H: TablePublicApiHasher<DefIndex>, const N: usize, T: FixedSizeEncoding<ByteArray = [u8; N]>>
     TableBuilder<H, DefIndex, T>
 {
+    /// Stores a local-definition entry and hashes its value under that definition's graph node.
     #[inline(always)]
     pub(crate) fn set_local_hashed<'a>(
         &mut self,
@@ -547,6 +549,7 @@ impl<H: TablePublicApiHasher<DefIndex>, const N: usize, T> TableBuilder<H, DefIn
 where
     Option<T>: FixedSizeEncoding<ByteArray = [u8; N]>,
 {
+    /// Stores an optional local-definition entry and hashes its value under that definition's node.
     #[inline(always)]
     pub(crate) fn set_some_local_hashed<'a>(
         &mut self,
@@ -564,6 +567,7 @@ where
 impl<I: Idx, const N: usize, T: FixedSizeEncoding<ByteArray = [u8; N]>>
     TableBuilder<RDRHashNone<I>, I, T>
 {
+    /// Stores an entry that is deliberately excluded from the public API hash.
     #[inline(always)]
     pub(super) fn set_unhashed(&mut self, i: I, value: T) {
         self.set(i, value);
@@ -574,6 +578,7 @@ impl<I: Idx, const N: usize, T> TableBuilder<RDRHashNone<I>, I, Option<T>>
 where
     Option<T>: FixedSizeEncoding<ByteArray = [u8; N]>,
 {
+    /// Stores an optional entry that is deliberately excluded from the public API hash.
     #[inline(always)]
     pub(super) fn set_some_unhashed(&mut self, i: I, value: T) {
         self.set(i, Some(value));
@@ -583,11 +588,13 @@ where
 impl<H: TablePublicApiHasher<I>, I: Idx, const N: usize, T: FixedSizeEncoding<ByteArray = [u8; N]>>
     TableBuilder<H, I, T>
 {
+    /// Creates the table's strategy-specific streaming iterator hasher.
     #[inline(always)]
     pub(super) fn iter_hasher(&self) -> H::IterHasher {
         self.hasher.iter_hasher()
     }
 
+    /// Stores an entry and associates `hashed` with the entry's graph node.
     #[inline(always)]
     pub(super) fn set_hashed<'a, HashedT>(
         &mut self,

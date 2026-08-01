@@ -123,8 +123,9 @@
 //! check visibilities, never as an input to a query, and its `macro_def_id` field is set to
 //! `LOCAL_CRATE` for the root expansion, but that is only used in queries when the returned
 //! `DefId` is that of a macro. Changing their types to typed `DefId`s (the `VisibilityDefId`
-//! newtype) — which can be constructed from a `DefId` but cannot be used to recover the `DefId`
-//! needed for query calls — ensures those edges can be removed from the rmeta reachability graph.
+//! newtype) marks them as visibility-only, allowing the encoder to omit those edges from the rmeta
+//! reachability graph. Callers must uphold that marker's contract and not use its inner `DefId` as
+//! a metadata query key.
 
 use core::iter::Iterator;
 use std::cell::RefCell;
@@ -168,6 +169,7 @@ use crate::rmeta::{
     LazyValue, ProcMacroData, SyntaxContextTable, TableBuilder,
 };
 
+/// Accumulates a fingerprint only while public API hashing is enabled.
 #[derive(Default)]
 pub(crate) struct PublicApiHasher(StableHasher);
 
@@ -189,6 +191,7 @@ impl PublicApiHasher {
     }
 }
 
+/// Selects whether encoded table entries contribute hashes to their reachability-graph nodes.
 pub(crate) trait TablePublicApiHasher<I: Idx>: Default {
     type IterHasher;
 
@@ -203,6 +206,7 @@ pub(crate) trait TablePublicApiHasher<I: Idx>: Default {
     fn iter_hasher(&self) -> Self::IterHasher;
 }
 
+/// Records every encoded table entry in the public API reachability graph.
 pub(crate) struct RDRHashAll<I: Idx> {
     _marker: std::marker::PhantomData<I>,
 }
@@ -213,6 +217,7 @@ impl<I: Idx> Default for RDRHashAll<I> {
     }
 }
 
+/// Provides hashing state shared by metadata encoding and reachability-graph construction.
 pub(crate) trait PublicApiHashState<'a> {
     fn enabled(&self) -> bool;
 
@@ -250,6 +255,7 @@ impl<'a, const ENABLED: bool> PublicApiHashState<'a> for PublicApiHashingContext
     }
 }
 
+/// Compiles metadata encoding with public API hashing either enabled or disabled.
 pub(crate) struct PublicApiHashingContext<'a, const ENABLED: bool> {
     pub(crate) hcx: StableHashState<'a, true>,
     def_id_hashes: ReachabilityGraphHashes,
@@ -286,6 +292,7 @@ impl<I: Idx> TablePublicApiHasher<I> for RDRHashAll<I> {
     }
 }
 
+/// Hashes an iterator in encoding order without collecting it first.
 #[derive(Default)]
 pub(crate) struct OrderedIterHasher(StableHasher);
 
@@ -313,6 +320,7 @@ impl OrderedIterHasher {
     }
 }
 
+/// Encodes table entries without contributing them to the public API hash.
 pub(crate) struct RDRHashNone<I>(std::marker::PhantomData<I>);
 
 impl<I> Default for RDRHashNone<I> {
@@ -340,7 +348,9 @@ impl<I: Idx> TablePublicApiHasher<I> for RDRHashNone<I> {
     }
 }
 
-/// Map structs where the hashing took place for each item and stored into the [`ReachabilityGraphHashes`]
+/// Marks a value whose public-hash contribution is already stored in [`ReachabilityGraphHashes`].
+///
+/// Its [`StableHash`] implementation intentionally emits nothing.
 #[derive(Default)]
 pub(crate) struct GraphHashed<T>(pub(crate) T);
 impl<T> StableHash for GraphHashed<T> {
@@ -353,6 +363,7 @@ impl<T> fmt::Debug for GraphHashed<T> {
     }
 }
 
+/// Marks metadata intentionally excluded from the public API hash.
 #[derive(Default)]
 pub(crate) struct Unhashed<T>(pub(crate) T);
 impl<T> StableHash for Unhashed<T> {
@@ -365,6 +376,9 @@ impl<T> fmt::Debug for Unhashed<T> {
     }
 }
 
+/// Carries an encoded value and the fingerprint computed while encoding it.
+///
+/// `hash` must be present whenever this wrapper is formatted or stably hashed.
 #[derive(Default)]
 pub(crate) struct Hashed<T> {
     pub(crate) hash: Option<Fingerprint>,
@@ -383,6 +397,7 @@ impl<T> StableHash for Hashed<T> {
     }
 }
 
+/// Carries legacy metadata that must be absent whenever public API hashing is active.
 pub(crate) struct NoneIfHashed<T> {
     pub(super) value: Option<T>,
 }
@@ -408,8 +423,8 @@ pub(crate) struct HashableCrateHeader {
     pub(crate) is_stub: bool,
 }
 
-/// Stable hashable version of [`CrateRoot`] we use to calculate the public api hash. When adding
-/// new fields to `CrateRoot`, it is important to include it in the public api hash. Not doing so
+/// Stable-hashable version of [`CrateRoot`] used to calculate the public API hash. When adding
+/// new fields to `CrateRoot`, it is important to include them in the public API hash. Not doing so
 /// can cause silent miscompiles. This struct helps make sure the compiler does not allow forgetting
 /// the hashing of new items added to rmeta.
 ///
@@ -422,18 +437,18 @@ pub(crate) struct HashableCrateHeader {
 /// 2. When encoded as some kind of lazy value, if one tries to do the same as in 1, the compiler
 ///    will complain that it does not implement `StableHash`, so it cannot derive
 ///    `StableHash` for `HashableCrateRoot`. In this case one should wrap it in [`Hashed`] and hash
-///    it where it was encoded. the `hash_lazy_array!` macro can help with this for simple arrays.
+///    it where it was encoded. The `hashed_lazy_array!` macro can help with this for simple arrays.
 /// 3. When added to `LazyTables` in the `define_tables!` macro, simply defining its type as
 ///    `Table<RDRHashAll, Idx, Value>` will take care of hashing it.
 ///
-/// In some special cases, the hash if the field might not be needed at all in the public API
+/// In some special cases, the hash of the field might not be needed at all in the public API
 /// hash. If it is only used for better error reporting, or only during link time, this is likely
 /// the case. Use the [`Unhashed`] wrapper to skip a field from the public hash, or the
-/// [`GraphHashed`] to indicate that it was hashed with the reachability graph.
+/// [`GraphHashed`] wrapper to indicate that it was hashed with the reachability graph.
 #[derive(StableHash, Debug)]
 pub(crate) struct HashableCrateRoot {
     // =========== not reviewed ============
-    // These are were not reviewed for public api hashing, so they are included in the global hash
+    // These were not reviewed for public API hashing, so they are included in the global hash
     // for now. Any change in these fields will cause a recompile of all downstream dependencies.
     pub(crate) header: HashableCrateHeader,
     pub(crate) required_panic_strategy: Option<PanicStrategy>,
@@ -678,8 +693,11 @@ impl HashableCrateRoot {
     }
 }
 
+/// Controls how nodes encountered during nested metadata encoding enter the reachability graph.
 pub(crate) enum RecordMode<'tcx> {
+    /// Records nested nodes as outgoing edges from this node.
     From(Node<'tcx>),
+    /// Suppresses nodes that are deliberately excluded from the public API graph.
     None,
 }
 
@@ -732,6 +750,7 @@ impl<'tcx> ReachabilityGraph<'tcx> {
     }
 }
 
+/// Collects semantic dependencies encountered while metadata is encoded.
 pub(super) struct ReachabilityGraphBuilder<'tcx> {
     pub(super) record_mode: Vec<RecordMode<'tcx>>,
     edges: FxHashMap<Node<'tcx>, FxHashSet<Node<'tcx>>>,
@@ -804,6 +823,8 @@ impl<'tcx> ReachabilityGraphBuilder<'tcx> {
         ReachabilityGraph { roots, edges, nodes: hashes }
     }
 
+    /// Adds an edge from the active [`RecordMode::From`] node, suppresses the node under
+    /// [`RecordMode::None`], or records it as a graph root when no mode is active.
     pub(super) fn record(&mut self, to: Node<'tcx>) {
         match self.record_mode.last() {
             Some(RecordMode::From(from)) => {
@@ -817,6 +838,7 @@ impl<'tcx> ReachabilityGraphBuilder<'tcx> {
     }
 }
 
+/// Accumulates the hashes of encoded payloads associated with each semantic graph node.
 #[derive(Default)]
 pub(crate) struct ReachabilityGraphHashes {
     local: UnordMap<LocalDefId, Fingerprint>,
@@ -885,6 +907,7 @@ impl ReachabilityGraphHashes {
     }
 }
 
+/// A semantic identity whose metadata dependencies can participate in the public API graph.
 #[derive(PartialEq, Eq, Clone, Copy, Hash, StableHash, Debug)]
 pub(crate) enum Node<'tcx> {
     DefId(DefId),
@@ -957,6 +980,7 @@ impl From<SyntaxContext> for Node<'_> {
     }
 }
 
+/// Converts a semantic table key into both its on-disk index and reachability-graph node.
 pub(crate) trait TableIndex: Copy + for<'a> Into<Node<'a>> {
     type Encoded: Idx;
     fn into_encoded(self) -> Self::Encoded;
@@ -1064,6 +1088,8 @@ fn scc_fingerprints(
     fingerprints
 }
 
+/// Computes transitive SCC fingerprints and persists them for reachable local definitions and
+/// expansions, together with the combined hash of the graph roots.
 fn build_public_hashes<'tcx>(
     graph: &ReachabilityGraph<'tcx>,
     hashes: &ReachabilityGraphHashes,
@@ -1129,6 +1155,7 @@ impl ItemPublicHashesBuilder {
     }
 }
 
+/// Per-item public hashes persisted in rmeta, plus the graph-independent global hash.
 #[derive(LazyDecodable, MetadataEncodable)]
 pub(crate) struct ItemPublicHashes {
     pub(crate) local: LazyTable<DefIndex, Option<Fingerprint>>,

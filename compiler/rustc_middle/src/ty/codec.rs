@@ -34,14 +34,18 @@ pub trait TyEncoder<'tcx>: SpanEncoder {
 
     fn position(&self) -> usize;
 
+    /// Starts an encoding scope for a type, including when a shorthand is reused.
     #[inline(always)]
     fn type_encode_begin(&mut self, _ty: Ty<'tcx>) {}
+    /// Ends the encoding scope started by [`TyEncoder::type_encode_begin`].
     #[inline(always)]
     fn type_encode_end(&mut self) {}
     fn type_shorthands(&mut self) -> &mut FxHashMap<Ty<'tcx>, usize>;
 
+    /// Starts an encoding scope for a predicate, including when a shorthand is reused.
     #[inline(always)]
     fn predicate_encode_begin(&mut self, _pred: ty::PredicateKind<'tcx>) {}
+    /// Ends the encoding scope started by [`TyEncoder::predicate_encode_begin`].
     #[inline(always)]
     fn predicate_encode_end(&mut self) {}
     fn predicate_shorthands(&mut self) -> &mut FxHashMap<ty::PredicateKind<'tcx>, usize>;
@@ -107,7 +111,9 @@ pub trait RefDecodable<'tcx, D: TyDecoder<'tcx>>: PointeeSized {
     fn decode(d: &mut D) -> &'tcx Self;
 }
 
-/// Encode the given value or a previously cached shorthand.
+/// Encodes the given value or a previously cached shorthand.
+///
+/// `begin` and `end` are each called exactly once, including on the shorthand fast path.
 #[inline(always)]
 pub fn encode_with_shorthand<'tcx, E, T, M, Begin, End>(
     encoder: &mut E,
