@@ -507,7 +507,7 @@ provide! { tcx, def_id, other, cdata,
             rdr_hashes
                 .local
                 .get(cdata, def_id.index)
-                .unwrap_or_else(|| bug!("Trying to read public hash of definition {def_id:?}, categoriazed as private!"))
+                .unwrap_or_else(|| bug!("Trying to read public hash of definition {def_id:?}, categorized as private!"))
         } else {
             Fingerprint::from_le_bytes(cdata.root.header.hashes.public_hash.as_u128().to_le_bytes())
         }
@@ -517,7 +517,7 @@ provide! { tcx, def_id, other, cdata,
             rdr_hashes
                 .expn
                 .get(cdata, def_id.local_id)
-                .unwrap_or_else(|| bug!("Trying to read public hash of expnasion {def_id:?}, categoriazed as private!"))
+                .unwrap_or_else(|| bug!("Trying to read public hash of expansion {def_id:?}, categorized as private!"))
         } else {
             Fingerprint::from_le_bytes(cdata.root.header.hashes.public_hash.as_u128().to_le_bytes())
         }

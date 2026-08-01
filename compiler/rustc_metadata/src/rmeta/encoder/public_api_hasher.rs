@@ -59,7 +59,7 @@
 //! public hash of its dependencies, only on their global part (like lang items and externally
 //! implementable items) plus the hash of the items that are reachable through this rmeta.
 //!
-//! # Modifications to hwo some data is stored in the rmeta
+//! # Modifications to how some data is stored in the rmeta
 //! The storage of some data is not compatible with public api hashing. The following changes are
 //! made when the option is enabled:
 //!
