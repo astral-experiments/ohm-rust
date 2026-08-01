@@ -1,7 +1,6 @@
 use rustc_hir::attrs::RDRFields;
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_hir::find_attr;
-use rustc_macros::Diagnostic;
 use rustc_middle::dep_graph::{DepKind, DepNode};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::{Span, Symbol};
@@ -24,13 +23,6 @@ pub(crate) fn check_rdr_test_attrs(tcx: TyCtxt<'_>) {
     }
 }
 
-#[derive(Diagnostic)]
-#[diag("found rdr hash attribute but `-Zquery-dep-graph` was not specified")]
-pub(crate) struct MissingQueryDepGraph {
-    #[primary_span]
-    pub span: Span,
-}
-
 /// Scan for a `cfg="foo"` attribute and check whether we have a
 /// cfg flag called `foo`.
 fn check_config(tcx: TyCtxt<'_>, value: Symbol) -> bool {
@@ -45,10 +37,6 @@ fn check_config(tcx: TyCtxt<'_>, value: Symbol) -> bool {
 }
 
 fn assert_dependency_public_hash(tcx: TyCtxt<'_>, span: Span, fields: RDRFields) {
-    if !tcx.sess.opts.unstable_opts.query_dep_graph {
-        tcx.dcx().emit_fatal(MissingQueryDepGraph { span });
-    }
-
     let crate_num = tcx
         .crates(())
         .iter()

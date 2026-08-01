@@ -89,8 +89,11 @@ macro_rules! hashed_lazy_array {
     };
 }
 
+/// Selects the legacy `DefIndex` metadata format or the stable `DefPathHash` and reachability-graph
+/// format used by public API hashing.
 pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
     type EncodedDefIndex: for<'a> Encodable<EncodeContext<'a, 'tcx, Self>>;
+    /// Must agree with [`PublicApiHashState::enabled`] for the active encoding context.
     const HASH_PUBLIC_API: bool;
     fn encoded_def_index(tcx: TyCtxt<'_>, def_id: DefId) -> Self::EncodedDefIndex;
     fn into_raw_def_id(tcx: TyCtxt<'_>, def_id: DefId) -> RawDefId;
@@ -144,6 +147,7 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
 
     fn record_encoded_index(&mut self, _node: Node<'tcx>);
 
+    /// Encodes nested metadata while applying the given reachability recording policy.
     #[inline(always)]
     fn with_record_mode<'a, F, T>(
         ecx: &mut EncodeContext<'a, 'tcx, Self>,
@@ -2574,10 +2578,9 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 );
                 self.encode_attrs(id, hcx);
                 record!(self.tables.def_keys[def_id] <- def_key, hcx, def_id);
-                let ident_span = self.encode_diagnostic_span(def_id, span, false);
-                self.tables.def_ident_span.set_some_unhashed(def_id.index, ident_span);
-                let def_span = self.encode_diagnostic_span(def_id, span, false);
-                self.tables.def_span.set_some_unhashed(def_id.index, def_span);
+                let diagnostic_span = self.encode_diagnostic_span(def_id, span, false);
+                self.tables.def_ident_span.set_some_unhashed(def_id.index, diagnostic_span);
+                self.tables.def_span.set_some_unhashed(def_id.index, diagnostic_span);
                 record!(self.tables.visibility[def_id] <- Visibility::Public, hcx, Visibility::<DefId>::Public);
                 if let Some(stability) = stability {
                     record!(self.tables.lookup_stability[def_id] <- stability, hcx);

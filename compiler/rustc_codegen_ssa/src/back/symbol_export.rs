@@ -165,10 +165,9 @@ fn is_reachable_non_generic_with_export_level_c_provider(
     tcx: TyCtxt<'_>,
     def_id: LocalDefId,
 ) -> bool {
-    match tcx.reachable_non_generics(LOCAL_CRATE).get(&def_id.to_def_id()) {
-        Some(SymbolExportInfo { level: SymbolExportLevel::C, .. }) => true,
-        _ => false,
-    }
+    tcx.reachable_non_generics(LOCAL_CRATE)
+        .get(&def_id.to_def_id())
+        .is_some_and(|info| info.level == SymbolExportLevel::C)
 }
 
 fn exported_non_generic_symbols_provider_local<'tcx>(

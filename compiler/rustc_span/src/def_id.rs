@@ -565,7 +565,10 @@ impl LocalModDefId {
     }
 }
 
-/// DefId which can only be used to check visibilities.
+/// Marks a [`DefId`] used only for visibility checks during metadata encoding.
+///
+/// Encoding this wrapper deliberately omits a reachability-graph edge, so callers must not unwrap
+/// it and use the inner [`DefId`] as a metadata query key.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, StableHash, Decodable, Debug)]
 pub struct VisibilityDefId(pub DefId);
 

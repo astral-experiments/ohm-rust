@@ -10,7 +10,7 @@ use rustc_hir::definitions::{DefKey, DefPath, DefPathHash};
 use rustc_middle::arena::ArenaAllocatable;
 use rustc_middle::bug;
 use rustc_middle::metadata::{AmbigModChild, ModChild};
-use rustc_middle::middle::exported_symbols::{ExportedSymbol, SymbolExportInfo, SymbolExportLevel};
+use rustc_middle::middle::exported_symbols::{ExportedSymbol, SymbolExportLevel};
 use rustc_middle::middle::stability::DeprecationEntry;
 use rustc_middle::queries::ExternProviders;
 use rustc_middle::query::LocalCrate;
@@ -404,10 +404,9 @@ provide! { tcx, def_id, other, cdata,
         if cdata.root.public_api_hash_opt_enabled {
             cdata.root.tables.is_reachable_non_generic_with_export_level_c.get(cdata, def_id.index)
         } else {
-            match tcx.reachable_non_generics(def_id.krate).get(&def_id) {
-                Some(SymbolExportInfo { level: SymbolExportLevel::C, .. }) => true,
-                _ => false,
-            }
+            tcx.reachable_non_generics(def_id.krate)
+                .get(&def_id)
+                .is_some_and(|info| info.level == SymbolExportLevel::C)
         }
     }
     native_libraries => { cdata.get_native_libraries(tcx).collect() }
