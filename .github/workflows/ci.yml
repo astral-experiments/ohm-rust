@@ -17,7 +17,7 @@ concurrency:
 jobs:
   style:
     name: Formatting and tidy
-    runs-on: ubuntu-24.04
+    runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 30
     steps:
       - name: Checkout Rust
@@ -48,7 +48,7 @@ jobs:
 
   compiler:
     name: Compiler and regression tests
-    runs-on: ubuntu-24.04
+    runs-on: depot-ubuntu-24.04-16
     timeout-minutes: 90
     steps:
       - name: Checkout Rust
