@@ -23,7 +23,7 @@ jobs:
       - name: Checkout Rust
         uses: actions/checkout@v5
         with:
-          fetch-depth: 2
+          fetch-depth: 128
 
       - name: Install the pinned nightly formatter
         uses: dtolnay/rust-toolchain@master
@@ -54,25 +54,25 @@ jobs:
       - name: Checkout Rust
         uses: actions/checkout@v5
         with:
-          fetch-depth: 2
+          fetch-depth: 128
 
       - name: Checkout the standard-library backtrace submodule
         run: git submodule update --init --depth 1 library/backtrace
 
       - name: Check compiler crates
         run: >-
-          python3 x.py --set build.submodules=false --set rust.debug-assertions=true
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off --warnings deny check compiler
 
       - name: Run metadata UI tests
         run: >-
-          python3 x.py --set build.submodules=false --set rust.debug-assertions=true
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/ui/rmeta
 
       - name: Run reduced-dependency-rebuild incremental tests
         if: hashFiles('tests/incremental/rdr/**/*.rs') != ''
         run: >-
-          python3 x.py --set build.submodules=false --set rust.debug-assertions=true
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/incremental/rdr
 
       - name: Run public-API-hash run-make tests
@@ -88,6 +88,6 @@ jobs:
           done
 
           if (( ${#selected[@]} > 0 )); then
-            python3 x.py --set build.submodules=false --set rust.debug-assertions=true \
+            python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true \
               --set rust.lto=off test --stage 1 "${selected[@]}"
           fi
