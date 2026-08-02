@@ -1,0 +1,16 @@
+change-id = "ignore"
+profile = "compiler"
+
+[build]
+compiler-docs = false
+docs = false
+submodules = false
+
+[llvm]
+download-ci-llvm = true
+
+[rust]
+channel = "dev"
+debug-assertions = true
+debuginfo-level = 0
+incremental = false
