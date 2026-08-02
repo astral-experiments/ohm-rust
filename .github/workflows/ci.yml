@@ -42,7 +42,7 @@ jobs:
 
       - name: Run tidy checks
         run: >-
-          python3 x.py --config .github/ohm-bootstrap.toml --ci false
+          env -u GITHUB_ACTIONS python3 x.py --config .github/ohm-bootstrap.toml --ci false
           --set build.rustfmt=$(rustup which --toolchain nightly-2026-05-13 rustfmt)
           test tidy
 
