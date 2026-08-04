@@ -73,6 +73,10 @@ fn load_dep_graph(sess: &Session, incr_comp_session: &IncrCompSession) -> LoadRe
             if all_files_exist {
                 debug!("reconcile_work_products: all files for {:?} exist", swp);
                 prev_work_products.insert(swp.id, swp.work_product);
+            } else if swp.work_product.cgu_name
+                == rustc_middle::dep_graph::WorkProduct::METADATA_PREFIX_WORKPRODUCT_CGU_NAME
+            {
+                debug!("optional metadata prefix is missing");
             } else {
                 debug!("reconcile_work_products: some file for {:?} does not exist", swp);
                 return LoadResult::DataOutOfDate;

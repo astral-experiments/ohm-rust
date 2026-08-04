@@ -1175,11 +1175,8 @@ fn generate_test_desc_and_fn(
         },
         #[cfg(bootstrap)]
         testfn: test::DynTestFn(Box::new(move || {
-            let rustdoc_test_options = IndividualTestOptions::new(
-                &rustdoc_options,
-                &test.test_id,
-                scraped_test.path(),
-            );
+            let rustdoc_test_options =
+                IndividualTestOptions::new(&rustdoc_options, &test.test_id, scraped_test.path());
             doctest_run_fn(
                 rustdoc_test_options,
                 &opts,
@@ -1191,11 +1188,8 @@ fn generate_test_desc_and_fn(
         })),
         #[cfg(not(bootstrap))]
         testfn: test::DynTestFn(Arc::new(move || {
-            let rustdoc_test_options = IndividualTestOptions::new(
-                &rustdoc_options,
-                &test.test_id,
-                scraped_test.path(),
-            );
+            let rustdoc_test_options =
+                IndividualTestOptions::new(&rustdoc_options, &test.test_id, scraped_test.path());
             doctest_run_fn(
                 rustdoc_test_options,
                 &opts,

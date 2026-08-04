@@ -458,6 +458,7 @@ impl<'tcx> ProjectedMaybeOwner<'tcx> {
 pub fn provide(providers: &mut Providers) {
     providers.hir_crate_items = map::hir_crate_items;
     providers.crate_hash = map::crate_hash;
+    providers.ohm_metadata_input_hashes = map::metadata_input_hashes;
     providers.hir_module_items = map::hir_module_items;
     providers.hir_attr_map =
         |tcx, id| tcx.lower_to_hir(id).as_owner().map_or(AttributeMap::EMPTY, |o| &o.attrs);
