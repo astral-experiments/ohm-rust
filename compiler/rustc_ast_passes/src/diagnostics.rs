@@ -125,7 +125,9 @@ pub(crate) struct FnParamCVarArgsNotLast {
 
 #[derive(Diagnostic)]
 #[diag("`#[rustc_splat]` is not supported on argument index {$splatted_arg_index}")]
-#[help("remove `#[rustc_splat]`, or use it on an argument closer to the start of the argument list")]
+#[help(
+    "remove `#[rustc_splat]`, or use it on an argument closer to the start of the argument list"
+)]
 pub(crate) struct InvalidSplattedArg {
     pub splatted_arg_index: u16,
 
