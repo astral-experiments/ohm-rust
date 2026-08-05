@@ -15,8 +15,17 @@ use crate::token::{self, Token};
 // avoiding interning, if no changes are required.
 pub fn escape_string_symbol(symbol: Symbol) -> Symbol {
     let s = symbol.as_str();
-    let escaped = s.escape_default().to_string();
-    if s == escaped { symbol } else { Symbol::intern(&escaped) }
+    let requires_escaping = s.as_bytes().iter().any(|byte| match byte {
+        b'\\' | b'\'' | b'"' => true,
+        b'\x20'..=b'\x7e' => false,
+        _ => true,
+    });
+
+    if !requires_escaping {
+        return symbol;
+    }
+
+    Symbol::intern(&s.escape_default().to_string())
 }
 
 // Escapes a char.
