@@ -37,7 +37,7 @@ use rustc_span::def_id::DefId;
 use rustc_span::edition::Edition;
 use rustc_span::{DUMMY_SP, Ident, Span, Symbol, sym};
 use rustc_target::spec::{PanicStrategy, Target};
-use tracing::{debug, info, trace};
+use tracing::{debug, info};
 
 use crate::errors;
 use crate::locator::{CrateError, CrateLocator, CratePaths, CrateRejections};
@@ -71,6 +71,9 @@ pub struct CStore {
     has_global_allocator: bool,
     /// This crate has a `#[alloc_error_handler]` item.
     has_alloc_error_handler: bool,
+
+    /// Loaded crates indexed by their name and public API hash.
+    crate_nums_by_public_hash: UnordMap<(Symbol, Svh), CrateNum>,
 
     /// Names that were used to load the crates via `extern crate` or paths.
     resolved_externs: UnordMap<Symbol, CrateNum>,
@@ -241,6 +244,13 @@ impl CStore {
 
     fn set_crate_data(&mut self, cnum: CrateNum, data: CrateMetadata) {
         assert!(self.metas[cnum].is_none(), "Overwriting crate metadata entry");
+        // Crate numbers are reserved before recursively loading dependencies, so
+        // metadata registration can finish out of order. Preserve the first
+        // ascending crate-number match used by the original linear scan.
+        self.crate_nums_by_public_hash
+            .entry((data.name(), data.public_hash()))
+            .and_modify(|existing| *existing = cmp::min(*existing, cnum))
+            .or_insert(cnum);
         self.metas[cnum] = Some(Box::new(data));
     }
 
@@ -548,6 +558,7 @@ impl CStore {
             alloc_error_handler_kind: None,
             has_global_allocator: false,
             has_alloc_error_handler: false,
+            crate_nums_by_public_hash: UnordMap::default(),
             resolved_externs: UnordMap::default(),
             unused_externs: Vec::new(),
             used_extern_options: Default::default(),
@@ -556,26 +567,7 @@ impl CStore {
     }
 
     fn existing_match(&self, name: Symbol, public_hash: Option<Svh>) -> Option<CrateNum> {
-        let public_hash = public_hash?;
-
-        for (cnum, data) in self.iter_crate_data() {
-            if data.name() != name {
-                trace!("{} did not match {}", data.name(), name);
-                continue;
-            }
-
-            if public_hash == data.public_hash() {
-                return Some(cnum);
-            } else {
-                debug!(
-                    "actual public hash {} did not match expected {}",
-                    public_hash,
-                    data.public_hash()
-                );
-            }
-        }
-
-        None
+        self.crate_nums_by_public_hash.get(&(name, public_hash?)).copied()
     }
 
     /// Determine whether a dependency should be considered private.
