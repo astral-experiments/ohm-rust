@@ -1054,7 +1054,10 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         let (exported_non_generic_symbols, exported_generic_symbols) =
             stat!("exported-symbols", || (
                 self.encode_exported_symbols(tcx.exported_non_generic_symbols(LOCAL_CRATE)),
-                self.encode_exported_symbols(tcx.exported_generic_symbols(LOCAL_CRATE)),
+                self.encode_exported_generic_symbols(
+                    tcx.exported_generic_symbols(LOCAL_CRATE),
+                    hcx,
+                ),
             ));
 
         if M::HASH_PUBLIC_API {
@@ -2919,6 +2922,18 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         let array =
             self.with_record_mode(RecordMode::None, |this| this.lazy_array(exported_symbols));
         Unhashed(array)
+    }
+
+    fn encode_exported_generic_symbols<'h>(
+        &mut self,
+        exported_symbols: &[(ExportedSymbol<'tcx>, SymbolExportInfo)],
+        hcx: &mut impl PublicApiHashState<'h>,
+    ) -> Hashed<LazyArray<(ExportedSymbol<'static>, SymbolExportInfo)>> {
+        empty_proc_macro!(self);
+
+        self.with_record_mode(RecordMode::None, |this| {
+            hashed_lazy_array!(this, exported_symbols.iter(), hcx)
+        })
     }
 
     fn encode_dylib_dependency_formats<'h>(
