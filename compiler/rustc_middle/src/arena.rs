@@ -39,7 +39,7 @@ macro_rules! arena_types {
             [] const_allocs: rustc_middle::mir::interpret::Allocation,
             [] region_scope_tree: rustc_middle::middle::region::ScopeTree,
             // Required for the incremental on-disk cache
-            [] mir_keys: rustc_hir::def_id::DefIdSet,
+            [decode] mir_keys: rustc_hir::def_id::DefIdSet,
             [] dropck_outlives:
                 rustc_middle::infer::canonical::Canonical<'tcx,
                     rustc_middle::infer::canonical::QueryResponse<'tcx,
@@ -86,7 +86,7 @@ macro_rules! arena_types {
             [] effective_visibilities: rustc_middle::middle::privacy::EffectiveVisibilities,
             [] upvars_mentioned: rustc_data_structures::fx::FxIndexMap<rustc_hir::HirId, rustc_hir::Upvar>,
             [] dyn_compatibility_violations: rustc_middle::traits::DynCompatibilityViolation,
-            [] codegen_unit: rustc_middle::mono::CodegenUnit<'tcx>,
+            [decode] codegen_unit: rustc_middle::mono::CodegenUnit<'tcx>,
             [decode] attribute: rustc_hir::Attribute,
             [] name_set: rustc_data_structures::unord::UnordSet<rustc_span::Symbol>,
             [] autodiff_item: rustc_hir::attrs::AutoDiffItem,
