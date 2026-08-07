@@ -93,6 +93,7 @@ jobs:
             tests/run-make/rdr-public-hash*
             tests/run-make/unused-externs-transparent
             tests/run-make/reset-codegen-1
+            tests/run-make/test-harness-exact-filter
           )
           selected=()
 
