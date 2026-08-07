@@ -268,7 +268,10 @@ fn main() {
     rfs::write("private.rs", private_source);
     let public_source = rfs::read_to_string("lib.rs");
     let padding = " ".repeat(256);
-    let definition = "pub fn caller_location() -> &'static std::panic::Location<'static> { std::panic::Location::caller() }";
+    let definition = concat!(
+        "pub fn caller_location() -> &'static std::panic::Location<'static> { ",
+        "std::panic::Location::caller() }",
+    );
     let tracked_source = format!("{public_source}\n#[track_caller]\n{definition}{padding}\n");
     rfs::write("lib.rs", &tracked_source);
     let (tracked_hash, _) =
@@ -353,7 +356,10 @@ fn main() {
 
     // Moving a private item-macro invocation changes its public expansion hash, even when its
     // column wraps after 256 characters. Existing metadata dependencies must prevent reuse.
-    let item_definition = "macro_rules! make_location { () => { #[inline] pub fn item_location<T>() -> &'static std::panic::Location<'static> { std::panic::Location::caller() } }; }";
+    let item_definition = concat!(
+        "macro_rules! make_location { () => { #[inline] pub fn item_location<T>() -> ",
+        "&'static std::panic::Location<'static> { std::panic::Location::caller() } }; }",
+    );
     let item_invocation = "make_location!();";
     let item_gap = " ".repeat(256 - item_invocation.len() - 4);
     let original_item_line = format!("  {item_invocation}  {item_gap}/*{item_invocation}*/");
