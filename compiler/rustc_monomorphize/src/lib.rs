@@ -4,16 +4,20 @@
 #![feature(once_cell_get_mut)]
 // tidy-alphabetical-end
 
+use rustc_data_structures::fx::FxHashSet;
 use rustc_hir::def::DefKind;
 use rustc_hir::lang_items::LangItem;
 use rustc_middle::dep_graph::{DepKind, DepNode};
-use rustc_middle::mono::CollectionMode;
+use rustc_middle::mono::{CollectionMode, MonoItem, NormalizationErrorInMono};
 use rustc_middle::query::TyCtxtAt;
 use rustc_middle::ty::adjustment::CustomCoerceUnsized;
-use rustc_middle::ty::{self, Instance, Ty, TyCtxt, Unnormalized};
+use rustc_middle::ty::{self, Instance, Ty, TyCtxt};
 use rustc_middle::util::Providers;
 use rustc_middle::{bug, traits};
-use rustc_span::ErrorGuaranteed;
+use rustc_span::def_id::DefId;
+use rustc_span::{ErrorGuaranteed, Spanned};
+
+use crate::errors::EncounteredErrorWhileInstantiating;
 
 mod collector;
 mod errors;
@@ -78,61 +82,200 @@ pub fn prepare_incremental_monomorphization(tcx: TyCtxt<'_>) {
     if !tcx.dep_graph.contains_previous_node(&root_instance_dep_node) {
         return;
     }
-    let _ = tcx.items_of_instance(root_key);
+    let Ok((root_used_items, root_mentioned_items)) = tcx.items_of_instance(root_key) else {
+        return;
+    };
     if !tcx.dep_graph.is_green(&root_instance_dep_node) {
         // A changed call graph can make a previously reachable nested closure unreachable.
         return;
     }
 
-    let root_size_dep_node = DepNode::construct(tcx, DepKind::size_estimate, &root_instance);
-    if tcx.dep_graph.contains_previous_node(&root_size_dep_node) {
-        let _ = tcx.size_estimate(root_instance);
-        if !tcx.dep_graph.is_green(&root_size_dep_node) {
-            return;
+    if !refresh_incremental_monomorphization_attributes(tcx, root_instance) {
+        return;
+    }
+
+    let mut changed_definitions = FxHashSet::default();
+    changed_definitions.insert(typeck_root.to_def_id());
+
+    for def_id in tcx.hir_body_owners() {
+        if tcx.typeck_root_def_id_local(def_id) == typeck_root {
+            changed_definitions.insert(def_id.to_def_id());
         }
     }
 
-    for def_id in tcx.hir_body_owners() {
-        if tcx.typeck_root_def_id_local(def_id) != typeck_root
-            || tcx.def_kind(def_id) != DefKind::Closure
+    let mut refreshed_instances = FxHashSet::default();
+    refreshed_instances.insert(root_key);
+
+    let mut pending_instances = Vec::new();
+    collect_incremental_monomorphization_edges(
+        &mut pending_instances,
+        CollectionMode::UsedItems,
+        root_used_items,
+        root_mentioned_items,
+    );
+
+    while let Some((spanned_instance, mode)) = pending_instances.pop() {
+        let instance = spanned_instance.node;
+        if !instance_references_changed_body(instance, &changed_definitions)
+            || !refreshed_instances.insert((instance, mode))
         {
             continue;
         }
 
-        let (closure_def_id, args) =
-            match *tcx.type_of(def_id).instantiate_identity().skip_norm_wip().kind() {
-                ty::Closure(closure_def_id, args)
-                | ty::Coroutine(closure_def_id, args)
-                | ty::CoroutineClosure(closure_def_id, args) => (closure_def_id, args),
-                _ => continue,
+        let key = (instance, mode);
+        let dep_node = DepNode::construct(tcx, DepKind::items_of_instance, &key);
+        if !tcx.dep_graph.contains_previous_node(&dep_node) {
+            continue;
+        }
+
+        let Ok((used_items, mentioned_items)) =
+            force_incremental_monomorphization_items(tcx, spanned_instance, mode)
+        else {
+            return;
+        };
+        if !tcx.dep_graph.is_green(&dep_node) {
+            return;
+        }
+
+        if mode == CollectionMode::UsedItems
+            && !refresh_incremental_monomorphization_attributes(tcx, instance)
+        {
+            return;
+        }
+
+        collect_incremental_monomorphization_edges(
+            &mut pending_instances,
+            mode,
+            used_items,
+            mentioned_items,
+        );
+    }
+}
+
+/// Preserves the collector's instantiation-context note when an existing edge reports an error.
+fn force_incremental_monomorphization_items<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    spanned_instance: Spanned<Instance<'tcx>>,
+    mode: CollectionMode,
+) -> Result<
+    (&'tcx [Spanned<MonoItem<'tcx>>], &'tcx [Spanned<MonoItem<'tcx>>]),
+    NormalizationErrorInMono,
+> {
+    let instance = spanned_instance.node;
+    let error_count = tcx.dcx().err_count();
+    let items = tcx.items_of_instance((instance, mode));
+    let mono_item = MonoItem::Fn(instance);
+    if tcx.dcx().err_count() > error_count
+        && mono_item.is_generic_fn()
+        && mono_item.is_user_defined()
+    {
+        tcx.dcx().emit_note(EncounteredErrorWhileInstantiating {
+            span: spanned_instance.span,
+            kind: "fn",
+            instance,
+        });
+    }
+
+    items
+}
+
+/// Replays the codegen attributes which can invalidate an otherwise unchanged partition.
+fn refresh_incremental_monomorphization_attributes<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    instance: Instance<'tcx>,
+) -> bool {
+    let size_dep_node = DepNode::construct(tcx, DepKind::size_estimate, &instance);
+    if tcx.dep_graph.contains_previous_node(&size_dep_node) {
+        let _ = tcx.size_estimate(instance);
+        if !tcx.dep_graph.is_green(&size_dep_node) {
+            return false;
+        }
+    }
+
+    let symbol_dep_node = DepNode::construct(tcx, DepKind::symbol_name, &instance);
+    if tcx.dep_graph.contains_previous_node(&symbol_dep_node) {
+        let _ = tcx.symbol_name(instance);
+        if !tcx.dep_graph.is_green(&symbol_dep_node) {
+            return false;
+        }
+    }
+
+    true
+}
+
+/// Preserves the collector's distinction between codegen-used and merely mentioned items.
+fn collect_incremental_monomorphization_edges<'tcx>(
+    pending: &mut Vec<(Spanned<Instance<'tcx>>, CollectionMode)>,
+    mode: CollectionMode,
+    used_items: &'tcx [Spanned<MonoItem<'tcx>>],
+    mentioned_items: &'tcx [Spanned<MonoItem<'tcx>>],
+) {
+    // This is a LIFO worklist. Pushing each list in reverse and the mentioned list first
+    // preserves the collector's sibling order while processing used items before mentioned ones.
+    pending.extend(mentioned_items.iter().rev().filter_map(|item| match item.node {
+        MonoItem::Fn(instance) => {
+            Some((Spanned { node: instance, span: item.span }, CollectionMode::MentionedItems))
+        }
+        _ => None,
+    }));
+
+    if mode == CollectionMode::UsedItems {
+        pending.extend(used_items.iter().rev().filter_map(|item| match item.node {
+            MonoItem::Fn(instance) => {
+                Some((Spanned { node: instance, span: item.span }, CollectionMode::UsedItems))
+            }
+            _ => None,
+        }));
+    }
+}
+
+/// Whether an opaque instance key actually contains an edited local body identity.
+fn instance_references_changed_body<'tcx>(
+    instance: Instance<'tcx>,
+    changed_definitions: &FxHashSet<DefId>,
+) -> bool {
+    if changed_definitions.contains(&instance.def_id()) {
+        return true;
+    }
+
+    let references_changed_body = |argument: ty::GenericArg<'tcx>| {
+        argument.walk().any(|argument| {
+            let definition = match argument.kind() {
+                ty::GenericArgKind::Type(ty) => match *ty.kind() {
+                    ty::FnDef(definition, _)
+                    | ty::Closure(definition, _)
+                    | ty::CoroutineClosure(definition, _)
+                    | ty::Coroutine(definition, _)
+                    | ty::CoroutineWitness(definition, _) => Some(definition),
+                    _ => None,
+                },
+                ty::GenericArgKind::Const(constant) => match constant.kind() {
+                    ty::ConstKind::Unevaluated(value) => Some(value.def),
+                    _ => None,
+                },
+                ty::GenericArgKind::Lifetime(_) => None,
             };
 
-        let instance = Instance::new_raw(closure_def_id, tcx.erase_and_anonymize_regions(args));
-        let Ok(instance) = tcx.try_normalize_erasing_regions(
-            ty::TypingEnv::fully_monomorphized(),
-            Unnormalized::new_wip(instance),
-        ) else {
-            continue;
-        };
+            definition.is_some_and(|definition| changed_definitions.contains(&definition))
+        })
+    };
 
-        for mode in [CollectionMode::UsedItems, CollectionMode::MentionedItems] {
-            let key = (instance, mode);
-            let dep_node = DepNode::construct(tcx, DepKind::items_of_instance, &key);
-            if tcx.dep_graph.contains_previous_node(&dep_node) {
-                let _ = tcx.items_of_instance(key);
-                if !tcx.dep_graph.is_green(&dep_node) {
-                    return;
-                }
-            }
-        }
+    if instance.args.iter().any(references_changed_body) {
+        return true;
+    }
 
-        let size_dep_node = DepNode::construct(tcx, DepKind::size_estimate, &instance);
-        if tcx.dep_graph.contains_previous_node(&size_dep_node) {
-            let _ = tcx.size_estimate(instance);
-            if !tcx.dep_graph.is_green(&size_dep_node) {
-                return;
-            }
+    // Some shim keys keep their meaningful type outside their generic arguments.
+    match instance.def {
+        ty::InstanceKind::FnPtrShim(_, ty)
+        | ty::InstanceKind::DropGlue(_, Some(ty))
+        | ty::InstanceKind::CloneShim(_, ty)
+        | ty::InstanceKind::FnPtrAddrShim(_, ty)
+        | ty::InstanceKind::AsyncDropGlueCtorShim(_, ty)
+        | ty::InstanceKind::AsyncDropGlue(_, ty) => references_changed_body(ty.into()),
+        ty::InstanceKind::FutureDropPollShim(_, proxy, implementation) => {
+            references_changed_body(proxy.into()) || references_changed_body(implementation.into())
         }
+        _ => false,
     }
 }
 
