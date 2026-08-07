@@ -80,6 +80,7 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/incremental/rdr
           tests/incremental/mono_item_partition_body_change.rs
+          tests/incremental/mono_item_partition_caller_local_body_change.rs
           tests/incremental/mono_item_partition_library_body_change.rs
           tests/incremental/mono_item_partition_library_distinct_edges.rs
           tests/incremental/mono_item_partition_unreachable_const.rs
@@ -91,6 +92,7 @@ jobs:
           tests=(
             tests/run-make/public-api-hash*
             tests/run-make/rdr-public-hash*
+            tests/run-make/caller-local-codegen
             tests/run-make/unused-externs-transparent
             tests/run-make/reset-codegen-1
             tests/run-make/test-harness-exact-filter
