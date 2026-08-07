@@ -2519,6 +2519,8 @@ options! {
         Currently the only option available"),
     ohm_caller_local_cgus: bool = (false, parse_bool, [TRACKED],
         "place upstream generics containing local closures in caller-local codegen units"),
+    ohm_stable_cgu_merging: bool = (false, parse_bool, [TRACKED],
+        "merge incremental codegen units into stable, name-based buckets"),
     on_broken_pipe: OnBrokenPipe = (OnBrokenPipe::Default, parse_on_broken_pipe, [TRACKED],
         "behavior of std::io::ErrorKind::BrokenPipe (SIGPIPE)"),
     osx_rpath_install_name: bool = (false, parse_bool, [TRACKED],
