@@ -73,16 +73,23 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/ui/rmeta
 
-      - name: Run reduced-dependency-rebuild incremental tests
+      - name: Run reduced-dependency-rebuild and monomorphization incremental tests
         if: hashFiles('tests/incremental/rdr/**/*.rs') != ''
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/incremental/rdr
+          tests/incremental/mono_item_partition_body_change.rs
+          tests/incremental/mono_item_partition_unreachable_const.rs
+          tests/incremental/mono_item_partition_unreachable_const_cached.rs
 
       - name: Run public-API-hash run-make tests
         shell: bash
         run: |
-          tests=(tests/run-make/public-api-hash* tests/run-make/rdr-public-hash*)
+          tests=(
+            tests/run-make/public-api-hash*
+            tests/run-make/rdr-public-hash*
+            tests/run-make/reset-codegen-1
+          )
           selected=()
 
           for test in "${tests[@]}"; do

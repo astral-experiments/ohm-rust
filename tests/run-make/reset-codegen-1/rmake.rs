@@ -7,7 +7,9 @@
 
 //@ ignore-cross-compile
 
-use run_make_support::{bin_name, path, rustc};
+use run_make_support::{
+    bin_name, cwd, filename_contains, has_suffix, path, rustc, shallow_find_files,
+};
 
 fn compile(output_file: &str, emit: Option<&str>) {
     let mut rustc = rustc();
@@ -38,4 +40,28 @@ fn main() {
     compile("multi-output", Some("asm,obj"));
     assert!(path("multi-output.s").is_file());
     assert!(path("multi-output.o").is_file());
+
+    rustc()
+        .input("partition.rs")
+        .incremental("partition-incremental")
+        .codegen_units(8)
+        .emit("obj")
+        .arg("-Zpublic-api-hash")
+        .run();
+
+    let partition_objects = shallow_find_files(cwd(), |object| {
+        filename_contains(object, "partition") && has_suffix(object, ".rcgu.o")
+    });
+    assert!(partition_objects.len() > 1, "expected multiple codegen units: {partition_objects:?}");
+
+    rustc()
+        .input("partition.rs")
+        .incremental("partition-incremental")
+        .codegen_units(1)
+        .emit("obj")
+        .output("partition-single.o")
+        .arg("-Zpublic-api-hash")
+        .run();
+
+    assert!(path("partition-single.o").is_file());
 }

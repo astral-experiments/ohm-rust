@@ -1303,6 +1303,8 @@ pub(crate) fn start_codegen<'tcx>(
 
     info!("Pre-codegen\n{:?}", tcx.debug_stats());
 
+    rustc_monomorphize::prepare_incremental_monomorphization(tcx);
+
     let metadata = rustc_metadata::fs::encode_and_write_metadata(tcx);
 
     let codegen = tcx.sess.time("codegen_crate", || {
