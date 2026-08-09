@@ -704,7 +704,7 @@ impl Snapshot {
 
 fn invocation_key(targets: &BTreeSet<Target>, arguments: &[String]) -> io::Result<String> {
     let current_directory = env::current_dir()?.canonicalize()?;
-    let formatter_path = trusted_formatter()?;
+    let (formatter_path, compiler_path) = trusted_formatter()?;
     let formatter_metadata = fs::metadata(&formatter_path)?;
     let formatter_fingerprint = SourceFingerprint::from_metadata(&formatter_metadata)?;
     let mut invocation = Sha256::new();
@@ -715,6 +715,7 @@ fn invocation_key(targets: &BTreeSet<Target>, arguments: &[String]) -> io::Resul
     invocation.update(formatter_fingerprint.modified_nanoseconds.to_le_bytes());
     invocation.update(formatter_fingerprint.permissions_mode.to_le_bytes());
     invocation.update(formatter_metadata.len().to_le_bytes());
+    hash_compiler_driver(&mut invocation, &compiler_path)?;
 
     for variable in [
         "APPDATA",
@@ -1063,7 +1064,7 @@ fn hash_configuration_file(path: &Path) -> io::Result<String> {
     Ok(format!("{:x}", digest.finalize()))
 }
 
-fn trusted_formatter() -> io::Result<PathBuf> {
+fn trusted_formatter() -> io::Result<(PathBuf, PathBuf)> {
     if env::var_os("RUSTFMT_WRAPPER").is_some() {
         return Err(unsupported(
             "a custom rustfmt wrapper cannot be cached safely",
@@ -1098,13 +1099,85 @@ fn trusted_formatter() -> io::Result<PathBuf> {
         ));
     }
 
-    if !is_native_executable(&path)? || !is_native_executable(&directory.join(expected_compiler))? {
+    let compiler = directory.join(expected_compiler);
+    if !is_native_executable(&path)? || !is_native_executable(&compiler)? {
         return Err(unsupported(
             "a custom formatter toolchain cannot be cached safely",
         ));
     }
 
-    Ok(path)
+    Ok((path, compiler.canonicalize()?))
+}
+
+/// Locates the compiler implementation loaded dynamically by rustfmt.
+///
+/// The neighboring compiler can itself be a symlink, as in bootstrap tool
+/// bundles, so its canonical location determines the actual runtime sysroot.
+fn compiler_driver(compiler: &Path) -> io::Result<PathBuf> {
+    let compiler = compiler.canonicalize()?;
+    let sysroot = compiler
+        .parent()
+        .and_then(Path::parent)
+        .ok_or_else(|| unsupported("the formatter compiler has no runtime sysroot"))?;
+    let library_directory = sysroot.join(if cfg!(windows) { "bin" } else { "lib" });
+    let prefix = format!("{}rustc_driver-", env::consts::DLL_PREFIX);
+    let suffix = env::consts::DLL_SUFFIX;
+    let mut driver = None;
+
+    for entry in fs::read_dir(&library_directory)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if !name.starts_with(&prefix)
+            || !name.ends_with(suffix)
+            || name.len() == prefix.len() + suffix.len()
+        {
+            continue;
+        }
+        if driver.is_some() {
+            return Err(unsupported(
+                "the formatter toolchain has multiple rustc driver libraries",
+            ));
+        }
+
+        let path = entry.path().canonicalize()?;
+        if !fs::metadata(&path)?.is_file() {
+            return Err(unsupported(
+                "the formatter toolchain's rustc driver is not a regular file",
+            ));
+        }
+        File::open(&path)?;
+        driver = Some(path);
+    }
+
+    driver.ok_or_else(|| unsupported("the formatter toolchain has no rustc driver library"))
+}
+
+/// Fingerprints the real compiler implementation without reading its contents.
+fn hash_compiler_driver(digest: &mut Sha256, compiler: &Path) -> io::Result<()> {
+    let path = compiler_driver(compiler)?;
+    let metadata = fs::metadata(&path)?;
+    let fingerprint = SourceFingerprint::from_metadata(&metadata)?;
+
+    hash_value(digest, &path_string(&path)?);
+    digest.update(fingerprint.modified_seconds.to_le_bytes());
+    digest.update(fingerprint.modified_nanoseconds.to_le_bytes());
+    digest.update(fingerprint.permissions_mode.to_le_bytes());
+    digest.update(metadata.len().to_le_bytes());
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+
+        digest.update(metadata.dev().to_le_bytes());
+        digest.update(metadata.ino().to_le_bytes());
+        digest.update(metadata.ctime().to_le_bytes());
+        digest.update(metadata.ctime_nsec().to_le_bytes());
+    }
+
+    Ok(())
 }
 
 fn is_unsafe_dynamic_loader_variable(variable: &str) -> bool {
@@ -1887,6 +1960,110 @@ mod tests {
             &current,
             expected
         ));
+        Ok(())
+    }
+
+    fn compiler_driver_fixture() -> io::Result<(tempfile::TempDir, PathBuf, PathBuf)> {
+        let directory = tempfile::tempdir()?;
+        let binaries = directory.path().join("bin");
+        let libraries = directory
+            .path()
+            .join(if cfg!(windows) { "bin" } else { "lib" });
+        fs::create_dir_all(&binaries)?;
+        fs::create_dir_all(&libraries)?;
+        let compiler = binaries.join(if cfg!(windows) { "rustc.exe" } else { "rustc" });
+        fs::write(&compiler, "compiler launcher")?;
+        let driver = libraries.join(format!(
+            "{}rustc_driver-fixture{}",
+            env::consts::DLL_PREFIX,
+            env::consts::DLL_SUFFIX
+        ));
+        Ok((directory, compiler, driver))
+    }
+
+    #[test]
+    fn exactly_one_runtime_compiler_driver_is_required() -> io::Result<()> {
+        let (_directory, compiler, driver) = compiler_driver_fixture()?;
+        assert_eq!(
+            compiler_driver(&compiler).err().map(|error| error.kind()),
+            Some(io::ErrorKind::Unsupported)
+        );
+
+        fs::write(&driver, "compiler implementation")?;
+        assert_eq!(compiler_driver(&compiler)?, driver.canonicalize()?);
+
+        let another = driver.with_file_name(format!(
+            "{}rustc_driver-another{}",
+            env::consts::DLL_PREFIX,
+            env::consts::DLL_SUFFIX
+        ));
+        fs::write(&another, "ambiguous compiler implementation")?;
+        assert_eq!(
+            compiler_driver(&compiler).err().map(|error| error.kind()),
+            Some(io::ErrorKind::Unsupported)
+        );
+
+        fs::remove_file(&another)?;
+        fs::remove_file(&driver)?;
+        fs::create_dir(&driver)?;
+        assert_eq!(
+            compiler_driver(&compiler).err().map(|error| error.kind()),
+            Some(io::ErrorKind::Unsupported)
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn linked_compilers_resolve_their_actual_runtime_sysroot() -> io::Result<()> {
+        use std::os::unix::fs::symlink;
+
+        let (directory, compiler, driver) = compiler_driver_fixture()?;
+        fs::write(&driver, "compiler implementation")?;
+        let bundle = directory.path().join("optimized-bundle");
+        fs::create_dir(&bundle)?;
+        let linked_compiler = bundle.join("rustc");
+        symlink(&compiler, &linked_compiler)?;
+
+        assert_eq!(compiler_driver(&linked_compiler)?, driver.canonicalize()?);
+        Ok(())
+    }
+
+    #[test]
+    fn compiler_driver_metadata_changes_invalidate_formatter_identity() -> io::Result<()> {
+        let (_directory, compiler, driver) = compiler_driver_fixture()?;
+        fs::write(&driver, "original compiler")?;
+        let mut before = Sha256::new();
+        hash_compiler_driver(&mut before, &compiler)?;
+
+        fs::write(&driver, "updated compiler implementation")?;
+        let mut after = Sha256::new();
+        hash_compiler_driver(&mut after, &compiler)?;
+
+        assert_ne!(before.finalize(), after.finalize());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn replaced_compiler_driver_with_restored_mtime_changes_formatter_identity() -> io::Result<()> {
+        let (_directory, compiler, driver) = compiler_driver_fixture()?;
+        fs::write(&driver, "first-driver")?;
+        let modified = fs::metadata(&driver)?.modified()?;
+        let mut before = Sha256::new();
+        hash_compiler_driver(&mut before, &compiler)?;
+
+        let replacement = driver.with_extension("replacement");
+        fs::write(&replacement, "other-driver")?;
+        OpenOptions::new()
+            .write(true)
+            .open(&replacement)?
+            .set_times(fs::FileTimes::new().set_modified(modified))?;
+        fs::rename(&replacement, &driver)?;
+        let mut after = Sha256::new();
+        hash_compiler_driver(&mut after, &compiler)?;
+
+        assert_ne!(before.finalize(), after.finalize());
         Ok(())
     }
 
