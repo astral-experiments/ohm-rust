@@ -41,6 +41,7 @@ pub(crate) struct FileProbe {
     pub(crate) is_directory: bool,
 }
 
+/// Collects logical parser paths and invalidates the graph when observations disagree.
 struct RecordedFileProbes {
     current_directory: PathBuf,
     probes: Mutex<BTreeMap<PathBuf, FileProbe>>,
@@ -56,6 +57,7 @@ impl RecordedFileProbes {
         })
     }
 
+    /// Preserves symlink aliases and negative lookups while rejecting unstable observations.
     fn record(&self, path: &Path, exists: bool) {
         let path = if path.is_absolute() {
             path.to_path_buf()
@@ -262,7 +264,7 @@ impl ParseSess {
         self.raw_psess.source_map().file_exists(path)
     }
 
-    /// Returns all native filesystem decisions made while parsing this input.
+    /// Returns native resolution decisions only when every recorded probe stayed consistent.
     pub(crate) fn file_probes(&self) -> Option<Vec<FileProbe>> {
         let recorded = self.file_probes.as_ref()?;
         if !recorded.complete.load(Ordering::Acquire) {

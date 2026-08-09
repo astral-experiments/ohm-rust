@@ -452,6 +452,7 @@ struct ResolvedModuleGraph {
     complete: bool,
 }
 
+/// Distinguishes files actually formatted from every source loaded or probed by the parser.
 #[derive(Default)]
 struct ResolvedRootFiles {
     files: BTreeSet<PathBuf>,
@@ -459,6 +460,7 @@ struct ResolvedRootFiles {
     probes: BTreeMap<PathBuf, FileProbe>,
 }
 
+/// Versioned handoff consumed by incremental cargo-fmt after a successful formatter run.
 #[derive(serde::Serialize)]
 struct ModuleGraphManifest<'a> {
     schema: &'static str,
@@ -472,6 +474,21 @@ struct ModuleGraphRoot<'a> {
     files: Vec<&'a Path>,
     dependencies: Vec<&'a Path>,
     probes: Vec<&'a FileProbe>,
+}
+
+/// Rejects unresolved and non-UTF-8 paths that cannot be represented in a cache manifest.
+fn canonical_graph_path(path: &Path) -> Option<PathBuf> {
+    let canonical = path.canonicalize().ok()?;
+    canonical.to_str().is_some().then_some(canonical)
+}
+
+/// Canonicalizes all native sources, failing the entire graph if any source is unavailable.
+fn canonical_graph_paths<'a>(
+    paths: impl Iterator<Item = Option<&'a Path>>,
+) -> Option<BTreeSet<PathBuf>> {
+    paths
+        .map(|path| path.and_then(canonical_graph_path))
+        .collect()
 }
 
 impl<'b, T: Write + 'b> Session<'b, T> {
@@ -511,6 +528,10 @@ impl<'b, T: Write + 'b> Session<'b, T> {
         self.module_graph.is_some()
     }
 
+    /// Records formatted files, all parsed dependencies, and native resolution decisions.
+    ///
+    /// Any incomplete source, missing dependency probe, or conflicting observation disables
+    /// manifest publication for the entire formatter invocation.
     pub(crate) fn record_module_graph<'a, 'd>(
         &mut self,
         root: &FileName,
@@ -525,48 +546,21 @@ impl<'b, T: Write + 'b> Session<'b, T> {
             graph.complete = false;
             return;
         };
-        let Ok(root) = root.canonicalize() else {
+        let Some(root) = canonical_graph_path(root) else {
             graph.complete = false;
             return;
         };
-        if root.to_str().is_none() {
+        let Some(resolved_files) = canonical_graph_paths(files.map(|file| match file {
+            FileName::Real(path) => Some(path.as_path()),
+            _ => None,
+        })) else {
             graph.complete = false;
             return;
-        }
-
-        let mut resolved_files = BTreeSet::new();
-        for file in files {
-            let FileName::Real(path) = file else {
-                graph.complete = false;
-                return;
-            };
-            let Ok(path) = path.canonicalize() else {
-                graph.complete = false;
-                return;
-            };
-            if path.to_str().is_none() {
-                graph.complete = false;
-                return;
-            }
-            resolved_files.insert(path);
-        }
-
-        let mut loaded_dependencies = BTreeSet::new();
-        for dependency in dependencies {
-            let Some(path) = dependency else {
-                graph.complete = false;
-                return;
-            };
-            let Ok(path) = path.canonicalize() else {
-                graph.complete = false;
-                return;
-            };
-            if path.to_str().is_none() {
-                graph.complete = false;
-                return;
-            }
-            loaded_dependencies.insert(path);
-        }
+        };
+        let Some(loaded_dependencies) = canonical_graph_paths(dependencies) else {
+            graph.complete = false;
+            return;
+        };
 
         let Some(probes) = probes else {
             graph.complete = false;
@@ -616,7 +610,7 @@ impl<'b, T: Write + 'b> Session<'b, T> {
         }
     }
 
-    /// Atomically publishes the complete opt-in module graph for every input.
+    /// Atomically publishes only a complete graph containing exactly the requested roots.
     #[doc(hidden)]
     pub fn write_module_manifest(&self, path: &Path, expected_roots: &[PathBuf]) -> io::Result<()> {
         let Some(graph) = self.module_graph.as_ref().filter(|graph| graph.complete) else {

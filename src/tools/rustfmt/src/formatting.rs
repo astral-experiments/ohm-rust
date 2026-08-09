@@ -276,8 +276,10 @@ impl<'a, T: FormatHandler + 'a> FormatContext<'a, T> {
 
 // Handle the results of formatting.
 trait FormatHandler {
+    /// Enables native filesystem recording only for callers requesting an authoritative graph.
     fn module_graph_enabled(&self) -> bool;
 
+    /// Reports formatted files separately from all parser-loaded sources and resolver probes.
     fn record_module_graph<'a, 'd>(
         &mut self,
         root: &FileName,
