@@ -502,7 +502,14 @@ fn run_rustfmt(
     fmt_args: &[String],
     verbosity: Verbosity,
 ) -> Result<i32, io::Error> {
-    Ok(run_rustfmt_with_output(targets, fmt_args, verbosity, RustfmtOutputMode::Inherit)?.status)
+    Ok(run_rustfmt_with_output(
+        targets,
+        fmt_args,
+        verbosity,
+        RustfmtOutputMode::Inherit,
+        None,
+    )?
+    .status)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -514,6 +521,7 @@ enum RustfmtOutputMode {
 struct RustfmtOutput {
     status: i32,
     emitted_diagnostics: bool,
+    module_manifests: Vec<PathBuf>,
 }
 
 fn run_rustfmt_with_output(
@@ -521,6 +529,7 @@ fn run_rustfmt_with_output(
     fmt_args: &[String],
     verbosity: Verbosity,
     output_mode: RustfmtOutputMode,
+    manifest_directory: Option<&Path>,
 ) -> Result<RustfmtOutput, io::Error> {
     let by_edition = targets
         .iter()
@@ -536,6 +545,7 @@ fn run_rustfmt_with_output(
 
     let mut status = vec![];
     let mut emitted_diagnostics = false;
+    let mut module_manifests = Vec::new();
     for (edition, files) in by_edition {
         let stdout =
             if verbosity == Verbosity::Quiet || output_mode == RustfmtOutputMode::CaptureQuietly {
@@ -558,6 +568,21 @@ fn run_rustfmt_with_output(
             .args(files)
             .args(["--edition", edition.as_str()])
             .args(fmt_args);
+
+        if let Some(directory) = manifest_directory {
+            let manifest = directory.join(format!(
+                ".modules-{}-{}.json",
+                std::process::id(),
+                edition.as_str()
+            ));
+            match fs::remove_file(&manifest) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            }
+            command.env("OHM_RUSTFMT_MODULE_MANIFEST", &manifest);
+            module_manifests.push(manifest);
+        }
         if output_mode != RustfmtOutputMode::Inherit {
             command.stderr(std::process::Stdio::piped());
         }
@@ -585,6 +610,7 @@ fn run_rustfmt_with_output(
             .next()
             .unwrap_or(SUCCESS),
         emitted_diagnostics,
+        module_manifests,
     })
 }
 

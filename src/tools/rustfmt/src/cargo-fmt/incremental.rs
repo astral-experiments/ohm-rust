@@ -6,20 +6,22 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use syn::ext::IdentExt;
-use syn::punctuated::Punctuated;
-use syn::visit::{self, Visit};
-use syn::{Expr, Lit, Meta, Token};
 
 use super::{
     RustfmtOutput, RustfmtOutputMode, SUCCESS, Target, Verbosity, run_rustfmt,
     run_rustfmt_with_output, rustfmt_command,
 };
 
-const CACHE_VERSION: u32 = 2;
+const CACHE_VERSION: u32 = 4;
+const MODULE_MANIFEST_VERSION: u32 = 1;
+const MODULE_MANIFEST_SCHEMA: &str = "ohm.rustfmt-files";
+const MODULE_MANIFEST_ENVIRONMENT: &str = "OHM_RUSTFMT_MODULE_MANIFEST";
 const ENABLE_ENVIRONMENT: &str = "OHM_INCREMENTAL_FMT";
 const CACHE_ENVIRONMENT: &str = "OHM_INCREMENTAL_FMT_CACHE_DIR";
 const TRACE_ENVIRONMENT: &str = "OHM_INCREMENTAL_FMT_TRACE";
+
+type ModuleGraph = BTreeMap<String, BTreeSet<String>>;
+type ProbeGraph = BTreeMap<String, BTreeMap<String, ProbeObservation>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -27,7 +29,54 @@ struct Snapshot {
     version: u32,
     invocation: String,
     configuration: BTreeMap<String, String>,
-    packages: BTreeMap<String, BTreeMap<String, String>>,
+    packages: BTreeMap<String, PackageSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PackageSnapshot {
+    targets: BTreeMap<String, BTreeMap<String, String>>,
+    probes: BTreeMap<String, BTreeMap<String, ProbeObservation>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProbeObservation {
+    canonical: Option<String>,
+    exists: bool,
+    is_directory: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ModuleManifest {
+    schema: String,
+    version: u32,
+    roots: Vec<ModuleRoot>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ModuleRoot {
+    path: String,
+    files: Vec<String>,
+    dependencies: Vec<String>,
+    probes: Vec<ModuleProbe>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ModuleProbe {
+    path: String,
+    canonical: Option<String>,
+    exists: bool,
+    is_directory: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Discovery {
+    modules: ModuleGraph,
+    probes: ProbeGraph,
 }
 
 struct Plan {
@@ -67,8 +116,8 @@ pub(super) fn format(
         }
     };
 
-    let changed_packages = plan.changed_packages();
-    if changed_packages.is_empty() {
+    let mut changed_roots = plan.changed_targets();
+    if changed_roots.is_empty() {
         trace(&format!(
             "cache hit: {} unchanged packages",
             plan.current.packages.len()
@@ -76,22 +125,25 @@ pub(super) fn format(
         return Ok(SUCCESS);
     }
 
-    let changed_targets: BTreeSet<_> = targets
+    let mut changed_targets: BTreeSet<_> = targets
         .iter()
         .filter(|target| {
             target
-                .package_root
+                .path
                 .to_str()
-                .is_some_and(|root| changed_packages.contains(root))
+                .is_some_and(|path| changed_roots.contains(path))
         })
         .cloned()
         .collect();
-
-    if changed_targets.is_empty() {
-        trace("falling back to complete formatting for an ambiguous package");
+    if changed_targets.len() != changed_roots.len() {
+        trace("falling back to complete formatting for an ambiguous target");
         return run_rustfmt(targets, arguments, verbosity);
     }
 
+    let changed_packages: BTreeSet<_> = changed_targets
+        .iter()
+        .map(|target| target.package_root.as_path())
+        .collect();
     trace(&format!(
         "formatting {} of {} packages ({} of {} targets)",
         changed_packages.len(),
@@ -100,21 +152,78 @@ pub(super) fn format(
         targets.len()
     ));
 
-    let output = run_rustfmt_with_output(
+    let Some(cache_directory) = plan.cache_path.parent() else {
+        trace("falling back to complete formatting for an invalid cache path");
+        return run_rustfmt(targets, arguments, verbosity);
+    };
+    let mut output = run_rustfmt_with_output(
         &changed_targets,
         arguments,
         verbosity,
         RustfmtOutputMode::Inherit,
+        Some(cache_directory),
     )?;
     if output.status != SUCCESS {
         trace("retaining the previous cache after unsuccessful formatting");
         return Ok(output.status);
     }
 
+    let mut discovered = match read_module_manifests(&output.module_manifests, &changed_targets) {
+        Ok(discovered) => discovered,
+        Err(error) => {
+            trace(&format!(
+                "not caching without a complete authoritative module manifest: {error}"
+            ));
+            return Ok(output.status);
+        }
+    };
+
+    if discovers_new_shared_owner(
+        &plan.current.module_graph(),
+        &discovered.modules,
+        &changed_roots,
+    ) {
+        trace("reformatting all targets after discovering a new shared module owner");
+        changed_targets = targets.clone();
+        changed_roots = plan
+            .current
+            .packages
+            .values()
+            .flat_map(|package| package.targets.keys().map(String::as_str))
+            .collect();
+        output = run_rustfmt_with_output(
+            &changed_targets,
+            arguments,
+            verbosity,
+            RustfmtOutputMode::Inherit,
+            Some(cache_directory),
+        )?;
+        if output.status != SUCCESS {
+            return Ok(output.status);
+        }
+        discovered = match read_module_manifests(&output.module_manifests, &changed_targets) {
+            Ok(discovered) => discovered,
+            Err(error) => {
+                trace(&format!(
+                    "not caching without a complete authoritative module manifest: {error}"
+                ));
+                return Ok(output.status);
+            }
+        };
+    }
+
+    let mut modules = plan.current.module_graph();
+    let mut probes = plan.current.probe_graph();
+    modules.extend(discovered.modules);
+    probes.extend(discovered.probes);
     let check_only = arguments.iter().any(|argument| argument == "--check");
-    match Snapshot::capture(targets, arguments, manifest_path) {
-        Ok(updated) if plan.can_record(&updated, &changed_packages, check_only) => {
-            let verification = verify_formatted_packages(&changed_targets, arguments)?;
+    match Snapshot::capture(targets, arguments, manifest_path, &modules, &probes, None) {
+        Ok(updated)
+            if plan.can_record(&updated, &changed_roots, check_only)
+                && updated.probe_graph() == probes =>
+        {
+            let verification =
+                verify_formatted_targets(&changed_targets, arguments, cache_directory)?;
             if verification.emitted_diagnostics {
                 trace("not caching a formatter invocation that emitted diagnostics");
                 return Ok(output.status);
@@ -123,18 +232,34 @@ pub(super) fn format(
                 trace("not caching files changed concurrently with formatting");
                 return Ok(output.status);
             }
+            let verification_discovery =
+                match read_module_manifests(&verification.module_manifests, &changed_targets) {
+                    Ok(discovery) => discovery,
+                    Err(error) => {
+                        trace(&format!(
+                            "not caching without a complete verification module manifest: {error}"
+                        ));
+                        return Ok(output.status);
+                    }
+                };
+            if !discovery_matches(&verification_discovery, &modules, &probes) {
+                trace("not caching a module graph changed concurrently with formatting");
+                return Ok(output.status);
+            }
 
-            let verified = match Snapshot::capture(targets, arguments, manifest_path) {
-                Ok(verified) if verified == updated => verified,
-                Ok(_) => {
-                    trace("not caching files changed concurrently with formatting");
-                    return Ok(output.status);
-                }
-                Err(error) => {
-                    trace(&format!("could not verify formatted files: {error}"));
-                    return Ok(output.status);
-                }
-            };
+            let verified =
+                match Snapshot::capture(targets, arguments, manifest_path, &modules, &probes, None)
+                {
+                    Ok(verified) if verified == updated => verified,
+                    Ok(_) => {
+                        trace("not caching files changed concurrently with formatting");
+                        return Ok(output.status);
+                    }
+                    Err(error) => {
+                        trace(&format!("could not verify formatted files: {error}"));
+                        return Ok(output.status);
+                    }
+                };
 
             if let Err(error) = write_cache(&plan.cache_path, &verified) {
                 trace(&format!("could not update the formatting cache: {error}"));
@@ -160,9 +285,10 @@ fn lock_cache(manifest_path: Option<&Path>) -> io::Result<File> {
     Ok(lock)
 }
 
-fn verify_formatted_packages(
+fn verify_formatted_targets(
     targets: &BTreeSet<Target>,
     arguments: &[String],
+    manifest_directory: &Path,
 ) -> io::Result<RustfmtOutput> {
     let check_arguments = verification_arguments(arguments);
     run_rustfmt_with_output(
@@ -170,7 +296,31 @@ fn verify_formatted_packages(
         &check_arguments,
         Verbosity::Quiet,
         RustfmtOutputMode::CaptureQuietly,
+        Some(manifest_directory),
     )
+}
+
+fn discovery_matches(discovered: &Discovery, modules: &ModuleGraph, probes: &ProbeGraph) -> bool {
+    discovered.modules.len() == discovered.probes.len()
+        && discovered.modules.iter().all(|(root, files)| {
+            modules.get(root) == Some(files) && discovered.probes.get(root) == probes.get(root)
+        })
+}
+
+fn discovers_new_shared_owner(
+    previous: &ModuleGraph,
+    discovered: &ModuleGraph,
+    selected: &BTreeSet<&str>,
+) -> bool {
+    discovered.iter().any(|(root, files)| {
+        let old_files = previous.get(root);
+        files.iter().any(|file| {
+            !old_files.is_some_and(|previous| previous.contains(file))
+                && previous.iter().any(|(other_root, other_files)| {
+                    !selected.contains(other_root.as_str()) && other_files.contains(file)
+                })
+        })
+    })
 }
 
 fn verification_arguments(arguments: &[String]) -> Vec<String> {
@@ -199,12 +349,55 @@ impl Plan {
         arguments: &[String],
         manifest_path: Option<&Path>,
     ) -> io::Result<Self> {
-        let current = Snapshot::capture(targets, arguments, manifest_path)?;
-        let cache_directory = cache_directory(manifest_path)?;
-        let cache_path = cache_directory.join(format!("{}.json", current.invocation));
-        let previous = match File::open(&cache_path) {
+        if targets.is_empty() {
+            return Err(unsupported("there are no formatter targets to cache"));
+        }
+        if env::var_os(MODULE_MANIFEST_ENVIRONMENT).is_some() {
+            return Err(unsupported(
+                "an external module manifest request cannot be cached safely",
+            ));
+        }
+
+        let invocation = invocation_key(targets, arguments)?;
+        let directory = cache_directory(manifest_path)?;
+        let cache_path = directory.join(format!("{invocation}.json"));
+        let previous: Option<Snapshot> = match File::open(&cache_path) {
             Ok(file) => serde_json::from_reader(file).ok(),
             Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error),
+        };
+        let mut previous = previous.filter(|snapshot| {
+            snapshot.version == CACHE_VERSION && snapshot.invocation == invocation
+        });
+        let modules = previous
+            .as_ref()
+            .map(Snapshot::module_graph)
+            .unwrap_or_default();
+        let probes = previous
+            .as_ref()
+            .map(Snapshot::probe_graph)
+            .unwrap_or_default();
+        let current = match Snapshot::capture(
+            targets,
+            arguments,
+            manifest_path,
+            &modules,
+            &probes,
+            Some(&invocation),
+        ) {
+            Ok(current) => current,
+            Err(_) if previous.is_some() => {
+                trace("rediscovering an unavailable cached module graph");
+                previous = None;
+                Snapshot::capture(
+                    targets,
+                    arguments,
+                    manifest_path,
+                    &ModuleGraph::new(),
+                    &ProbeGraph::new(),
+                    Some(&invocation),
+                )?
+            }
             Err(error) => return Err(error),
         };
 
@@ -215,49 +408,121 @@ impl Plan {
         })
     }
 
-    fn changed_packages(&self) -> BTreeSet<&str> {
-        let Some(previous) = self.previous.as_ref() else {
-            return self.current.packages.keys().map(String::as_str).collect();
+    fn changed_targets(&self) -> BTreeSet<&str> {
+        let all = || {
+            self.current
+                .packages
+                .values()
+                .flat_map(|package| package.targets.keys().map(String::as_str))
+                .collect()
         };
 
+        let Some(previous) = self.previous.as_ref() else {
+            return all();
+        };
         if previous.version != CACHE_VERSION
             || previous.invocation != self.current.invocation
             || previous.configuration != self.current.configuration
             || previous.packages.len() != self.current.packages.len()
         {
-            return self.current.packages.keys().map(String::as_str).collect();
+            return all();
         }
 
-        self.current
+        let mut changed: BTreeSet<_> = self
+            .current
             .packages
             .iter()
-            .filter_map(|(package, files)| {
-                (previous.packages.get(package) != Some(files)).then_some(package.as_str())
+            .flat_map(|(package_path, package)| {
+                package.targets.iter().filter_map(|(target_path, files)| {
+                    let previous_package = previous.packages.get(package_path);
+                    let previous_files =
+                        previous_package.and_then(|previous| previous.targets.get(target_path));
+                    let previous_probes =
+                        previous_package.and_then(|previous| previous.probes.get(target_path));
+                    let current_probes = package.probes.get(target_path);
+                    (previous_files != Some(files) || previous_probes != current_probes)
+                        .then_some(target_path.as_str())
+                })
             })
-            .collect()
+            .collect();
+
+        loop {
+            let shared_files: BTreeSet<_> = self
+                .current
+                .packages
+                .values()
+                .flat_map(|package| {
+                    package
+                        .targets
+                        .iter()
+                        .filter(|(target, _)| changed.contains(target.as_str()))
+                        .flat_map(|(_, files)| files.keys().map(String::as_str))
+                })
+                .collect();
+            let additional: Vec<_> = self
+                .current
+                .packages
+                .values()
+                .flat_map(|package| {
+                    package.targets.iter().filter_map(|(target, files)| {
+                        (!changed.contains(target.as_str())
+                            && files
+                                .keys()
+                                .any(|path| shared_files.contains(path.as_str())))
+                        .then_some(target.as_str())
+                    })
+                })
+                .collect();
+            if additional.is_empty() {
+                return changed;
+            }
+            changed.extend(additional);
+        }
     }
 
     fn can_record(
         &self,
         updated: &Snapshot,
-        changed_packages: &BTreeSet<&str>,
+        changed_targets: &BTreeSet<&str>,
         check_only: bool,
     ) -> bool {
         if updated.version != CACHE_VERSION
             || updated.invocation != self.current.invocation
-            || updated.configuration != self.current.configuration
+            || self
+                .current
+                .configuration
+                .iter()
+                .any(|(path, digest)| updated.configuration.get(path) != Some(digest))
             || updated.packages.len() != self.current.packages.len()
         {
             return false;
         }
 
-        if check_only {
-            return updated.packages == self.current.packages;
-        }
+        self.current.packages.iter().all(|(package_path, package)| {
+            let Some(updated_package) = updated.packages.get(package_path) else {
+                return false;
+            };
+            if package.targets.len() != updated_package.targets.len() {
+                return false;
+            }
+            if package.probes.len() != updated_package.probes.len() {
+                return false;
+            }
 
-        self.current.packages.iter().all(|(package, files)| {
-            changed_packages.contains(package.as_str())
-                || updated.packages.get(package) == Some(files)
+            package.targets.iter().all(|(target_path, files)| {
+                let Some(updated_files) = updated_package.targets.get(target_path) else {
+                    return false;
+                };
+                if !changed_targets.contains(target_path.as_str()) {
+                    return files == updated_files
+                        && package.probes.get(target_path)
+                            == updated_package.probes.get(target_path);
+                }
+                !check_only
+                    || files
+                        .iter()
+                        .all(|(path, digest)| updated_files.get(path) == Some(digest))
+            })
         })
     }
 }
@@ -267,779 +532,332 @@ impl Snapshot {
         targets: &BTreeSet<Target>,
         arguments: &[String],
         manifest_path: Option<&Path>,
+        modules: &ModuleGraph,
+        probes: &ProbeGraph,
+        invocation: Option<&str>,
     ) -> io::Result<Self> {
-        let package_roots: BTreeSet<_> = targets
-            .iter()
-            .map(|target| target.package_root.clone())
-            .collect();
-
-        if package_roots.is_empty()
-            || targets
-                .iter()
-                .any(|target| !target.path.starts_with(&target.package_root))
-        {
-            return Err(unsupported("a target lies outside its package"));
-        }
-
-        let mut configuration = BTreeMap::new();
         let mut packages = BTreeMap::new();
-        let current_directory = env::current_dir()?.canonicalize()?;
-        let cache_directory = cache_directory(manifest_path)?;
-        let cache_directory = if cache_directory.is_absolute() {
-            cache_directory
-        } else {
-            current_directory.join(cache_directory)
+        let mut file_hashes = BTreeMap::new();
+        let mut observed_probes = BTreeMap::new();
+        let mut configuration_directories = BTreeSet::new();
+
+        for target in targets {
+            let package_path = path_string(&target.package_root)?;
+            let target_path = path_string(&target.path)?;
+            let paths = modules
+                .get(&target_path)
+                .cloned()
+                .unwrap_or_else(|| BTreeSet::from([target_path.clone()]));
+            if !paths.contains(&target_path) {
+                return Err(unsupported(
+                    "an authoritative module graph omits its target root",
+                ));
+            }
+
+            configuration_directories.insert(target.package_root.clone());
+            let mut sources = BTreeMap::new();
+            for path in paths {
+                let canonical = canonical_module_path(&path)?;
+                if let Some(parent) = canonical.parent() {
+                    configuration_directories.insert(parent.to_owned());
+                }
+                let digest = match file_hashes.get(&path) {
+                    Some(digest) => digest,
+                    None => {
+                        file_hashes.insert(path.clone(), hash_file(&canonical)?);
+                        file_hashes
+                            .get(&path)
+                            .ok_or_else(|| unsupported("a source digest was not recorded"))?
+                    }
+                };
+                sources.insert(path, digest.clone());
+            }
+
+            let mut target_probes = BTreeMap::new();
+            if let Some(expected) = probes.get(&target_path) {
+                for path in expected.keys() {
+                    let observation = match observed_probes.get(path) {
+                        Some(observation) => observation,
+                        None => {
+                            observed_probes.insert(path.clone(), observe_module_probe(path)?);
+                            observed_probes.get(path).ok_or_else(|| {
+                                unsupported("a source resolution probe was not recorded")
+                            })?
+                        }
+                    };
+                    target_probes.insert(path.clone(), observation.clone());
+                }
+            }
+
+            let package = packages
+                .entry(package_path)
+                .or_insert_with(|| PackageSnapshot {
+                    targets: BTreeMap::new(),
+                    probes: BTreeMap::new(),
+                });
+            package.targets.insert(target_path.clone(), sources);
+            package.probes.insert(target_path, target_probes);
         }
-        .canonicalize()?;
-        for root in &package_roots {
-            let mut files = BTreeMap::new();
-            let excluded_module_names =
-                excluded_module_directory_names(root, &package_roots, &cache_directory)?;
-            collect_package_files(
-                root,
-                root,
-                &package_roots,
-                &cache_directory,
-                &excluded_module_names,
-                &mut files,
+
+        let current_directory = env::current_dir()?.canonicalize()?;
+        configuration_directories.insert(current_directory);
+        let mut configuration = BTreeMap::new();
+        let mut visited_directories = BTreeSet::new();
+        for directory in configuration_directories {
+            collect_ancestor_configuration(
+                &directory,
+                &mut visited_directories,
                 &mut configuration,
             )?;
-            collect_ancestor_configuration(root, &mut configuration)?;
-            packages.insert(path_string(root)?, files);
         }
-
-        if targets.iter().any(|target| {
-            target
-                .package_root
-                .to_str()
-                .and_then(|root| packages.get(root))
-                .is_none_or(|files| {
-                    target
-                        .path
-                        .to_str()
-                        .is_none_or(|path| !files.contains_key(path))
-                })
-        }) {
-            return Err(unsupported("a target source is excluded from its package"));
-        }
-
-        collect_ancestor_configuration(&current_directory, &mut configuration)?;
         collect_global_configuration(&mut configuration)?;
         collect_explicit_configuration(arguments, &mut configuration)?;
-
         if let Some(path) = manifest_path {
             collect_configuration_file(path, &mut configuration)?;
         }
 
-        let formatter_path = trusted_formatter()?;
-        let formatter_hash = hash_file(&formatter_path)?;
-        let mut invocation = Sha256::new();
-        hash_value(&mut invocation, env!("CARGO_PKG_VERSION"));
-        hash_value(&mut invocation, &path_string(&current_directory)?);
-        hash_value(&mut invocation, &path_string(&formatter_path)?);
-        hash_value(&mut invocation, &formatter_hash);
-
-        for variable in [
-            "APPDATA",
-            "CARGO_HOME",
-            "DYLD_FALLBACK_LIBRARY_PATH",
-            "DYLD_LIBRARY_PATH",
-            "HOME",
-            "LD_LIBRARY_PATH",
-            "RUSTC_BOOTSTRAP",
-            "RUSTFMT_LOG",
-            "RUSTUP_HOME",
-            "RUSTUP_TOOLCHAIN",
-            "USERPROFILE",
-            "XDG_CONFIG_HOME",
-        ] {
-            hash_environment(&mut invocation, variable)?;
-        }
-
-        for argument in arguments {
-            hash_value(&mut invocation, argument);
-        }
-        for target in targets {
-            hash_value(&mut invocation, &path_string(&target.path)?);
-            hash_value(&mut invocation, &path_string(&target.package_root)?);
-            hash_value(&mut invocation, target.edition.as_str());
-            hash_value(&mut invocation, &target.kind);
-        }
-
         Ok(Self {
             version: CACHE_VERSION,
-            invocation: format!("{:x}", invocation.finalize()),
+            invocation: match invocation {
+                Some(invocation) => invocation.to_owned(),
+                None => invocation_key(targets, arguments)?,
+            },
             configuration,
             packages,
         })
     }
+
+    fn module_graph(&self) -> ModuleGraph {
+        self.packages
+            .values()
+            .flat_map(|package| {
+                package.targets.iter().map(|(target, files)| {
+                    (
+                        target.clone(),
+                        files.keys().cloned().collect::<BTreeSet<_>>(),
+                    )
+                })
+            })
+            .collect()
+    }
+
+    fn probe_graph(&self) -> ProbeGraph {
+        self.packages
+            .values()
+            .flat_map(|package| {
+                package
+                    .probes
+                    .iter()
+                    .map(|(target, probes)| (target.clone(), probes.clone()))
+            })
+            .collect()
+    }
 }
 
-fn collect_package_files(
-    package_root: &Path,
-    directory: &Path,
-    package_roots: &BTreeSet<PathBuf>,
-    cache_directory: &Path,
-    excluded_module_names: &BTreeSet<String>,
-    sources: &mut BTreeMap<String, String>,
-    configuration: &mut BTreeMap<String, String>,
-) -> io::Result<()> {
-    for entry in fs::read_dir(directory)? {
-        let entry = entry?;
-        let path = entry.path();
-        let file_type = entry.file_type()?;
+fn invocation_key(targets: &BTreeSet<Target>, arguments: &[String]) -> io::Result<String> {
+    let current_directory = env::current_dir()?.canonicalize()?;
+    let formatter_path = trusted_formatter()?;
+    let formatter_hash = hash_file(&formatter_path)?;
+    let mut invocation = Sha256::new();
+    hash_value(&mut invocation, env!("CARGO_PKG_VERSION"));
+    hash_value(&mut invocation, &path_string(&current_directory)?);
+    hash_value(&mut invocation, &path_string(&formatter_path)?);
+    hash_value(&mut invocation, &formatter_hash);
 
-        if path == cache_directory {
-            continue;
+    for variable in [
+        "APPDATA",
+        "CARGO_HOME",
+        "DYLD_FALLBACK_LIBRARY_PATH",
+        "DYLD_LIBRARY_PATH",
+        "HOME",
+        "LD_LIBRARY_PATH",
+        "RUSTC_BOOTSTRAP",
+        "RUSTFMT_LOG",
+        "RUSTUP_HOME",
+        "RUSTUP_TOOLCHAIN",
+        "USERPROFILE",
+        "XDG_CONFIG_HOME",
+    ] {
+        hash_environment(&mut invocation, variable)?;
+    }
+
+    for argument in arguments {
+        hash_value(&mut invocation, argument);
+    }
+    for target in targets {
+        hash_value(&mut invocation, &path_string(&target.path)?);
+        hash_value(&mut invocation, &path_string(&target.package_root)?);
+        hash_value(&mut invocation, target.edition.as_str());
+        hash_value(&mut invocation, &target.kind);
+    }
+
+    Ok(format!("{:x}", invocation.finalize()))
+}
+
+fn read_module_manifests(paths: &[PathBuf], targets: &BTreeSet<Target>) -> io::Result<Discovery> {
+    if paths.is_empty() {
+        return Err(unsupported("rustfmt did not provide a module manifest"));
+    }
+
+    let expected: BTreeSet<_> = targets
+        .iter()
+        .map(|target| path_string(&target.path))
+        .collect::<io::Result<_>>()?;
+    let mut roots = ModuleGraph::new();
+    let mut probe_roots = ProbeGraph::new();
+    for path in paths {
+        let manifest = read_module_manifest(path);
+        let removal = fs::remove_file(path);
+        let manifest = manifest?;
+        removal?;
+
+        if manifest.schema != MODULE_MANIFEST_SCHEMA || manifest.version != MODULE_MANIFEST_VERSION
+        {
+            return Err(unsupported("rustfmt produced an unknown module manifest"));
         }
 
-        if file_type.is_symlink() {
-            let target_type = fs::metadata(&path)?.file_type();
-            if target_type.is_dir() || path.extension().is_some_and(|extension| extension == "rs") {
-                return Err(unsupported("a package contains a symlinked Rust source"));
+        for root in manifest.roots {
+            if !expected.contains(&root.path) || roots.contains_key(&root.path) {
+                return Err(unsupported(
+                    "the authoritative module manifest has an unexpected target",
+                ));
             }
-        }
-
-        if file_type.is_dir() {
-            let name = entry.file_name();
-            if matches!(name.to_str(), Some(".git" | ".hg" | ".svn"))
-                || (directory == package_root && name.to_str() == Some("target"))
-            {
-                continue;
-            }
-
-            if path != package_root && package_roots.contains(&path) {
-                continue;
-            }
-
-            collect_package_files(
-                package_root,
-                &path,
-                package_roots,
-                cache_directory,
-                excluded_module_names,
-                sources,
-                configuration,
-            )?;
-            continue;
-        }
-
-        if !file_type.is_file() && !file_type.is_symlink() {
-            continue;
-        }
-
-        if path.extension().is_some_and(|extension| extension == "rs") {
-            let contents = fs::read(&path)?;
-            validate_module_paths_with_exclusions(
-                &path,
-                &contents,
-                package_root,
-                package_roots,
-                cache_directory,
-                excluded_module_names,
-            )?;
-            sources.insert(
-                path_string(&path)?,
-                format!("{:x}", Sha256::digest(&contents)),
-            );
-        } else if is_configuration_file(&path) {
-            collect_configuration_file(&path, configuration)?;
-        }
-    }
-
-    Ok(())
-}
-
-#[cfg(test)]
-fn validate_module_paths(
-    source_path: &Path,
-    contents: &[u8],
-    package_root: &Path,
-    package_roots: &BTreeSet<PathBuf>,
-    cache_directory: &Path,
-) -> io::Result<()> {
-    let excluded_module_names =
-        excluded_module_directory_names(package_root, package_roots, cache_directory)?;
-    validate_module_paths_with_exclusions(
-        source_path,
-        contents,
-        package_root,
-        package_roots,
-        cache_directory,
-        &excluded_module_names,
-    )
-}
-
-fn validate_module_paths_with_exclusions(
-    source_path: &Path,
-    contents: &[u8],
-    package_root: &Path,
-    package_roots: &BTreeSet<PathBuf>,
-    cache_directory: &Path,
-    excluded_module_names: &BTreeSet<String>,
-) -> io::Result<()> {
-    let source = std::str::from_utf8(contents)
-        .map_err(|_| unsupported("a Rust source is not valid UTF-8"))?;
-    let inspect_implicit_modules = has_implicit_excluded_module(source, excluded_module_names);
-    if !has_module_resolution_syntax(source) && !inspect_implicit_modules {
-        return Ok(());
-    }
-
-    let syntax = syn::parse_file(source)
-        .map_err(|_| unsupported("a Rust source uses syntax that cannot be safely inspected"))?;
-    let mut visitor = ModulePathVisitor {
-        source_path,
-        package_root,
-        package_roots,
-        cache_directory,
-        excluded_module_names: excluded_module_names.clone(),
-        inspect_implicit_modules,
-        inline_modules: Vec::new(),
-        error: None,
-    };
-    visitor.visit_file(&syntax);
-    match visitor.error {
-        Some(error) => Err(error),
-        None => Ok(()),
-    }
-}
-
-fn excluded_module_directory_names(
-    package_root: &Path,
-    package_roots: &BTreeSet<PathBuf>,
-    cache_directory: &Path,
-) -> io::Result<BTreeSet<String>> {
-    let mut directories = vec![package_root.join("target")];
-    if cache_directory.starts_with(package_root) {
-        directories.push(cache_directory.to_owned());
-    }
-    directories.extend(
-        package_roots
-            .iter()
-            .filter(|root| root.as_path() != package_root && root.starts_with(package_root))
-            .cloned(),
-    );
-
-    let mut names = BTreeSet::new();
-    for directory in directories {
-        match fs::metadata(&directory) {
-            Ok(metadata) if metadata.is_dir() => {
-                if let Some(name) = directory.file_name().and_then(|name| name.to_str()) {
-                    names.insert(name.to_owned());
-                } else {
+            canonical_module_path(&root.path)?;
+            let mut files = BTreeSet::new();
+            for path in root.files {
+                canonical_module_path(&path)?;
+                if !files.insert(path) {
                     return Err(unsupported(
-                        "an excluded module directory is not valid UTF-8",
+                        "the authoritative module manifest repeats a source file",
                     ));
                 }
             }
-            Ok(_) => {}
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(_) => {
+            let mut dependencies = BTreeSet::new();
+            for path in root.dependencies {
+                canonical_module_path(&path)?;
+                if !dependencies.insert(path) {
+                    return Err(unsupported(
+                        "the authoritative module manifest repeats a parsed dependency",
+                    ));
+                }
+            }
+            if !files.contains(&root.path) || !dependencies.contains(&root.path) {
                 return Err(unsupported(
-                    "an excluded module directory cannot be inspected",
+                    "the authoritative module manifest omits its root source",
                 ));
             }
-        }
-    }
-
-    Ok(names)
-}
-
-fn has_implicit_excluded_module(source: &str, names: &BTreeSet<String>) -> bool {
-    if names.is_empty() {
-        return false;
-    }
-
-    let bytes = source.as_bytes();
-    for (index, _) in source.match_indices("mod") {
-        if index > 0 && is_identifier_byte(bytes[index - 1]) {
-            continue;
-        }
-
-        let mut cursor = index + b"mod".len();
-        if bytes
-            .get(cursor)
-            .is_some_and(|byte| is_identifier_byte(*byte))
-        {
-            continue;
-        }
-        if skip_rust_trivia(bytes, &mut cursor).is_err() {
-            return true;
-        }
-        if bytes.get(cursor..cursor.saturating_add(2)) == Some(b"r#") {
-            cursor += 2;
-        }
-
-        let Some(remaining) = source.get(cursor..) else {
-            return true;
-        };
-        let identifier = remaining
-            .chars()
-            .take_while(|character| *character == '_' || character.is_alphanumeric())
-            .collect::<String>();
-        if names
-            .iter()
-            .any(|name| module_names_match(&identifier, name))
-        {
-            return true;
-        }
-    }
-
-    false
-}
-
-fn module_names_match(identifier: &str, directory: &str) -> bool {
-    identifier.eq_ignore_ascii_case(directory)
-        || (!identifier.is_ascii()
-            && !directory.is_ascii()
-            && identifier.to_lowercase() == directory.to_lowercase())
-}
-
-fn has_module_resolution_syntax(source: &str) -> bool {
-    let bytes = source.as_bytes();
-
-    if source.contains("path") && source.contains('#') {
-        for (index, _) in source.match_indices('#') {
-            let mut cursor = index + 1;
-            if skip_rust_trivia(bytes, &mut cursor).is_err() {
-                return true;
-            }
-            if bytes.get(cursor) != Some(&b'[') {
-                continue;
-            }
-            cursor += 1;
-            if skip_rust_trivia(bytes, &mut cursor).is_err() {
-                return true;
+            if !files.is_subset(&dependencies) {
+                return Err(unsupported(
+                    "the authoritative module manifest omits a formatted dependency",
+                ));
             }
 
-            if bytes.get(cursor..cursor.saturating_add(2)) == Some(b"r#") {
-                cursor += 2;
-            }
-
-            if has_identifier(bytes, cursor, b"path") {
-                return true;
-            }
-            if has_identifier(bytes, cursor, b"cfg_attr")
-                && attribute_contains_path(bytes, cursor + b"cfg_attr".len())
-            {
-                return true;
-            }
-        }
-    }
-
-    if source.contains("include") && source.contains('!') {
-        for (index, _) in source.match_indices("include") {
-            if index > 0 && is_identifier_byte(bytes[index - 1]) {
-                continue;
-            }
-            let mut cursor = index + "include".len();
-            if bytes
-                .get(cursor)
-                .is_some_and(|byte| is_identifier_byte(*byte))
-            {
-                continue;
-            }
-            if skip_rust_trivia(bytes, &mut cursor).is_err() || bytes.get(cursor) == Some(&b'!') {
-                return true;
-            }
-        }
-    }
-
-    false
-}
-
-fn attribute_contains_path(bytes: &[u8], mut cursor: usize) -> bool {
-    let mut depth = 1_usize;
-    while cursor < bytes.len() {
-        if skip_rust_trivia(bytes, &mut cursor).is_err() {
-            return true;
-        }
-        let Some(byte) = bytes.get(cursor).copied() else {
-            return true;
-        };
-
-        if byte == b'"' {
-            cursor += 1;
-            while let Some(next) = bytes.get(cursor).copied() {
-                cursor += 1;
-                if next == b'\\' {
-                    cursor = cursor.saturating_add(1);
-                } else if next == b'"' {
-                    break;
-                }
-            }
-            continue;
-        }
-
-        match byte {
-            b'[' => depth += 1,
-            b']' => {
-                depth -= 1;
-                if depth == 0 {
-                    return false;
-                }
-            }
-            _ if has_identifier(bytes, cursor, b"path") => return true,
-            _ => {}
-        }
-        cursor += 1;
-    }
-
-    true
-}
-
-fn has_identifier(bytes: &[u8], cursor: usize, identifier: &[u8]) -> bool {
-    bytes.get(cursor..cursor.saturating_add(identifier.len())) == Some(identifier)
-        && !bytes
-            .get(cursor + identifier.len())
-            .is_some_and(|byte| is_identifier_byte(*byte))
-}
-
-fn is_identifier_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_'
-}
-
-fn skip_rust_trivia(bytes: &[u8], cursor: &mut usize) -> Result<(), ()> {
-    loop {
-        while let Some(width) = rust_whitespace_width(bytes, *cursor) {
-            *cursor += width;
-        }
-
-        if bytes.get(*cursor..cursor.saturating_add(2)) == Some(b"//") {
-            *cursor += 2;
-            while bytes.get(*cursor).is_some_and(|byte| *byte != b'\n') {
-                *cursor += 1;
-            }
-            continue;
-        }
-
-        if bytes.get(*cursor..cursor.saturating_add(2)) != Some(b"/*") {
-            return Ok(());
-        }
-
-        *cursor += 2;
-        let mut depth = 1_usize;
-        while *cursor < bytes.len() {
-            if bytes.get(*cursor..cursor.saturating_add(2)) == Some(b"/*") {
-                depth += 1;
-                *cursor += 2;
-            } else if bytes.get(*cursor..cursor.saturating_add(2)) == Some(b"*/") {
-                depth -= 1;
-                *cursor += 2;
-                if depth == 0 {
-                    break;
-                }
-            } else {
-                *cursor += 1;
-            }
-        }
-        if depth != 0 {
-            return Err(());
-        }
-    }
-}
-
-fn rust_whitespace_width(bytes: &[u8], cursor: usize) -> Option<usize> {
-    match bytes.get(cursor).copied()? {
-        b'\t' | b'\n' | b'\x0b' | b'\x0c' | b'\r' | b' ' => Some(1),
-        0xc2 if bytes.get(cursor + 1) == Some(&0x85) => Some(2),
-        0xe2 if bytes.get(cursor + 1) == Some(&0x80)
-            && matches!(
-                bytes.get(cursor + 2).copied(),
-                Some(0x8e | 0x8f | 0xa8 | 0xa9)
-            ) =>
-        {
-            Some(3)
-        }
-        _ => None,
-    }
-}
-
-struct ModulePathVisitor<'a> {
-    source_path: &'a Path,
-    package_root: &'a Path,
-    package_roots: &'a BTreeSet<PathBuf>,
-    cache_directory: &'a Path,
-    excluded_module_names: BTreeSet<String>,
-    inspect_implicit_modules: bool,
-    inline_modules: Vec<String>,
-    error: Option<io::Error>,
-}
-
-impl ModulePathVisitor<'_> {
-    fn inspect_meta(&mut self, meta: &Meta) -> io::Result<()> {
-        match meta {
-            Meta::NameValue(value) if is_attribute_named(&value.path, "path") => {
-                let Expr::Lit(expression) = &value.value else {
-                    return Err(unsupported("a source module uses a computed path"));
+            let mut observations = BTreeMap::new();
+            for probe in root.probes {
+                let expected = ProbeObservation {
+                    canonical: probe.canonical,
+                    exists: probe.exists,
+                    is_directory: probe.is_directory,
                 };
-                let Lit::Str(path) = &expression.lit else {
-                    return Err(unsupported("a source module uses a non-string path"));
-                };
-                self.inspect_path(&path.value(), true)
-            }
-            Meta::List(list) if is_attribute_named(&list.path, "cfg_attr") => {
-                let nested = list
-                    .parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
-                    .map_err(|_| unsupported("a source module uses an unsupported cfg_attr"))?;
-                for attribute in nested {
-                    self.inspect_meta(&attribute)?;
+                if expected.exists != expected.canonical.is_some()
+                    || (!expected.exists && expected.is_directory)
+                {
+                    return Err(unsupported(
+                        "an authoritative source probe has inconsistent existence",
+                    ));
                 }
-                Ok(())
+                if observe_module_probe(&probe.path)? != expected {
+                    return Err(unsupported(
+                        "an authoritative source probe changed during formatting",
+                    ));
+                }
+                if observations.insert(probe.path, expected).is_some() {
+                    return Err(unsupported(
+                        "the authoritative module manifest repeats a resolution probe",
+                    ));
+                }
             }
-            _ => Ok(()),
+            if dependencies.iter().any(|dependency| {
+                !observations.values().any(|observation| {
+                    observation.exists && observation.canonical.as_ref() == Some(dependency)
+                })
+            }) {
+                return Err(unsupported(
+                    "the authoritative module manifest omits a loaded source probe",
+                ));
+            }
+            files.extend(dependencies);
+            probe_roots.insert(root.path.clone(), observations);
+            roots.insert(root.path, files);
         }
     }
 
-    fn inspect_path(&self, path: &str, uses_inline_module_directory: bool) -> io::Result<()> {
-        if path.contains('\\') {
-            return Err(unsupported(
-                "a source module uses an unsupported escaped path",
-            ));
-        }
-
-        let relative_path = Path::new(path);
-        if relative_path.is_absolute() {
-            return Err(unsupported("a source module uses an absolute path"));
-        }
-        if relative_path
-            .extension()
-            .is_none_or(|extension| extension != "rs")
-        {
-            return Err(unsupported("a source module uses a non-Rust path"));
-        }
-
-        let resolved = self.resolve_existing_module(relative_path, uses_inline_module_directory)?;
-
-        self.validate_resolved_module(&resolved)
+    if roots.keys().cloned().collect::<BTreeSet<_>>() != expected {
+        return Err(unsupported(
+            "the authoritative module manifest omits a formatter target",
+        ));
     }
 
-    fn validate_resolved_module(&self, resolved: &Path) -> io::Result<()> {
-        if !resolved.starts_with(self.package_root) {
-            return Err(unsupported("a source module escapes its package"));
-        }
-        let relative = resolved
-            .strip_prefix(self.package_root)
-            .map_err(|_| unsupported("a source module escapes its package"))?;
-        if relative.components().any(|component| {
-            matches!(
-                component.as_os_str().to_str(),
-                Some(".git" | ".hg" | ".svn")
-            )
-        }) || resolved.starts_with(self.package_root.join("target"))
-            || resolved.starts_with(self.cache_directory)
-            || self
-                .cache_directory
-                .canonicalize()
-                .is_ok_and(|directory| resolved.starts_with(directory))
-        {
-            return Err(unsupported("a source module lies in an excluded directory"));
-        }
-        if self.package_roots.iter().any(|root| {
-            root != self.package_root
-                && root.starts_with(self.package_root)
-                && resolved.starts_with(root)
-        }) {
-            return Err(unsupported("a source module belongs to another package"));
-        }
-
-        Ok(())
-    }
-
-    fn inspect_implicit_module(&self, module: &syn::ItemMod) -> io::Result<()> {
-        let name = module.ident.unraw().to_string();
-        if !self
-            .excluded_module_names
-            .iter()
-            .any(|directory| module_names_match(&name, directory))
-        {
-            return Ok(());
-        }
-
-        let Some(parent) = self.source_path.parent() else {
-            return Err(unsupported("a source module has no parent directory"));
-        };
-        let mut directories = vec![parent.to_owned()];
-        if let Some(stem) = self.source_path.file_stem() {
-            let nested = parent.join(stem);
-            if !directories.contains(&nested) {
-                directories.push(nested);
-            }
-        }
-
-        for mut directory in directories {
-            for inline in &self.inline_modules {
-                directory.push(inline);
-            }
-
-            let candidates = if module.content.is_some() {
-                vec![directory.join(&name)]
-            } else {
-                vec![
-                    directory.join(format!("{name}.rs")),
-                    directory.join(&name).join("mod.rs"),
-                ]
-            };
-
-            for candidate in candidates {
-                match candidate.canonicalize() {
-                    Ok(resolved) => self.validate_resolved_module(&resolved)?,
-                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-                    Err(_) => {
-                        return Err(unsupported("a source module cannot be safely resolved"));
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn resolve_existing_module(
-        &self,
-        relative_path: &Path,
-        uses_inline_module_directory: bool,
-    ) -> io::Result<PathBuf> {
-        let Some(parent) = self.source_path.parent() else {
-            return Err(unsupported("a source module has no parent directory"));
-        };
-
-        let mut directories = Vec::new();
-        if self.inline_modules.is_empty() || !uses_inline_module_directory {
-            directories.push(parent.to_owned());
-        } else {
-            let mut direct = parent.to_owned();
-            for module in &self.inline_modules {
-                direct.push(module);
-            }
-            directories.push(direct);
-
-            if let Some(stem) = self.source_path.file_stem() {
-                let mut nested = parent.join(stem);
-                for module in &self.inline_modules {
-                    nested.push(module);
-                }
-                if !directories.contains(&nested) {
-                    directories.push(nested);
-                }
-            }
-        }
-
-        let mut resolved = None;
-        for directory in directories {
-            let candidate = directory.join(relative_path);
-            match candidate.canonicalize() {
-                Ok(candidate) => {
-                    if resolved
-                        .as_ref()
-                        .is_some_and(|previous: &PathBuf| *previous != candidate)
-                    {
-                        return Err(unsupported(
-                            "an inline source module has ambiguous ownership",
-                        ));
-                    }
-                    resolved = Some(candidate);
-                }
-                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-                Err(_) => {
-                    return Err(unsupported("a source module cannot be safely resolved"));
-                }
-            }
-        }
-
-        resolved.ok_or_else(|| {
-            unsupported(&format!(
-                "a source module cannot be safely resolved: {} from {}",
-                relative_path.display(),
-                self.source_path.display()
-            ))
-        })
-    }
+    Ok(Discovery {
+        modules: roots,
+        probes: probe_roots,
+    })
 }
 
-fn is_attribute_named(path: &syn::Path, expected: &str) -> bool {
-    path.get_ident()
-        .is_some_and(|identifier| identifier.unraw() == expected)
+fn read_module_manifest(path: &Path) -> io::Result<ModuleManifest> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.file_type().is_file() {
+        return Err(unsupported("the module manifest is not a regular file"));
+    }
+    let file = File::open(path)?;
+    serde_json::from_reader(file).map_err(io::Error::other)
 }
 
-impl<'ast> Visit<'ast> for ModulePathVisitor<'_> {
-    fn visit_item_mod(&mut self, module: &'ast syn::ItemMod) {
-        if self.error.is_some() {
-            return;
-        }
-        for attribute in &module.attrs {
-            if let Err(error) = self.inspect_meta(&attribute.meta) {
-                self.error = Some(error);
-                return;
-            }
-        }
-
-        if self.inspect_implicit_modules
-            && !module
-                .attrs
-                .iter()
-                .any(|attribute| is_attribute_named(attribute.path(), "path"))
-        {
-            if let Err(error) = self.inspect_implicit_module(module) {
-                self.error = Some(error);
-                return;
-            }
-        }
-
-        let inline = module.content.is_some();
-        if inline {
-            self.inline_modules.push(module.ident.unraw().to_string());
-        }
-        visit::visit_item_mod(self, module);
-        if inline {
-            self.inline_modules.pop();
-        }
+fn canonical_module_path(path: &str) -> io::Result<PathBuf> {
+    let path = Path::new(path);
+    if !path.is_absolute() {
+        return Err(unsupported("an authoritative module path is not absolute"));
     }
-
-    fn visit_macro(&mut self, item: &'ast syn::Macro) {
-        if self.error.is_some() {
-            return;
-        }
-        if item
-            .path
-            .segments
-            .first()
-            .is_some_and(|segment| segment.ident.unraw() == "cfg_if")
-            || item
-                .path
-                .segments
-                .last()
-                .is_some_and(|segment| segment.ident.unraw() == "cfg_match")
-        {
-            self.error = Some(unsupported(
-                "a conditional macro may resolve untracked source modules",
-            ));
-            return;
-        }
-
-        if item.path.is_ident("include") {
-            match syn::parse2::<syn::LitStr>(item.tokens.clone()) {
-                Ok(path) => {
-                    if let Err(error) = self.inspect_path(&path.value(), false) {
-                        self.error = Some(error);
-                        return;
-                    }
-                }
-                Err(_) => {
-                    self.error = Some(unsupported("a source module uses a computed include path"));
-                    return;
-                }
-            }
-        }
-        visit::visit_macro(self, item);
+    let canonical = path.canonicalize()?;
+    if canonical != path || !fs::metadata(&canonical)?.is_file() {
+        return Err(unsupported(
+            "an authoritative module path is not a canonical source file",
+        ));
     }
+    Ok(canonical)
+}
+
+fn observe_module_probe(path: &str) -> io::Result<ProbeObservation> {
+    let path = Path::new(path);
+    if !path.is_absolute() {
+        return Err(unsupported("an authoritative source probe is not absolute"));
+    }
+    // `Path::exists` is exactly `fs::metadata(path).is_ok()`. Retaining the
+    // metadata also records directory decisions without a second stat call.
+    let metadata = fs::metadata(path);
+    let exists = metadata.is_ok();
+    let is_directory = metadata.as_ref().is_ok_and(fs::Metadata::is_dir);
+    let canonical = if exists {
+        Some(path_string(&path.canonicalize()?)?)
+    } else {
+        None
+    };
+    Ok(ProbeObservation {
+        canonical,
+        exists,
+        is_directory,
+    })
 }
 
 fn collect_ancestor_configuration(
     directory: &Path,
+    visited: &mut BTreeSet<PathBuf>,
     configuration: &mut BTreeMap<String, String>,
 ) -> io::Result<()> {
     for ancestor in directory.ancestors() {
+        if !visited.insert(ancestor.to_owned()) {
+            continue;
+        }
         for name in [
             "rustfmt.toml",
             ".rustfmt.toml",
@@ -1150,20 +968,6 @@ fn reject_observable_formatter_configuration(path: &Path) -> io::Result<()> {
     }
 
     Ok(())
-}
-
-fn is_configuration_file(path: &Path) -> bool {
-    matches!(
-        path.file_name().and_then(|name| name.to_str()),
-        Some(
-            "rustfmt.toml"
-                | ".rustfmt.toml"
-                | "Cargo.toml"
-                | "Cargo.lock"
-                | "rust-toolchain"
-                | "rust-toolchain.toml"
-        )
-    )
 }
 
 fn hash_file(path: &Path) -> io::Result<String> {
@@ -1343,12 +1147,33 @@ fn has_observable_emit_mode(arguments: &[String]) -> bool {
             .is_some_and(|mode| mode != "files")
         {
             return true;
-        } else if argument == "--config" || argument.starts_with("--config=") {
+        } else if argument == "--config" {
+            if arguments
+                .next()
+                .is_none_or(|configuration| !is_safe_inline_configuration(configuration))
+            {
+                return true;
+            }
+        } else if argument
+            .strip_prefix("--config=")
+            .is_some_and(|configuration| !is_safe_inline_configuration(configuration))
+        {
             return true;
         }
     }
 
     false
+}
+
+fn is_safe_inline_configuration(configuration: &str) -> bool {
+    matches!(
+        configuration,
+        "imports_granularity=Preserve"
+            | "imports_granularity=Crate"
+            | "imports_granularity=Module"
+            | "imports_granularity=Item"
+            | "imports_granularity=One"
+    )
 }
 
 fn trace(message: &str) {
@@ -1364,6 +1189,7 @@ fn unsupported(message: &str) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cargo_metadata::Edition;
 
     fn snapshot(files: &[(&str, &[(&str, &str)])]) -> Snapshot {
         Snapshot {
@@ -1376,12 +1202,24 @@ mod tests {
             packages: files
                 .iter()
                 .map(|(package, sources)| {
+                    let root = format!("{package}/src/lib.rs");
+                    let files = sources
+                        .iter()
+                        .map(|(path, hash)| {
+                            let path = if Path::new(path).is_absolute() {
+                                String::from(*path)
+                            } else {
+                                format!("{package}/{path}")
+                            };
+                            (path, String::from(*hash))
+                        })
+                        .collect();
                     (
                         String::from(*package),
-                        sources
-                            .iter()
-                            .map(|(path, hash)| (String::from(*path), String::from(*hash)))
-                            .collect(),
+                        PackageSnapshot {
+                            targets: BTreeMap::from([(root.clone(), files)]),
+                            probes: BTreeMap::from([(root, BTreeMap::new())]),
+                        },
                     )
                 })
                 .collect(),
@@ -1396,16 +1234,41 @@ mod tests {
         }
     }
 
+    fn target(root: &Path, package: &Path) -> Target {
+        Target {
+            path: root.to_owned(),
+            package_root: package.to_owned(),
+            kind: String::from("lib"),
+            edition: Edition::E2021,
+        }
+    }
+
+    fn write_manifest(path: &Path, manifest: &ModuleManifest) -> io::Result<()> {
+        let file = File::create(path)?;
+        serde_json::to_writer(file, manifest).map_err(io::Error::other)
+    }
+
+    fn probe(path: &Path) -> io::Result<ModuleProbe> {
+        let path = path_string(path)?;
+        let observation = observe_module_probe(&path)?;
+        Ok(ModuleProbe {
+            path,
+            canonical: observation.canonical,
+            exists: observation.exists,
+            is_directory: observation.is_directory,
+        })
+    }
+
     #[test]
     fn unchanged_sources_hit_the_successful_format_cache() {
         let current = snapshot(&[("/workspace/first", &[("src/lib.rs", "formatted")])]);
         let plan = plan(Some(current.clone()), current);
 
-        assert!(plan.changed_packages().is_empty());
+        assert!(plan.changed_targets().is_empty());
     }
 
     #[test]
-    fn changed_source_only_invalidates_its_own_package() {
+    fn changed_source_only_invalidates_its_authoritative_target() {
         let previous = snapshot(&[
             ("/workspace/first", &[("src/lib.rs", "before")]),
             ("/workspace/second", &[("src/lib.rs", "unchanged")]),
@@ -1417,13 +1280,282 @@ mod tests {
         let plan = plan(Some(previous), current);
 
         assert_eq!(
-            plan.changed_packages(),
-            BTreeSet::from(["/workspace/first"])
+            plan.changed_targets(),
+            BTreeSet::from(["/workspace/first/src/lib.rs"])
         );
     }
 
     #[test]
-    fn added_and_deleted_modules_invalidate_their_package() {
+    fn shared_external_modules_invalidate_every_owning_target() {
+        let previous = snapshot(&[
+            (
+                "/workspace/first",
+                &[("src/lib.rs", "root"), ("/workspace/shared.rs", "before")],
+            ),
+            (
+                "/workspace/second",
+                &[("src/lib.rs", "root"), ("/workspace/shared.rs", "before")],
+            ),
+            ("/workspace/third", &[("src/lib.rs", "unrelated")]),
+        ]);
+        let current = snapshot(&[
+            (
+                "/workspace/first",
+                &[("src/lib.rs", "root"), ("/workspace/shared.rs", "after")],
+            ),
+            (
+                "/workspace/second",
+                &[("src/lib.rs", "root"), ("/workspace/shared.rs", "after")],
+            ),
+            ("/workspace/third", &[("src/lib.rs", "unrelated")]),
+        ]);
+        let plan = plan(Some(previous), current);
+
+        assert_eq!(
+            plan.changed_targets(),
+            BTreeSet::from([
+                "/workspace/first/src/lib.rs",
+                "/workspace/second/src/lib.rs"
+            ])
+        );
+    }
+
+    #[test]
+    fn newly_available_resolution_candidate_invalidates_its_target() {
+        let mut previous = snapshot(&[("/workspace/first", &[("src/lib.rs", "unchanged")])]);
+        if let Some(package) = previous.packages.get_mut("/workspace/first") {
+            if let Some(probes) = package.probes.get_mut("/workspace/first/src/lib.rs") {
+                probes.insert(
+                    String::from("/workspace/first/src/nested/mod.rs"),
+                    ProbeObservation {
+                        canonical: None,
+                        exists: false,
+                        is_directory: false,
+                    },
+                );
+            }
+        }
+        let mut current = previous.clone();
+        if let Some(package) = current.packages.get_mut("/workspace/first") {
+            if let Some(probes) = package.probes.get_mut("/workspace/first/src/lib.rs") {
+                probes.insert(
+                    String::from("/workspace/first/src/nested/mod.rs"),
+                    ProbeObservation {
+                        canonical: Some(String::from("/workspace/first/src/nested/mod.rs")),
+                        exists: true,
+                        is_directory: false,
+                    },
+                );
+            }
+        }
+
+        let plan = plan(Some(previous), current);
+        assert_eq!(
+            plan.changed_targets(),
+            BTreeSet::from(["/workspace/first/src/lib.rs"])
+        );
+    }
+
+    #[test]
+    fn retargeted_source_symlink_invalidates_its_target() {
+        let mut previous = snapshot(&[("/workspace/first", &[("src/lib.rs", "unchanged")])]);
+        if let Some(package) = previous.packages.get_mut("/workspace/first") {
+            if let Some(probes) = package.probes.get_mut("/workspace/first/src/lib.rs") {
+                probes.insert(
+                    String::from("/workspace/first/src/linked.rs"),
+                    ProbeObservation {
+                        canonical: Some(String::from("/workspace/shared/old.rs")),
+                        exists: true,
+                        is_directory: false,
+                    },
+                );
+            }
+        }
+        let mut current = previous.clone();
+        if let Some(package) = current.packages.get_mut("/workspace/first") {
+            if let Some(probes) = package.probes.get_mut("/workspace/first/src/lib.rs") {
+                probes.insert(
+                    String::from("/workspace/first/src/linked.rs"),
+                    ProbeObservation {
+                        canonical: Some(String::from("/workspace/shared/new.rs")),
+                        exists: true,
+                        is_directory: false,
+                    },
+                );
+            }
+        }
+
+        let plan = plan(Some(previous), current);
+        assert_eq!(
+            plan.changed_targets(),
+            BTreeSet::from(["/workspace/first/src/lib.rs"])
+        );
+    }
+
+    #[test]
+    fn concurrent_resolution_change_does_not_match_producer_probe_graph() {
+        let mut snapshot = snapshot(&[("/workspace/first", &[("src/lib.rs", "unchanged")])]);
+        let root = String::from("/workspace/first/src/lib.rs");
+        let logical = String::from("/workspace/first/src/nested/mod.rs");
+        let expected = ProbeGraph::from([(
+            root.clone(),
+            BTreeMap::from([(
+                logical.clone(),
+                ProbeObservation {
+                    canonical: None,
+                    exists: false,
+                    is_directory: false,
+                },
+            )]),
+        )]);
+        if let Some(package) = snapshot.packages.get_mut("/workspace/first") {
+            package.probes.insert(
+                root,
+                BTreeMap::from([(
+                    logical.clone(),
+                    ProbeObservation {
+                        canonical: Some(logical),
+                        exists: true,
+                        is_directory: false,
+                    },
+                )]),
+            );
+        }
+
+        assert_ne!(snapshot.probe_graph(), expected);
+    }
+
+    #[test]
+    fn verification_rejects_concurrently_changed_module_and_probe_graphs() {
+        let root = String::from("/workspace/first/src/lib.rs");
+        let module = String::from("/workspace/first/src/nested.rs");
+        let modules =
+            ModuleGraph::from([(root.clone(), BTreeSet::from([root.clone(), module.clone()]))]);
+        let probes = ProbeGraph::from([(
+            root.clone(),
+            BTreeMap::from([(
+                module.clone(),
+                ProbeObservation {
+                    canonical: Some(module.clone()),
+                    exists: true,
+                    is_directory: false,
+                },
+            )]),
+        )]);
+        let discovery = Discovery {
+            modules: modules.clone(),
+            probes: probes.clone(),
+        };
+        assert!(discovery_matches(&discovery, &modules, &probes));
+
+        let mut changed_modules = discovery.clone();
+        if let Some(files) = changed_modules.modules.get_mut(&root) {
+            files.insert(String::from("/workspace/first/src/replacement.rs"));
+        }
+        assert!(!discovery_matches(&changed_modules, &modules, &probes));
+
+        let mut changed_probes = discovery;
+        if let Some(observations) = changed_probes.probes.get_mut(&root) {
+            observations.insert(
+                String::from("/workspace/first/src/replacement.rs"),
+                ProbeObservation {
+                    canonical: None,
+                    exists: false,
+                    is_directory: false,
+                },
+            );
+        }
+        assert!(!discovery_matches(&changed_probes, &modules, &probes));
+    }
+
+    #[test]
+    fn edited_root_also_reformats_every_transitively_shared_owner() {
+        let previous = snapshot(&[
+            (
+                "/workspace/first",
+                &[
+                    ("src/lib.rs", "before"),
+                    ("/workspace/first-shared.rs", "shared"),
+                ],
+            ),
+            (
+                "/workspace/second",
+                &[
+                    ("src/lib.rs", "unchanged"),
+                    ("/workspace/first-shared.rs", "shared"),
+                    ("/workspace/second-shared.rs", "shared"),
+                ],
+            ),
+            (
+                "/workspace/third",
+                &[
+                    ("src/lib.rs", "unchanged"),
+                    ("/workspace/second-shared.rs", "shared"),
+                ],
+            ),
+            ("/workspace/unrelated", &[("src/lib.rs", "unchanged")]),
+        ]);
+        let mut current = previous.clone();
+        if let Some(package) = current.packages.get_mut("/workspace/first") {
+            if let Some(files) = package.targets.get_mut("/workspace/first/src/lib.rs") {
+                files.insert(
+                    String::from("/workspace/first/src/lib.rs"),
+                    String::from("after"),
+                );
+            }
+        }
+
+        let plan = plan(Some(previous), current);
+        assert_eq!(
+            plan.changed_targets(),
+            BTreeSet::from([
+                "/workspace/first/src/lib.rs",
+                "/workspace/second/src/lib.rs",
+                "/workspace/third/src/lib.rs",
+            ])
+        );
+    }
+
+    #[test]
+    fn newly_discovered_shared_owner_requires_a_complete_second_pass() {
+        let previous = ModuleGraph::from([
+            (
+                String::from("/workspace/first/src/lib.rs"),
+                BTreeSet::from([String::from("/workspace/first/src/lib.rs")]),
+            ),
+            (
+                String::from("/workspace/second/src/lib.rs"),
+                BTreeSet::from([
+                    String::from("/workspace/second/src/lib.rs"),
+                    String::from("/workspace/second/src/shared.rs"),
+                ]),
+            ),
+        ]);
+        let discovered = ModuleGraph::from([(
+            String::from("/workspace/first/src/lib.rs"),
+            BTreeSet::from([
+                String::from("/workspace/first/src/lib.rs"),
+                String::from("/workspace/second/src/shared.rs"),
+            ]),
+        )]);
+
+        assert!(discovers_new_shared_owner(
+            &previous,
+            &discovered,
+            &BTreeSet::from(["/workspace/first/src/lib.rs"]),
+        ));
+        assert!(!discovers_new_shared_owner(
+            &previous,
+            &discovered,
+            &BTreeSet::from([
+                "/workspace/first/src/lib.rs",
+                "/workspace/second/src/lib.rs",
+            ]),
+        ));
+    }
+
+    #[test]
+    fn added_and_deleted_modules_invalidate_their_owner() {
         let previous = snapshot(&[("/workspace/first", &[("src/lib.rs", "unchanged")])]);
         let added = snapshot(&[(
             "/workspace/first",
@@ -1433,17 +1565,17 @@ mod tests {
         let deletion = plan(Some(added), previous);
 
         assert_eq!(
-            addition.changed_packages(),
-            BTreeSet::from(["/workspace/first"])
+            addition.changed_targets(),
+            BTreeSet::from(["/workspace/first/src/lib.rs"])
         );
         assert_eq!(
-            deletion.changed_packages(),
-            BTreeSet::from(["/workspace/first"])
+            deletion.changed_targets(),
+            BTreeSet::from(["/workspace/first/src/lib.rs"])
         );
     }
 
     #[test]
-    fn configuration_changes_invalidate_every_package() {
+    fn configuration_changes_invalidate_every_target() {
         let previous = snapshot(&[
             ("/workspace/first", &[("src/lib.rs", "unchanged")]),
             ("/workspace/second", &[("src/lib.rs", "unchanged")]),
@@ -1456,13 +1588,16 @@ mod tests {
         let plan = plan(Some(previous), current);
 
         assert_eq!(
-            plan.changed_packages(),
-            BTreeSet::from(["/workspace/first", "/workspace/second"])
+            plan.changed_targets(),
+            BTreeSet::from([
+                "/workspace/first/src/lib.rs",
+                "/workspace/second/src/lib.rs"
+            ])
         );
     }
 
     #[test]
-    fn concurrently_changed_unformatted_packages_are_not_cached() {
+    fn concurrently_changed_unformatted_targets_are_not_cached() {
         let current = snapshot(&[
             ("/workspace/first", &[("src/lib.rs", "before-formatting")]),
             ("/workspace/second", &[("src/lib.rs", "unchanged")]),
@@ -1476,16 +1611,408 @@ mod tests {
         ]);
         let plan = plan(None, current);
 
-        assert!(!plan.can_record(&updated, &BTreeSet::from(["/workspace/first"]), false));
+        assert!(!plan.can_record(
+            &updated,
+            &BTreeSet::from(["/workspace/first/src/lib.rs"]),
+            false,
+        ));
     }
 
     #[test]
-    fn concurrently_changed_selected_packages_are_not_cached_after_checking() {
+    fn concurrently_changed_selected_targets_are_not_cached_after_checking() {
         let current = snapshot(&[("/workspace/first", &[("src/lib.rs", "before-checking")])]);
         let updated = snapshot(&[("/workspace/first", &[("src/lib.rs", "edited-concurrently")])]);
         let plan = plan(None, current);
 
-        assert!(!plan.can_record(&updated, &BTreeSet::from(["/workspace/first"]), true));
+        assert!(!plan.can_record(
+            &updated,
+            &BTreeSet::from(["/workspace/first/src/lib.rs"]),
+            true,
+        ));
+    }
+
+    #[test]
+    fn concurrently_changed_formatter_configuration_is_not_cached() {
+        let current = snapshot(&[("/workspace/first", &[("src/lib.rs", "formatted")])]);
+        let mut updated = current.clone();
+        updated.configuration.insert(
+            String::from("/workspace/rustfmt.toml"),
+            String::from("changed-concurrently"),
+        );
+        let plan = plan(None, current);
+
+        assert!(!plan.can_record(
+            &updated,
+            &BTreeSet::from(["/workspace/first/src/lib.rs"]),
+            false,
+        ));
+        assert!(!plan.can_record(
+            &updated,
+            &BTreeSet::from(["/workspace/first/src/lib.rs"]),
+            true,
+        ));
+    }
+
+    #[test]
+    fn newly_discovered_module_configuration_can_be_verified_and_cached() {
+        let current = snapshot(&[("/workspace/first", &[("src/lib.rs", "formatted")])]);
+        let mut updated = current.clone();
+        updated.configuration.insert(
+            String::from("/workspace/external/rustfmt.toml"),
+            String::from("newly-discovered-config"),
+        );
+        let plan = plan(None, current);
+
+        assert!(plan.can_record(
+            &updated,
+            &BTreeSet::from(["/workspace/first/src/lib.rs"]),
+            false,
+        ));
+        assert!(plan.can_record(
+            &updated,
+            &BTreeSet::from(["/workspace/first/src/lib.rs"]),
+            true,
+        ));
+    }
+
+    #[test]
+    fn manifest_records_cross_package_and_generated_module_ownership() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let package = directory.path().join("package");
+        let generated = package.join("target");
+        fs::create_dir_all(package.join("src"))?;
+        fs::create_dir_all(&generated)?;
+        fs::write(package.join("src/lib.rs"), "mod generated;")?;
+        fs::write(generated.join("module.rs"), "pub fn generated() {}")?;
+        fs::write(directory.path().join("shared.rs"), "pub fn shared() {}")?;
+
+        let root = package.join("src/lib.rs").canonicalize()?;
+        let generated = generated.join("module.rs").canonicalize()?;
+        let shared = directory.path().join("shared.rs").canonicalize()?;
+        let package = package.canonicalize()?;
+        let manifest_path = directory.path().join("modules.json");
+        write_manifest(
+            &manifest_path,
+            &ModuleManifest {
+                schema: String::from(MODULE_MANIFEST_SCHEMA),
+                version: MODULE_MANIFEST_VERSION,
+                roots: vec![ModuleRoot {
+                    path: path_string(&root)?,
+                    files: vec![path_string(&root)?, path_string(&generated)?],
+                    dependencies: vec![
+                        path_string(&root)?,
+                        path_string(&generated)?,
+                        path_string(&shared)?,
+                    ],
+                    probes: vec![probe(&root)?, probe(&generated)?, probe(&shared)?],
+                }],
+            },
+        )?;
+
+        let graph = read_module_manifests(
+            &[manifest_path.clone()],
+            &BTreeSet::from([target(&root, &package)]),
+        )?;
+        assert_eq!(
+            graph.modules.get(&path_string(&root)?),
+            Some(&BTreeSet::from([
+                path_string(&root)?,
+                path_string(&generated)?,
+                path_string(&shared)?,
+            ]))
+        );
+        assert!(!manifest_path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn missing_and_incomplete_authoritative_manifests_fail_closed() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let package = directory.path().canonicalize()?;
+        let root = package.join("lib.rs");
+        fs::write(&root, "pub fn root() {}")?;
+        let targets = BTreeSet::from([target(&root, &package)]);
+        assert!(read_module_manifests(&[], &targets).is_err());
+
+        let missing_root = package.join("missing-root.json");
+        write_manifest(
+            &missing_root,
+            &ModuleManifest {
+                schema: String::from(MODULE_MANIFEST_SCHEMA),
+                version: MODULE_MANIFEST_VERSION,
+                roots: vec![],
+            },
+        )?;
+        assert!(read_module_manifests(&[missing_root], &targets).is_err());
+
+        let missing_file = package.join("missing-file.json");
+        write_manifest(
+            &missing_file,
+            &ModuleManifest {
+                schema: String::from(MODULE_MANIFEST_SCHEMA),
+                version: MODULE_MANIFEST_VERSION,
+                roots: vec![ModuleRoot {
+                    path: path_string(&root)?,
+                    files: vec![],
+                    dependencies: vec![],
+                    probes: vec![],
+                }],
+            },
+        )?;
+        assert!(read_module_manifests(&[missing_file], &targets).is_err());
+
+        let wrong_version = package.join("wrong-version.json");
+        write_manifest(
+            &wrong_version,
+            &ModuleManifest {
+                schema: String::from(MODULE_MANIFEST_SCHEMA),
+                version: MODULE_MANIFEST_VERSION + 1,
+                roots: vec![],
+            },
+        )?;
+        assert!(read_module_manifests(&[wrong_version], &targets).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn duplicate_manifest_roots_and_files_fail_closed() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let package = directory.path().canonicalize()?;
+        let root = package.join("lib.rs");
+        fs::write(&root, "pub fn root() {}")?;
+        let targets = BTreeSet::from([target(&root, &package)]);
+        let root_path = path_string(&root)?;
+
+        let duplicate_files = package.join("duplicate-files.json");
+        write_manifest(
+            &duplicate_files,
+            &ModuleManifest {
+                schema: String::from(MODULE_MANIFEST_SCHEMA),
+                version: MODULE_MANIFEST_VERSION,
+                roots: vec![ModuleRoot {
+                    path: root_path.clone(),
+                    files: vec![root_path.clone(), root_path.clone()],
+                    dependencies: vec![root_path.clone()],
+                    probes: vec![probe(&root)?],
+                }],
+            },
+        )?;
+        assert!(read_module_manifests(&[duplicate_files], &targets).is_err());
+
+        let duplicate_dependencies = package.join("duplicate-dependencies.json");
+        write_manifest(
+            &duplicate_dependencies,
+            &ModuleManifest {
+                schema: String::from(MODULE_MANIFEST_SCHEMA),
+                version: MODULE_MANIFEST_VERSION,
+                roots: vec![ModuleRoot {
+                    path: root_path.clone(),
+                    files: vec![root_path.clone()],
+                    dependencies: vec![root_path.clone(), root_path.clone()],
+                    probes: vec![probe(&root)?],
+                }],
+            },
+        )?;
+        assert!(read_module_manifests(&[duplicate_dependencies], &targets).is_err());
+
+        let duplicate_roots = package.join("duplicate-roots.json");
+        let record = ModuleRoot {
+            path: root_path.clone(),
+            files: vec![root_path.clone()],
+            dependencies: vec![root_path],
+            probes: vec![probe(&root)?],
+        };
+        write_manifest(
+            &duplicate_roots,
+            &ModuleManifest {
+                schema: String::from(MODULE_MANIFEST_SCHEMA),
+                version: MODULE_MANIFEST_VERSION,
+                roots: vec![record.clone(), record],
+            },
+        )?;
+        assert!(read_module_manifests(&[duplicate_roots], &targets).is_err());
+
+        let duplicate_probes = package.join("duplicate-probes.json");
+        write_manifest(
+            &duplicate_probes,
+            &ModuleManifest {
+                schema: String::from(MODULE_MANIFEST_SCHEMA),
+                version: MODULE_MANIFEST_VERSION,
+                roots: vec![ModuleRoot {
+                    path: path_string(&root)?,
+                    files: vec![path_string(&root)?],
+                    dependencies: vec![path_string(&root)?],
+                    probes: vec![probe(&root)?, probe(&root)?],
+                }],
+            },
+        )?;
+        assert!(read_module_manifests(&[duplicate_probes], &targets).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn formatter_manifest_paths_must_be_canonical() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let package = directory.path().canonicalize()?;
+        let root = package.join("lib.rs");
+        fs::write(&root, "pub fn root() {}")?;
+        let targets = BTreeSet::from([target(&root, &package)]);
+        let manifest = package.join("relative.json");
+        write_manifest(
+            &manifest,
+            &ModuleManifest {
+                schema: String::from(MODULE_MANIFEST_SCHEMA),
+                version: MODULE_MANIFEST_VERSION,
+                roots: vec![ModuleRoot {
+                    path: path_string(&root)?,
+                    files: vec![String::from("lib.rs")],
+                    dependencies: vec![path_string(&root)?],
+                    probes: vec![probe(&root)?],
+                }],
+            },
+        )?;
+        assert!(read_module_manifests(&[manifest], &targets).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn formatted_files_must_be_recorded_as_parsed_dependencies() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let package = directory.path().canonicalize()?;
+        let root = package.join("lib.rs");
+        let module = package.join("module.rs");
+        fs::write(&root, "mod module;")?;
+        fs::write(&module, "pub fn module() {}")?;
+        let targets = BTreeSet::from([target(&root, &package)]);
+        let manifest = package.join("missing-dependency.json");
+        write_manifest(
+            &manifest,
+            &ModuleManifest {
+                schema: String::from(MODULE_MANIFEST_SCHEMA),
+                version: MODULE_MANIFEST_VERSION,
+                roots: vec![ModuleRoot {
+                    path: path_string(&root)?,
+                    files: vec![path_string(&root)?, path_string(&module)?],
+                    dependencies: vec![path_string(&root)?],
+                    probes: vec![probe(&root)?],
+                }],
+            },
+        )?;
+
+        assert!(read_module_manifests(&[manifest], &targets).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn loaded_dependencies_require_matching_native_resolution_probes() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let package = directory.path().canonicalize()?;
+        let root = package.join("lib.rs");
+        fs::write(&root, "pub fn root() {}")?;
+        let targets = BTreeSet::from([target(&root, &package)]);
+        let manifest = package.join("missing-probe.json");
+        write_manifest(
+            &manifest,
+            &ModuleManifest {
+                schema: String::from(MODULE_MANIFEST_SCHEMA),
+                version: MODULE_MANIFEST_VERSION,
+                roots: vec![ModuleRoot {
+                    path: path_string(&root)?,
+                    files: vec![path_string(&root)?],
+                    dependencies: vec![path_string(&root)?],
+                    probes: vec![],
+                }],
+            },
+        )?;
+
+        assert!(read_module_manifests(&[manifest], &targets).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn resolution_probes_track_existing_and_missing_directories() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let existing = directory.path().canonicalize()?;
+        let missing = existing.join("missing");
+
+        assert_eq!(
+            observe_module_probe(&path_string(&existing)?)?,
+            ProbeObservation {
+                canonical: Some(path_string(&existing)?),
+                exists: true,
+                is_directory: true,
+            }
+        );
+        assert_eq!(
+            observe_module_probe(&path_string(&missing)?)?,
+            ProbeObservation {
+                canonical: None,
+                exists: false,
+                is_directory: false,
+            }
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn native_resolution_probe_observes_symlink_retargeting() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let directory = directory.path().canonicalize()?;
+        let original = directory.join("original.rs");
+        let replacement = directory.join("replacement.rs");
+        let logical = directory.join("linked.rs");
+        fs::write(&original, "pub fn original() {}")?;
+        fs::write(&replacement, "pub fn replacement() {}")?;
+        std::os::unix::fs::symlink(&original, &logical)?;
+
+        let first = observe_module_probe(&path_string(&logical)?)?;
+        fs::remove_file(&logical)?;
+        std::os::unix::fs::symlink(&replacement, &logical)?;
+        let second = observe_module_probe(&path_string(&logical)?)?;
+
+        assert_ne!(first, second);
+        assert_eq!(first.canonical, Some(path_string(&original)?));
+        assert_eq!(second.canonical, Some(path_string(&replacement)?));
+        Ok(())
+    }
+
+    #[test]
+    fn native_resolution_probe_observes_new_module_candidates() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let directory = directory.path().canonicalize()?;
+        let candidate = directory.join("nested").join("mod.rs");
+        let first = observe_module_probe(&path_string(&candidate)?)?;
+
+        fs::create_dir_all(directory.join("nested"))?;
+        fs::write(&candidate, "pub fn nested() {}")?;
+        let second = observe_module_probe(&path_string(&candidate)?)?;
+
+        assert!(!first.exists);
+        assert!(second.exists);
+        assert_ne!(first, second);
+        Ok(())
+    }
+
+    #[test]
+    fn native_resolution_probe_observes_file_replaced_by_directory() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let directory = directory.path().canonicalize()?;
+        let candidate = directory.join("nested");
+        fs::write(&candidate, "a file")?;
+        let first = observe_module_probe(&path_string(&candidate)?)?;
+
+        fs::remove_file(&candidate)?;
+        fs::create_dir(&candidate)?;
+        let second = observe_module_probe(&path_string(&candidate)?)?;
+
+        assert!(first.exists);
+        assert!(second.exists);
+        assert_eq!(first.canonical, second.canonical);
+        assert!(!first.is_directory);
+        assert!(second.is_directory);
+        assert_ne!(first, second);
+        Ok(())
     }
 
     #[test]
@@ -1535,6 +2062,39 @@ mod tests {
     }
 
     #[test]
+    fn formatting_only_import_granularity_configuration_can_use_the_cache() {
+        for granularity in ["Preserve", "Crate", "Module", "Item", "One"] {
+            assert!(!has_observable_emit_mode(&[
+                String::from("--config"),
+                format!("imports_granularity={granularity}"),
+                String::from("--check"),
+            ]));
+            assert!(!has_observable_emit_mode(&[format!(
+                "--config=imports_granularity={granularity}"
+            )]));
+        }
+
+        for configuration in [
+            "imports_granularity=Invalid",
+            "imports_granularity=Item,emit_mode=Stdout",
+            "imports_granularity=Item,verbose=Verbose",
+            "imports_granularity=Item,file_lines=[]",
+            " imports_granularity=Item",
+            "imports_granularity=Item ",
+        ] {
+            assert!(has_observable_emit_mode(&[
+                String::from("--config"),
+                String::from(configuration),
+            ]));
+            assert!(has_observable_emit_mode(&[format!(
+                "--config={configuration}"
+            )]));
+        }
+
+        assert!(has_observable_emit_mode(&[String::from("--config")]));
+    }
+
+    #[test]
     fn verification_removes_explicit_file_emission_before_checking() {
         assert_eq!(
             verification_arguments(&[String::from("--emit"), String::from("files")]),
@@ -1548,367 +2108,5 @@ mod tests {
             verification_arguments(&[String::from("--check")]),
             vec![String::from("--check")]
         );
-    }
-
-    #[test]
-    fn escaping_module_paths_require_complete_formatting() -> io::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let package = directory.path().join("package");
-        fs::create_dir_all(package.join("src"))?;
-        fs::create_dir_all(package.join("tests"))?;
-        fs::write(package.join("tests/local.rs"), "pub fn local() {}")?;
-        let package = package.canonicalize()?;
-        let packages = BTreeSet::from([package.clone()]);
-        let source = package.join("src/lib.rs");
-        let cache = package.join("target/format-cache");
-
-        assert!(
-            validate_module_paths(
-                &source,
-                br##"#[path = "../../external.rs"] mod external;"##,
-                &package,
-                &packages,
-                &cache,
-            )
-            .is_err()
-        );
-        assert!(
-            validate_module_paths(
-                &source,
-                br##"#[path = "../tests/local.rs"] mod local;"##,
-                &package,
-                &packages,
-                &cache,
-            )
-            .is_ok()
-        );
-        assert!(
-            validate_module_paths(
-                &source,
-                br##"#[path = "..\x2f..\x2fexternal.rs"] mod external;"##,
-                &package,
-                &packages,
-                &cache,
-            )
-            .is_err()
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn comments_and_configuration_attributes_cannot_hide_external_modules() {
-        let package = Path::new("/workspace/package");
-        let packages = BTreeSet::from([package.to_path_buf()]);
-        let source = package.join("src/lib.rs");
-        let cache = package.join("target/format-cache");
-
-        for contents in [
-            br##"#[path /* still a valid attribute */ = "../../external.rs"] mod external;"##
-                .as_slice(),
-            br##"#[r#path = "../../external.rs"] mod external;"##.as_slice(),
-            br##"#[cfg_attr(test, path = "../../external.rs")] mod external;"##.as_slice(),
-            br##"#[r#cfg_attr(test, r#path = "../../external.rs")] mod external;"##.as_slice(),
-            br##"include!("../../external.rs");"##.as_slice(),
-        ] {
-            assert!(
-                validate_module_paths(&source, contents, package, &packages, &cache).is_err(),
-                "the external module must not be cached: {}",
-                String::from_utf8_lossy(contents)
-            );
-        }
-    }
-
-    #[test]
-    fn conditional_macros_cannot_hide_external_modules() {
-        let package = Path::new("/workspace/package");
-        let packages = BTreeSet::from([package.to_path_buf()]);
-        let source = package.join("src/lib.rs");
-        let cache = package.join("target/format-cache");
-
-        for contents in [
-            br##"cfg_if! { if #[cfg(unix)] { #[path = "../../shared.rs"] mod shared; } }"##
-                .as_slice(),
-            br##"std::cfg_match! { unix => { #[path = "../../shared.rs"] mod shared; } }"##
-                .as_slice(),
-        ] {
-            assert!(
-                validate_module_paths(&source, contents, package, &packages, &cache).is_err(),
-                "the conditional macro must not hide an external module: {}",
-                String::from_utf8_lossy(contents)
-            );
-        }
-    }
-
-    #[test]
-    fn rust_pattern_whitespace_cannot_hide_module_attributes() -> io::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let package = directory.path().join("package");
-        fs::create_dir_all(package.join("src"))?;
-        fs::write(directory.path().join("external.rs"), "pub fn external() {}")?;
-        let package = package.canonicalize()?;
-        let packages = BTreeSet::from([package.clone()]);
-        let source_path = package.join("src/lib.rs");
-        let cache = package.join("target/format-cache");
-
-        for separator in [
-            '\u{0009}', '\u{000a}', '\u{000b}', '\u{000c}', '\u{000d}', '\u{0085}', '\u{200e}',
-            '\u{200f}', '\u{2028}', '\u{2029}',
-        ] {
-            let source = format!("#{separator}[path = \"../../external.rs\"] mod external;");
-            assert!(
-                has_module_resolution_syntax(&source),
-                "Rust whitespace U+{:04X} must not hide module attributes",
-                separator as u32
-            );
-            assert!(
-                validate_module_paths(
-                    &source_path,
-                    source.as_bytes(),
-                    &package,
-                    &packages,
-                    &cache,
-                )
-                .is_err(),
-                "Rust whitespace U+{:04X} must not bypass ownership validation",
-                separator as u32
-            );
-        }
-
-        Ok(())
-    }
-
-    #[test]
-    fn canonical_paths_reject_case_insensitive_aliases() -> io::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let package = directory.path().join("package");
-        fs::create_dir_all(package.join("src"))?;
-        fs::create_dir_all(package.join("target"))?;
-        fs::write(package.join("target/generated.rs"), "pub fn generated() {}")?;
-        let package = package.canonicalize()?;
-
-        if !package.join("TARGET/generated.rs").is_file() {
-            return Ok(());
-        }
-
-        let packages = BTreeSet::from([package.clone()]);
-        let source = package.join("src/lib.rs");
-        let cache = package.join("target/format-cache");
-        assert!(
-            validate_module_paths(
-                &source,
-                br##"#[path = "../TARGET/generated.rs"] mod generated;"##,
-                &package,
-                &packages,
-                &cache,
-            )
-            .is_err()
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn inline_modules_resolve_relative_to_their_module_directory() -> io::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let package = directory.path().join("package");
-        let member = package.join("src/member");
-        fs::create_dir_all(package.join("src/outer"))?;
-        fs::create_dir_all(&member)?;
-        fs::write(member.join("shared.rs"), "pub fn shared() {}")?;
-        let package = package.canonicalize()?;
-        let member = member.canonicalize()?;
-
-        let packages = BTreeSet::from([package.clone(), member]);
-        let source = package.join("src/lib.rs");
-        let cache = package.join("target/format-cache");
-        assert!(
-            validate_module_paths(
-                &source,
-                br##"mod outer { #[path = "../member/shared.rs"] mod shared; }"##,
-                &package,
-                &packages,
-                &cache,
-            )
-            .is_err()
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn includes_in_inline_modules_stay_relative_to_the_containing_file() -> io::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let package = directory.path().join("package");
-        fs::create_dir_all(package.join("src"))?;
-        fs::write(package.join("src/included.rs"), "pub fn included() {}")?;
-        let package = package.canonicalize()?;
-        let packages = BTreeSet::from([package.clone()]);
-        let source = package.join("src/lib.rs");
-        let cache = package.join("target/format-cache");
-
-        assert!(
-            validate_module_paths(
-                &source,
-                br##"mod tests { include!("included.rs"); }"##,
-                &package,
-                &packages,
-                &cache,
-            )
-            .is_ok()
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn excluded_and_nested_member_modules_require_complete_formatting() {
-        let package = Path::new("/workspace/package");
-        let nested = package.join("nested");
-        let packages = BTreeSet::from([package.to_path_buf(), nested]);
-        let source = package.join("src/lib.rs");
-        let cache = package.join("target/format-cache");
-
-        for contents in [
-            br##"#[path = "../target/generated.rs"] mod generated;"##.as_slice(),
-            br##"#[path = "../nested/shared.rs"] mod nested;"##.as_slice(),
-            br##"#[path = "../.hg/generated.rs"] mod hidden;"##.as_slice(),
-        ] {
-            assert!(
-                validate_module_paths(&source, contents, package, &packages, &cache).is_err(),
-                "the cross-owned module must not be cached: {}",
-                String::from_utf8_lossy(contents)
-            );
-        }
-    }
-
-    #[test]
-    fn implicit_modules_cannot_enter_excluded_or_nested_directories() -> io::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let package = directory.path().join("package");
-        let target = package.join("target");
-        let cache = package.join("generated");
-        let member = package.join("src/member");
-        fs::create_dir_all(&target)?;
-        fs::create_dir_all(&cache)?;
-        fs::create_dir_all(&member)?;
-        fs::write(target.join("mod.rs"), "pub fn target() {}")?;
-        fs::write(cache.join("mod.rs"), "pub fn generated() {}")?;
-        fs::write(member.join("mod.rs"), "pub fn member() {}")?;
-
-        let package = package.canonicalize()?;
-        let member = member.canonicalize()?;
-        let packages = BTreeSet::from([package.clone(), member]);
-        let cache = cache.canonicalize()?;
-
-        for (source, contents) in [
-            (package.join("lib.rs"), "mod target;"),
-            (package.join("lib.rs"), "mod r#target;"),
-            (package.join("lib.rs"), "mod generated;"),
-            (package.join("src/lib.rs"), "mod member;"),
-            (package.join("lib.rs"), "mod target { mod generated; }"),
-            (
-                package.join("lib.rs"),
-                "cfg_if! { if #[cfg(unix)] { mod target; } }",
-            ),
-        ] {
-            assert!(
-                validate_module_paths(&source, contents.as_bytes(), &package, &packages, &cache,)
-                    .is_err(),
-                "the implicit module must not be cached: {contents}"
-            );
-        }
-
-        if package.join("TARGET/mod.rs").is_file() {
-            assert!(
-                validate_module_paths(
-                    &package.join("lib.rs"),
-                    b"mod TARGET;",
-                    &package,
-                    &packages,
-                    &cache,
-                )
-                .is_err()
-            );
-        }
-
-        Ok(())
-    }
-
-    #[test]
-    fn tracked_target_named_modules_keep_the_incremental_fast_path() -> io::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let package = directory.path().join("package");
-        fs::create_dir_all(package.join("target"))?;
-        fs::create_dir_all(package.join("src/target"))?;
-        fs::write(package.join("src/target/mod.rs"), "pub fn target() {}")?;
-        let package = package.canonicalize()?;
-        let packages = BTreeSet::from([package.clone()]);
-
-        assert!(
-            validate_module_paths(
-                &package.join("src/lib.rs"),
-                b"mod target;",
-                &package,
-                &packages,
-                &package.join("format-cache"),
-            )
-            .is_ok()
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn attribute_like_text_in_strings_does_not_escape_package_ownership() {
-        let package = Path::new("/workspace/package");
-        let packages = BTreeSet::from([package.to_path_buf()]);
-        let source = package.join("src/lib.rs");
-        let cache = package.join("target/format-cache");
-
-        assert!(
-            validate_module_paths(
-                &source,
-                br####"const EXAMPLE: &str = r##"#[path = "../../external.rs"]"##;"####,
-                package,
-                &packages,
-                &cache,
-            )
-            .is_ok()
-        );
-    }
-
-    #[test]
-    fn generic_path_words_do_not_trigger_full_syntax_parsing() {
-        assert!(!has_module_resolution_syntax(
-            "#[derive(Debug)]\nfn accepts(path: &str) { println!(\"{path}\"); }"
-        ));
-        assert!(!has_module_resolution_syntax(
-            "#[cfg_attr(feature = \"extra\", derive(Debug))]\nfn accepts(path: &str) {}"
-        ));
-        assert!(has_module_resolution_syntax(
-            "# /* outer /* nested */ trivia */ [ /* attr */ path = \"local.rs\"] mod local;"
-        ));
-        assert!(has_module_resolution_syntax(
-            "#[cfg_attr(feature = \"extra\", path = \"local.rs\")] mod local;"
-        ));
-        assert!(has_module_resolution_syntax(
-            "include /* trivia */ !(\"local.rs\");"
-        ));
-        let excluded = BTreeSet::from([String::from("target"), String::from("member")]);
-        assert!(has_implicit_excluded_module("mod target;", &excluded));
-        assert!(has_implicit_excluded_module(
-            "mod /* trivia */ r#target;",
-            &excluded
-        ));
-        assert!(has_implicit_excluded_module("mod TARGET;", &excluded));
-        assert!(has_implicit_excluded_module(
-            "cfg_if! { if #[cfg(unix)] { mod member; } }",
-            &excluded
-        ));
-        assert!(!has_implicit_excluded_module("mod tracked;", &excluded));
-        assert!(!has_implicit_excluded_module(
-            "fn module_target() {}",
-            &excluded
-        ));
     }
 }
