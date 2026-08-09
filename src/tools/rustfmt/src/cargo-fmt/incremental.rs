@@ -12,8 +12,8 @@ use syn::visit::{self, Visit};
 use syn::{Expr, Lit, Meta, Token};
 
 use super::{
-    RustfmtOutputMode, SUCCESS, Target, Verbosity, run_rustfmt, run_rustfmt_with_output,
-    rustfmt_command,
+    RustfmtOutput, RustfmtOutputMode, SUCCESS, Target, Verbosity, run_rustfmt,
+    run_rustfmt_with_output, rustfmt_command,
 };
 
 const CACHE_VERSION: u32 = 2;
@@ -104,39 +104,35 @@ pub(super) fn format(
         &changed_targets,
         arguments,
         verbosity,
-        RustfmtOutputMode::CaptureAndReplay,
+        RustfmtOutputMode::Inherit,
     )?;
     if output.status != SUCCESS {
         trace("retaining the previous cache after unsuccessful formatting");
         return Ok(output.status);
     }
 
-    if output.emitted_diagnostics {
-        trace("not caching a formatter invocation that emitted diagnostics");
-        return Ok(output.status);
-    }
-
     let check_only = arguments.iter().any(|argument| argument == "--check");
     match Snapshot::capture(targets, arguments, manifest_path) {
         Ok(updated) if plan.can_record(&updated, &changed_packages, check_only) => {
-            if !check_only && !verify_formatted_packages(&changed_targets, arguments)? {
+            let verification = verify_formatted_packages(&changed_targets, arguments)?;
+            if verification.emitted_diagnostics {
+                trace("not caching a formatter invocation that emitted diagnostics");
+                return Ok(output.status);
+            }
+            if verification.status != SUCCESS {
                 trace("not caching files changed concurrently with formatting");
                 return Ok(output.status);
             }
 
-            let verified = if check_only {
-                updated
-            } else {
-                match Snapshot::capture(targets, arguments, manifest_path) {
-                    Ok(verified) if verified == updated => verified,
-                    Ok(_) => {
-                        trace("not caching files changed concurrently with formatting");
-                        return Ok(output.status);
-                    }
-                    Err(error) => {
-                        trace(&format!("could not verify formatted files: {error}"));
-                        return Ok(output.status);
-                    }
+            let verified = match Snapshot::capture(targets, arguments, manifest_path) {
+                Ok(verified) if verified == updated => verified,
+                Ok(_) => {
+                    trace("not caching files changed concurrently with formatting");
+                    return Ok(output.status);
+                }
+                Err(error) => {
+                    trace(&format!("could not verify formatted files: {error}"));
+                    return Ok(output.status);
                 }
             };
 
@@ -164,16 +160,37 @@ fn lock_cache(manifest_path: Option<&Path>) -> io::Result<File> {
     Ok(lock)
 }
 
-fn verify_formatted_packages(targets: &BTreeSet<Target>, arguments: &[String]) -> io::Result<bool> {
-    let mut check_arguments = arguments.to_vec();
-    check_arguments.push(String::from("--check"));
-    let output = run_rustfmt_with_output(
+fn verify_formatted_packages(
+    targets: &BTreeSet<Target>,
+    arguments: &[String],
+) -> io::Result<RustfmtOutput> {
+    let check_arguments = verification_arguments(arguments);
+    run_rustfmt_with_output(
         targets,
         &check_arguments,
         Verbosity::Quiet,
         RustfmtOutputMode::CaptureQuietly,
-    )?;
-    Ok(output.status == SUCCESS && !output.emitted_diagnostics)
+    )
+}
+
+fn verification_arguments(arguments: &[String]) -> Vec<String> {
+    let mut normalized = Vec::with_capacity(arguments.len() + 1);
+    let mut arguments = arguments.iter();
+    while let Some(argument) = arguments.next() {
+        if argument == "--emit" {
+            if let Some(mode) = arguments.next().filter(|mode| mode.as_str() != "files") {
+                normalized.push(argument.clone());
+                normalized.push(mode.clone());
+            }
+        } else if argument != "--emit=files" {
+            normalized.push(argument.clone());
+        }
+    }
+
+    if !normalized.iter().any(|argument| argument == "--check") {
+        normalized.push(String::from("--check"));
+    }
+    normalized
 }
 
 impl Plan {
@@ -272,14 +289,18 @@ impl Snapshot {
             cache_directory
         } else {
             current_directory.join(cache_directory)
-        };
+        }
+        .canonicalize()?;
         for root in &package_roots {
             let mut files = BTreeMap::new();
+            let excluded_module_names =
+                excluded_module_directory_names(root, &package_roots, &cache_directory)?;
             collect_package_files(
                 root,
                 root,
                 &package_roots,
                 &cache_directory,
+                &excluded_module_names,
                 &mut files,
                 &mut configuration,
             )?;
@@ -359,6 +380,7 @@ fn collect_package_files(
     directory: &Path,
     package_roots: &BTreeSet<PathBuf>,
     cache_directory: &Path,
+    excluded_module_names: &BTreeSet<String>,
     sources: &mut BTreeMap<String, String>,
     configuration: &mut BTreeMap<String, String>,
 ) -> io::Result<()> {
@@ -395,6 +417,7 @@ fn collect_package_files(
                 &path,
                 package_roots,
                 cache_directory,
+                excluded_module_names,
                 sources,
                 configuration,
             )?;
@@ -407,12 +430,13 @@ fn collect_package_files(
 
         if path.extension().is_some_and(|extension| extension == "rs") {
             let contents = fs::read(&path)?;
-            validate_module_paths(
+            validate_module_paths_with_exclusions(
                 &path,
                 &contents,
                 package_root,
                 package_roots,
                 cache_directory,
+                excluded_module_names,
             )?;
             sources.insert(
                 path_string(&path)?,
@@ -426,6 +450,7 @@ fn collect_package_files(
     Ok(())
 }
 
+#[cfg(test)]
 fn validate_module_paths(
     source_path: &Path,
     contents: &[u8],
@@ -433,9 +458,30 @@ fn validate_module_paths(
     package_roots: &BTreeSet<PathBuf>,
     cache_directory: &Path,
 ) -> io::Result<()> {
+    let excluded_module_names =
+        excluded_module_directory_names(package_root, package_roots, cache_directory)?;
+    validate_module_paths_with_exclusions(
+        source_path,
+        contents,
+        package_root,
+        package_roots,
+        cache_directory,
+        &excluded_module_names,
+    )
+}
+
+fn validate_module_paths_with_exclusions(
+    source_path: &Path,
+    contents: &[u8],
+    package_root: &Path,
+    package_roots: &BTreeSet<PathBuf>,
+    cache_directory: &Path,
+    excluded_module_names: &BTreeSet<String>,
+) -> io::Result<()> {
     let source = std::str::from_utf8(contents)
         .map_err(|_| unsupported("a Rust source is not valid UTF-8"))?;
-    if !has_module_resolution_syntax(source) {
+    let inspect_implicit_modules = has_implicit_excluded_module(source, excluded_module_names);
+    if !has_module_resolution_syntax(source) && !inspect_implicit_modules {
         return Ok(());
     }
 
@@ -446,6 +492,8 @@ fn validate_module_paths(
         package_root,
         package_roots,
         cache_directory,
+        excluded_module_names: excluded_module_names.clone(),
+        inspect_implicit_modules,
         inline_modules: Vec::new(),
         error: None,
     };
@@ -454,6 +502,97 @@ fn validate_module_paths(
         Some(error) => Err(error),
         None => Ok(()),
     }
+}
+
+fn excluded_module_directory_names(
+    package_root: &Path,
+    package_roots: &BTreeSet<PathBuf>,
+    cache_directory: &Path,
+) -> io::Result<BTreeSet<String>> {
+    let mut directories = vec![package_root.join("target")];
+    if cache_directory.starts_with(package_root) {
+        directories.push(cache_directory.to_owned());
+    }
+    directories.extend(
+        package_roots
+            .iter()
+            .filter(|root| root.as_path() != package_root && root.starts_with(package_root))
+            .cloned(),
+    );
+
+    let mut names = BTreeSet::new();
+    for directory in directories {
+        match fs::metadata(&directory) {
+            Ok(metadata) if metadata.is_dir() => {
+                if let Some(name) = directory.file_name().and_then(|name| name.to_str()) {
+                    names.insert(name.to_owned());
+                } else {
+                    return Err(unsupported(
+                        "an excluded module directory is not valid UTF-8",
+                    ));
+                }
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(_) => {
+                return Err(unsupported(
+                    "an excluded module directory cannot be inspected",
+                ));
+            }
+        }
+    }
+
+    Ok(names)
+}
+
+fn has_implicit_excluded_module(source: &str, names: &BTreeSet<String>) -> bool {
+    if names.is_empty() {
+        return false;
+    }
+
+    let bytes = source.as_bytes();
+    for (index, _) in source.match_indices("mod") {
+        if index > 0 && is_identifier_byte(bytes[index - 1]) {
+            continue;
+        }
+
+        let mut cursor = index + b"mod".len();
+        if bytes
+            .get(cursor)
+            .is_some_and(|byte| is_identifier_byte(*byte))
+        {
+            continue;
+        }
+        if skip_rust_trivia(bytes, &mut cursor).is_err() {
+            return true;
+        }
+        if bytes.get(cursor..cursor.saturating_add(2)) == Some(b"r#") {
+            cursor += 2;
+        }
+
+        let Some(remaining) = source.get(cursor..) else {
+            return true;
+        };
+        let identifier = remaining
+            .chars()
+            .take_while(|character| *character == '_' || character.is_alphanumeric())
+            .collect::<String>();
+        if names
+            .iter()
+            .any(|name| module_names_match(&identifier, name))
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn module_names_match(identifier: &str, directory: &str) -> bool {
+    identifier.eq_ignore_ascii_case(directory)
+        || (!identifier.is_ascii()
+            && !directory.is_ascii()
+            && identifier.to_lowercase() == directory.to_lowercase())
 }
 
 fn has_module_resolution_syntax(source: &str) -> bool {
@@ -621,6 +760,8 @@ struct ModulePathVisitor<'a> {
     package_root: &'a Path,
     package_roots: &'a BTreeSet<PathBuf>,
     cache_directory: &'a Path,
+    excluded_module_names: BTreeSet<String>,
+    inspect_implicit_modules: bool,
     inline_modules: Vec<String>,
     error: Option<io::Error>,
 }
@@ -670,6 +811,10 @@ impl ModulePathVisitor<'_> {
 
         let resolved = self.resolve_existing_module(relative_path, uses_inline_module_directory)?;
 
+        self.validate_resolved_module(&resolved)
+    }
+
+    fn validate_resolved_module(&self, resolved: &Path) -> io::Result<()> {
         if !resolved.starts_with(self.package_root) {
             return Err(unsupported("a source module escapes its package"));
         }
@@ -696,6 +841,55 @@ impl ModulePathVisitor<'_> {
                 && resolved.starts_with(root)
         }) {
             return Err(unsupported("a source module belongs to another package"));
+        }
+
+        Ok(())
+    }
+
+    fn inspect_implicit_module(&self, module: &syn::ItemMod) -> io::Result<()> {
+        let name = module.ident.unraw().to_string();
+        if !self
+            .excluded_module_names
+            .iter()
+            .any(|directory| module_names_match(&name, directory))
+        {
+            return Ok(());
+        }
+
+        let Some(parent) = self.source_path.parent() else {
+            return Err(unsupported("a source module has no parent directory"));
+        };
+        let mut directories = vec![parent.to_owned()];
+        if let Some(stem) = self.source_path.file_stem() {
+            let nested = parent.join(stem);
+            if !directories.contains(&nested) {
+                directories.push(nested);
+            }
+        }
+
+        for mut directory in directories {
+            for inline in &self.inline_modules {
+                directory.push(inline);
+            }
+
+            let candidates = if module.content.is_some() {
+                vec![directory.join(&name)]
+            } else {
+                vec![
+                    directory.join(format!("{name}.rs")),
+                    directory.join(&name).join("mod.rs"),
+                ]
+            };
+
+            for candidate in candidates {
+                match candidate.canonicalize() {
+                    Ok(resolved) => self.validate_resolved_module(&resolved)?,
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                    Err(_) => {
+                        return Err(unsupported("a source module cannot be safely resolved"));
+                    }
+                }
+            }
         }
 
         Ok(())
@@ -775,6 +969,18 @@ impl<'ast> Visit<'ast> for ModulePathVisitor<'_> {
         }
         for attribute in &module.attrs {
             if let Err(error) = self.inspect_meta(&attribute.meta) {
+                self.error = Some(error);
+                return;
+            }
+        }
+
+        if self.inspect_implicit_modules
+            && !module
+                .attrs
+                .iter()
+                .any(|attribute| is_attribute_named(attribute.path(), "path"))
+        {
+            if let Err(error) = self.inspect_implicit_module(module) {
                 self.error = Some(error);
                 return;
             }
@@ -1119,6 +1325,13 @@ fn has_observable_emit_mode(arguments: &[String]) -> bool {
         ) || argument.starts_with("--print-config=")
             || argument.starts_with("--help=")
             || argument.starts_with("--file-lines=")
+            || argument == "--files-with-diff"
+            || (argument.starts_with('-')
+                && !argument.starts_with("--")
+                && argument
+                    .chars()
+                    .skip(1)
+                    .any(|flag| matches!(flag, 'v' | 'V' | 'h' | 'l')))
         {
             return true;
         } else if argument == "--emit" {
@@ -1283,6 +1496,13 @@ mod tests {
         ]));
         assert!(has_observable_emit_mode(&[String::from("--emit=json")]));
         assert!(has_observable_emit_mode(&[String::from("-v")]));
+        assert!(has_observable_emit_mode(&[String::from("-lv")]));
+        assert!(has_observable_emit_mode(&[String::from("-lV")]));
+        assert!(has_observable_emit_mode(&[String::from("-qh")]));
+        assert!(has_observable_emit_mode(&[String::from("-l")]));
+        assert!(has_observable_emit_mode(&[String::from(
+            "--files-with-diff"
+        )]));
         assert!(has_observable_emit_mode(&[String::from("--config-help")]));
         assert!(has_observable_emit_mode(&[String::from("--file-lines=[]")]));
         assert!(has_observable_emit_mode(&[
@@ -1311,6 +1531,23 @@ mod tests {
             String::from("--config"),
             String::from("max_width=100"),
         ]));
+        assert!(!has_observable_emit_mode(&[String::from("-q")]));
+    }
+
+    #[test]
+    fn verification_removes_explicit_file_emission_before_checking() {
+        assert_eq!(
+            verification_arguments(&[String::from("--emit"), String::from("files")]),
+            vec![String::from("--check")]
+        );
+        assert_eq!(
+            verification_arguments(&[String::from("--emit=files")]),
+            vec![String::from("--check")]
+        );
+        assert_eq!(
+            verification_arguments(&[String::from("--check")]),
+            vec![String::from("--check")]
+        );
     }
 
     #[test]
@@ -1545,6 +1782,83 @@ mod tests {
     }
 
     #[test]
+    fn implicit_modules_cannot_enter_excluded_or_nested_directories() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let package = directory.path().join("package");
+        let target = package.join("target");
+        let cache = package.join("generated");
+        let member = package.join("src/member");
+        fs::create_dir_all(&target)?;
+        fs::create_dir_all(&cache)?;
+        fs::create_dir_all(&member)?;
+        fs::write(target.join("mod.rs"), "pub fn target() {}")?;
+        fs::write(cache.join("mod.rs"), "pub fn generated() {}")?;
+        fs::write(member.join("mod.rs"), "pub fn member() {}")?;
+
+        let package = package.canonicalize()?;
+        let member = member.canonicalize()?;
+        let packages = BTreeSet::from([package.clone(), member]);
+        let cache = cache.canonicalize()?;
+
+        for (source, contents) in [
+            (package.join("lib.rs"), "mod target;"),
+            (package.join("lib.rs"), "mod r#target;"),
+            (package.join("lib.rs"), "mod generated;"),
+            (package.join("src/lib.rs"), "mod member;"),
+            (package.join("lib.rs"), "mod target { mod generated; }"),
+            (
+                package.join("lib.rs"),
+                "cfg_if! { if #[cfg(unix)] { mod target; } }",
+            ),
+        ] {
+            assert!(
+                validate_module_paths(&source, contents.as_bytes(), &package, &packages, &cache,)
+                    .is_err(),
+                "the implicit module must not be cached: {contents}"
+            );
+        }
+
+        if package.join("TARGET/mod.rs").is_file() {
+            assert!(
+                validate_module_paths(
+                    &package.join("lib.rs"),
+                    b"mod TARGET;",
+                    &package,
+                    &packages,
+                    &cache,
+                )
+                .is_err()
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn tracked_target_named_modules_keep_the_incremental_fast_path() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let package = directory.path().join("package");
+        fs::create_dir_all(package.join("target"))?;
+        fs::create_dir_all(package.join("src/target"))?;
+        fs::write(package.join("src/target/mod.rs"), "pub fn target() {}")?;
+        let package = package.canonicalize()?;
+        let packages = BTreeSet::from([package.clone()]);
+
+        assert!(
+            validate_module_paths(
+                &package.join("src/lib.rs"),
+                b"mod target;",
+                &package,
+                &packages,
+                &package.join("format-cache"),
+            )
+            .is_ok()
+        );
+
+        Ok(())
+    }
+
+    #[test]
     fn attribute_like_text_in_strings_does_not_escape_package_ownership() {
         let package = Path::new("/workspace/package");
         let packages = BTreeSet::from([package.to_path_buf()]);
@@ -1579,6 +1893,22 @@ mod tests {
         ));
         assert!(has_module_resolution_syntax(
             "include /* trivia */ !(\"local.rs\");"
+        ));
+        let excluded = BTreeSet::from([String::from("target"), String::from("member")]);
+        assert!(has_implicit_excluded_module("mod target;", &excluded));
+        assert!(has_implicit_excluded_module(
+            "mod /* trivia */ r#target;",
+            &excluded
+        ));
+        assert!(has_implicit_excluded_module("mod TARGET;", &excluded));
+        assert!(has_implicit_excluded_module(
+            "cfg_if! { if #[cfg(unix)] { mod member; } }",
+            &excluded
+        ));
+        assert!(!has_implicit_excluded_module("mod tracked;", &excluded));
+        assert!(!has_implicit_excluded_module(
+            "fn module_target() {}",
+            &excluded
         ));
     }
 }
