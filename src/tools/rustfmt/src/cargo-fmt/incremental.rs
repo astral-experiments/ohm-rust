@@ -733,6 +733,8 @@ fn invocation_key(targets: &BTreeSet<Target>, arguments: &[String]) -> io::Resul
     ] {
         hash_environment(&mut invocation, variable)?;
     }
+    #[cfg(windows)]
+    hash_environment(&mut invocation, "PATH")?;
 
     for argument in arguments {
         hash_value(&mut invocation, argument);
@@ -1158,6 +1160,7 @@ fn compiler_driver(compiler: &Path) -> io::Result<PathBuf> {
 /// Fingerprints the real compiler implementation without reading its contents.
 fn hash_compiler_driver(digest: &mut Sha256, compiler: &Path) -> io::Result<()> {
     let path = compiler_driver(compiler)?;
+    validate_compiler_driver_search_paths(&path)?;
     let metadata = fs::metadata(&path)?;
     let fingerprint = SourceFingerprint::from_metadata(&metadata)?;
 
@@ -1178,6 +1181,57 @@ fn hash_compiler_driver(digest: &mut Sha256, compiler: &Path) -> io::Result<()> 
     }
 
     Ok(())
+}
+
+/// Rejects dynamic-loader directories that can replace the trusted driver.
+///
+/// Hashing only the search-path environment string cannot detect a library
+/// appearing inside an otherwise unchanged directory after a cache is warmed.
+fn validate_compiler_driver_search_paths(driver: &Path) -> io::Result<()> {
+    for variable in [
+        "DYLD_LIBRARY_PATH",
+        "DYLD_FALLBACK_LIBRARY_PATH",
+        "LD_LIBRARY_PATH",
+    ] {
+        if let Some(paths) = env::var_os(variable) {
+            for directory in env::split_paths(&paths) {
+                validate_compiler_driver_search_directory(driver, &directory)?;
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    if let Some(paths) = env::var_os("PATH") {
+        for directory in env::split_paths(&paths) {
+            validate_compiler_driver_search_directory(driver, &directory)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_compiler_driver_search_directory(driver: &Path, directory: &Path) -> io::Result<()> {
+    let name = driver
+        .file_name()
+        .ok_or_else(|| unsupported("the formatter compiler driver has no filename"))?;
+    // Empty search-path components denote the current directory. Joining a
+    // relative filename preserves that native dynamic-loader behavior.
+    let candidate = directory.join(name);
+    match fs::metadata(&candidate) {
+        Ok(metadata) if metadata.is_file() && candidate.canonicalize()? == driver => Ok(()),
+        Ok(_) => Err(unsupported(
+            "a dynamic library search path can replace the formatter compiler driver",
+        )),
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+            ) =>
+        {
+            Ok(())
+        }
+        Err(error) => Err(error),
+    }
 }
 
 fn is_unsafe_dynamic_loader_variable(variable: &str) -> bool {
@@ -2011,6 +2065,67 @@ mod tests {
             Some(io::ErrorKind::Unsupported)
         );
         Ok(())
+    }
+
+    #[test]
+    fn dynamic_library_search_directories_cannot_replace_compiler_drivers() -> io::Result<()> {
+        let (directory, compiler, driver) = compiler_driver_fixture()?;
+        fs::write(&driver, "expected compiler implementation")?;
+        let driver = compiler_driver(&compiler)?;
+        let search_directory = directory.path().join("search-directory");
+        fs::create_dir(&search_directory)?;
+
+        validate_compiler_driver_search_directory(&driver, &search_directory)?;
+        validate_compiler_driver_search_directory(
+            &driver,
+            driver
+                .parent()
+                .ok_or_else(|| io::Error::other("driver has no library directory"))?,
+        )?;
+        validate_compiler_driver_search_directory(&driver, &directory.path().join("missing"))?;
+
+        let alternate = search_directory.join(
+            driver
+                .file_name()
+                .ok_or_else(|| io::Error::other("driver has no filename"))?,
+        );
+        fs::write(&alternate, "substituted compiler implementation")?;
+        assert_eq!(
+            validate_compiler_driver_search_directory(&driver, &search_directory)
+                .err()
+                .map(|error| error.kind()),
+            Some(io::ErrorKind::Unsupported)
+        );
+
+        fs::remove_file(&alternate)?;
+        fs::create_dir(&alternate)?;
+        assert_eq!(
+            validate_compiler_driver_search_directory(&driver, &search_directory)
+                .err()
+                .map(|error| error.kind()),
+            Some(io::ErrorKind::Unsupported)
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dynamic_library_search_directories_can_link_the_trusted_compiler_driver() -> io::Result<()> {
+        use std::os::unix::fs::symlink;
+
+        let (directory, compiler, driver) = compiler_driver_fixture()?;
+        fs::write(&driver, "expected compiler implementation")?;
+        let driver = compiler_driver(&compiler)?;
+        let search_directory = directory.path().join("search-directory");
+        fs::create_dir(&search_directory)?;
+        let alias = search_directory.join(
+            driver
+                .file_name()
+                .ok_or_else(|| io::Error::other("driver has no filename"))?,
+        );
+        symlink(&driver, alias)?;
+
+        validate_compiler_driver_search_directory(&driver, &search_directory)
     }
 
     #[cfg(unix)]
