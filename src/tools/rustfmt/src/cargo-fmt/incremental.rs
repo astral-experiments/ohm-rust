@@ -13,7 +13,7 @@ use super::{
     run_rustfmt_with_output, rustfmt_command,
 };
 
-const CACHE_VERSION: u32 = 5;
+const CACHE_VERSION: u32 = 6;
 const MODULE_MANIFEST_VERSION: u32 = 1;
 const MODULE_MANIFEST_SCHEMA: &str = "ohm.rustfmt-files";
 const MODULE_MANIFEST_ENVIRONMENT: &str = "OHM_RUSTFMT_MODULE_MANIFEST";
@@ -979,8 +979,18 @@ fn collect_configuration_file(
     path: &Path,
     configuration: &mut BTreeMap<String, String>,
 ) -> io::Result<()> {
-    if !path.is_file() {
-        return Ok(());
+    match fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => {}
+        Ok(_) => return Ok(()),
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+            ) =>
+        {
+            return Ok(());
+        }
+        Err(error) => return Err(error),
     }
 
     if matches!(
@@ -990,10 +1000,20 @@ fn collect_configuration_file(
         reject_observable_formatter_configuration(path)?;
     }
 
-    let path = path.canonicalize()?;
-    let key = path_string(&path)?;
+    // Keep the searched name as well as its canonical destination: rustfmt
+    // gives `.rustfmt.toml` precedence over `rustfmt.toml`, even when both are
+    // symlinks to the same otherwise unchanged set of configuration files.
+    let logical_path = if path.is_absolute() {
+        path.to_owned()
+    } else {
+        env::current_dir()?.join(path)
+    };
+    let key = path_string(&logical_path)?;
     if !configuration.contains_key(&key) {
-        configuration.insert(key, hash_configuration_file(&path)?);
+        let canonical_path = path.canonicalize()?;
+        let canonical = path_string(&canonical_path)?;
+        let digest = hash_configuration_file(&canonical_path)?;
+        configuration.insert(key, format!("{canonical}:{digest}"));
     }
     Ok(())
 }
@@ -1049,6 +1069,15 @@ fn trusted_formatter() -> io::Result<PathBuf> {
             "a custom rustfmt wrapper cannot be cached safely",
         ));
     }
+    if env::vars_os().any(|(variable, _)| {
+        variable
+            .to_str()
+            .is_some_and(is_unsafe_dynamic_loader_variable)
+    }) {
+        return Err(unsupported(
+            "dynamic loader instrumentation cannot be cached safely",
+        ));
+    }
 
     let path = PathBuf::from(rustfmt_command().get_program()).canonicalize()?;
     let expected_formatter = if cfg!(windows) {
@@ -1057,42 +1086,47 @@ fn trusted_formatter() -> io::Result<PathBuf> {
         "rustfmt"
     };
     let expected_compiler = if cfg!(windows) { "rustc.exe" } else { "rustc" };
-    let current_toolchain = env::current_exe()
-        .ok()
-        .and_then(|executable| executable.parent().map(Path::to_owned))
-        .is_some_and(|directory| {
-            directory
-                .join(expected_formatter)
-                .canonicalize()
-                .is_ok_and(|formatter| formatter == path)
-                && directory.join(expected_compiler).is_file()
-        });
-    let rustup_toolchain = env::var_os("RUSTUP_HOME")
-        .map(PathBuf::from)
-        .or_else(|| dirs::home_dir().map(|home| home.join(".rustup")))
-        .and_then(|root| fs::read_dir(root.join("toolchains")).ok())
-        .is_some_and(|entries| {
-            entries.filter_map(Result::ok).any(|entry| {
-                let directory = entry.path().join("bin");
-                directory
-                    .join(expected_formatter)
-                    .canonicalize()
-                    .is_ok_and(|formatter| formatter == path)
-                    && directory.join(expected_compiler).is_file()
-            })
-        });
-    if path.file_name().and_then(|name| name.to_str()) != Some(expected_formatter)
-        || (!current_toolchain && !rustup_toolchain)
-    {
+    // The executing cargo-fmt and its sibling tools form one trusted bundle.
+    // Other installed or linked toolchains may contain opaque native wrappers.
+    let executable = env::current_exe()?.canonicalize()?;
+    let directory = executable
+        .parent()
+        .ok_or_else(|| unsupported("the formatter toolchain has no binary directory"))?;
+    if !is_sibling_formatter(&path, directory, expected_formatter) {
         return Err(unsupported(
             "a custom rustfmt executable cannot be cached safely",
         ));
     }
 
-    let mut file = File::open(&path)?;
+    if !is_native_executable(&path)? || !is_native_executable(&directory.join(expected_compiler))? {
+        return Err(unsupported(
+            "a custom formatter toolchain cannot be cached safely",
+        ));
+    }
+
+    Ok(path)
+}
+
+fn is_unsafe_dynamic_loader_variable(variable: &str) -> bool {
+    (variable.starts_with("LD_") && variable != "LD_LIBRARY_PATH")
+        || (variable.starts_with("DYLD_")
+            && variable != "DYLD_LIBRARY_PATH"
+            && variable != "DYLD_FALLBACK_LIBRARY_PATH")
+}
+
+fn is_sibling_formatter(path: &Path, directory: &Path, expected_formatter: &str) -> bool {
+    path.file_name().and_then(|name| name.to_str()) == Some(expected_formatter)
+        && directory
+            .join(expected_formatter)
+            .canonicalize()
+            .is_ok_and(|formatter| formatter == path)
+}
+
+fn is_native_executable(path: &Path) -> io::Result<bool> {
+    let mut file = File::open(path)?;
     let mut prefix = [0; 4];
     file.read_exact(&mut prefix)?;
-    let native_executable = prefix == *b"\x7fELF"
+    Ok(prefix == *b"\x7fELF"
         || prefix[..2] == *b"MZ"
         || matches!(
             prefix,
@@ -1101,14 +1135,7 @@ fn trusted_formatter() -> io::Result<PathBuf> {
                 | [0xca, 0xfe, 0xba, 0xbe]
                 | [0xbe, 0xba, 0xfe, 0xca]
                 | [0xca, 0xfe, 0xba, 0xbf]
-        );
-    if !native_executable {
-        return Err(unsupported(
-            "a scripted rustfmt wrapper cannot be cached safely",
-        ));
-    }
-
-    Ok(path)
+        ))
 }
 
 fn hash_value(digest: &mut Sha256, value: &str) {
@@ -1731,6 +1758,136 @@ mod tests {
                 "/workspace/second/src/lib.rs"
             ])
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn configuration_aliases_preserve_precedence_when_swapped() -> io::Result<()> {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir()?;
+        let first = directory.path().join("first.toml");
+        let second = directory.path().join("second.toml");
+        let preferred = directory.path().join(".rustfmt.toml");
+        let fallback = directory.path().join("rustfmt.toml");
+        fs::write(&first, "max_width = 80\n")?;
+        fs::write(&second, "max_width = 120\n")?;
+        symlink(&first, &preferred)?;
+        symlink(&second, &fallback)?;
+
+        let mut before = BTreeMap::new();
+        collect_configuration_file(&preferred, &mut before)?;
+        collect_configuration_file(&fallback, &mut before)?;
+
+        fs::remove_file(&preferred)?;
+        fs::remove_file(&fallback)?;
+        symlink(&second, &preferred)?;
+        symlink(&first, &fallback)?;
+
+        let mut after = BTreeMap::new();
+        collect_configuration_file(&preferred, &mut after)?;
+        collect_configuration_file(&fallback, &mut after)?;
+
+        assert_eq!(before.len(), 2);
+        assert_eq!(after.len(), 2);
+        assert_ne!(before, after);
+        assert_ne!(
+            before.get(&path_string(&preferred)?),
+            after.get(&path_string(&preferred)?)
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn configuration_lookup_propagates_filesystem_errors() -> io::Result<()> {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir()?;
+        let cycle = directory.path().join("rustfmt.toml");
+        symlink(&cycle, &cycle)?;
+
+        let error = collect_configuration_file(&cycle, &mut BTreeMap::new())
+            .expect_err("a config symlink loop must not be mistaken for an absent file");
+        assert!(!matches!(
+            error.kind(),
+            io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+        ));
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn inaccessible_configuration_directories_are_not_silently_ignored() -> io::Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir()?;
+        let restricted = directory.path().join("configuration");
+        fs::create_dir(&restricted)?;
+        let configuration = restricted.join("rustfmt.toml");
+        fs::write(&configuration, "max_width = 100\n")?;
+        fs::set_permissions(&restricted, fs::Permissions::from_mode(0o000))?;
+        let metadata_error = fs::metadata(&configuration).err();
+        let result = collect_configuration_file(&configuration, &mut BTreeMap::new());
+        fs::set_permissions(&restricted, fs::Permissions::from_mode(0o755))?;
+
+        if metadata_error.is_some_and(|error| error.kind() == io::ErrorKind::PermissionDenied) {
+            assert_eq!(
+                result.map(|_| ()).err().map(|error| error.kind()),
+                Some(io::ErrorKind::PermissionDenied)
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn dynamic_loader_instrumentation_is_never_trusted() {
+        for variable in [
+            "DYLD_INSERT_LIBRARIES",
+            "DYLD_FORCE_FLAT_NAMESPACE",
+            "DYLD_IMAGE_SUFFIX",
+            "LD_PRELOAD",
+            "LD_AUDIT",
+            "LD_PRELOAD_32",
+        ] {
+            assert!(is_unsafe_dynamic_loader_variable(variable));
+        }
+        assert!(!is_unsafe_dynamic_loader_variable("DYLD_LIBRARY_PATH"));
+        assert!(!is_unsafe_dynamic_loader_variable(
+            "DYLD_FALLBACK_LIBRARY_PATH"
+        ));
+        assert!(!is_unsafe_dynamic_loader_variable("LD_LIBRARY_PATH"));
+        assert!(!is_unsafe_dynamic_loader_variable("RUSTFMT_LOG"));
+    }
+
+    #[test]
+    fn only_the_executing_toolchains_sibling_formatter_is_trusted() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let current = directory.path().join("current/bin");
+        let other = directory.path().join("registered/bin");
+        fs::create_dir_all(&current)?;
+        fs::create_dir_all(&other)?;
+        let expected = if cfg!(windows) {
+            "rustfmt.exe"
+        } else {
+            "rustfmt"
+        };
+        let sibling = current.join(expected);
+        let registered = other.join(expected);
+        fs::write(&sibling, "trusted toolchain sibling")?;
+        fs::write(&registered, "opaque registered toolchain wrapper")?;
+
+        assert!(is_sibling_formatter(
+            &sibling.canonicalize()?,
+            &current,
+            expected
+        ));
+        assert!(!is_sibling_formatter(
+            &registered.canonicalize()?,
+            &current,
+            expected
+        ));
+        Ok(())
     }
 
     #[test]
