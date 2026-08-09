@@ -5019,6 +5019,8 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "sha2",
+ "syn",
  "tempfile",
  "term",
  "thiserror 1.0.69",
