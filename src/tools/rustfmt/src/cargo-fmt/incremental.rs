@@ -3,6 +3,7 @@ use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -12,7 +13,7 @@ use super::{
     run_rustfmt_with_output, rustfmt_command,
 };
 
-const CACHE_VERSION: u32 = 4;
+const CACHE_VERSION: u32 = 5;
 const MODULE_MANIFEST_VERSION: u32 = 1;
 const MODULE_MANIFEST_SCHEMA: &str = "ohm.rustfmt-files";
 const MODULE_MANIFEST_ENVIRONMENT: &str = "OHM_RUSTFMT_MODULE_MANIFEST";
@@ -35,8 +36,56 @@ struct Snapshot {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PackageSnapshot {
-    targets: BTreeMap<String, BTreeMap<String, String>>,
+    targets: BTreeMap<String, BTreeMap<String, SourceFingerprint>>,
     probes: BTreeMap<String, BTreeMap<String, ProbeObservation>>,
+}
+
+/// Mirrors Ruff's source identity without reading the contents of cached files.
+///
+/// Like Ruff, this deliberately trusts filesystem modification timestamps. An
+/// edit that also restores its previous timestamp and permissions is therefore
+/// outside the cache's trust boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourceFingerprint {
+    modified_seconds: i64,
+    modified_nanoseconds: u32,
+    permissions_mode: u32,
+}
+
+impl SourceFingerprint {
+    fn from_metadata(metadata: &fs::Metadata) -> io::Result<Self> {
+        let modified = metadata.modified()?;
+        let nanoseconds = match modified.duration_since(UNIX_EPOCH) {
+            Ok(duration) => {
+                i128::from(duration.as_secs()) * 1_000_000_000 + i128::from(duration.subsec_nanos())
+            }
+            Err(error) => {
+                let duration = error.duration();
+                -(i128::from(duration.as_secs()) * 1_000_000_000
+                    + i128::from(duration.subsec_nanos()))
+            }
+        };
+        let modified_seconds =
+            i64::try_from(nanoseconds.div_euclid(1_000_000_000)).map_err(io::Error::other)?;
+        let modified_nanoseconds =
+            u32::try_from(nanoseconds.rem_euclid(1_000_000_000)).map_err(io::Error::other)?;
+
+        #[cfg(unix)]
+        let permissions_mode = {
+            use std::os::unix::fs::PermissionsExt;
+
+            metadata.permissions().mode()
+        };
+        #[cfg(not(unix))]
+        let permissions_mode = u32::from(metadata.permissions().readonly());
+
+        Ok(Self {
+            modified_seconds,
+            modified_nanoseconds,
+            permissions_mode,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -537,7 +586,7 @@ impl Snapshot {
         invocation: Option<&str>,
     ) -> io::Result<Self> {
         let mut packages = BTreeMap::new();
-        let mut file_hashes = BTreeMap::new();
+        let mut file_fingerprints = BTreeMap::new();
         let mut observed_probes = BTreeMap::new();
         let mut configuration_directories = BTreeSet::new();
 
@@ -557,20 +606,19 @@ impl Snapshot {
             configuration_directories.insert(target.package_root.clone());
             let mut sources = BTreeMap::new();
             for path in paths {
-                let canonical = canonical_module_path(&path)?;
+                let (canonical, fingerprint) = match file_fingerprints.get(&path) {
+                    Some(fingerprint) => (PathBuf::from(&path), *fingerprint),
+                    None => {
+                        let (canonical, metadata) = canonical_module_file(&path)?;
+                        let fingerprint = SourceFingerprint::from_metadata(&metadata)?;
+                        file_fingerprints.insert(path.clone(), fingerprint);
+                        (canonical, fingerprint)
+                    }
+                };
                 if let Some(parent) = canonical.parent() {
                     configuration_directories.insert(parent.to_owned());
                 }
-                let digest = match file_hashes.get(&path) {
-                    Some(digest) => digest,
-                    None => {
-                        file_hashes.insert(path.clone(), hash_file(&canonical)?);
-                        file_hashes
-                            .get(&path)
-                            .ok_or_else(|| unsupported("a source digest was not recorded"))?
-                    }
-                };
-                sources.insert(path, digest.clone());
+                sources.insert(path, fingerprint);
             }
 
             let mut target_probes = BTreeMap::new();
@@ -657,12 +705,16 @@ impl Snapshot {
 fn invocation_key(targets: &BTreeSet<Target>, arguments: &[String]) -> io::Result<String> {
     let current_directory = env::current_dir()?.canonicalize()?;
     let formatter_path = trusted_formatter()?;
-    let formatter_hash = hash_file(&formatter_path)?;
+    let formatter_metadata = fs::metadata(&formatter_path)?;
+    let formatter_fingerprint = SourceFingerprint::from_metadata(&formatter_metadata)?;
     let mut invocation = Sha256::new();
     hash_value(&mut invocation, env!("CARGO_PKG_VERSION"));
     hash_value(&mut invocation, &path_string(&current_directory)?);
     hash_value(&mut invocation, &path_string(&formatter_path)?);
-    hash_value(&mut invocation, &formatter_hash);
+    invocation.update(formatter_fingerprint.modified_seconds.to_le_bytes());
+    invocation.update(formatter_fingerprint.modified_nanoseconds.to_le_bytes());
+    invocation.update(formatter_fingerprint.permissions_mode.to_le_bytes());
+    invocation.update(formatter_metadata.len().to_le_bytes());
 
     for variable in [
         "APPDATA",
@@ -814,17 +866,22 @@ fn read_module_manifest(path: &Path) -> io::Result<ModuleManifest> {
 }
 
 fn canonical_module_path(path: &str) -> io::Result<PathBuf> {
+    canonical_module_file(path).map(|(canonical, _)| canonical)
+}
+
+fn canonical_module_file(path: &str) -> io::Result<(PathBuf, fs::Metadata)> {
     let path = Path::new(path);
     if !path.is_absolute() {
         return Err(unsupported("an authoritative module path is not absolute"));
     }
     let canonical = path.canonicalize()?;
-    if canonical != path || !fs::metadata(&canonical)?.is_file() {
+    let metadata = fs::metadata(&canonical)?;
+    if canonical != path || !metadata.is_file() {
         return Err(unsupported(
             "an authoritative module path is not a canonical source file",
         ));
     }
-    Ok(canonical)
+    Ok((canonical, metadata))
 }
 
 fn observe_module_probe(path: &str) -> io::Result<ProbeObservation> {
@@ -936,7 +993,7 @@ fn collect_configuration_file(
     let path = path.canonicalize()?;
     let key = path_string(&path)?;
     if !configuration.contains_key(&key) {
-        configuration.insert(key, hash_file(&path)?);
+        configuration.insert(key, hash_configuration_file(&path)?);
     }
     Ok(())
 }
@@ -970,7 +1027,7 @@ fn reject_observable_formatter_configuration(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn hash_file(path: &Path) -> io::Result<String> {
+fn hash_configuration_file(path: &Path) -> io::Result<String> {
     let mut file = File::open(path)?;
     let mut digest = Sha256::new();
     let mut buffer = [0; 16 * 1024];
@@ -1191,6 +1248,16 @@ mod tests {
     use super::*;
     use cargo_metadata::Edition;
 
+    fn fingerprint(value: &str) -> SourceFingerprint {
+        SourceFingerprint {
+            modified_seconds: value.bytes().fold(0_i64, |fingerprint, byte| {
+                fingerprint.wrapping_mul(31).wrapping_add(i64::from(byte))
+            }),
+            modified_nanoseconds: 0,
+            permissions_mode: 0o644,
+        }
+    }
+
     fn snapshot(files: &[(&str, &[(&str, &str)])]) -> Snapshot {
         Snapshot {
             version: CACHE_VERSION,
@@ -1205,13 +1272,13 @@ mod tests {
                     let root = format!("{package}/src/lib.rs");
                     let files = sources
                         .iter()
-                        .map(|(path, hash)| {
+                        .map(|(path, identity)| {
                             let path = if Path::new(path).is_absolute() {
                                 String::from(*path)
                             } else {
                                 format!("{package}/{path}")
                             };
-                            (path, String::from(*hash))
+                            (path, fingerprint(identity))
                         })
                         .collect();
                     (
@@ -1257,6 +1324,76 @@ mod tests {
             exists: observation.exists,
             is_directory: observation.is_directory,
         })
+    }
+
+    #[test]
+    fn source_fingerprints_follow_precise_modification_times() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("source.rs");
+        fs::write(&path, "pub fn unchanged() {}\n")?;
+        let file = OpenOptions::new().write(true).open(&path)?;
+        let first_time = UNIX_EPOCH + std::time::Duration::new(1_700_000_000, 123_456_700);
+        file.set_times(fs::FileTimes::new().set_modified(first_time))?;
+        let before = SourceFingerprint::from_metadata(&fs::metadata(&path)?)?;
+
+        let second_time = UNIX_EPOCH + std::time::Duration::new(1_700_000_002, 987_654_300);
+        file.set_times(fs::FileTimes::new().set_modified(second_time))?;
+        let metadata = fs::metadata(&path)?;
+        let after = SourceFingerprint::from_metadata(&metadata)?;
+        let actual = metadata
+            .modified()?
+            .duration_since(UNIX_EPOCH)
+            .map_err(io::Error::other)?;
+
+        assert_ne!(before, after);
+        assert_eq!(after.modified_seconds, actual.as_secs() as i64);
+        assert_eq!(after.modified_nanoseconds, actual.subsec_nanos());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn source_fingerprints_include_permissions_without_reading_contents() -> io::Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("source.rs");
+        fs::write(&path, "pub fn unchanged() {}\n")?;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644))?;
+        let before = SourceFingerprint::from_metadata(&fs::metadata(&path)?)?;
+
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000))?;
+        let after = SourceFingerprint::from_metadata(&fs::metadata(&path)?)?;
+
+        assert_ne!(before.permissions_mode, after.permissions_mode);
+        assert_eq!(before.modified_seconds, after.modified_seconds);
+        assert_eq!(before.modified_nanoseconds, after.modified_nanoseconds);
+        assert_eq!(after.permissions_mode & 0o777, 0);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644))?;
+        Ok(())
+    }
+
+    #[test]
+    fn restored_timestamps_share_ruffs_documented_metadata_trust_boundary() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("source.rs");
+        let timestamp = UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+        fs::write(&path, "pub fn first() {}\n")?;
+        OpenOptions::new()
+            .write(true)
+            .open(&path)?
+            .set_times(fs::FileTimes::new().set_modified(timestamp))?;
+        let before = SourceFingerprint::from_metadata(&fs::metadata(&path)?)?;
+
+        fs::write(&path, "pub fn deliberately_restored() {}\n")?;
+        OpenOptions::new()
+            .write(true)
+            .open(&path)?
+            .set_times(fs::FileTimes::new().set_modified(timestamp))?;
+        let after = SourceFingerprint::from_metadata(&fs::metadata(&path)?)?;
+
+        assert_eq!(before, after);
+        Ok(())
     }
 
     #[test]
@@ -1500,7 +1637,7 @@ mod tests {
             if let Some(files) = package.targets.get_mut("/workspace/first/src/lib.rs") {
                 files.insert(
                     String::from("/workspace/first/src/lib.rs"),
-                    String::from("after"),
+                    fingerprint("after"),
                 );
             }
         }
