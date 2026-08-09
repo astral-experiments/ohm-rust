@@ -508,7 +508,6 @@ fn run_rustfmt(
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RustfmtOutputMode {
     Inherit,
-    CaptureAndReplay,
     CaptureQuietly,
 }
 
@@ -574,9 +573,6 @@ fn run_rustfmt_with_output(
         let output = command.wait_with_output()?;
         if !output.stderr.is_empty() {
             emitted_diagnostics = true;
-            if output_mode == RustfmtOutputMode::CaptureAndReplay {
-                io::stderr().write_all(&output.stderr)?;
-            }
         }
 
         status.push(output.status);
