@@ -1,3 +1,4 @@
+use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs::{self, File, OpenOptions};
@@ -24,6 +25,7 @@ const TRACE_ENVIRONMENT: &str = "OHM_INCREMENTAL_FMT_TRACE";
 type ModuleGraph = BTreeMap<String, BTreeSet<String>>;
 type ProbeGraph = BTreeMap<String, BTreeMap<String, ProbeObservation>>;
 
+/// Versioned proof that a specific invocation formatted every recorded package successfully.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Snapshot {
@@ -33,6 +35,7 @@ struct Snapshot {
     packages: BTreeMap<String, PackageSnapshot>,
 }
 
+/// Associates each target with its parser-loaded sources and native resolution probes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PackageSnapshot {
@@ -54,6 +57,7 @@ struct SourceFingerprint {
 }
 
 impl SourceFingerprint {
+    /// Encodes precise modification time and permissions without reading source contents.
     fn from_metadata(metadata: &fs::Metadata) -> io::Result<Self> {
         let modified = metadata.modified()?;
         let nanoseconds = match modified.duration_since(UNIX_EPOCH) {
@@ -88,6 +92,7 @@ impl SourceFingerprint {
     }
 }
 
+/// Captures existence, symlink destination, and directory-sensitive module resolution.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ProbeObservation {
@@ -122,12 +127,14 @@ struct ModuleProbe {
     is_directory: bool,
 }
 
+/// Complete native source and probe graphs returned by one or more formatter processes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Discovery {
     modules: ModuleGraph,
     probes: ProbeGraph,
 }
 
+/// Couples the previous successful snapshot with the current filesystem observations.
 struct Plan {
     cache_path: PathBuf,
     previous: Option<Snapshot>,
@@ -138,6 +145,10 @@ pub(super) fn enabled() -> bool {
     matches!(env::var(ENABLE_ENVIRONMENT).as_deref(), Ok("1" | "true"))
 }
 
+/// Formats only invalidated targets while preserving normal output and fail-closed semantics.
+///
+/// A successful cache update additionally requires a quiet authoritative second pass and
+/// identical before/after snapshots, preventing concurrent edits from becoming false hits.
 pub(super) fn format(
     targets: &BTreeSet<Target>,
     arguments: &[String],
@@ -321,6 +332,7 @@ pub(super) fn format(
     Ok(output.status)
 }
 
+/// Serializes cache discovery, formatting, verification, and publication across processes.
 fn lock_cache(manifest_path: Option<&Path>) -> io::Result<File> {
     let directory = cache_directory(manifest_path)?;
     fs::create_dir_all(&directory)?;
@@ -334,6 +346,7 @@ fn lock_cache(manifest_path: Option<&Path>) -> io::Result<File> {
     Ok(lock)
 }
 
+/// Silently rechecks formatted targets and obtains a second authoritative module graph.
 fn verify_formatted_targets(
     targets: &BTreeSet<Target>,
     arguments: &[String],
@@ -349,6 +362,7 @@ fn verify_formatted_targets(
     )
 }
 
+/// Rejects verification graphs whose parsed files or logical resolution probes changed.
 fn discovery_matches(discovered: &Discovery, modules: &ModuleGraph, probes: &ProbeGraph) -> bool {
     discovered.modules.len() == discovered.probes.len()
         && discovered.modules.iter().all(|(root, files)| {
@@ -356,6 +370,7 @@ fn discovery_matches(discovered: &Discovery, modules: &ModuleGraph, probes: &Pro
         })
 }
 
+/// Detects newly discovered modules that also belong to a previously unselected target.
 fn discovers_new_shared_owner(
     previous: &ModuleGraph,
     discovered: &ModuleGraph,
@@ -372,6 +387,7 @@ fn discovers_new_shared_owner(
     })
 }
 
+/// Normalizes file-emission options before appending the otherwise incompatible `--check`.
 fn verification_arguments(arguments: &[String]) -> Vec<String> {
     let mut normalized = Vec::with_capacity(arguments.len() + 1);
     let mut arguments = arguments.iter();
@@ -393,6 +409,7 @@ fn verification_arguments(arguments: &[String]) -> Vec<String> {
 }
 
 impl Plan {
+    /// Restores a matching snapshot, falling back to root-only discovery if its graph vanished.
     fn prepare(
         targets: &BTreeSet<Target>,
         arguments: &[String],
@@ -457,6 +474,7 @@ impl Plan {
         })
     }
 
+    /// Expands invalidations transitively across targets that share parser-loaded files.
     fn changed_targets(&self) -> BTreeSet<&str> {
         let all = || {
             self.current
@@ -529,6 +547,7 @@ impl Plan {
         }
     }
 
+    /// Rejects concurrent source/configuration changes while allowing newly discovered configs.
     fn can_record(
         &self,
         updated: &Snapshot,
@@ -577,6 +596,7 @@ impl Plan {
 }
 
 impl Snapshot {
+    /// Observes authoritative sources once each and discovers all effective formatter settings.
     fn capture(
         targets: &BTreeSet<Target>,
         arguments: &[String],
@@ -606,16 +626,14 @@ impl Snapshot {
             configuration_directories.insert(target.package_root.clone());
             let mut sources = BTreeMap::new();
             for path in paths {
-                let (canonical, fingerprint) = match file_fingerprints.get(&path) {
-                    Some(fingerprint) => (PathBuf::from(&path), *fingerprint),
-                    None => {
-                        let (canonical, metadata) = canonical_module_file(&path)?;
-                        let fingerprint = SourceFingerprint::from_metadata(&metadata)?;
-                        file_fingerprints.insert(path.clone(), fingerprint);
-                        (canonical, fingerprint)
+                let fingerprint = match file_fingerprints.entry(path.clone()) {
+                    Entry::Occupied(entry) => *entry.get(),
+                    Entry::Vacant(entry) => {
+                        let (_, metadata) = canonical_module_file(&path)?;
+                        *entry.insert(SourceFingerprint::from_metadata(&metadata)?)
                     }
                 };
-                if let Some(parent) = canonical.parent() {
+                if let Some(parent) = Path::new(&path).parent() {
                     configuration_directories.insert(parent.to_owned());
                 }
                 sources.insert(path, fingerprint);
@@ -624,14 +642,9 @@ impl Snapshot {
             let mut target_probes = BTreeMap::new();
             if let Some(expected) = probes.get(&target_path) {
                 for path in expected.keys() {
-                    let observation = match observed_probes.get(path) {
-                        Some(observation) => observation,
-                        None => {
-                            observed_probes.insert(path.clone(), observe_module_probe(path)?);
-                            observed_probes.get(path).ok_or_else(|| {
-                                unsupported("a source resolution probe was not recorded")
-                            })?
-                        }
+                    let observation = match observed_probes.entry(path.clone()) {
+                        Entry::Occupied(entry) => entry.into_mut(),
+                        Entry::Vacant(entry) => entry.insert(observe_module_probe(path)?),
                     };
                     target_probes.insert(path.clone(), observation.clone());
                 }
@@ -702,6 +715,7 @@ impl Snapshot {
     }
 }
 
+/// Fingerprints targets, effective settings, the trusted formatter, and its real compiler driver.
 fn invocation_key(targets: &BTreeSet<Target>, arguments: &[String]) -> io::Result<String> {
     let current_directory = env::current_dir()?.canonicalize()?;
     let (formatter_path, compiler_path) = trusted_formatter()?;
@@ -749,6 +763,7 @@ fn invocation_key(targets: &BTreeSet<Target>, arguments: &[String]) -> io::Resul
     Ok(format!("{:x}", invocation.finalize()))
 }
 
+/// Consumes every edition manifest after validating roots, loaded sources, and native probes.
 fn read_module_manifests(paths: &[PathBuf], targets: &BTreeSet<Target>) -> io::Result<Discovery> {
     if paths.is_empty() {
         return Err(unsupported("rustfmt did not provide a module manifest"));
@@ -859,6 +874,7 @@ fn read_module_manifests(paths: &[PathBuf], targets: &BTreeSet<Target>) -> io::R
     })
 }
 
+/// Rejects symlinked and non-regular producer manifests before parsing their contents.
 fn read_module_manifest(path: &Path) -> io::Result<ModuleManifest> {
     let metadata = fs::symlink_metadata(path)?;
     if !metadata.file_type().is_file() {
@@ -872,6 +888,7 @@ fn canonical_module_path(path: &str) -> io::Result<PathBuf> {
     canonical_module_file(path).map(|(canonical, _)| canonical)
 }
 
+/// Requires an absolute canonical regular source file before trusting manifest ownership.
 fn canonical_module_file(path: &str) -> io::Result<(PathBuf, fs::Metadata)> {
     let path = Path::new(path);
     if !path.is_absolute() {
@@ -887,6 +904,7 @@ fn canonical_module_file(path: &str) -> io::Result<(PathBuf, fs::Metadata)> {
     Ok((canonical, metadata))
 }
 
+/// Replays native module lookup, preserving missing candidates, symlinks, and file kind.
 fn observe_module_probe(path: &str) -> io::Result<ProbeObservation> {
     let path = Path::new(path);
     if !path.is_absolute() {
@@ -909,6 +927,7 @@ fn observe_module_probe(path: &str) -> io::Result<ProbeObservation> {
     })
 }
 
+/// Discovers workspace, toolchain, Cargo, and formatter configuration in every ancestor.
 fn collect_ancestor_configuration(
     directory: &Path,
     visited: &mut BTreeSet<PathBuf>,
@@ -925,31 +944,34 @@ fn collect_ancestor_configuration(
             "Cargo.lock",
             "rust-toolchain",
             "rust-toolchain.toml",
+            ".cargo/config",
+            ".cargo/config.toml",
         ] {
             collect_configuration_file(&ancestor.join(name), configuration)?;
         }
-        collect_configuration_file(&ancestor.join(".cargo/config"), configuration)?;
-        collect_configuration_file(&ancestor.join(".cargo/config.toml"), configuration)?;
     }
 
     Ok(())
 }
 
+/// Includes the home and platform-specific formatter configuration search locations.
 fn collect_global_configuration(configuration: &mut BTreeMap<String, String>) -> io::Result<()> {
-    if let Some(directory) = dirs::home_dir() {
-        collect_configuration_file(&directory.join(".rustfmt.toml"), configuration)?;
-        collect_configuration_file(&directory.join("rustfmt.toml"), configuration)?;
-    }
-
-    if let Some(directory) = dirs::config_dir() {
-        let directory = directory.join("rustfmt");
-        collect_configuration_file(&directory.join(".rustfmt.toml"), configuration)?;
-        collect_configuration_file(&directory.join("rustfmt.toml"), configuration)?;
+    for directory in [
+        dirs::home_dir(),
+        dirs::config_dir().map(|path| path.join("rustfmt")),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        for name in [".rustfmt.toml", "rustfmt.toml"] {
+            collect_configuration_file(&directory.join(name), configuration)?;
+        }
     }
 
     Ok(())
 }
 
+/// Resolves explicit configuration files/directories without losing observable-mode checks.
 fn collect_explicit_configuration(
     arguments: &[String],
     configuration: &mut BTreeMap<String, String>,
@@ -978,6 +1000,7 @@ fn collect_explicit_configuration(
     Ok(())
 }
 
+/// Hashes existing settings under their logical names so symlink precedence remains visible.
 fn collect_configuration_file(
     path: &Path,
     configuration: &mut BTreeMap<String, String>,
@@ -1021,6 +1044,7 @@ fn collect_configuration_file(
     Ok(())
 }
 
+/// Refuses settings that could make a skipped formatter invocation externally observable.
 fn reject_observable_formatter_configuration(path: &Path) -> io::Result<()> {
     if !path.is_file() {
         return Ok(());
@@ -1050,6 +1074,7 @@ fn reject_observable_formatter_configuration(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Streams configuration contents so even large lockfiles contribute exact cache identity.
 fn hash_configuration_file(path: &Path) -> io::Result<String> {
     let mut file = File::open(path)?;
     let mut digest = Sha256::new();
@@ -1066,6 +1091,7 @@ fn hash_configuration_file(path: &Path) -> io::Result<String> {
     Ok(format!("{:x}", digest.finalize()))
 }
 
+/// Accepts only native formatter/compiler siblings of the running cargo-fmt executable.
 fn trusted_formatter() -> io::Result<(PathBuf, PathBuf)> {
     if env::var_os("RUSTFMT_WRAPPER").is_some() {
         return Err(unsupported(
@@ -1210,6 +1236,7 @@ fn validate_compiler_driver_search_paths(driver: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Allows absent candidates or aliases of the verified driver, rejecting replacements.
 fn validate_compiler_driver_search_directory(driver: &Path, directory: &Path) -> io::Result<()> {
     let name = driver
         .file_name()
@@ -1234,6 +1261,7 @@ fn validate_compiler_driver_search_directory(driver: &Path, directory: &Path) ->
     }
 }
 
+/// Rejects loader instrumentation while permitting explicitly verified library search paths.
 fn is_unsafe_dynamic_loader_variable(variable: &str) -> bool {
     (variable.starts_with("LD_") && variable != "LD_LIBRARY_PATH")
         || (variable.starts_with("DYLD_")
@@ -1241,6 +1269,7 @@ fn is_unsafe_dynamic_loader_variable(variable: &str) -> bool {
             && variable != "DYLD_FALLBACK_LIBRARY_PATH")
 }
 
+/// Confirms the resolved formatter is the canonical sibling of this cargo-fmt binary.
 fn is_sibling_formatter(path: &Path, directory: &Path, expected_formatter: &str) -> bool {
     path.file_name().and_then(|name| name.to_str()) == Some(expected_formatter)
         && directory
@@ -1249,6 +1278,7 @@ fn is_sibling_formatter(path: &Path, directory: &Path, expected_formatter: &str)
             .is_ok_and(|formatter| formatter == path)
 }
 
+/// Rejects shell-script wrappers by recognizing native ELF, Mach-O, and PE headers.
 fn is_native_executable(path: &Path) -> io::Result<bool> {
     let mut file = File::open(path)?;
     let mut prefix = [0; 4];
@@ -1265,11 +1295,13 @@ fn is_native_executable(path: &Path) -> io::Result<bool> {
         ))
 }
 
+/// Length-prefixes values so adjacent invocation fields cannot collide by concatenation.
 fn hash_value(digest: &mut Sha256, value: &str) {
     digest.update(value.len().to_le_bytes());
     digest.update(value.as_bytes());
 }
 
+/// Distinguishes missing environment values and rejects non-UTF-8 invocation identity.
 fn hash_environment(digest: &mut Sha256, variable: &str) -> io::Result<()> {
     hash_value(digest, variable);
     let Some(value) = env::var_os(variable) else {
@@ -1291,6 +1323,7 @@ fn path_string(path: &Path) -> io::Result<String> {
         .ok_or_else(|| unsupported("a package path is not valid UTF-8"))
 }
 
+/// Honors the explicit cache override before Cargo's target directory and workspace defaults.
 fn cache_directory(manifest_path: Option<&Path>) -> io::Result<PathBuf> {
     if let Some(path) = env::var_os(CACHE_ENVIRONMENT) {
         return Ok(PathBuf::from(path));
@@ -1311,6 +1344,7 @@ fn cache_directory(manifest_path: Option<&Path>) -> io::Result<PathBuf> {
     Ok(directory.join("target").join("ohm-rustfmt"))
 }
 
+/// Publishes a fully serialized snapshot with an atomic same-directory rename.
 fn write_cache(path: &Path, snapshot: &Snapshot) -> io::Result<()> {
     let Some(parent) = path.parent() else {
         return Err(unsupported("the cache path has no parent directory"));
@@ -1323,6 +1357,7 @@ fn write_cache(path: &Path, snapshot: &Snapshot) -> io::Result<()> {
     fs::rename(temporary_path, path)
 }
 
+/// Conservatively disables caching for output-producing flags and unaudited inline settings.
 fn has_observable_emit_mode(arguments: &[String]) -> bool {
     let mut arguments = arguments.iter();
     while let Some(argument) = arguments.next() {
@@ -1376,6 +1411,7 @@ fn has_observable_emit_mode(arguments: &[String]) -> bool {
     false
 }
 
+/// Allows only formatting-only import-granularity values used by the normal Codex workflow.
 fn is_safe_inline_configuration(configuration: &str) -> bool {
     matches!(
         configuration,

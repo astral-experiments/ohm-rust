@@ -512,18 +512,21 @@ fn run_rustfmt(
     .status)
 }
 
+/// Keeps ordinary formatter output visible while allowing a silent verification pass.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RustfmtOutputMode {
     Inherit,
     CaptureQuietly,
 }
 
+/// Combines subprocess status, captured diagnostics, and edition-specific module graphs.
 struct RustfmtOutput {
     status: i32,
     emitted_diagnostics: bool,
     module_manifests: Vec<PathBuf>,
 }
 
+/// Runs each edition independently without changing ordinary stdout/stderr ordering.
 fn run_rustfmt_with_output(
     targets: &BTreeSet<Target>,
     fmt_args: &[String],
@@ -543,7 +546,7 @@ fn run_rustfmt_with_output(
             h
         });
 
-    let mut status = vec![];
+    let mut status = None;
     let mut emitted_diagnostics = false;
     let mut module_manifests = Vec::new();
     for (edition, files) in by_edition {
@@ -596,19 +599,14 @@ fn run_rustfmt_with_output(
         })?;
 
         let output = command.wait_with_output()?;
-        if !output.stderr.is_empty() {
-            emitted_diagnostics = true;
+        emitted_diagnostics |= !output.stderr.is_empty();
+        if !output.status.success() {
+            status = status.or_else(|| output.status.code());
         }
-
-        status.push(output.status);
     }
 
     Ok(RustfmtOutput {
-        status: status
-            .iter()
-            .filter_map(|s| if s.success() { None } else { s.code() })
-            .next()
-            .unwrap_or(SUCCESS),
+        status: status.unwrap_or(SUCCESS),
         emitted_diagnostics,
         module_manifests,
     })
