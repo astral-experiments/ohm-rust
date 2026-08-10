@@ -141,8 +141,18 @@ struct Plan {
     current: Snapshot,
 }
 
+/// Enables incremental formatting by default unless its switch explicitly opts out.
 pub(super) fn enabled() -> bool {
-    matches!(env::var(ENABLE_ENVIRONMENT).as_deref(), Ok("1" | "true"))
+    incremental_formatting_enabled(env::var(ENABLE_ENVIRONMENT))
+}
+
+/// Resolves the Ohm default without accepting malformed or non-Unicode overrides.
+fn incremental_formatting_enabled(value: Result<String, env::VarError>) -> bool {
+    match value {
+        Ok(value) => matches!(value.as_str(), "1" | "true"),
+        Err(env::VarError::NotPresent) => true,
+        Err(env::VarError::NotUnicode(_)) => false,
+    }
 }
 
 /// Formats only invalidated targets while preserving normal output and fail-closed semantics.
@@ -1514,6 +1524,31 @@ mod tests {
             exists: observation.exists,
             is_directory: observation.is_directory,
         })
+    }
+
+    #[test]
+    fn incremental_formatting_defaults_on_and_honors_explicit_opt_out() {
+        assert!(incremental_formatting_enabled(Err(
+            env::VarError::NotPresent
+        )));
+
+        for value in ["1", "true"] {
+            assert!(
+                incremental_formatting_enabled(Ok(String::from(value))),
+                "{value:?} must preserve the existing explicit opt-in"
+            );
+        }
+
+        for value in ["0", "false", "", "TRUE", "unexpected"] {
+            assert!(
+                !incremental_formatting_enabled(Ok(String::from(value))),
+                "{value:?} must not enable incremental formatting"
+            );
+        }
+
+        assert!(!incremental_formatting_enabled(Err(
+            env::VarError::NotUnicode(std::ffi::OsString::from("invalid"))
+        )));
     }
 
     #[test]
