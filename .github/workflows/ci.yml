@@ -23,7 +23,7 @@ jobs:
       - name: Checkout Rust
         uses: actions/checkout@v5
         with:
-          fetch-depth: 128
+          fetch-depth: 256
 
       - name: Install the pinned nightly formatter
         uses: dtolnay/rust-toolchain@master
@@ -54,7 +54,7 @@ jobs:
       - name: Checkout Rust
         uses: actions/checkout@v5
         with:
-          fetch-depth: 128
+          fetch-depth: 256
 
       - name: Checkout the standard-library backtrace submodule
         run: git submodule update --init --depth 1 library/backtrace
