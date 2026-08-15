@@ -15,7 +15,7 @@ use rustc_middle::ty::{self, Instance, Ty, TyCtxt};
 use rustc_middle::util::Providers;
 use rustc_middle::{bug, traits};
 use rustc_span::def_id::DefId;
-use rustc_span::{ErrorGuaranteed, Spanned};
+use rustc_span::{DUMMY_SP, ErrorGuaranteed, Spanned};
 
 use crate::errors::EncounteredErrorWhileInstantiating;
 
@@ -32,6 +32,8 @@ mod util;
 /// only keys that existed in the previous session lets the cached whole-crate partition stay
 /// green when a body edit does not change its monomorphization edges or size estimate.
 pub fn prepare_incremental_monomorphization(tcx: TyCtxt<'_>) {
+    const MAX_CHANGED_TYPECK_ROOTS: usize = 32;
+
     if !tcx.dep_graph.is_fully_enabled()
         || !tcx.sess.opts.unstable_opts.public_api_hash
         || !tcx.sess.opts.output_types.should_codegen()
@@ -46,12 +48,13 @@ pub fn prepare_incremental_monomorphization(tcx: TyCtxt<'_>) {
     let _prof_timer = tcx.prof.generic_activity("prepare_incremental_monomorphization");
 
     let roots_dep_node = DepNode::construct(tcx, DepKind::collect_mono_item_roots, &());
-    let _ = tcx.collect_mono_item_roots(());
+    let mono_roots = tcx.collect_mono_item_roots(());
     if !tcx.dep_graph.is_green(&roots_dep_node) {
         return;
     }
 
-    let mut changed_typeck_root = None;
+    let mut changed_typeck_roots = Vec::new();
+    let mut changed_typeck_root_set = FxHashSet::default();
     for def_id in tcx.hir_body_owners() {
         let typeck_root = tcx.typeck_root_def_id_local(def_id);
         let hir_dep_node = DepNode::construct(tcx, DepKind::opt_hir_owner_nodes, &typeck_root);
@@ -59,60 +62,85 @@ pub fn prepare_incremental_monomorphization(tcx: TyCtxt<'_>) {
             continue;
         }
 
-        if changed_typeck_root.is_some_and(|previous| previous != typeck_root) {
-            // Another changed body could have removed the only path to this body. Replaying its
-            // monomorphization checks would incorrectly diagnose now-unreachable code.
+        if changed_typeck_root_set.insert(typeck_root) {
+            if changed_typeck_roots.len() == MAX_CHANGED_TYPECK_ROOTS {
+                return;
+            }
+            changed_typeck_roots.push(typeck_root);
+        }
+    }
+
+    if changed_typeck_roots.is_empty() {
+        return;
+    }
+
+    let mut changed_instances = FxHashSet::default();
+    for typeck_root in &changed_typeck_roots {
+        if !matches!(tcx.def_kind(*typeck_root), DefKind::Fn | DefKind::AssocFn)
+            || tcx.generics_of(*typeck_root).requires_monomorphization(tcx)
+        {
             return;
         }
-        changed_typeck_root = Some(typeck_root);
-    }
 
-    let Some(typeck_root) = changed_typeck_root else {
-        return;
-    };
-    if !matches!(tcx.def_kind(typeck_root), DefKind::Fn | DefKind::AssocFn)
-        || tcx.generics_of(typeck_root).requires_monomorphization(tcx)
-    {
-        return;
-    }
-
-    let root_instance = Instance::mono(tcx, typeck_root.to_def_id());
-    let root_key = (root_instance, CollectionMode::UsedItems);
-    let root_instance_dep_node = DepNode::construct(tcx, DepKind::items_of_instance, &root_key);
-    if !tcx.dep_graph.contains_previous_node(&root_instance_dep_node) {
-        return;
-    }
-    let Ok((root_used_items, root_mentioned_items)) = tcx.items_of_instance(root_key) else {
-        return;
-    };
-    if !tcx.dep_graph.is_green(&root_instance_dep_node) {
-        // A changed call graph can make a previously reachable nested closure unreachable.
-        return;
-    }
-
-    if !refresh_incremental_monomorphization_attributes(tcx, root_instance) {
-        return;
+        let instance = Instance::mono(tcx, typeck_root.to_def_id());
+        let dep_node = DepNode::construct(
+            tcx,
+            DepKind::items_of_instance,
+            &(instance, CollectionMode::UsedItems),
+        );
+        if !tcx.dep_graph.contains_previous_node(&dep_node) {
+            return;
+        }
+        changed_instances.insert(instance);
     }
 
     let mut changed_definitions = FxHashSet::default();
-    changed_definitions.insert(typeck_root.to_def_id());
-
     for def_id in tcx.hir_body_owners() {
-        if tcx.typeck_root_def_id_local(def_id) == typeck_root {
+        if changed_typeck_root_set.contains(&tcx.typeck_root_def_id_local(def_id)) {
             changed_definitions.insert(def_id.to_def_id());
         }
     }
 
-    let mut refreshed_instances = FxHashSet::default();
-    refreshed_instances.insert(root_key);
+    if changed_typeck_roots.len() > 1
+        && !independently_reachable_changed_instances(
+            tcx,
+            mono_roots,
+            &changed_instances,
+            &changed_definitions,
+        )
+    {
+        // One edited body may have removed the only path to another. Do not force either body's
+        // query without an unchanged path: unreachable monomorphizations can emit diagnostics.
+        return;
+    }
 
+    let mut refreshed_instances = FxHashSet::default();
     let mut pending_instances = Vec::new();
-    collect_incremental_monomorphization_edges(
-        &mut pending_instances,
-        CollectionMode::UsedItems,
-        root_used_items,
-        root_mentioned_items,
-    );
+
+    for typeck_root in changed_typeck_roots {
+        let root_instance = Instance::mono(tcx, typeck_root.to_def_id());
+        let root_key = (root_instance, CollectionMode::UsedItems);
+        let root_instance_dep_node = DepNode::construct(tcx, DepKind::items_of_instance, &root_key);
+        let Ok((root_used_items, root_mentioned_items)) = tcx.items_of_instance(root_key) else {
+            return;
+        };
+        if !tcx.dep_graph.is_green(&root_instance_dep_node) {
+            // A changed call graph can make a previously reachable nested closure unreachable.
+            return;
+        }
+
+        if !refresh_incremental_monomorphization_attributes(tcx, root_instance) {
+            return;
+        }
+
+        refreshed_instances.insert(root_key);
+        collect_incremental_monomorphization_edges(
+            &mut pending_instances,
+            CollectionMode::UsedItems,
+            root_used_items,
+            root_mentioned_items,
+        );
+    }
 
     while let Some((spanned_instance, mode)) = pending_instances.pop() {
         let instance = spanned_instance.node;
@@ -150,6 +178,84 @@ pub fn prepare_incremental_monomorphization(tcx: TyCtxt<'_>) {
             mentioned_items,
         );
     }
+}
+
+/// Proves each edited body is reachable without passing through another edited body.
+///
+/// Cached instance queries may diagnose invalid constants when forced. Only follow current,
+/// unchanged codegen-used edges from unchanged monomorphization roots, so no removed path can
+/// cause an edited, now-unreachable body to run before the ordinary collector would visit it.
+fn independently_reachable_changed_instances<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    mono_roots: &'tcx [MonoItem<'tcx>],
+    changed_instances: &FxHashSet<Instance<'tcx>>,
+    changed_definitions: &FxHashSet<DefId>,
+) -> bool {
+    const MAX_UNCHANGED_INSTANCES: usize = 512;
+
+    let mut reached_instances = FxHashSet::default();
+    let mut pending_instances = Vec::new();
+    for root in mono_roots.iter().rev() {
+        let MonoItem::Fn(instance) = *root else {
+            continue;
+        };
+        if changed_instances.contains(&instance) {
+            reached_instances.insert(instance);
+            if reached_instances.len() == changed_instances.len() {
+                return true;
+            }
+        } else if instance.def_id().is_local()
+            && !instance_references_changed_body(instance, changed_definitions)
+        {
+            pending_instances.push(Spanned { node: instance, span: DUMMY_SP });
+        }
+    }
+
+    let mut visited_instances = FxHashSet::default();
+    while let Some(spanned_instance) = pending_instances.pop() {
+        let instance = spanned_instance.node;
+        if !visited_instances.insert(instance) {
+            continue;
+        }
+        if visited_instances.len() > MAX_UNCHANGED_INSTANCES {
+            return false;
+        }
+
+        let key = (instance, CollectionMode::UsedItems);
+        let dep_node = DepNode::construct(tcx, DepKind::items_of_instance, &key);
+        if !tcx.dep_graph.contains_previous_node(&dep_node) {
+            continue;
+        }
+
+        let Ok((used_items, _)) = force_incremental_monomorphization_items(
+            tcx,
+            spanned_instance,
+            CollectionMode::UsedItems,
+        ) else {
+            return false;
+        };
+        if !tcx.dep_graph.is_green(&dep_node) {
+            return false;
+        }
+
+        for item in used_items.iter().rev() {
+            let MonoItem::Fn(used_instance) = item.node else {
+                continue;
+            };
+            if changed_instances.contains(&used_instance) {
+                reached_instances.insert(used_instance);
+                if reached_instances.len() == changed_instances.len() {
+                    return true;
+                }
+            } else if used_instance.def_id().is_local()
+                && !instance_references_changed_body(used_instance, changed_definitions)
+            {
+                pending_instances.push(Spanned { node: used_instance, span: item.span });
+            }
+        }
+    }
+
+    false
 }
 
 /// Preserves the collector's instantiation-context note when an existing edge reports an error.

@@ -87,6 +87,13 @@ jobs:
           tests/incremental/mono_item_partition_caller_local_body_change.rs
           tests/incremental/mono_item_partition_library_body_change.rs
           tests/incremental/mono_item_partition_library_distinct_edges.rs
+          tests/incremental/mono_item_partition_multiple_body_changes.rs
+          tests/incremental/mono_item_partition_multiple_body_distinct_edges.rs
+          tests/incremental/mono_item_partition_multiple_body_generic_change.rs
+          tests/incremental/mono_item_partition_multiple_body_new_root.rs
+          tests/incremental/mono_item_partition_multiple_body_removed_reachability.rs
+          tests/incremental/mono_item_partition_multiple_closure_body_changes.rs
+          tests/incremental/mono_item_partition_multiple_library_body_changes.rs
           tests/incremental/mono_item_partition_stable_merging.rs
           tests/incremental/mono_item_partition_unreachable_const.rs
           tests/incremental/mono_item_partition_unreachable_const_cached.rs
