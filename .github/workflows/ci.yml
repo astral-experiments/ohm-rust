@@ -47,9 +47,13 @@ jobs:
           test tidy
 
   compiler:
-    name: Compiler and regression tests
-    runs-on: depot-ubuntu-24.04-16
+    name: ${{ matrix.os == 'depot-ubuntu-24.04-16' && 'Compiler and regression tests' || 'Compiler and regression tests (macOS)' }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [depot-ubuntu-24.04-16, namespace-profile-macos-15]
     steps:
       - name: Checkout Rust
         uses: actions/checkout@v5
