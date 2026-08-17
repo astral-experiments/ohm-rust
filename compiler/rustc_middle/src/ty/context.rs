@@ -1535,6 +1535,23 @@ impl<'tcx> TyCtxt<'tcx> {
         self.limits(()).recursion_limit
     }
 
+    /// Returns the execution-only recursion limit for const and layout queries.
+    ///
+    /// Parallel scheduling can require deeper query stacks without raising the
+    /// recursion limits used for macros, traits, or monomorphization. Compute
+    /// this separately because the thread count is not incrementally tracked.
+    pub fn query_recursion_limit(self) -> Limit {
+        let recursion_limit = self.recursion_limit();
+        if self.sess.threads().is_some_and(|threads| threads > 1)
+            && self.sess.opts.unstable_opts.min_recursion_limit.is_none()
+            && !find_attr!(self.hir_krate_attrs(), RecursionLimit { .. })
+        {
+            Limit::new(recursion_limit.0.max(512))
+        } else {
+            recursion_limit
+        }
+    }
+
     pub fn move_size_limit(self) -> Limit {
         self.limits(()).move_size_limit
     }
