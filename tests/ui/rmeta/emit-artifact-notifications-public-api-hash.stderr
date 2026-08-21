@@ -1,0 +1,1 @@
+{"$message_type":"artifact","artifact":"$TEST_BUILD_DIR/libemit_artifact_notifications_public_api_hash.rmeta","emit":"metadata","public_api_hash":{"version":1,"value":"PUBLIC_API_HASH"}}

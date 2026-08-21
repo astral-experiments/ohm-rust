@@ -281,7 +281,7 @@ impl OnDiskCache {
             HygieneEncodeContext::encode(
                 &Rc::clone(&encoder.hygiene_context),
                 &mut encoder,
-                |encoder, index, ctxt_data| {
+                |encoder, index, _ctxt, ctxt_data| {
                     let pos = AbsoluteBytePos::new(encoder.position());
                     encoder.encode_tagged(TAG_SYNTAX_CONTEXT, ctxt_data);
                     syntax_contexts.insert(index, pos);
@@ -715,6 +715,7 @@ macro_rules! impl_decodable_via_ref_decodable_for_foreign_types {
 
 impl_decodable_via_ref_decodable_for_foreign_types! {
     // tidy-alphabetical-start
+    &'tcx DefIdSet,
     &'tcx IndexVec<mir::Promoted, mir::Body<'tcx>>,
     &'tcx UnordMap<DefId, ty::EarlyBinder<'tcx, Ty<'tcx>>>,
     &'tcx UnordSet<LocalDefId>,
@@ -723,8 +724,10 @@ impl_decodable_via_ref_decodable_for_foreign_types! {
         rustc_middle::middle::exported_symbols::SymbolExportInfo,
     )],
     &'tcx [(ty::Clause<'tcx>, Span)],
+    &'tcx [CodegenUnit<'tcx>],
     &'tcx [DefId],
     &'tcx [Spanned<MonoItem<'tcx>>],
+    &'tcx [Symbol],
     &'tcx [ty::Variance],
     &'tcx rustc_ast::tokenstream::TokenStream,
     // tidy-alphabetical-end
