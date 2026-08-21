@@ -16,7 +16,11 @@ fn public_hash() -> String {
 
 fn compile_a(configuration: Option<&str>) {
     let mut command = rustc();
-    command.input("a.rs").arg("-Zpublic-api-hash").extern_("shared", "libshared.rlib");
+    command
+        .input("a.rs")
+        .incremental("partition-a")
+        .arg("-Zpublic-api-hash")
+        .extern_("shared", "libshared.rlib");
     if let Some(configuration) = configuration {
         command.cfg(configuration);
     }
@@ -26,6 +30,7 @@ fn compile_a(configuration: Option<&str>) {
 fn compile_b() {
     rustc()
         .input("b.rs")
+        .incremental("partition-b")
         .arg("-Zpublic-api-hash")
         .extern_("a", "liba.rlib")
         .extern_("shared", "libshared.rlib")
