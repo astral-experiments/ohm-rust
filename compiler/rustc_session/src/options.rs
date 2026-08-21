@@ -2489,6 +2489,8 @@ options! {
         "embed metadata in rlibs and dylibs (default: yes)"),
     embed_source: bool = (false, parse_bool, [TRACKED],
         "embed source text in DWARF debug sections (default: no)"),
+    emit_rlink: bool = (false, parse_bool, [UNTRACKED],
+        "emit reusable linker inputs while linking normally (default: no)"),
     emit_stack_sizes: bool = (false, parse_bool, [UNTRACKED],
         "emit a section containing stack size metadata (default: no)"),
     enforce_type_length_limit: bool = (false, parse_bool, [TRACKED],
