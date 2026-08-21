@@ -153,13 +153,13 @@ pub struct Flags {
 
     /// generate PGO profile with rustc build
     #[arg(global = true, value_hint = clap::ValueHint::FilePath, long, value_name = "PROFILE")]
-    pub rust_profile_generate: Option<String>,
+    pub rust_profile_generate: Option<PathBuf>,
     /// use PGO profile for rustc build
     #[arg(global = true, value_hint = clap::ValueHint::FilePath, long, value_name = "PROFILE")]
-    pub rust_profile_use: Option<String>,
+    pub rust_profile_use: Option<PathBuf>,
     /// use PGO profile for LLVM build
     #[arg(global = true, value_hint = clap::ValueHint::FilePath, long, value_name = "PROFILE")]
-    pub llvm_profile_use: Option<String>,
+    pub llvm_profile_use: Option<PathBuf>,
     // LLVM doesn't support a custom location for generating profile
     // information.
     //

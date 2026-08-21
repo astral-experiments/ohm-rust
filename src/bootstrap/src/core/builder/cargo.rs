@@ -6,6 +6,7 @@ use super::{Builder, Kind};
 use crate::core::build_steps::test;
 use crate::core::build_steps::tool::SourceType;
 use crate::core::config::flags::Color;
+use crate::core::config::toml::pgo::PgoConfig;
 use crate::core::config::{CompressDebuginfo, SplitDebuginfo};
 use crate::utils::build_stamp;
 use crate::utils::helpers::{self, LldThreads, check_cfg_arg, linker_flags};
@@ -1502,4 +1503,123 @@ pub fn cargo_profile_var(name: &str, config: &Config, mode: Mode) -> String {
         (_, false) => "DEV",
     };
     format!("CARGO_PROFILE_{profile}_{name}")
+}
+
+/// Apply component-specific PGO flags only when building a stage-two artifact.
+pub fn apply_pgo(
+    builder: &Builder<'_>,
+    cargo: &mut Cargo,
+    build_compiler: Compiler,
+    config: &PgoConfig,
+) {
+    if build_compiler.stage != 1 {
+        return;
+    }
+
+    let has_profile = if let Some(path) = &config.generate_profile {
+        cargo.rustflag(&format!("-Cprofile-generate={}", path.display()));
+        // Avoid overflowing the value-profile counters when profiling a Cargo build.
+        cargo.rustflag("-Cllvm-args=-vp-counters-per-site=4");
+        true
+    } else if let Some(path) = &config.use_profile {
+        cargo.rustflag(&format!("-Cprofile-use={}", path.display()));
+        if builder.is_verbose() {
+            cargo.rustflag("-Cllvm-args=-pgo-warn-missing-function");
+        }
+        true
+    } else {
+        false
+    };
+
+    if has_profile {
+        cargo.rustflag(&format!(
+            "-Cllvm-args=-static-func-strip-dirname-prefix={}",
+            builder.config.src.components().count()
+        ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Builder, Cargo, Compiler, Kind, Mode, PathBuf, PgoConfig, SourceType, apply_pgo};
+    use crate::Build;
+    use crate::utils::tests::TestCtx;
+
+    fn profile_flags(stage: u32, profile: PgoConfig) -> Vec<String> {
+        let context = TestCtx::new();
+        let build = Build::new(context.config("check").create_config());
+        let builder = Builder::new(&build);
+        let compiler = Compiler::new(stage, builder.config.host_target);
+        let mut cargo = Cargo::new_for_mir_opt_tests(
+            &builder,
+            compiler,
+            Mode::ToolStd,
+            SourceType::InTree,
+            builder.config.host_target,
+            Kind::Check,
+        );
+
+        apply_pgo(&builder, &mut cargo, compiler, &profile);
+
+        let flags = cargo
+            .rustflags
+            .0
+            .split('\x1f')
+            .filter(|flag| {
+                flag.starts_with("-Cprofile-")
+                    || flag.starts_with("-Cllvm-args=-vp-counters-per-site=")
+                    || flag.starts_with("-Cllvm-args=-static-func-strip-dirname-prefix=")
+            })
+            .map(str::to_owned)
+            .collect();
+        cargo.command.mark_as_executed();
+        flags
+    }
+
+    #[test]
+    fn pgo_rustflags_only_apply_to_stage_two_components() {
+        let profile = PgoConfig {
+            generate_profile: Some(PathBuf::from("rustfmt-profiles")),
+            use_profile: None,
+        };
+
+        assert!(profile_flags(0, profile.clone()).is_empty());
+        assert!(profile_flags(2, profile.clone()).is_empty());
+        assert_eq!(
+            profile_flags(1, profile)
+                .into_iter()
+                .filter(|flag| flag.starts_with("-Cprofile-"))
+                .collect::<Vec<_>>(),
+            ["-Cprofile-generate=rustfmt-profiles"]
+        );
+    }
+
+    #[test]
+    fn pgo_rustflags_distinguish_generation_from_optimization() {
+        let generating = profile_flags(
+            1,
+            PgoConfig {
+                generate_profile: Some(PathBuf::from("clippy-profiles")),
+                use_profile: None,
+            },
+        );
+        assert!(generating.iter().any(|flag| flag == "-Cprofile-generate=clippy-profiles"));
+        assert!(generating.iter().any(|flag| flag == "-Cllvm-args=-vp-counters-per-site=4"));
+        assert!(
+            generating
+                .iter()
+                .any(|flag| flag.starts_with("-Cllvm-args=-static-func-strip-dirname-prefix="))
+        );
+
+        let optimized = profile_flags(
+            1,
+            PgoConfig {
+                generate_profile: None,
+                use_profile: Some(PathBuf::from("rustdoc.profdata")),
+            },
+        );
+        assert!(optimized.iter().any(|flag| flag == "-Cprofile-use=rustdoc.profdata"));
+        assert!(!optimized.iter().any(|flag| flag.starts_with("-Cprofile-generate=")));
+        assert!(!optimized.iter().any(|flag| flag.starts_with("-Cllvm-args=-vp-counters")));
+    }
 }
