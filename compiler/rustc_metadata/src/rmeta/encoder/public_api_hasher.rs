@@ -98,10 +98,10 @@
 //! Some rmeta contents are deliberately not part of the public hash, because they are only needed
 //! at link time or only for diagnostics, and including them would couple the public hash to private
 //! implementation details.
-//!  - `exported_generic_symbols` / `exported_non_generic_symbols` are only used during linking, so
-//!    they live behind the private hash ([`Unhashed`]). Keeping them out of the public hash is also
-//!    why `upstream_monomorphizations` is disabled under this option: otherwise adding or removing
-//!    private code could change the set of available monomorphizations and recompile all dependents.
+//!  - `exported_non_generic_symbols` are only used during linking, so they live behind the private
+//!    hash ([`Unhashed`]). Exported generic symbols remain in the public hash because downstream
+//!    crates can reuse their monomorphizations; changing the available symbols must invalidate
+//!    those dependents.
 //!  - `def_path_hash_map` is unhashed (see above).
 //!  - `traits` and `stripped_cfg_items` are only read when a compilation session ends in an error,
 //!    so they are currently dropped from the rmeta when the option is enabled.
@@ -563,13 +563,10 @@ pub(crate) struct HashableCrateRoot {
     pub(crate) exported_non_generic_symbols:
         Unhashed<LazyArray<(ExportedSymbol<'static>, SymbolExportInfo)>>,
 
-    // Only used during linking, so we can put this behind private hash.
-    //
-    // NOTE: This is also used by upstream_monomorphizations, which we disable when public api
-    // hashing is enabled. If left enabled, adding or removing any private code can change the
-    // available monomorphized generics, which would require a recompile of all downstream deps.
+    // Downstream crates can reuse these monomorphizations during codegen. Their stable export set
+    // therefore belongs in the public hash even when a private body produced an instance.
     pub(crate) exported_generic_symbols:
-        Unhashed<LazyArray<(ExportedSymbol<'static>, SymbolExportInfo)>>,
+        Hashed<LazyArray<(ExportedSymbol<'static>, SymbolExportInfo)>>,
 
     // =========== not needed in the public hash ==============
     // proc macro, ignored. We use the full crate hash as public hash for proc macros
@@ -668,7 +665,7 @@ impl HashableCrateRoot {
             exportable_items: self.exportable_items.0,
             stable_order_of_exportable_impls: self.stable_order_of_exportable_impls.value,
             exported_non_generic_symbols: self.exported_non_generic_symbols.0,
-            exported_generic_symbols: self.exported_generic_symbols.0,
+            exported_generic_symbols: self.exported_generic_symbols.value,
 
             syntax_contexts: self.syntax_contexts.0,
             expn_data: self.expn_data.0,
