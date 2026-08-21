@@ -103,6 +103,20 @@ impl Linker {
                 &[(OutputType::Metadata.extension(), path)],
             );
             work_products.insert(id, product);
+
+            // Losing an optional prefix manifest must not invalidate the ordinary metadata.
+            if sess.opts.unstable_opts.public_api_hash
+                && let Some(manifest_path) =
+                    EncodedMetadata::prefix_manifest_path(incr_comp_session.as_ref())
+                && manifest_path.is_file()
+            {
+                // The encoder already published the manifest into the current session.
+                let name = EncodedMetadata::PREFIX_WORK_PRODUCT_NAME;
+                let ext = EncodedMetadata::PREFIX_MANIFEST_EXTENSION;
+                let id = rustc_middle::dep_graph::WorkProductId::from_cgu_name(name);
+                let saved_files = [(ext.to_owned(), format!("{name}.{ext}"))].into_iter().collect();
+                work_products.insert(id, WorkProduct { cgu_name: name.to_owned(), saved_files });
+            }
         }
 
         if let Some(guar) = sess.dcx().has_errors_or_delayed_bugs() {
