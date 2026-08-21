@@ -52,6 +52,7 @@ fn main() {
     rustc()
         .input("main.rs")
         .arg("-Zpublic-api-hash")
+        .cfg("expect_changed")
         .extern_("a", "liba.rlib")
         .extern_("b", "libb.rlib")
         .extern_("shared", "libshared.rlib")
