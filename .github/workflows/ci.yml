@@ -68,6 +68,32 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off --warnings deny check compiler
 
+      - name: Run component PGO bootstrap and training tests
+        shell: bash
+        run: |
+          stage0_cargo="$(
+            find "$PWD/build" -mindepth 4 -maxdepth 4 \
+              -path '*/stage0/bin/cargo' -type f -print -quit
+          )"
+          if [[ -z "$stage0_cargo" ]]; then
+            echo 'compiler check did not produce its bootstrap Cargo toolchain' >&2
+            exit 1
+          fi
+
+          stage0_rustc="$(dirname -- "$stage0_cargo")/rustc"
+          if [[ ! -x "$stage0_rustc" ]]; then
+            echo "bootstrap Rust compiler is missing: $stage0_rustc" >&2
+            exit 1
+          fi
+
+          export RUSTC="$stage0_rustc"
+          export CARGO="$stage0_cargo"
+          export RUSTC_BOOTSTRAP=1
+          export CARGO_TARGET_DIR="$PWD/build/component-pgo-tests"
+
+          "$stage0_cargo" test --locked --manifest-path src/bootstrap/Cargo.toml pgo_
+          "$stage0_cargo" test --locked -p opt-dist
+
       - name: Run Rust 1.98.1 trait-solver regressions
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true

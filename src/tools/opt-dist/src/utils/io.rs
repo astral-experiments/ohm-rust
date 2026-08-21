@@ -85,3 +85,8 @@ pub fn find_file_in_dir(
         )),
     }
 }
+
+/// Normalizes a path for use in bootstrap's TOML command-line overrides.
+pub fn normalize_path(path: &Utf8Path) -> Utf8PathBuf {
+    path.to_string().replace('\\', "/").into()
+}
