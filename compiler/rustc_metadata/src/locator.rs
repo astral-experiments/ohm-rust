@@ -237,7 +237,7 @@ use tracing::{debug, info};
 
 use crate::creader::{Library, MetadataLoader};
 use crate::diagnostics;
-use crate::rmeta::{METADATA_HEADER, MetadataBlob, ProcMacroKind, rustc_version};
+use crate::rmeta::{CrateHashes, METADATA_HEADER, MetadataBlob, ProcMacroKind, rustc_version};
 
 #[derive(Clone)]
 pub(crate) struct CrateLocator<'a> {
@@ -481,10 +481,10 @@ impl<'a> CrateLocator<'a> {
         // search is being performed for.
         let mut libraries = FxIndexMap::default();
         for (_hash, (rlibs, rmetas, dylibs, interfaces)) in candidates {
-            if let Some((svh, lib)) =
+            if let Some((hashes, lib)) =
                 self.extract_lib(crate_rejections, rlibs, rmetas, dylibs, interfaces)?
             {
-                libraries.insert(svh, lib);
+                libraries.insert(hashes, lib);
             }
         }
 
@@ -518,7 +518,7 @@ impl<'a> CrateLocator<'a> {
         rmetas: FxIndexSet<PathBuf>,
         dylibs: FxIndexSet<PathBuf>,
         interfaces: FxIndexSet<PathBuf>,
-    ) -> Result<Option<(Svh, Library)>, CrateError> {
+    ) -> Result<Option<(CrateHashes, Library)>, CrateError> {
         let mut slot = None;
         // Order here matters, rmeta should come first.
         //
@@ -567,7 +567,7 @@ impl<'a> CrateLocator<'a> {
         crate_rejections: &mut CrateRejections,
         m: FxIndexSet<PathBuf>,
         flavor: CrateFlavor,
-        slot: &mut Option<(Svh, MetadataBlob, PathBuf, CrateFlavor)>,
+        slot: &mut Option<(CrateHashes, MetadataBlob, PathBuf, CrateFlavor)>,
     ) -> Result<Option<PathBuf>, CrateError> {
         // If we are producing an rlib, and we've already loaded metadata, then
         // we should not attempt to discover further crate sources (unless we're
@@ -692,7 +692,7 @@ impl<'a> CrateLocator<'a> {
         crate_rejections: &mut CrateRejections,
         metadata: &MetadataBlob,
         libpath: &Path,
-    ) -> Option<Svh> {
+    ) -> Option<CrateHashes> {
         let header = metadata.get_header();
         if header.is_proc_macro_crate != self.is_proc_macro {
             info!(
@@ -716,7 +716,7 @@ impl<'a> CrateLocator<'a> {
             return None;
         }
 
-        let hash = header.hash;
+        let hash = header.hashes.public_hash;
         if let Some(expected_hash) = self.hash {
             if hash != expected_hash {
                 info!("Rejecting via hash: expected {} got {}", expected_hash, hash);
@@ -727,7 +727,7 @@ impl<'a> CrateLocator<'a> {
             }
         }
 
-        Some(hash)
+        Some(header.hashes)
     }
 
     fn find_commandline_library(
