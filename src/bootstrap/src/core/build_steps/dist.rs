@@ -40,6 +40,9 @@ use crate::utils::helpers::{
 use crate::utils::tarball::{GeneratedTarball, OverlayKind, Tarball};
 use crate::{CodegenBackendKind, Compiler, DependencyType, FileType, LLVM_TOOLS, Mode, trace};
 
+#[cfg(test)]
+mod tests;
+
 pub fn pkgname(builder: &Builder<'_>, component: &str) -> String {
     format!("{}-{}", component, builder.rust_package_vers())
 }
@@ -3016,6 +3019,30 @@ pub struct ReproducibleArtifacts {
     target: TargetSelection,
 }
 
+fn reproducible_pgo_profiles<'a>(
+    profiles: impl IntoIterator<Item = (&'static str, &'a Option<PathBuf>)>,
+    reproducible_artifacts: &'a [String],
+) -> Vec<(&'a Path, &'static str)> {
+    let mut included_profiles: HashSet<&Path> =
+        reproducible_artifacts.iter().map(Path::new).collect();
+    let mut included_filenames: HashSet<_> =
+        included_profiles.iter().map(|profile| profile.file_name()).collect();
+
+    profiles
+        .into_iter()
+        .filter_map(|(component, profile)| {
+            let profile = profile.as_ref()?;
+            if !included_profiles.insert(profile.as_path()) {
+                return None;
+            }
+
+            let destination =
+                if included_filenames.insert(profile.file_name()) { "." } else { component };
+            Some((profile.as_path(), destination))
+        })
+        .collect()
+}
+
 impl Step for ReproducibleArtifacts {
     type Output = Option<GeneratedTarball>;
     const IS_HOST: bool = true;
@@ -3036,19 +3063,18 @@ impl Step for ReproducibleArtifacts {
         let mut added_anything = false;
         let tarball = Tarball::new(builder, "reproducible-artifacts", &self.target.triple);
         let profiles = [
-            &builder.config.rust_pgo.use_profile,
-            &builder.config.llvm_pgo.use_profile,
-            &builder.config.rustdoc_pgo.use_profile,
-            &builder.config.cargo_pgo.use_profile,
-            &builder.config.clippy_pgo.use_profile,
-            &builder.config.rustfmt_pgo.use_profile,
+            ("rustc", &builder.config.rust_pgo.use_profile),
+            ("llvm", &builder.config.llvm_pgo.use_profile),
+            ("rustdoc", &builder.config.rustdoc_pgo.use_profile),
+            ("cargo", &builder.config.cargo_pgo.use_profile),
+            ("clippy", &builder.config.clippy_pgo.use_profile),
+            ("rustfmt", &builder.config.rustfmt_pgo.use_profile),
         ];
-        let mut included_profiles = HashSet::new();
-        for profile in profiles.into_iter().flatten() {
-            if included_profiles.insert(profile) {
-                tarball.add_file(profile, ".", FileType::Regular);
-                added_anything = true;
-            }
+        for (profile, destination) in
+            reproducible_pgo_profiles(profiles, &builder.config.reproducible_artifacts)
+        {
+            tarball.add_file(profile, destination, FileType::Regular);
+            added_anything = true;
         }
         for profile in &builder.config.reproducible_artifacts {
             tarball.add_file(profile, ".", FileType::Regular);
