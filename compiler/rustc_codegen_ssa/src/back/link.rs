@@ -225,12 +225,17 @@ pub fn link_binary(
                 }
             };
 
-        let remove_temps_from_module =
-            |module: &CompiledModule| maybe_remove_temps_from_module(false, false, module);
+        // An `.rlink` records paths to these objects rather than embedding their
+        // contents, so keep them available for subsequent link-only invocations.
+        let preserve_rlink_objects = sess.opts.unstable_opts.emit_rlink;
 
-        // Otherwise, always remove the allocator module temporaries.
+        // Preserve allocator objects alongside ordinary objects when relinking.
         if let Some(ref allocator_module) = compiled_modules.allocator_module {
-            remove_temps_from_module(allocator_module);
+            maybe_remove_temps_from_module(
+                preserve_rlink_objects,
+                preserve_rlink_objects,
+                allocator_module,
+            );
         }
 
         // Remove the temporary files if output goes to stdout
@@ -246,6 +251,8 @@ pub fn link_binary(
 
         // Potentially keep objects for their debuginfo.
         let (preserve_objects, preserve_dwarf_objects) = preserve_objects_for_their_debuginfo(sess);
+        let preserve_objects = preserve_objects || preserve_rlink_objects;
+        let preserve_dwarf_objects = preserve_dwarf_objects || preserve_rlink_objects;
         debug!(?preserve_objects, ?preserve_dwarf_objects);
 
         for module in &compiled_modules.modules {
