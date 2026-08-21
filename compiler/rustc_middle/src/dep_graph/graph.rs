@@ -10,7 +10,7 @@ use rustc_data_structures::fx::FxHashSet;
 use rustc_data_structures::profiling::QueryInvocationId;
 use rustc_data_structures::sharded::{self, ShardedHashMap};
 use rustc_data_structures::stable_hash::{StableHash, StableHasher};
-use rustc_data_structures::sync::{AtomicU64, Lock, WorkerLocal};
+use rustc_data_structures::sync::{AtomicU64, Lock, WorkerLocal, par_for_each_in};
 use rustc_data_structures::unord::UnordMap;
 use rustc_errors::DiagInner;
 use rustc_index::IndexVec;
@@ -1111,23 +1111,35 @@ impl DepGraph {
         let _prof_timer = tcx.prof.generic_activity("incr_comp_query_cache_promotion");
 
         let data = self.data.as_ref().unwrap();
-        for prev_index in data.colors.values.indices() {
-            match data.colors.get(prev_index) {
-                DepNodeColor::Green(dep_node_index) => {
-                    let dep_node = data.previous.index_to_node(prev_index);
-                    if let Some(promote_fn) =
-                        tcx.dep_kind_vtable(dep_node.kind).promote_from_disk_fn
-                    {
-                        promote_fn(tcx, *dep_node, prev_index, dep_node_index)
-                    };
-                }
-                DepNodeColor::Unknown | DepNodeColor::Red => {
-                    // We can skip red nodes because a node can only be marked
-                    // as red if the query result was recomputed and thus is
-                    // already in memory.
+        const PROMOTION_CHUNK_SIZE: usize = 4096;
+        let previous_node_count = data.colors.values.len();
+
+        // Each old node has a unique query key, and deserialization forbids executing queries.
+        // Disjoint ranges can therefore populate the query caches independently. Chunk the index
+        // range so the parallel iterator does not allocate an entry for every old dep node.
+        // The scoped parallel operation preserves query TLS and joins before the caller closes
+        // the previous session's query-cache mmap.
+        par_for_each_in((0..previous_node_count).step_by(PROMOTION_CHUNK_SIZE), |&start| {
+            let end = (start + PROMOTION_CHUNK_SIZE).min(previous_node_count);
+            for index in start..end {
+                let prev_index = SerializedDepNodeIndex::from_usize(index);
+                match data.colors.get(prev_index) {
+                    DepNodeColor::Green(dep_node_index) => {
+                        let dep_node = data.previous.index_to_node(prev_index);
+                        if let Some(promote_fn) =
+                            tcx.dep_kind_vtable(dep_node.kind).promote_from_disk_fn
+                        {
+                            promote_fn(tcx, *dep_node, prev_index, dep_node_index)
+                        };
+                    }
+                    DepNodeColor::Unknown | DepNodeColor::Red => {
+                        // We can skip red nodes because a node can only be marked
+                        // as red if the query result was recomputed and thus is
+                        // already in memory.
+                    }
                 }
             }
-        }
+        });
     }
 
     pub(crate) fn finish_encoding(&self) -> FileEncodeResult {
