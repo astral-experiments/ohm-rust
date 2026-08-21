@@ -19,6 +19,7 @@ use rustc_infer::traits::Obligation;
 use rustc_middle::bug;
 use rustc_middle::query::LocalCrate;
 use rustc_middle::traits::query::NoSolution;
+use rustc_middle::ty::fast_reject::{self, TreatParams};
 use rustc_middle::ty::print::PrintTraitRefExt as _;
 use rustc_middle::ty::{
     self, GenericArgsRef, Ty, TyCtxt, TypeVisitableExt, TypingMode, Unnormalized,
@@ -395,7 +396,28 @@ pub(super) fn specialization_graph_provider(
     let mut sg = specialization_graph::Graph::new();
     let overlap_mode = specialization_graph::OverlapMode::get(tcx, trait_id);
 
-    let mut trait_impls: Vec<_> = tcx.all_impls(trait_id).collect();
+    // Foreign non-blanket impls can overlap local impls only when their
+    // simplified-self buckets contain a local impl. Local blanket impls can
+    // overlap every bucket, so retain everything when one is present.
+    let all_impls = tcx.trait_impls_of(trait_id);
+    let mut trait_impls: Vec<DefId> = all_impls.blanket_impls().to_vec();
+    let has_local_blanket_impl =
+        all_impls.blanket_impls().iter().any(|impl_def_id| impl_def_id.is_local());
+
+    for (&simplified_self, bucket) in all_impls.non_blanket_impls() {
+        if has_local_blanket_impl || bucket.iter().any(|impl_def_id| impl_def_id.is_local()) {
+            trait_impls.extend(bucket.iter().copied());
+        } else if cfg!(debug_assertions) {
+            for &impl_def_id in bucket {
+                let self_ty = tcx.impl_trait_ref(impl_def_id).skip_binder().self_ty();
+                debug_assert_eq!(
+                    fast_reject::simplify_type(tcx, self_ty, TreatParams::InstantiateWithInfer),
+                    Some(simplified_self),
+                    "foreign impl {impl_def_id:?} has an unexpected simplified-self bucket",
+                );
+            }
+        }
+    }
 
     // The coherence checking implementation seems to rely on impls being
     // iterated over (roughly) in definition order, so we are sorting by
