@@ -157,9 +157,9 @@ macro_rules! provide_one {
             use rustc_middle::dep_graph::DepKind;
             match DepKind::$name {
                 DepKind::public_api_hash | DepKind::crate_hash => (),
-                DepKind::exported_generic_symbols | DepKind::exported_non_generic_symbols => {
-                    // FIXME should this be some kind of linking_hash? These should only be read
-                    // when we are doing linking
+                DepKind::exported_non_generic_symbols => {
+                    // Non-generic symbols are only consumed during linking and remain outside
+                    // the public API hash.
                     $tcx.ensure_ok().crate_hash($def_id.krate);
                 }
                 _ => {
