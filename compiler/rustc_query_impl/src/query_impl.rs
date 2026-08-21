@@ -1,10 +1,41 @@
+use rustc_data_structures::fingerprint::Fingerprint;
+use rustc_data_structures::stable_hash::{StableHash, StableHashCtxt, StableHasher};
+use rustc_middle::ich::StableHashState;
+use rustc_middle::mono::MonoItem;
 use rustc_middle::queries::TaggedQueryKey;
 use rustc_middle::query::erase::{self, Erased};
 use rustc_middle::query::{QueryKey, QueryMode, QueryVTable};
 use rustc_middle::ty::TyCtxt;
-use rustc_span::Span;
+use rustc_span::{Span, Spanned};
 
 use crate::GetQueryVTable;
+
+/// Hashes monomorphization edges without their diagnostic-only spans.
+///
+/// The query still returns and stores the original precise spans. Only its dependency-graph
+/// fingerprint ignores those spans so equivalent call graphs can reuse their codegen partitions.
+pub(crate) fn hash_incremental_mono_item_edges<'tcx>(
+    hcx: &mut StableHashState<'_>,
+    erased_value: &Erased<rustc_middle::queries::items_of_instance::Value<'tcx>>,
+) -> Fingerprint {
+    let value = erase::restore_val(*erased_value);
+    let canonical =
+        value.map(|(used, mentioned)| (UnspannedMonoItems(used), UnspannedMonoItems(mentioned)));
+
+    rustc_middle::dep_graph::hash_result(hcx, &canonical)
+}
+
+/// A slice of mono items whose diagnostic spans do not affect its fingerprint.
+struct UnspannedMonoItems<'a, 'tcx>(&'a [Spanned<MonoItem<'tcx>>]);
+
+impl StableHash for UnspannedMonoItems<'_, '_> {
+    fn stable_hash<Hcx: StableHashCtxt>(&self, hcx: &mut Hcx, hasher: &mut StableHasher) {
+        self.0.len().stable_hash(hcx, hasher);
+        for item in self.0 {
+            item.node.stable_hash(hcx, hasher);
+        }
+    }
+}
 
 macro_rules! define_queries {
     (
