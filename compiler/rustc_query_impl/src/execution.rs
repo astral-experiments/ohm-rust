@@ -342,7 +342,7 @@ fn depth_limit_error<'tcx>(tcx: TyCtxt<'tcx>, job: QueryJobId) {
     let job_map = collect_active_query_jobs(tcx, CollectActiveJobsKind::Full);
     let (span, desc, depth) = find_dep_kind_root(tcx, job, job_map);
 
-    let suggested_limit = match tcx.recursion_limit() {
+    let suggested_limit = match tcx.query_recursion_limit() {
         Limit(0) => Limit(2),
         limit => limit * 2,
     };
@@ -359,7 +359,10 @@ fn depth_limit_error<'tcx>(tcx: TyCtxt<'tcx>, job: QueryJobId) {
 #[inline(always)]
 fn start_query<R>(job_id: QueryJobId, depth_limit: bool, compute: impl FnOnce() -> R) -> R {
     tls::with_context(move |icx| {
-        if depth_limit && !icx.tcx.recursion_limit().value_within_limit(icx.query_depth) {
+        if depth_limit
+            && !icx.tcx.recursion_limit().value_within_limit(icx.query_depth)
+            && !icx.tcx.query_recursion_limit().value_within_limit(icx.query_depth)
+        {
             depth_limit_error(icx.tcx, job_id);
         }
 
