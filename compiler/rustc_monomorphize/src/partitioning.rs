@@ -646,11 +646,44 @@ fn characteristic_def_id_of_mono_item<'tcx>(
                 | ty::InstanceKind::Shim(ty::ShimKind::AsyncDropGlueCtor(..)) => return None,
             };
 
+            let assoc_parent = tcx.assoc_parent(def_id);
+            if let Some((impl_def_id, DefKind::Impl { of_trait: true })) = assoc_parent
+                && tcx.sess.opts.incremental.is_some()
+                && tcx.is_lang_item(tcx.impl_trait_id(impl_def_id), LangItem::Drop)
+            {
+                // Put `Drop::drop` into the same cgu as `drop_glue`, since drop glue is its only
+                // caller. This also applies to upstream generic destructors with local arguments.
+                return None;
+            }
+
+            if tcx.sess.opts.unstable_opts.ohm_caller_local_cgus
+                && tcx.sess.opts.incremental.is_some()
+                && !def_id.is_local()
+                && mono_item.is_generic_fn()
+                && let Some(local_def_id) =
+                    instance.args.iter().flat_map(|argument| argument.walk()).find_map(|argument| {
+                        let ty::GenericArgKind::Type(ty) = argument.kind() else {
+                            return None;
+                        };
+                        let local_def_id = match *ty.kind() {
+                            ty::FnDef(def_id, _)
+                            | ty::Closure(def_id, _)
+                            | ty::CoroutineClosure(def_id, _)
+                            | ty::Coroutine(def_id, _)
+                            | ty::CoroutineWitness(def_id, _) => def_id,
+                            _ => return None,
+                        };
+                        local_def_id.is_local().then_some(local_def_id)
+                    })
+            {
+                // Specializations containing a local callable change with that callable, not
+                // with unrelated instantiations from the upstream generic's defining module.
+                return Some(local_def_id);
+            }
+
             // If this is a method, we want to put it into the same module as
             // its self-type. If the self-type does not provide a characteristic
             // DefId, we use the location of the impl after all.
-
-            let assoc_parent = tcx.assoc_parent(def_id);
 
             if let Some((_, DefKind::Trait)) = assoc_parent {
                 let self_ty = instance.args.type_at(0);
@@ -658,16 +691,7 @@ fn characteristic_def_id_of_mono_item<'tcx>(
                 return characteristic_def_id_of_type(self_ty).or(Some(def_id));
             }
 
-            if let Some((impl_def_id, DefKind::Impl { of_trait })) = assoc_parent {
-                if of_trait
-                    && tcx.sess.opts.incremental.is_some()
-                    && tcx.is_lang_item(tcx.impl_trait_id(impl_def_id), LangItem::Drop)
-                {
-                    // Put `Drop::drop` into the same cgu as `drop_glue`
-                    // since `drop_glue` is the only thing that can call it.
-                    return None;
-                }
-
+            if let Some((impl_def_id, DefKind::Impl { .. })) = assoc_parent {
                 // This is a method within an impl, find out what the self-type is:
                 let impl_self_ty = tcx.instantiate_and_normalize_erasing_regions(
                     instance.args,
