@@ -70,7 +70,7 @@ pub struct CStore {
     has_alloc_error_handler: bool,
 
     /// Cached map from hash to CrateNum, to avoid scanning metas during crate resolution.
-    hash_to_cnum: UnordMap<Svh, CrateNum>,
+    public_hash_to_cnum: UnordMap<Svh, CrateNum>,
 
     /// Names that were used to load the crates via `extern crate` or paths.
     resolved_externs: UnordMap<Symbol, CrateNum>,
@@ -111,7 +111,8 @@ impl std::fmt::Debug for CStore {
         for (cnum, data) in self.iter_crate_data() {
             writeln!(fmt, "  name: {}", data.name())?;
             writeln!(fmt, "  cnum: {cnum}")?;
-            writeln!(fmt, "  hash: {}", data.hash())?;
+            writeln!(fmt, "  private hash: {}", data.private_hash())?;
+            writeln!(fmt, "  public hash:  {}", data.public_hash())?;
             writeln!(fmt, "  reqd: {:?}", data.dep_kind())?;
             writeln!(fmt, "  priv: {:?}", data.is_private_dep())?;
             let CrateSource { dylib, rlib, rmeta, sdylib_interface } = data.source();
@@ -244,7 +245,7 @@ impl CStore {
 
     fn set_crate_data(&mut self, cnum: CrateNum, data: CrateMetadata) {
         assert!(self.metas[cnum].is_none(), "Overwriting crate metadata entry");
-        self.hash_to_cnum.insert(data.hash(), cnum);
+        self.public_hash_to_cnum.insert(data.public_hash(), cnum);
         self.metas[cnum] = Some(Box::new(data));
     }
 
@@ -543,7 +544,7 @@ impl CStore {
             alloc_error_handler_kind: None,
             has_global_allocator: false,
             has_alloc_error_handler: false,
-            hash_to_cnum: UnordMap::default(),
+            public_hash_to_cnum: UnordMap::default(),
             resolved_externs: UnordMap::default(),
             unused_externs: Vec::new(),
             used_extern_options: Default::default(),
@@ -553,7 +554,7 @@ impl CStore {
 
     fn existing_match(&self, name: Symbol, hash: Option<Svh>) -> Option<CrateNum> {
         let hash = hash?;
-        let cnum = *self.hash_to_cnum.get(&hash)?;
+        let cnum = *self.public_hash_to_cnum.get(&hash)?;
         debug_assert_eq!(self.get_crate_data(cnum).name(), name);
         Some(cnum)
     }
@@ -595,7 +596,14 @@ impl CStore {
         let Library { source, metadata } = lib;
         let crate_root = metadata.get_root();
         let unhashed = metadata.get_root_unhashed();
-        let host_hash = host_lib.as_ref().map(|lib| lib.metadata.get_crate_hash());
+        let host_hash = host_lib.as_ref().map(|lib| {
+            let host_root = lib.metadata.get_crate_hashes();
+            assert_eq!(
+                host_root.public_hash, host_root.private_hash,
+                "Mismatched public and private hash for proc macro!"
+            );
+            host_root.public_hash
+        });
         let private_dep = self.is_private_dep(&tcx.sess.opts.externs, name, private_dep);
 
         // Claim this crate number and cache it
@@ -873,10 +881,11 @@ impl CStore {
         // as an already loaded crate. If this is the case prevent
         // duplicates by just using the first crate.
         let root_name = library.metadata.get_root().name();
-        let root_hash = library.metadata.get_crate_hash();
+        let root_hashes = library.metadata.get_crate_hashes();
         let mut result = LoadResult::Loaded(library);
         for (cnum, data) in self.iter_crate_data() {
-            if data.name() == root_name && data.hash() == root_hash {
+            if data.name() == root_name && root_hashes.public_hash == data.public_hash() {
+                assert!(root_hashes.private_hash == data.private_hash());
                 assert!(locator.hash.is_none());
                 info!("load success, going to previous cnum: {}", cnum);
                 result = LoadResult::Previous(cnum);

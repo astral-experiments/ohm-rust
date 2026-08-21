@@ -387,6 +387,7 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
             AttributeKind::RustcPreserveUbChecks => (),
             AttributeKind::RustcProcMacroDecls => (),
             AttributeKind::RustcPubTransparent(..) => (),
+            AttributeKind::RustcRDRTestAttr(..) => (),
             AttributeKind::RustcReallocator => (),
             AttributeKind::RustcRegions => (),
             AttributeKind::RustcScalableVector { .. } => (),

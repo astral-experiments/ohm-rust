@@ -18,6 +18,7 @@ use rustc_hir::lints::DelayedLints;
 use rustc_hir::*;
 use rustc_span::def_id::{CRATE_MOD_ID, StableCrateId};
 use rustc_span::{ErrorGuaranteed, Ident, Span, Symbol, bug, kw, span_bug, with_metavar_spans};
+use rustc_structures::CrateType;
 
 use crate::hir::def_id::LOCAL_CRATE;
 use crate::hir::{ModuleItems, ProjectedMaybeOwner, nested_filter};
@@ -1293,13 +1294,32 @@ pub fn compute_hir_hash(tcx: TyCtxt<'_>) -> Fingerprint {
         .expect("HIR hash requested without any content")
 }
 
+/// Preserve the HIR supplement used by the metadata format while tracking the dependency
+/// identities that a reused prefix must verify or refresh.
+pub(super) fn metadata_input_hashes(tcx: TyCtxt<'_>, (): ()) -> (Fingerprint, Fingerprint) {
+    let upstream = upstream_crates(tcx);
+    let dependencies = tcx.with_stable_hashing_context(|mut hcx| {
+        let mut hasher = StableHasher::new();
+        upstream.stable_hash(&mut hcx, &mut hasher);
+        hasher.finish()
+    });
+    (compute_hir_hash(tcx), dependencies)
+}
+
 fn upstream_crates(tcx: TyCtxt<'_>) -> Vec<(StableCrateId, Svh)> {
+    // proc macros must use the private hash of all crates, since the code running is part of its
+    // public api. When the crate is a library, it cannot use the crate_hash of dependencies with
+    // public api hash enabled. This crate's rustc invocation might be skipped if only the public
+    // api hash of dependencies change, which could lead to incorrect hashes in the rmeta.
+    let use_public_hash = tcx.sess.opts.unstable_opts.public_api_hash
+        && !tcx.crate_types().contains(&CrateType::ProcMacro);
     let mut upstream_crates: Vec<_> = tcx
         .crates(())
         .iter()
         .map(|&cnum| {
             let stable_crate_id = tcx.stable_crate_id(cnum);
-            let hash = tcx.crate_hash(cnum);
+            let hash =
+                if use_public_hash { tcx.public_api_hash(cnum) } else { tcx.crate_hash(cnum) };
             (stable_crate_id, hash)
         })
         .collect();
