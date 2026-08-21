@@ -239,6 +239,7 @@ use crate::diagnostics::{
     self, EncounteredErrorWhileInstantiating, EncounteredErrorWhileInstantiatingGlobalAsm,
     NoOptimizedMir, RecursionLimit,
 };
+use crate::items_of_instance_for_partitioning;
 
 #[derive(PartialEq)]
 pub(crate) enum MonoItemCollectionStrategy {
@@ -472,7 +473,8 @@ fn collect_items_rec<'tcx>(
             ));
 
             rustc_data_structures::stack::ensure_sufficient_stack(|| {
-                let Ok((used, mentioned)) = tcx.items_of_instance((instance, mode)) else {
+                let Ok((used, mentioned)) = items_of_instance_for_partitioning(tcx, instance, mode)
+                else {
                     // Normalization errors here are usually due to trait solving overflow.
                     // FIXME: I assume that there are few type errors at post-analysis stage, but not
                     // entirely sure.
@@ -1851,4 +1853,5 @@ pub(crate) fn provide(providers: &mut Providers) {
     providers.hooks.should_codegen_locally = should_codegen_locally;
     providers.queries.collect_mono_item_roots = collect_mono_item_roots;
     providers.queries.items_of_instance = items_of_instance;
+    providers.queries.partition_items_of_instance = |tcx, key| tcx.items_of_instance(key);
 }
