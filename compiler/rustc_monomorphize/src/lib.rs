@@ -33,7 +33,8 @@ mod util;
 /// green when a body edit does not change its monomorphization edges or size estimate.
 pub fn prepare_incremental_monomorphization(tcx: TyCtxt<'_>) {
     if !tcx.dep_graph.is_fully_enabled()
-        || !tcx.sess.opts.unstable_opts.public_api_hash
+        || !(tcx.sess.opts.unstable_opts.public_api_hash
+            || tcx.sess.opts.unstable_opts.ohm_incremental_mono_partitions)
         || !tcx.sess.opts.output_types.should_codegen()
         || tcx.sess.opts.unstable_opts.print_mono_items
         || tcx.sess.opts.unstable_opts.dump_mono_stats.enabled()
