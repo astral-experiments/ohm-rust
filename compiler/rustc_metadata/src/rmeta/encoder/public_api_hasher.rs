@@ -784,6 +784,23 @@ impl<'tcx> ReachabilityGraphBuilder<'tcx> {
         // anything.
         // FIXME add newtype that ensures it really isn't used
         self.edges.get_mut(&LocalExpnId::ROOT.into()).unwrap().remove(&CRATE_DEF_ID.into());
+
+        // Node identity hashing can trigger compiler queries, so discard
+        // unreachable metadata before hashing nodes or constructing SCCs.
+        // Traversal order cannot affect membership in the reachable set, and
+        // the retained nodes and edges are stably sorted below.
+        #[allow(rustc::potential_query_instability)]
+        {
+            let mut reachable = self.roots.clone();
+            let mut worklist = self.roots.iter().copied().collect::<Vec<_>>();
+            while let Some(node) = worklist.pop() {
+                if let Some(edges) = self.edges.get(&node) {
+                    worklist.extend(edges.iter().copied().filter(|edge| reachable.insert(*edge)));
+                }
+            }
+            self.edges.retain(|node, _| reachable.contains(node));
+        }
+
         let mut hashes = IndexMap::default();
         // iterating over FxHashSet and FxHashMap is fine here, as it is only used to build the
         // hashes map, which is never returned or iterated
@@ -1100,14 +1117,10 @@ fn build_public_hashes<'tcx>(
 ) -> Hashed<ItemPublicHashesBuilder> {
     let sccs = Sccs::<_, SccIdx>::new(graph);
     let scc_fingerprints = scc_fingerprints(graph, hashes, tcx, &sccs);
-    let reachable = graph.reachable_set();
 
     let mut public_hashes = ItemPublicHashesBuilder::default();
     let mut hasher = StableHasher::new();
-    for (node_index, reachable) in reachable.iter_enumerated() {
-        if !reachable {
-            continue;
-        }
+    for node_index in 0..graph.nodes.len() {
         match graph.nodes.get_index(node_index).unwrap().0 {
             Node::DefId(id) => {
                 if let Some(local) = id.as_local() {
