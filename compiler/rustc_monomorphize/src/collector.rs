@@ -1591,6 +1591,16 @@ fn collect_roots(tcx: TyCtxt<'_>, mode: MonoItemCollectionStrategy) -> Vec<MonoI
         .collect()
 }
 
+fn collect_mono_item_roots<'tcx>(tcx: TyCtxt<'tcx>, (): ()) -> &'tcx [MonoItem<'tcx>] {
+    let strategy = if tcx.sess.link_dead_code() {
+        MonoItemCollectionStrategy::Eager
+    } else {
+        MonoItemCollectionStrategy::Lazy
+    };
+
+    tcx.arena.alloc_from_iter(collect_roots(tcx, strategy))
+}
+
 struct RootCollector<'a, 'tcx> {
     tcx: TyCtxt<'tcx>,
     strategy: MonoItemCollectionStrategy,
@@ -1910,16 +1920,15 @@ fn create_mono_items_for_default_impls<'tcx>(
 // Top-level entry point, tying it all together
 //=-----------------------------------------------------------------------------
 
-#[instrument(skip(tcx, strategy), level = "debug")]
+#[instrument(skip(tcx), level = "debug")]
 pub(crate) fn collect_crate_mono_items<'tcx>(
     tcx: TyCtxt<'tcx>,
-    strategy: MonoItemCollectionStrategy,
 ) -> (Vec<MonoItem<'tcx>>, UsageMap<'tcx>) {
     let _prof_timer = tcx.prof.generic_activity("monomorphization_collector");
 
     let roots = tcx
         .sess
-        .time("monomorphization_collector_root_collections", || collect_roots(tcx, strategy));
+        .time("monomorphization_collector_root_collections", || tcx.collect_mono_item_roots(()));
 
     debug!("building mono item graph, beginning at roots");
 
@@ -1932,7 +1941,7 @@ pub(crate) fn collect_crate_mono_items<'tcx>(
 
     tcx.sess.time("monomorphization_collector_graph_walk", || {
         par_for_each_in(roots, |root| {
-            collect_items_root(tcx, dummy_spanned(*root), &state, recursion_limit);
+            collect_items_root(tcx, dummy_spanned(**root), &state, recursion_limit);
         });
     });
 
@@ -1958,5 +1967,6 @@ pub(crate) fn collect_crate_mono_items<'tcx>(
 
 pub(crate) fn provide(providers: &mut Providers) {
     providers.hooks.should_codegen_locally = should_codegen_locally;
+    providers.queries.collect_mono_item_roots = collect_mono_item_roots;
     providers.queries.items_of_instance = items_of_instance;
 }

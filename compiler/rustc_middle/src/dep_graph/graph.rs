@@ -1048,6 +1048,11 @@ impl DepGraph {
         matches!(self.node_color(dep_node), DepNodeColor::Green(_))
     }
 
+    /// Returns whether this dependency node existed in the previous compilation session.
+    pub fn contains_previous_node(&self, dep_node: &DepNode) -> bool {
+        self.data.as_ref().is_some_and(|data| data.previous.node_to_index_opt(dep_node).is_some())
+    }
+
     pub fn assert_dep_node_not_yet_allocated_in_current_session<S: std::fmt::Display>(
         &self,
         sess: &Session,
