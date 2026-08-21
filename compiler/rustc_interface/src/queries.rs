@@ -137,7 +137,7 @@ impl Linker {
             return;
         }
 
-        if sess.opts.unstable_opts.no_link {
+        if sess.opts.unstable_opts.no_link || sess.opts.unstable_opts.emit_rlink {
             let rlink_file = self.output_filenames.with_extension(config::RLINK_EXT);
             CompiledModules::serialize_rlink(
                 sess,
@@ -150,7 +150,9 @@ impl Linker {
             .unwrap_or_else(|error| {
                 sess.dcx().emit_fatal(FailedWritingFile { path: &rlink_file, error })
             });
-            return;
+            if sess.opts.unstable_opts.no_link {
+                return;
+            }
         }
 
         let _timer = sess.prof.verbose_generic_activity("link_crate");
