@@ -898,6 +898,41 @@ impl DepGraph {
     ) -> Option<(SerializedDepNodeIndex, DepNodeIndex)> {
         self.data()?.try_mark_green(tcx, dep_node)
     }
+
+    /// Returns the old edges when exactly one known dependency changed.
+    ///
+    /// Call this after normal green-marking so all query side effects have
+    /// already been replayed. Unknown edges conservatively prevent reuse.
+    pub fn previous_dependencies_except_red(
+        &self,
+        dep_node: &DepNode,
+        changed_dep_node: &DepNode,
+    ) -> Option<Vec<Option<DepNodeIndex>>> {
+        let data = self.data()?;
+        let previous_index = data.previous.node_to_index_opt(dep_node)?;
+        let mut dependencies = Vec::new();
+        let mut found_changed_dependency = false;
+
+        for previous_dependency in data.previous.edge_targets_from(previous_index) {
+            if data.previous.index_to_node(previous_dependency) == changed_dep_node {
+                if found_changed_dependency
+                    || !matches!(data.colors.get(previous_dependency), DepNodeColor::Red)
+                {
+                    return None;
+                }
+                found_changed_dependency = true;
+                dependencies.push(None);
+            } else if let DepNodeColor::Green(current_dependency) =
+                data.colors.get(previous_dependency)
+            {
+                dependencies.push(Some(current_dependency));
+            } else {
+                return None;
+            }
+        }
+
+        found_changed_dependency.then_some(dependencies)
+    }
 }
 
 impl DepGraphData {
