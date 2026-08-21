@@ -97,6 +97,20 @@ impl Linker {
                 &[],
             );
             work_products.insert(id, product);
+
+            // Losing an optional prefix manifest must not invalidate the ordinary metadata.
+            if sess.opts.unstable_opts.public_api_hash
+                && let Some(manifest_path) = EncodedMetadata::prefix_manifest_path(sess)
+                && manifest_path.is_file()
+            {
+                let (id, product) = rustc_incremental::copy_cgu_workproduct_to_incr_comp_cache_dir(
+                    sess,
+                    EncodedMetadata::PREFIX_WORK_PRODUCT_NAME,
+                    &[(EncodedMetadata::PREFIX_MANIFEST_EXTENSION, manifest_path.as_path())],
+                    std::slice::from_ref(&manifest_path),
+                );
+                work_products.insert(id, product);
+            }
         }
 
         sess.dcx().abort_if_errors();
