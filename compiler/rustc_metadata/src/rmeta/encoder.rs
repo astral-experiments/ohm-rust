@@ -6,12 +6,16 @@ use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::fs::File;
 use std::io::{Read, Seek, Write};
+use std::num::NonZero;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_data_structures::fx::{FxIndexMap, FxIndexSet};
 use rustc_data_structures::memmap::{Mmap, MmapMut};
+use rustc_data_structures::owned_slice::slice_owned;
+use rustc_data_structures::stable_hash::StableHasher;
 use rustc_data_structures::sync::{par_for_each_in, par_join};
 use rustc_data_structures::temp_dir::MaybeTempDir;
 use rustc_data_structures::thousands::usize_with_underscores;
@@ -22,7 +26,7 @@ use rustc_hir::def_id::{CRATE_DEF_ID, LOCAL_CRATE, LocalDefId, LocalDefIdSet};
 use rustc_hir::definitions::DefPathData;
 use rustc_hir::find_attr;
 use rustc_hir_pretty::id_to_string;
-use rustc_middle::dep_graph::WorkProductId;
+use rustc_middle::dep_graph::{DepKind, DepNode, WorkProductId};
 use rustc_middle::ich::StableHashState;
 use rustc_middle::metadata::ModChild;
 use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
@@ -37,16 +41,21 @@ use rustc_middle::ty::fast_reject::{self, TreatParams};
 use rustc_middle::ty::{AssocContainer, PredicateKind, Visibility};
 use rustc_middle::{bug, span_bug};
 use rustc_serialize::{Decodable, Decoder, Encodable, Encoder, opaque};
+use rustc_session::IncrCompSession;
 use rustc_session::config::mitigation_coverage::DeniedPartialMitigation;
 use rustc_session::config::{CrateType, OptLevel, TargetModifier};
 use rustc_span::def_id::{CRATE_MOD_ID, VisibilityDefId};
 use rustc_span::hygiene::HygieneEncodeContext;
 use rustc_span::{
-    ByteSymbol, ExternalSource, FileName, SourceFile, SpanData, SpanEncoder, StableSourceFileId,
-    Symbol, SyntaxContext, sym,
+    ByteSymbol, ExternalSource, FileName, SourceFile, Span, SpanData, SpanEncoder,
+    StableSourceFileId, Symbol, SyntaxContext, sym,
 };
 use tracing::{debug, instrument, trace};
 
+use self::metadata_prefix::{
+    MetadataPrefixManifest, MetadataPrefixManifestBuilder, hash_definition_span,
+    metadata_fingerprint, relocate_metadata_table, source_file_layout_fingerprint,
+};
 use self::public_api_hasher::{
     HashableCrateHeader, HashableCrateRoot, Hashed, NoneIfHashed, PublicApiHasher,
     PublicApiHashingContext,
@@ -58,6 +67,7 @@ use crate::rmeta::encoder::public_api_hasher::{
 };
 use crate::rmeta::*;
 
+mod metadata_prefix;
 pub(super) mod public_api_hasher;
 
 /// Stable hashes an iterator while encoding it as a LazyArray.
@@ -278,6 +288,7 @@ pub(super) struct EncodeContext<'a, 'tcx, M: MetadataEncoder<'tcx>> {
     // The order inside the `FxIndexSet` is used as on-disk
     // order of `SourceFiles`, and encoded inside `Span`s.
     required_source_files: Option<FxIndexSet<usize>>,
+    metadata_prefix_manifest: Option<MetadataPrefixManifestBuilder>,
     is_proc_macro: bool,
     hygiene_ctxt: &'a HygieneEncodeContext,
     // Used for both `Symbol`s and `ByteSymbol`s.
@@ -883,6 +894,11 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
     fn encode_source_map(
         &mut self,
     ) -> GraphHashed<LazyTable<u32, Option<LazyValue<rustc_span::SourceFile>>>> {
+        let source_map_position = self.position();
+        if let Some(builder) = &mut self.metadata_prefix_manifest {
+            builder.manifest.prefix_position = source_map_position;
+            builder.manifest.source_files.clear();
+        }
         let source_map = self.tcx.sess.source_map();
         let all_source_files = source_map.files();
 
@@ -945,6 +961,12 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             let on_disk_index: u32 =
                 on_disk_index.try_into().expect("cannot export more than U32_MAX files");
             adapted.set_some_unhashed(on_disk_index, self.lazy(&adapted_source_file));
+            if let Some(builder) = &mut self.metadata_prefix_manifest {
+                builder
+                    .manifest
+                    .source_files
+                    .push((source_file.stable_id, source_file_layout_fingerprint(source_file)));
+            }
         }
 
         adapted.encode(self)
@@ -1273,6 +1295,53 @@ fn analyze_attr(attr: &hir::Attribute, state: &mut AnalyzeAttrState) -> bool {
         should_encode = true;
     }
     should_encode
+}
+
+/// Trivial const arguments have definition IDs but no cross-crate metadata entries.
+fn should_encode_local_definition(tcx: TyCtxt<'_>, def_id: LocalDefId, def_kind: DefKind) -> bool {
+    if def_kind != DefKind::AnonConst {
+        return true;
+    }
+
+    !matches!(
+        tcx.hir_node_by_def_id(def_id),
+        hir::Node::ConstArg(_)
+            | hir::Node::Infer(hir::InferArg { kind: hir::InferArgKind::Const, .. })
+    )
+}
+
+/// Reconstructs the exact definition and identifier locations copied from previous metadata.
+fn metadata_definition_span_fingerprint(tcx: TyCtxt<'_>) -> (usize, Fingerprint) {
+    let mut count = 0;
+    let mut hasher = StableHasher::new();
+
+    for local_id in tcx.iter_local_def_id() {
+        let def_kind = tcx.def_kind(local_id);
+        if !should_encode_local_definition(tcx, local_id, def_kind) || !should_encode_span(def_kind)
+        {
+            continue;
+        }
+
+        let def_id = local_id.to_def_id();
+        hash_definition_span(
+            tcx,
+            def_id,
+            Some(tcx.def_span(local_id)),
+            false,
+            &mut count,
+            &mut hasher,
+        );
+        hash_definition_span(
+            tcx,
+            def_id,
+            tcx.def_ident_span(def_id),
+            true,
+            &mut count,
+            &mut hasher,
+        );
+    }
+
+    (count, hasher.finish())
 }
 
 fn should_encode_span(def_kind: DefKind) -> bool {
@@ -1783,10 +1852,14 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             is_exported: tcx.effective_visibilities(()).is_exported(def_id),
             is_doc_hidden: false,
         };
-        let attr_iter = tcx
-            .hir_attrs(tcx.local_def_id_to_hir_id(def_id))
-            .iter()
-            .filter(|attr| analyze_attr(*attr, &mut state));
+        // Function items are always HIR owners. Avoid depending on their entire bodies merely to
+        // identify the owner of the separately tracked attribute map.
+        let hir_id = if matches!(tcx.def_kind(def_id), DefKind::Fn | DefKind::AssocFn) {
+            hir::HirId::make_owner(def_id)
+        } else {
+            tcx.local_def_id_to_hir_id(def_id)
+        };
+        let attr_iter = tcx.hir_attrs(hir_id).iter().filter(|attr| analyze_attr(*attr, &mut state));
 
         record_array!(self.tables.attributes[def_id.to_def_id()] <- attr_iter, hcx);
 
@@ -1839,18 +1912,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             let def_kind = tcx.def_kind(local_id);
             self.tables.def_kind.set_some_local_hashed(local_id, def_kind, hcx);
 
-            // The `DefCollector` will sometimes create unnecessary `DefId`s
-            // for trivial const arguments which are directly lowered to
-            // `ConstArgKind::Path`. We never actually access this `DefId`
-            // anywhere so we don't need to encode it for other crates.
-            // FIXME(mgca): This probably isn't true, they probably are accessed, but, test case?
-            if def_kind == DefKind::AnonConst
-                && matches!(
-                    tcx.hir_node_by_def_id(local_id),
-                    hir::Node::ConstArg(_)
-                        | hir::Node::Infer(hir::InferArg { kind: hir::InferArgKind::Const, .. })
-                )
-            {
+            if !should_encode_local_definition(tcx, local_id, def_kind) {
                 continue;
             }
 
@@ -1868,6 +1930,9 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                         .codegen_fn_attrs(def_id)
                         .flags
                         .contains(CodegenFnAttrFlags::TRACK_CALLER);
+                if let Some(builder) = &mut self.metadata_prefix_manifest {
+                    builder.capture_definition_span(tcx, def_id, Some(def_span), false);
+                }
                 let def_span = self.encode_diagnostic_span(def_id, def_span, hash_location);
                 self.tables.def_span.set_some_unhashed(def_id.index, def_span);
             }
@@ -1877,11 +1942,15 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             if should_encode_expn_that_defined(def_kind) {
                 record!(self.tables.expn_that_defined[def_id] <- self.tcx.expn_that_defined(def_id), hcx);
             }
-            if should_encode_span(def_kind)
-                && let Some(ident_span) = tcx.def_ident_span(def_id)
-            {
-                let ident_span = self.encode_diagnostic_span(def_id, ident_span, false);
-                self.tables.def_ident_span.set_some_unhashed(def_id.index, ident_span);
+            if should_encode_span(def_kind) {
+                let ident_span = tcx.def_ident_span(def_id);
+                if let Some(builder) = &mut self.metadata_prefix_manifest {
+                    builder.capture_definition_span(tcx, def_id, ident_span, true);
+                }
+                if let Some(ident_span) = ident_span {
+                    let ident_span = self.encode_diagnostic_span(def_id, ident_span, false);
+                    self.tables.def_ident_span.set_some_unhashed(def_id.index, ident_span);
+                }
             }
             if def_kind.has_codegen_attrs() {
                 record!(self.tables.codegen_fn_attrs[def_id] <- self.tcx.codegen_fn_attrs(def_id), hcx);
@@ -2023,6 +2092,11 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 self.encode_info_for_mod(local_id, hcx);
             }
             if let DefKind::Macro(_) = def_kind {
+                // Exported macro tokens expose definition-site positions to downstream
+                // procedural macros. Their token spans are not covered by definition spans.
+                if tcx.effective_visibilities(()).is_exported(local_id) {
+                    self.metadata_prefix_manifest = None;
+                }
                 self.encode_info_for_macro(local_id, hcx);
             }
             if let DefKind::TyAlias = def_kind {
@@ -2073,6 +2147,11 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 let table = tcx.associated_types_for_impl_traits_in_trait_or_impl(def_id);
                 record!(self.tables.associated_types_for_impl_traits_in_trait_or_impl[def_id] <- table, hcx);
             }
+        }
+
+        if let Some(builder) = &mut self.metadata_prefix_manifest {
+            builder.manifest.definition_span_fingerprint =
+                builder.definition_span_hasher.clone().finish();
         }
 
         for (def_id, impls) in &tcx.crate_inherent_impls(()).0.inherent_impls {
@@ -2355,6 +2434,12 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                     record!(self.tables.mir_const_qualif[def_id.to_def_id()] <- qualifs, hcx);
                     let body = tcx.hir_maybe_body_owned_by(def_id);
                     if let Some(body) = body {
+                        if !body.value.span.from_expansion()
+                            && let Some(builder) = &mut self.metadata_prefix_manifest
+                            && !builder.capture_protected_span(tcx, body.value.span)
+                        {
+                            self.metadata_prefix_manifest = None;
+                        }
                         let const_data = rendered_const(self.tcx, &body, def_id);
                         record!(self.tables.rendered_const[def_id.to_def_id()] <- &const_data, hcx);
                     }
@@ -3044,6 +3129,20 @@ pub struct EncodedMetadata {
 }
 
 impl EncodedMetadata {
+    /// The independently optional work-product containing the prefix-reuse manifest.
+    pub const PREFIX_WORK_PRODUCT_NAME: &'static str = "metadata-prefix-v3";
+
+    /// Optional work-product describing the reusable metadata prefix.
+    pub const PREFIX_MANIFEST_EXTENSION: &'static str = "ohm-prefix-v3";
+
+    /// Stores the sidecar in the incremental session so output-tempdir cleanup cannot remove it.
+    pub fn prefix_manifest_path(incr_comp_session: Option<&IncrCompSession>) -> Option<PathBuf> {
+        let session_directory = &incr_comp_session?.session_directory;
+        let file_name =
+            format!("{}.{}", Self::PREFIX_WORK_PRODUCT_NAME, Self::PREFIX_MANIFEST_EXTENSION);
+        Some(session_directory.join(file_name))
+    }
+
     #[inline]
     pub fn from_path(
         path: PathBuf,
@@ -3144,6 +3243,175 @@ fn encode_crate_root<'tcx, 'h, M: MetadataEncoder<'tcx>>(
     });
 }
 
+/// Refreshes the natively encoded metadata suffix while reusing unchanged item bytes.
+fn try_reuse_metadata_prefix(
+    tcx: TyCtxt<'_>,
+    path: &Path,
+    ref_path: Option<&Path>,
+    metadata_dep_node: DepNode,
+) -> Option<()> {
+    if ref_path.is_some()
+        || !tcx.sess.opts.unstable_opts.public_api_hash
+        || tcx.sess.opts.unstable_opts.incremental_ignore_spans
+        || tcx.sess.opts.unstable_opts.meta_stats
+        || tcx.crate_types().contains(&CrateType::ProcMacro)
+        || !tcx.dep_graph.is_fully_enabled()
+    {
+        return None;
+    }
+
+    let work_product =
+        tcx.dep_graph.previous_work_product(&WorkProductId::from_cgu_name("metadata"))?;
+    let session_directory = &tcx.incr_comp_session?.session_directory;
+    let metadata_path = session_directory.join(work_product.saved_files.get("rmeta")?);
+    let prefix_work_product = tcx.dep_graph.previous_work_product(
+        &WorkProductId::from_cgu_name(EncodedMetadata::PREFIX_WORK_PRODUCT_NAME),
+    )?;
+    let manifest_path = session_directory
+        .join(prefix_work_product.saved_files.get(EncodedMetadata::PREFIX_MANIFEST_EXTENSION)?);
+    let changed_dep_node = DepNode::construct(tcx, DepKind::crate_hash, &LOCAL_CRATE);
+    let dependencies =
+        tcx.dep_graph.previous_dependencies_except_red(&metadata_dep_node, &changed_dep_node)?;
+    let manifest = MetadataPrefixManifest::load(&manifest_path)?;
+    let file = File::open(metadata_path).ok()?;
+    // SAFETY: The previous work-product remains immutable; replacement metadata is written to a
+    // freshly created inode and atomically renamed only after encoding completes.
+    let previous_metadata = unsafe { Mmap::map(file).ok()? };
+    if manifest.metadata_len != previous_metadata.len()
+        || manifest.metadata_fingerprint != metadata_fingerprint(&previous_metadata)
+        || manifest.stable_crate_id != tcx.stable_crate_id(LOCAL_CRATE).as_u64()
+        || manifest.prefix_position < METADATA_HEADER.len() + 8
+        || manifest.prefix_position > previous_metadata.len()
+        || manifest.protected_spans.iter().any(|span| !span.unchanged(tcx))
+    {
+        return None;
+    }
+
+    let source_files = tcx.sess.source_map().files();
+    let mut required_source_files = FxIndexSet::default();
+    for (source_file_id, previous_layout) in &manifest.source_files {
+        let (index, source_file) = source_files
+            .iter()
+            .enumerate()
+            .find(|(_, source_file)| source_file.stable_id == *source_file_id)?;
+        if source_file.is_imported()
+            || source_file_layout_fingerprint(source_file) != *previous_layout
+            || !required_source_files.insert(index)
+        {
+            return None;
+        }
+    }
+    drop(source_files);
+
+    let metadata = MetadataBlob::new(slice_owned(previous_metadata, Deref::deref)).ok()?;
+    metadata.check_compatibility(tcx.sess.cfg_version).ok()?;
+    let mut version_encoder = opaque::mem_encoder::MemEncoder::new();
+    rustc_version(tcx.sess.cfg_version).encode(&mut version_encoder);
+    if manifest.prefix_position < METADATA_HEADER.len() + 8 + version_encoder.position() {
+        return None;
+    }
+    let mut previous_root = metadata.get_root();
+    let current_private_hash = tcx.crate_hash(LOCAL_CRATE);
+    if previous_root.header.hashes.private_hash == current_private_hash
+        || !previous_root.public_api_hash_opt_enabled
+        || previous_root.source_map.len != manifest.source_files.len()
+        || previous_root.extra_filename != tcx.sess.opts.cg.extra_filename
+        || !previous_root
+            .decode_target_modifiers(&metadata)
+            .eq(tcx.sess.opts.gather_target_modifiers())
+        || !previous_root
+            .decode_denied_partial_mitigations(&metadata)
+            .eq(tcx.sess.gather_enabled_denied_partial_mitigations())
+    {
+        return None;
+    }
+    let previous_rdr_hashes = previous_root.rdr_hashes.take()?;
+    let table_in_bounds = |position: usize, width: usize, length: usize| {
+        width
+            .checked_mul(length)
+            .and_then(|length| position.checked_add(length))
+            .is_some_and(|end| position >= manifest.prefix_position && end <= metadata.len())
+    };
+    if !table_in_bounds(
+        previous_rdr_hashes.local.position.get(),
+        previous_rdr_hashes.local.width,
+        previous_rdr_hashes.local.len,
+    ) || !table_in_bounds(
+        previous_rdr_hashes.expn.position.get(),
+        previous_rdr_hashes.expn.width,
+        previous_rdr_hashes.expn.len,
+    ) {
+        return None;
+    }
+
+    let (definition_span_count, definition_span_fingerprint) =
+        metadata_definition_span_fingerprint(tcx);
+    if manifest.definition_span_count != definition_span_count
+        || manifest.definition_span_fingerprint != definition_span_fingerprint
+    {
+        return None;
+    }
+    let output_directory = path.parent()?;
+    let temporary_file = tempfile::Builder::new()
+        .prefix(".ohm-metadata-prefix-")
+        .tempfile_in(output_directory)
+        .ok()?;
+    let prefix_position = manifest.prefix_position;
+    with_encode_metadata_header::<DefPathHashDefIdEncoder<'_>>(
+        tcx,
+        temporary_file.path(),
+        move |ecx| {
+            let preamble = ecx.position();
+            ecx.emit_raw_bytes(&metadata[preamble..prefix_position]);
+            ecx.required_source_files = Some(required_source_files);
+            ecx.metadata_prefix_manifest = Some(MetadataPrefixManifestBuilder {
+                manifest,
+                protected_span_keys: FxIndexSet::default(),
+                definition_span_hasher: StableHasher::new(),
+            });
+
+            previous_root.source_map = ecx.encode_source_map().0;
+            tcx.with_stable_hashing_context(|hcx| {
+                let mut hcx = DefPathHashDefIdEncoder::public_api_hasher(hcx);
+                previous_root.target_modifiers = ecx.encode_target_modifiers(&mut hcx).value;
+                previous_root.denied_partial_mitigations =
+                    ecx.encode_enabled_denied_partial_mitigations(&mut hcx).value;
+            });
+            previous_root.rdr_hashes = Some(ItemPublicHashes {
+                local: relocate_metadata_table(ecx, &metadata, previous_rdr_hashes.local),
+                expn: relocate_metadata_table(ecx, &metadata, previous_rdr_hashes.expn),
+                public_global_hash: previous_rdr_hashes.public_global_hash,
+            });
+            previous_root.header.hashes.private_hash = current_private_hash;
+            let root: LazyValue<CrateRoot> = ecx.lazy(previous_root);
+            root.position.get()
+        },
+    );
+    temporary_file.persist(path).ok()?;
+
+    // Keep the original dependency closure and ordering, including the current private hash.
+    tcx.dep_graph.with_task(
+        metadata_dep_node,
+        tcx,
+        || {
+            for dependency in dependencies {
+                if let Some(dependency) = dependency {
+                    tcx.dep_graph.read_index(dependency);
+                } else {
+                    let private_hash = tcx.crate_hash(LOCAL_CRATE);
+                    debug_assert_eq!(private_hash, current_private_hash);
+                }
+            }
+        },
+        None,
+    );
+    if let Ok(metadata) = std::fs::metadata(path) {
+        tcx.prof.artifact_size("crate_metadata", "crate_metadata", metadata.len());
+    }
+    debug!(target: "ohm_metadata_reuse", "reused metadata item prefix with a freshly encoded source map");
+    Some(())
+}
+
 #[instrument(level = "trace", skip(tcx))]
 pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
     // Since encoding metadata is not in a query, and nothing is cached,
@@ -3170,6 +3438,10 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
         };
         return;
     };
+
+    if try_reuse_metadata_prefix(tcx, path, ref_path, dep_node).is_some() {
+        return;
+    }
 
     if tcx.sess.opts.jobs.frontend.is_some() {
         // Prefetch some queries used by metadata encoding.
@@ -3256,6 +3528,8 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
         source_file_cache,
         interpret_allocs: Default::default(),
         required_source_files,
+        metadata_prefix_manifest: (M::HASH_PUBLIC_API && tcx.dep_graph.is_fully_enabled())
+            .then(|| MetadataPrefixManifestBuilder::new(tcx)),
         is_proc_macro: tcx.crate_types().contains(&CrateType::ProcMacro),
         hygiene_ctxt: &hygiene_ctxt,
         symbol_index_table: Default::default(),
@@ -3277,6 +3551,19 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
     let file = ecx.opaque.file();
     if let Err(err) = encode_root_position(file, root_position) {
         tcx.dcx().emit_fatal(FailWriteFile { path: ecx.opaque.path(), err });
+    }
+
+    if let Some(mut builder) = ecx.metadata_prefix_manifest.take()
+        && let Ok(file) = File::open(path)
+        // SAFETY: Encoding and root-pointer patching are complete; this invocation owns the
+        // metadata output and the mapping is dropped before any later atomic rename.
+        && let Ok(metadata) = unsafe { Mmap::map(file) }
+    {
+        builder.manifest.metadata_len = metadata.len();
+        builder.manifest.metadata_fingerprint = metadata_fingerprint(&metadata);
+        if let Err(error) = builder.manifest.save(tcx.incr_comp_session) {
+            debug!(target: "ohm_metadata_reuse", ?error, "could not persist metadata prefix manifest");
+        }
     }
 }
 

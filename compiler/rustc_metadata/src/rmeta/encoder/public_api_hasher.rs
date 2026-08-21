@@ -600,6 +600,17 @@ pub(super) fn crate_hashes<'tcx, 'h>(
     let (hcx_mut, def_id_hashes) = hcx.hcx_with_def_id_hashes();
     let public_hashes = build_public_hashes(&graph, def_id_hashes, ecx.tcx, hcx_mut);
 
+    // Reachable span text bypasses query tracking, so preserve its exact value
+    // when reusing the encoded item prefix in a later session.
+    let tcx = ecx.tcx;
+    if let Some(manifest) = &mut ecx.metadata_prefix_manifest
+        && graph.nodes.keys().any(
+            |node| matches!(node, Node::Span(span) if !manifest.capture_protected_span(tcx, *span)),
+        )
+    {
+        ecx.metadata_prefix_manifest = None;
+    }
+
     let mut hasher = StableHasher::default();
     let public_global_hash = stable_hash(hcx.hcx_mut(), root);
     debug!("crate_hashes: public_global_hash = {public_global_hash:?}");
