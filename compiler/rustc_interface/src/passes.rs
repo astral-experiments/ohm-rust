@@ -1007,6 +1007,7 @@ pub fn create_and_enter_global_ctxt<T, F: for<'tcx> FnOnce(TyCtxt<'tcx>) -> T>(
             providers.extern_queries,
             query_result_on_disk_cache,
             incremental,
+            compiler.sess.opts.unstable_opts.public_api_hash,
         ),
         providers.hooks,
         compiler.current_gcx.clone(),
@@ -1293,6 +1294,7 @@ pub(crate) fn start_codegen<'tcx>(
     info!("Pre-codegen\n{:?}", tcx.debug_stats());
 
     rustc_monomorphize::prepare_incremental_monomorphization(tcx);
+    tcx.dcx().abort_if_errors();
 
     let metadata = rustc_metadata::fs::encode_and_write_metadata(tcx);
 
