@@ -4,6 +4,7 @@ use std::{fmt, mem};
 
 use rustc_data_structures::fx::{FxHashMap, FxIndexSet};
 use rustc_data_structures::memmap::Mmap;
+use rustc_data_structures::stable_hash::{StableHash, StableHasher};
 use rustc_data_structures::sync::{HashMapExt, Lock, RwLock};
 use rustc_data_structures::unhash::UnhashMap;
 use rustc_data_structures::unord::{UnordMap, UnordSet};
@@ -579,20 +580,18 @@ impl<'a, 'tcx> SpanDecoder for CacheDecoder<'a, 'tcx> {
 
             let data: ExpnData =
                 self.with_position(pos.to_usize(), |decoder| decode_tagged(decoder, TAG_EXPN_DATA));
-            let expn_id = rustc_span::hygiene::register_local_expn_id(data, hash);
 
-            #[cfg(debug_assertions)]
-            {
-                use rustc_data_structures::stable_hash::{StableHash, StableHasher};
-                let local_hash = self.tcx.with_stable_hashing_context(|mut hcx| {
-                    let mut hasher = StableHasher::new();
-                    expn_id.expn_data().stable_hash(&mut hcx, &mut hasher);
-                    hasher.finish()
-                });
-                debug_assert_eq!(hash.local_hash(), local_hash);
-            }
+            // Another decoder may register this expansion while we decode it. Validate the data
+            // before registration so that the locked identity check can safely reuse its result.
+            // Hashing must stay outside the hygiene lock because parent expansions need that lock.
+            let local_hash = self.tcx.with_stable_hashing_context(|mut hcx| {
+                let mut hasher = StableHasher::new();
+                data.stable_hash(&mut hcx, &mut hasher);
+                hasher.finish()
+            });
+            assert_eq!(hash.local_hash(), local_hash, "invalid cached local expansion data");
 
-            expn_id
+            rustc_span::hygiene::register_local_expn_id(data, hash)
         } else {
             let index_guess = self.foreign_expn_data[&hash];
             self.tcx.expn_hash_to_expn_id(krate, index_guess, hash)
