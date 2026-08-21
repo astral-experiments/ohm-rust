@@ -101,7 +101,7 @@ use std::path::{Path, PathBuf};
 
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_data_structures::fx::{FxIndexMap, FxIndexSet};
-use rustc_data_structures::stable_hash::StableHasher;
+use rustc_data_structures::stable_hash::{StableHasher, ToStableHashKey};
 use rustc_data_structures::sync::par_join;
 use rustc_data_structures::unord::{UnordMap, UnordSet};
 use rustc_hir::LangItem;
@@ -196,6 +196,16 @@ where
             names += &format!("- {}\n", cgu.name());
         }
         bug!("unsorted CGUs:\n{names}");
+    }
+
+    if tcx.sess.opts.unstable_opts.ohm_incremental_mono_partitions {
+        // Inlined-item discovery follows the collector's diagnostic order, but the partition's
+        // structural result must not change when identical call-graph edges are reordered.
+        tcx.with_stable_hashing_context(|mut hcx| {
+            for cgu in &mut codegen_units {
+                cgu.items_mut().sort_by_cached_key(|item, _| item.to_stable_hash_key(&mut hcx));
+            }
+        });
     }
 
     codegen_units

@@ -47,12 +47,17 @@ pub fn query_system<'tcx>(
     extern_providers: ExternProviders,
     on_disk_cache: Option<OnDiskCache>,
     incremental: bool,
-    incremental_mono_partitions: bool,
+    public_api_hash: bool,
+    ohm_incremental_mono_partitions: bool,
 ) -> QuerySystem<'tcx> {
     let mut query_vtables = query_impl::make_query_vtables(incremental);
-    if incremental && incremental_mono_partitions {
+    if incremental && (public_api_hash || ohm_incremental_mono_partitions) {
         query_vtables.items_of_instance.hash_value_fn =
             Some(query_impl::hash_incremental_mono_item_edges);
+    }
+    if incremental && ohm_incremental_mono_partitions {
+        query_vtables.partition_items_of_instance.hash_value_fn =
+            Some(query_impl::hash_partition_mono_item_edges);
     }
 
     QuerySystem {
