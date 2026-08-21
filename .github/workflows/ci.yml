@@ -78,6 +78,11 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/ui/unused-crate-deps
 
+      - name: Run cached hygiene unit tests
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1 compiler/rustc_span --test-args hygiene::tests
+
       - name: Run reduced-dependency-rebuild and monomorphization incremental tests
         if: hashFiles('tests/incremental/rdr/**/*.rs') != ''
         run: >-
@@ -88,6 +93,10 @@ jobs:
           tests/incremental/mono_item_partition_library_body_change.rs
           tests/incremental/mono_item_partition_library_distinct_edges.rs
           tests/incremental/mono_item_partition_stable_merging.rs
+          tests/incremental/mono_item_partition_test_body_change.rs
+          tests/incremental/mono_item_partition_test_changed_edges.rs
+          tests/incremental/mono_item_partition_test_reordered_edges.rs
+          tests/incremental/mono_item_partition_test_unreachable_const.rs
           tests/incremental/mono_item_partition_unreachable_const.rs
           tests/incremental/mono_item_partition_unreachable_const_cached.rs
 
