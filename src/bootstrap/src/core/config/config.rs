@@ -233,6 +233,7 @@ pub(crate) struct Config {
     pub rustdoc_pgo: PgoConfig,
     pub cargo_pgo: PgoConfig,
     pub clippy_pgo: PgoConfig,
+    pub rustfmt_pgo: PgoConfig,
 
     pub stdlib_semver_baseline: Option<String>,
 
@@ -672,10 +673,11 @@ impl Config {
 
         let Pgo {
             rustc: pgo_rustc,
+            llvm: pgo_llvm,
             rustdoc: pgo_rustdoc,
             cargo: pgo_cargo,
             clippy: pgo_clippy,
-            llvm: pgo_llvm,
+            rustfmt: pgo_rustfmt,
         } = toml_pgo.unwrap_or_default();
 
         // Backcompat: flags have priority over config
@@ -732,6 +734,7 @@ impl Config {
         let pgo_rustdoc = init_pgo(pgo_rustdoc, "rustdoc");
         let pgo_cargo = init_pgo(pgo_cargo, "cargo");
         let pgo_clippy = init_pgo(pgo_clippy, "clippy");
+        let pgo_rustfmt = init_pgo(pgo_rustfmt, "rustfmt");
 
         let bootstrap_override_lld = rust_bootstrap_override_lld.unwrap_or_default();
 
@@ -1579,6 +1582,7 @@ NOTE: Please add `--stage 2` to your command line, or if you're sure you want to
             rustc_error_format: flags_rustc_error_format,
             rustdoc_pgo: pgo_rustdoc,
             rustfmt_info,
+            rustfmt_pgo: pgo_rustfmt,
             sanitizers: build_sanitizers.unwrap_or(false),
             save_toolstates: rust_save_toolstates.map(PathBuf::from),
             sde: build_sde.map(PathBuf::from),
