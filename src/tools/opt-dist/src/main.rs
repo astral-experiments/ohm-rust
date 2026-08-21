@@ -10,8 +10,8 @@ use crate::exec::{Bootstrap, cmd};
 use crate::tests::run_tests;
 use crate::timer::Timer;
 use crate::training::{
-    gather_bolt_profiles, gather_llvm_profiles, gather_rustc_profiles, gather_rustdoc_profiles,
-    llvm_benchmarks, rustc_benchmarks,
+    gather_bolt_profiles, gather_clippy_profiles, gather_llvm_profiles, gather_rustc_profiles,
+    gather_rustdoc_profiles, gather_rustfmt_profiles, llvm_benchmarks, rustc_benchmarks,
 };
 use crate::utils::artifact_size::print_binary_sizes;
 use crate::utils::io::{copy_directory, reset_directory};
@@ -236,29 +236,38 @@ fn execute_pipeline(
         copy_rustc_perf(env, &rustc_perf_checkout_dir)
     })?;
 
-    // Stage 1: Build PGO instrumented rustc
+    let optimize_extended_tools = !env.is_fast_try_build();
+
+    // Stage 1: Build PGO instrumented compiler and distribution tools.
     // We use a normal build of LLVM, because gathering PGO profiles for LLVM and `rustc` at the
     // same time can cause issues, because the host and in-tree LLVM versions can diverge.
-    let (rustc_pgo_profile, rustdoc_pgo_profile) =
-        timer.section("Stage 1 (Rustc + rustdoc PGO)", |stage| {
-            let rustc_profile_dir_root = env.artifact_dir().join("rustc-pgo");
+    let (rustc_pgo_profile, rustdoc_pgo_profile, clippy_pgo_profile, rustfmt_pgo_profile) =
+        timer.section("Stage 1 (rustc + rustdoc + cargo + clippy + rustfmt PGO)", |stage| {
+            let rustc_profile_dir = env.artifact_dir().join("rustc-pgo");
+            let rustdoc_profile_dir = env.artifact_dir().join("rustdoc-pgo");
+            let clippy_profile_dir = env.artifact_dir().join("clippy-pgo");
+            let rustfmt_profile_dir = env.artifact_dir().join("rustfmt-pgo");
 
-            stage.section("Build PGO instrumented rustc and LLVM", |section| {
-                // Rustc and rustdoc profiles are gathered together into the same directory, because
-                // they are executed together within a single rustc-perf invocation.
-                // Their profiles are then merged together into a single PGO profile.
+            stage.section("Build PGO instrumented rustc and distribution tools", |section| {
+                // rustc and Cargo are exercised together by rustc-perf and share their profile.
                 let mut builder = Bootstrap::build(env)
                     .with_rustdoc()
                     .with_cargo()
-                    .rustc_pgo_instrument(&rustc_profile_dir_root)
-                    .cargo_pgo_instrument(&rustc_profile_dir_root)
-                    .rustdoc_pgo_instrument(&rustc_profile_dir_root);
+                    .rustc_pgo_instrument(&rustc_profile_dir)
+                    .cargo_pgo_instrument(&rustc_profile_dir)
+                    .rustdoc_pgo_instrument(&rustdoc_profile_dir);
+                if optimize_extended_tools {
+                    builder = builder
+                        .with_clippy()
+                        .with_rustfmt()
+                        .clippy_pgo_instrument(&clippy_profile_dir)
+                        .rustfmt_pgo_instrument(&rustfmt_profile_dir);
+                }
 
                 if env.supports_shared_llvm() {
                     // This first LLVM that we build will be thrown away after this stage, and it
-                    // doesn't really need LTO. Without LTO, it builds in ~1 minute thanks to sccache,
-                    // with LTO it takes almost 10 minutes. It makes the followup Rustc PGO
-                    // instrumented/optimized build a bit slower, but it seems to be worth it.
+                    // doesn't really need LTO. Without LTO, it builds in ~1 minute thanks to
+                    // sccache; with LTO it takes almost 10 minutes.
                     builder = builder.without_llvm_lto();
                 }
 
@@ -266,28 +275,48 @@ fn execute_pipeline(
             })?;
 
             let rustc_profile = stage.section("Gather rustc profiles", |_| {
-                gather_rustc_profiles(env, &rustc_profile_dir_root)
+                gather_rustc_profiles(env, &rustc_profile_dir)
             })?;
             let rustdoc_profile = stage.section("Gather rustdoc profiles", |_| {
-                gather_rustdoc_profiles(env, &rustc_profile_dir_root)
+                gather_rustdoc_profiles(env, &rustdoc_profile_dir)
             })?;
+            let clippy_profile = if optimize_extended_tools {
+                Some(stage.section("Gather clippy profiles", |_| {
+                    gather_clippy_profiles(env, &clippy_profile_dir)
+                })?)
+            } else {
+                None
+            };
+            let rustfmt_profile = if optimize_extended_tools {
+                Some(stage.section("Gather rustfmt profiles", |_| {
+                    gather_rustfmt_profiles(env, &rustfmt_profile_dir)
+                })?)
+            } else {
+                None
+            };
             print_free_disk_space()?;
 
-            stage.section("Build PGO optimized rustc", |section| {
-                let mut cmd = Bootstrap::build(env)
+            stage.section("Build PGO optimized rustc and distribution tools", |section| {
+                let mut command = Bootstrap::build(env)
                     .with_rustdoc()
                     .with_cargo()
                     .rustc_pgo_optimize(&rustc_profile)
                     .cargo_pgo_optimize(&rustc_profile)
                     .rustdoc_pgo_optimize(&rustdoc_profile);
+                if let Some(profile) = clippy_profile.as_ref() {
+                    command = command.with_clippy().clippy_pgo_optimize(profile);
+                }
+                if let Some(profile) = rustfmt_profile.as_ref() {
+                    command = command.with_rustfmt().rustfmt_pgo_optimize(profile);
+                }
                 if env.use_bolt() {
-                    cmd = cmd.with_rustc_bolt_ldflags();
+                    command = command.with_rustc_bolt_ldflags();
                 }
 
-                cmd.run(section)
+                command.run(section)
             })?;
 
-            Ok((rustc_profile, rustdoc_profile))
+            Ok((rustc_profile, rustdoc_profile, clippy_profile, rustfmt_profile))
         })?;
 
     // Stage 2: Gather LLVM PGO profiles
@@ -423,6 +452,12 @@ fn execute_pipeline(
         .rustc_pgo_optimize(&rustc_pgo_profile)
         .cargo_pgo_optimize(&rustc_pgo_profile)
         .rustdoc_pgo_optimize(&rustdoc_pgo_profile);
+    if let Some(profile) = clippy_pgo_profile.as_ref() {
+        dist = dist.clippy_pgo_optimize(profile);
+    }
+    if let Some(profile) = rustfmt_pgo_profile.as_ref() {
+        dist = dist.rustfmt_pgo_optimize(profile);
+    }
 
     // if LLVM is not built we'll have PGO optimized rustc
     dist = if env.supports_shared_llvm() || !env.build_llvm() {
