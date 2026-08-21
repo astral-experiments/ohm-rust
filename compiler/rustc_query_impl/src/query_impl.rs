@@ -1,5 +1,7 @@
 use rustc_data_structures::fingerprint::Fingerprint;
-use rustc_data_structures::stable_hash::{StableHash, StableHashCtxt, StableHasher};
+use rustc_data_structures::stable_hash::{
+    StableHash, StableHashCtxt, StableHasher, ToStableHashKey,
+};
 use rustc_middle::ich::StableHashState;
 use rustc_middle::mono::MonoItem;
 use rustc_middle::queries::TaggedQueryKey;
@@ -34,6 +36,34 @@ impl StableHash for UnspannedMonoItems<'_, '_> {
         for item in self.0 {
             item.node.stable_hash(hcx, hasher);
         }
+    }
+}
+
+/// Hashes only the structural edges relevant to a monomorphization partition.
+///
+/// The underlying query still owns diagnostics and returns its original ordered, spanned edges.
+/// Used and mentioned edges remain separate, and sorting their stable fingerprints preserves
+/// multiplicity while allowing a body edit to reorder otherwise identical call-graph edges.
+pub(crate) fn hash_partition_mono_item_edges<'tcx>(
+    hcx: &mut StableHashState<'_>,
+    erased_value: &Erased<rustc_middle::queries::partition_items_of_instance::Value<'tcx>>,
+) -> Fingerprint {
+    let value = erase::restore_val(*erased_value);
+    let canonical =
+        value.map(|(used, mentioned)| (UnorderedMonoItems(used), UnorderedMonoItems(mentioned)));
+
+    rustc_middle::dep_graph::hash_result(hcx, &canonical)
+}
+
+/// A multiset of mono items, excluding their traversal order and diagnostic spans.
+struct UnorderedMonoItems<'a, 'tcx>(&'a [Spanned<MonoItem<'tcx>>]);
+
+impl StableHash for UnorderedMonoItems<'_, '_> {
+    fn stable_hash<Hcx: StableHashCtxt>(&self, hcx: &mut Hcx, hasher: &mut StableHasher) {
+        let mut fingerprints: Vec<_> =
+            self.0.iter().map(|item| item.node.to_stable_hash_key(hcx)).collect();
+        fingerprints.sort_unstable();
+        fingerprints.stable_hash(hcx, hasher);
     }
 }
 
