@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use build_helper::ci::CiEnv;
 use build_helper::git::PathFreshness;
