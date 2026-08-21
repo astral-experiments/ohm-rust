@@ -80,4 +80,11 @@ impl SearchPath {
     fn new(kind: PathKind, dir: PathBuf) -> Self {
         SearchPath { kind, dir: dir.into() }
     }
+
+    pub(crate) fn should_index_file(kind: PathKind, file_name: &str) -> bool {
+        !matches!(kind, PathKind::Crate | PathKind::Dependency) || !file_name.ends_with(".rcgu.o")
+    }
 }
+
+#[cfg(test)]
+mod tests;

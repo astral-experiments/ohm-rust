@@ -89,7 +89,9 @@ impl FileSearch {
                 let filename = entry.file_name();
                 let filename = filename.to_str()?;
 
-                if !prefixes.iter().any(|prefix| filename.starts_with(prefix)) {
+                if !SearchPath::should_index_file(search_path.kind, filename)
+                    || !prefixes.iter().any(|prefix| filename.starts_with(prefix))
+                {
                     return None;
                 }
                 Some(FileSearchCandidate {
