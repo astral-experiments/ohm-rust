@@ -1,6 +1,10 @@
+use std::mem::size_of;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
+use rustc_data_structures::memmap::Mmap;
+use rustc_data_structures::owned_slice::slice_owned;
 use rustc_data_structures::temp_dir::MaybeTempDir;
 use rustc_fs_util::TempDirBuilder;
 use rustc_middle::ty::TyCtxt;
@@ -12,7 +16,8 @@ use crate::diagnostics::{
     BinaryOutputToTty, FailedCopyToStdout, FailedCreateEncodedMetadata, FailedCreateFile,
     FailedCreateTempdir, FailedWriteError,
 };
-use crate::{EncodedMetadata, encode_metadata};
+use crate::rmeta::MetadataBlob;
+use crate::{EncodedMetadata, METADATA_HEADER, encode_metadata};
 
 // FIXME(eddyb) maybe include the crate name in this?
 pub const METADATA_FILENAME: &str = "lib.rmeta";
@@ -93,13 +98,13 @@ pub fn encode_and_write_metadata(tcx: TyCtxt<'_>) -> EncodedMetadata {
                 metadata_filename
             }
         };
-        if tcx.sess.opts.json_artifact_notifications {
-            tcx.dcx().emit_artifact_notification(out_filename.as_path(), "metadata");
-        }
         (filename, None)
     } else {
         (metadata_filename, Some(metadata_tmpdir))
     };
+
+    let public_api_hash_path =
+        tcx.sess.opts.unstable_opts.public_api_hash.then(|| metadata_filename.clone());
 
     // Load metadata back to memory: codegen may need to include it in object files.
     let metadata =
@@ -108,7 +113,35 @@ pub fn encode_and_write_metadata(tcx: TyCtxt<'_>) -> EncodedMetadata {
                 tcx.dcx().emit_fatal(FailedCreateEncodedMetadata { err });
             });
 
+    if need_metadata_file && tcx.sess.opts.json_artifact_notifications {
+        let public_api_hash = public_api_hash_path
+            .as_deref()
+            .and_then(|path| recover_public_api_hash(path, tcx.sess.cfg_version));
+        tcx.dcx().emit_metadata_artifact_notification(
+            out_filename.as_path(),
+            public_api_hash.as_deref(),
+        );
+    }
+
     metadata
+}
+
+/// Recovers the public API hash from the metadata file that was actually written.
+///
+/// Reading the completed file, instead of returning the freshly computed hash from the encoder,
+/// also covers the incremental path that copies a green metadata work product.
+fn recover_public_api_hash(path: &Path, cfg_version: &'static str) -> Option<String> {
+    let file = fs::File::open(path).ok()?;
+    // SAFETY: `path` names the completed metadata file owned by this compiler invocation. We only
+    // read through the mapping and keep the file-backed mapping alive in `MetadataBlob`.
+    let mmap = unsafe { Mmap::map(file).ok()? };
+    if mmap.len() < METADATA_HEADER.len() + size_of::<u64>() || !mmap.starts_with(METADATA_HEADER) {
+        return None;
+    }
+
+    let metadata = MetadataBlob::new(slice_owned(mmap, Deref::deref)).ok()?;
+    metadata.check_compatibility(cfg_version).ok()?;
+    Some(metadata.get_header().hashes.public_hash.to_hex())
 }
 
 #[cfg(not(target_os = "linux"))]
