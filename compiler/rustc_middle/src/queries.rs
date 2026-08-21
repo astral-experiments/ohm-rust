@@ -2797,6 +2797,24 @@ rustc_queries! {
         separate_provide_extern
     }
 
+    /// The monomorphization roots, isolated from the always-dirty HIR item list.
+    query collect_mono_item_roots(_: ()) -> &'tcx [MonoItem<'tcx>] {
+        desc { "collecting monomorphization roots" }
+    }
+
+    query incremental_mono_item_partitions(_: ()) -> MonoItemPartitions<'tcx> {
+        cache_on_disk
+        desc { "collecting and partitioning monomorphizations incrementally" }
+    }
+
+    /// Tracks partitioning options that are intentionally excluded from the incremental
+    /// session hash. The result contains the effective codegen-unit count and whether it
+    /// was explicitly specified.
+    query mono_item_partitioning_config(_: ()) -> (usize, bool) {
+        eval_always
+        desc { "tracking monomorphization partitioning configuration" }
+    }
+
     //-----------------------------------------------------------------------------
     // "Non-queries" are special dep kinds that are not queries.
     //-----------------------------------------------------------------------------
