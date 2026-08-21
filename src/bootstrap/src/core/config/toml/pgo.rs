@@ -27,6 +27,7 @@ define_config! {
         rustdoc: Option<PgoConfig> = "rustdoc",
         cargo: Option<PgoConfig> = "cargo",
         clippy: Option<PgoConfig> = "clippy",
+        rustfmt: Option<PgoConfig> = "rustfmt",
         llvm: Option<PgoConfig> = "llvm",
     }
 }
