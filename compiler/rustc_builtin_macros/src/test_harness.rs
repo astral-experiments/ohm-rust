@@ -39,6 +39,7 @@ struct TestCtxt<'a> {
     test_cases: Vec<Test>,
     reexport_test_harness_main: Option<Symbol>,
     test_runner: Option<ast::Path>,
+    custom_test_frameworks_enabled: bool,
 }
 
 /// Traverse the crate, collecting all the test functions, eliding any
@@ -253,6 +254,7 @@ fn generate_test_harness(
         test_cases: Vec::new(),
         reexport_test_harness_main,
         test_runner,
+        custom_test_frameworks_enabled: features.custom_test_frameworks() || features.rustc_attrs(),
     };
 
     TestHarnessGenerator { cx, tests: Vec::new() }.visit_crate(krate);
@@ -293,8 +295,13 @@ fn mk_main(cx: &mut TestCtxt<'_>) -> Box<ast::Item> {
     let ecx = &cx.ext_cx;
     let test_ident = Ident::new(sym::test, sp);
 
-    let runner_name =
-        if cx.panic_strategy.unwinds() { "test_main_static" } else { "test_main_static_abort" };
+    let focused_filter = focused_test_filter(cx);
+    let runner_name = match (cx.panic_strategy.unwinds(), focused_filter.is_some()) {
+        (true, false) => "test_main_static",
+        (true, true) => "test_main_static_focused",
+        (false, false) => "test_main_static_abort",
+        (false, true) => "test_main_static_abort_focused",
+    };
 
     // test::test_main_static(...)
     let mut test_runner = cx.test_runner.clone().unwrap_or_else(|| {
@@ -304,7 +311,11 @@ fn mk_main(cx: &mut TestCtxt<'_>) -> Box<ast::Item> {
     test_runner.span = sp;
 
     let test_main_path_expr = ecx.expr_path(test_runner);
-    let call_test_main = ecx.expr_call(sp, test_main_path_expr, thin_vec![mk_tests_slice(cx, sp)]);
+    let mut test_runner_arguments = thin_vec![mk_tests_slice(cx, sp)];
+    if let Some(filter) = focused_filter {
+        test_runner_arguments.push(ecx.expr_str(sp, Symbol::intern(filter)));
+    }
+    let call_test_main = ecx.expr_call(sp, test_main_path_expr, test_runner_arguments);
     let call_test_main = ecx.stmt_expr(call_test_main);
 
     // extern crate test
@@ -365,18 +376,36 @@ fn mk_main(cx: &mut TestCtxt<'_>) -> Box<ast::Item> {
     cx.ext_cx.monotonic_expander().fully_expand_fragment(main).make_items().pop().unwrap()
 }
 
-/// Creates a slice containing every test like so:
+/// Returns the explicit focus only for ordinary built-in test descriptors.
+fn focused_test_filter<'a>(cx: &'a TestCtxt<'_>) -> Option<&'a str> {
+    if cx.test_runner.is_none()
+        && cx.reexport_test_harness_main.is_none()
+        && !cx.custom_test_frameworks_enabled
+        && !cx.ext_cx.sess.instrument_coverage()
+    {
+        cx.ext_cx.sess.opts.unstable_opts.test_harness_filter.as_deref()
+    } else {
+        None
+    }
+}
+
+/// Creates a slice containing each selected test like so:
 /// &[&test1, &test2]
 fn mk_tests_slice(cx: &TestCtxt<'_>, sp: Span) -> Box<ast::Expr> {
     debug!("building test vector from {} tests", cx.test_cases.len());
     let ecx = &cx.ext_cx;
+    let filter = focused_test_filter(cx);
 
     let mut tests = cx.test_cases.clone();
+    if let Some(filter) = filter {
+        tests.retain(|test| test.name.as_str() == filter);
+    }
+
     // Note that this sort is load-bearing: the libtest harness uses binary search to find tests by
     // name.
     tests.sort_by(|a, b| a.name.as_str().cmp(b.name.as_str()));
 
-    ecx.expr_array_ref(
+    let selected_tests = ecx.expr_array_ref(
         sp,
         tests
             .iter()
@@ -384,7 +413,55 @@ fn mk_tests_slice(cx: &TestCtxt<'_>, sp: Span) -> Box<ast::Expr> {
                 ecx.expr_addr_of(test.span, ecx.expr_path(ecx.path(test.span, vec![test.ident])))
             })
             .collect(),
-    )
+    );
+
+    if let Some(filter) = filter
+        && tests.len() != cx.test_cases.len()
+    {
+        // Keep every test live for HIR-based dead-code analysis without making its descriptor a
+        // monomorphization root. MIR simplifies this constant-false branch before code generation.
+        let unselected_tests = ecx.expr_array_ref(
+            sp,
+            cx.test_cases
+                .iter()
+                .filter(|test| test.name.as_str() != filter)
+                .map(|test| {
+                    ecx.expr_addr_of(
+                        test.span,
+                        ecx.expr_path(ecx.path(test.span, vec![test.ident])),
+                    )
+                })
+                .collect(),
+        );
+        let discard_unselected_tests = ecx.stmt_local(
+            Box::new(ast::Local {
+                id: ast::DUMMY_NODE_ID,
+                super_: None,
+                pat: Box::new(ecx.pat_wild(sp)),
+                ty: None,
+                kind: ast::LocalKind::Init(unselected_tests),
+                span: sp,
+                colon_sp: None,
+                attrs: ast::AttrVec::new(),
+                tokens: None,
+            }),
+            sp,
+        );
+        let preserve_liveness = ecx.expr_if(
+            sp,
+            ecx.expr_bool(sp, false),
+            ecx.expr_block(ecx.block(sp, thin_vec![discard_unselected_tests])),
+            None,
+        );
+        ecx.expr_block(
+            ecx.block(
+                sp,
+                thin_vec![ecx.stmt_semi(preserve_liveness), ecx.stmt_expr(selected_tests)],
+            ),
+        )
+    } else {
+        selected_tests
+    }
 }
 
 fn get_test_name(i: &ast::Item) -> Option<Symbol> {
