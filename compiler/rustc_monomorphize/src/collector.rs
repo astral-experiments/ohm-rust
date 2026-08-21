@@ -239,6 +239,7 @@ use crate::diagnostics::{
     self, EncounteredErrorWhileInstantiating, EncounteredErrorWhileInstantiatingGlobalAsm,
     NoOptimizedMir, RecursionLimit,
 };
+use crate::items_of_instance_for_partitioning;
 
 #[derive(PartialEq)]
 pub(crate) enum MonoItemCollectionStrategy {
@@ -471,24 +472,27 @@ fn collect_items_rec<'tcx>(
                 recursion_limit,
             ));
 
-            let Ok((used, mentioned)) = tcx.items_of_instance((instance, mode)) else {
-                // Normalization errors here are usually due to trait solving overflow.
-                // FIXME: I assume that there are few type errors at post-analysis stage, but not
-                // entirely sure.
-                // We have to emit the error outside of `items_of_instance` to access the
-                // span of the `starting_item`.
-                let def_id = instance.def_id();
-                let def_span = tcx.def_span(def_id);
-                let def_path_str = tcx.def_path_str(def_id);
-                tcx.dcx().emit_fatal(RecursionLimit {
-                    span: starting_item.span,
-                    instance,
-                    def_span,
-                    def_path_str,
-                });
-            };
-            used_items.extend(used.into_iter().copied());
-            mentioned_items.extend(mentioned.into_iter().copied());
+            {
+                let Ok((used, mentioned)) = items_of_instance_for_partitioning(tcx, instance, mode)
+                else {
+                    // Normalization errors here are usually due to trait solving overflow.
+                    // FIXME: I assume that there are few type errors at post-analysis stage, but not
+                    // entirely sure.
+                    // We have to emit the error outside of `items_of_instance` to access the
+                    // span of the `starting_item`.
+                    let def_id = instance.def_id();
+                    let def_span = tcx.def_span(def_id);
+                    let def_path_str = tcx.def_path_str(def_id);
+                    tcx.dcx().emit_fatal(RecursionLimit {
+                        span: starting_item.span,
+                        instance,
+                        def_span,
+                        def_path_str,
+                    });
+                };
+                used_items.extend(used.into_iter().copied());
+                mentioned_items.extend(mentioned.into_iter().copied());
+            }
         }
         MonoItem::GlobalAsm(item_id) => {
             assert!(
@@ -1969,4 +1973,5 @@ pub(crate) fn provide(providers: &mut Providers) {
     providers.hooks.should_codegen_locally = should_codegen_locally;
     providers.queries.collect_mono_item_roots = collect_mono_item_roots;
     providers.queries.items_of_instance = items_of_instance;
+    providers.queries.partition_items_of_instance = |tcx, key| tcx.items_of_instance(key);
 }
