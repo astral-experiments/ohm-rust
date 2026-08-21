@@ -18,7 +18,8 @@ use crate::core::build_steps::toolstate::ToolState;
 use crate::core::build_steps::{compile, llvm};
 use crate::core::builder;
 use crate::core::builder::{
-    Builder, Cargo as CargoCommand, RunConfig, ShouldRun, Step, StepMetadata, cargo_profile_var,
+    Builder, Cargo as CargoCommand, RunConfig, ShouldRun, Step, StepMetadata, apply_pgo,
+    cargo_profile_var,
 };
 use crate::core::config::{DebuginfoLevel, RustcLto, TargetSelection};
 use crate::utils::exec::{BootstrapCommand, command};
@@ -135,6 +136,17 @@ impl Step for ToolBuild {
             if let Some(lto) = lto {
                 cargo.env(cargo_profile_var("LTO", &builder.config, self.mode), lto);
             }
+        }
+
+        let pgo_config = match self.path {
+            "src/tools/rustdoc" => Some(&builder.config.rustdoc_pgo),
+            "src/tools/cargo" => Some(&builder.config.cargo_pgo),
+            "src/tools/clippy" => Some(&builder.config.clippy_pgo),
+            "src/tools/rustfmt" => Some(&builder.config.rustfmt_pgo),
+            _ => None,
+        };
+        if let Some(pgo_config) = pgo_config {
+            apply_pgo(builder, &mut cargo, self.build_compiler, pgo_config);
         }
 
         if !self.allow_features.is_empty() {
