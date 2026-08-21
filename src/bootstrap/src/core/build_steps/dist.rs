@@ -3094,16 +3094,18 @@ impl CommandLineStep for ReproducibleArtifacts {
     fn run(self, builder: &Builder<'_>) -> Self::Output {
         let mut added_anything = false;
         let tarball = Tarball::new(builder, "reproducible-artifacts", &self.target.triple);
-
-        let pgo_profiles = [
+        let profiles = [
             &builder.config.rust_pgo.use_profile,
             &builder.config.llvm_pgo.use_profile,
             &builder.config.rustdoc_pgo.use_profile,
             &builder.config.cargo_pgo.use_profile,
+            &builder.config.clippy_pgo.use_profile,
+            &builder.config.rustfmt_pgo.use_profile,
         ];
-        for profile in pgo_profiles {
-            if let Some(path) = profile.as_ref() {
-                tarball.add_file(path, ".", FileType::Regular);
+        let mut included_profiles = HashSet::new();
+        for profile in profiles.into_iter().flatten() {
+            if included_profiles.insert(profile) {
+                tarball.add_file(profile, ".", FileType::Regular);
                 added_anything = true;
             }
         }
