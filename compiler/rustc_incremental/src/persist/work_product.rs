@@ -3,6 +3,7 @@
 //! [work products]: WorkProduct
 
 use std::fs as std_fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use rustc_data_structures::unord::UnordMap;
@@ -64,7 +65,9 @@ pub(crate) fn delete_workproduct_files(
 ) {
     for (_, path) in work_product.saved_files.items().into_sorted_stable_ord() {
         let path = in_incr_comp_dir_sess(incr_comp_session, path);
-        if let Err(err) = std_fs::remove_file(&path) {
+        if let Err(err) = std_fs::remove_file(&path)
+            && err.kind() != ErrorKind::NotFound
+        {
             sess.dcx().emit_warn(diagnostics::DeleteWorkProduct { path: &path, err });
         }
     }
