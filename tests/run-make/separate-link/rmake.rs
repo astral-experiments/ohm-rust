@@ -11,4 +11,16 @@ fn main() {
     rustc().stdin_buf(b"fn main(){}").arg("-Zno-link").arg("-").run();
     rustc().arg("-Zlink-only").input("rust_out.rlink").run();
     run("rust_out");
+
+    rustc()
+        .stdin_buf(b"fn main(){}")
+        .arg("-Zemit-rlink")
+        .arg("-Csave-temps=yes")
+        .arg("-o")
+        .arg("simultaneous")
+        .arg("-")
+        .run();
+    run("simultaneous");
+    rustc().arg("-Zlink-only").input("simultaneous.rlink").run();
+    run("simultaneous");
 }
