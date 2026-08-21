@@ -636,4 +636,9 @@ pub const CONFIG_CHANGE_HISTORY: &[ChangeInfo] = &[
         severity: ChangeSeverity::Info,
         summary: "New option `rust.compress-debuginfo` allows configuring whether Rust and C/C++ debuginfo should be compressed.",
     },
+    ChangeInfo {
+        change_id: 158912,
+        severity: ChangeSeverity::Info,
+        summary: "New `pgo` configuration sections control component-specific profile-guided optimization. Legacy rust and LLVM PGO flags remain supported but are deprecated.",
+    },
 ];

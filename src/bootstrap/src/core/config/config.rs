@@ -41,6 +41,7 @@ use crate::core::config::toml::dist::Dist;
 use crate::core::config::toml::gcc::Gcc;
 use crate::core::config::toml::install::Install;
 use crate::core::config::toml::llvm::Llvm;
+use crate::core::config::toml::pgo::{Pgo, PgoConfig};
 use crate::core::config::toml::rust::{
     BootstrapOverrideLld, Rust, RustOptimize, check_incompatible_options_for_ci_rustc,
     parse_codegen_backends,
@@ -190,6 +191,7 @@ pub struct Config {
     pub llvm_cxxflags: Option<String>,
     pub llvm_ldflags: Option<String>,
     pub llvm_use_libcxx: bool,
+    pub llvm_pgo: LlvmPgoConfig,
 
     // gcc codegen options
     pub gcc_ci_mode: GccCiMode,
@@ -225,17 +227,18 @@ pub struct Config {
     pub rust_remap_debuginfo: bool,
     pub rust_new_symbol_mangling: Option<bool>,
     pub rust_annotate_moves_size_limit: Option<u64>,
-    pub rust_profile_use: Option<String>,
-    pub rust_profile_generate: Option<String>,
     pub rust_lto: RustcLto,
     pub rust_validate_mir_opts: Option<u32>,
     pub rust_std_features: BTreeSet<String>,
     pub rust_break_on_ice: bool,
     pub rust_parallel_frontend_threads: Option<u32>,
     pub rust_rustflags: Vec<String>,
+    pub rust_pgo: PgoConfig,
+    pub rustdoc_pgo: PgoConfig,
+    pub cargo_pgo: PgoConfig,
+    pub clippy_pgo: PgoConfig,
+    pub rustfmt_pgo: PgoConfig,
 
-    pub llvm_profile_use: Option<String>,
-    pub llvm_profile_generate: bool,
     pub llvm_libunwind_default: Option<LlvmLibunwind>,
     pub enable_bolt_settings: bool,
 
@@ -643,6 +646,70 @@ impl Config {
             download_ci_gcc: gcc_download_ci_gcc,
             libgccjit_libs_dir: gcc_libgccjit_libs_dir,
         } = toml.gcc.unwrap_or_default();
+
+        let Pgo {
+            rustc: pgo_rustc,
+            rustdoc: pgo_rustdoc,
+            cargo: pgo_cargo,
+            clippy: pgo_clippy,
+            rustfmt: pgo_rustfmt,
+            llvm: pgo_llvm,
+        } = toml.pgo.unwrap_or_default();
+
+        if flags_rust_profile_use.is_some() || flags_rust_profile_generate.is_some() {
+            eprintln!(
+                "WARNING: the `--rust-profile-generate` and `--rust-profile-use` flags have been deprecated. Configure PGO in the [pgo.rustc] section instead."
+            );
+        }
+        if rust_profile_use.is_some() || rust_profile_generate.is_some() {
+            eprintln!(
+                "WARNING: the `rust.profile-generate` and `rust.profile-use` config options have been deprecated. Configure PGO in the [pgo.rustc] section instead."
+            );
+        }
+        if flags_llvm_profile_use.is_some() || flags_llvm_profile_generate {
+            eprintln!(
+                "WARNING: the `--llvm-profile-generate` and `--llvm-profile-use` flags have been deprecated. Configure PGO in the [pgo.llvm] section instead."
+            );
+        }
+
+        let mut pgo_rustc = pgo_rustc.unwrap_or_default();
+        pgo_rustc.use_profile =
+            flags_rust_profile_use.or(pgo_rustc.use_profile).or(rust_profile_use);
+        pgo_rustc.generate_profile =
+            flags_rust_profile_generate.or(pgo_rustc.generate_profile).or(rust_profile_generate);
+        if pgo_rustc.use_profile.is_some() && pgo_rustc.generate_profile.is_some() {
+            panic!("Cannot use and generate rust PGO profiles at the same time");
+        }
+
+        let pgo_llvm = pgo_llvm.unwrap_or_default();
+        let pgo_llvm = LlvmPgoConfig {
+            use_profile: flags_llvm_profile_use.or(pgo_llvm.use_profile),
+            generate_profile: if flags_llvm_profile_generate {
+                Some(if let Ok(profile_directory) = env::var("LLVM_PROFILE_DIR") {
+                    LlvmPgoGenerationMode::Directory(PathBuf::from(profile_directory))
+                } else {
+                    LlvmPgoGenerationMode::Implicit
+                })
+            } else {
+                pgo_llvm.generate_profile.map(LlvmPgoGenerationMode::Directory)
+            },
+        };
+        if pgo_llvm.use_profile.is_some() && pgo_llvm.generate_profile.is_some() {
+            panic!("Cannot use and generate LLVM PGO profiles at the same time");
+        }
+
+        let init_pgo = |pgo: Option<PgoConfig>, name: &str| {
+            let config = pgo.unwrap_or_default();
+            if config.use_profile.is_some() && config.generate_profile.is_some() {
+                panic!("Cannot use and generate {name} PGO profiles at the same time");
+            }
+            config
+        };
+
+        let pgo_rustdoc = init_pgo(pgo_rustdoc, "rustdoc");
+        let pgo_cargo = init_pgo(pgo_cargo, "cargo");
+        let pgo_clippy = init_pgo(pgo_clippy, "clippy");
+        let pgo_rustfmt = init_pgo(pgo_rustfmt, "rustfmt");
 
         if rust_bootstrap_override_lld.is_some() && rust_bootstrap_override_lld_legacy.is_some() {
             panic!(
@@ -1336,11 +1403,13 @@ NOTE: Please add `--stage 2` to your command line, or if you're sure you want to
             bypass_bootstrap_lock: flags_bypass_bootstrap_lock,
             cargo_info,
             cargo_native_static: build_cargo_native_static.unwrap_or(false),
+            cargo_pgo: pgo_cargo,
             ccache,
             change_id: toml.change_id.inner,
             channel,
             ci_env,
             clippy_info,
+            clippy_pgo: pgo_clippy,
             cmd: flags_cmd,
             codegen_tests: rust_codegen_tests.unwrap_or(true),
             color: flags_color,
@@ -1428,10 +1497,9 @@ NOTE: Please add `--stage 2` to your command line, or if you're sure you want to
             ),
             llvm_offload: llvm_offload.unwrap_or(false),
             llvm_optimize: llvm_optimize.unwrap_or(true),
+            llvm_pgo: pgo_llvm,
             llvm_plugins: llvm_plugin.unwrap_or(false),
             llvm_polly: llvm_polly.unwrap_or(false),
-            llvm_profile_generate: flags_llvm_profile_generate,
-            llvm_profile_use: flags_llvm_profile_use,
             llvm_release_debuginfo: llvm_release_debuginfo.unwrap_or(false),
             llvm_static_stdcpp: llvm_static_libstdcpp.unwrap_or(false),
             llvm_targets,
@@ -1496,8 +1564,7 @@ NOTE: Please add `--stage 2` to your command line, or if you're sure you want to
                 .or(rust_overflow_checks)
                 .unwrap_or(rust_debug == Some(true)),
             rust_parallel_frontend_threads: rust_parallel_frontend_threads.map(threads_from_config),
-            rust_profile_generate: flags_rust_profile_generate.or(rust_profile_generate),
-            rust_profile_use: flags_rust_profile_use.or(rust_profile_use),
+            rust_pgo: pgo_rustc,
             rust_randomize_layout: rust_randomize_layout.unwrap_or(false),
             rust_remap_debuginfo: rust_remap_debuginfo.unwrap_or(false),
             rust_rpath: rust_rpath.unwrap_or(true),
@@ -1512,7 +1579,9 @@ NOTE: Please add `--stage 2` to your command line, or if you're sure you want to
             rustc_debug_assertions: rust_rustc_debug_assertions.unwrap_or(rust_debug == Some(true)),
             rustc_default_linker: rust_default_linker,
             rustc_error_format: flags_rustc_error_format,
+            rustdoc_pgo: pgo_rustdoc,
             rustfmt_info,
+            rustfmt_pgo: pgo_rustfmt,
             sanitizers: build_sanitizers.unwrap_or(false),
             save_toolstates: rust_save_toolstates.map(PathBuf::from),
             skip,
@@ -2028,6 +2097,20 @@ fn compute_src_directory(src_dir: Option<PathBuf>, exec_ctx: &ExecutionContext) 
         }
     };
     None
+}
+
+#[derive(Clone)]
+pub enum LlvmPgoGenerationMode {
+    /// Write profiles to LLVM's default instrumentation output.
+    Implicit,
+    /// Write profiles to the configured directory or profile pattern.
+    Directory(PathBuf),
+}
+
+#[derive(Clone)]
+pub struct LlvmPgoConfig {
+    pub use_profile: Option<PathBuf>,
+    pub generate_profile: Option<LlvmPgoGenerationMode>,
 }
 
 /// Loads bootstrap TOML config and returns the config together with a path from where
