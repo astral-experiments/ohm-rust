@@ -33,7 +33,6 @@ use pgo::Pgo;
 use rust::Rust;
 use target::TomlTarget;
 
-use crate::core::config::toml::pgo::Pgo;
 use crate::core::config::{Config, Merge, ReplaceOpt};
 use crate::utils::change_tracker::{find_recent_config_change_ids, human_readable_changes};
 use crate::utils::helpers::{self, t};
