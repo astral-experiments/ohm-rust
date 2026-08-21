@@ -2214,21 +2214,31 @@ pub enum JsonUnusedExterns {
     Silent,
     /// Report, and also exit with failure status for deny/forbid
     Loud,
+    /// Report without changing the normal unused-crate-dependency lint behavior.
+    Transparent,
 }
 
 impl JsonUnusedExterns {
     pub fn is_enabled(&self) -> bool {
         match self {
             JsonUnusedExterns::No => false,
-            JsonUnusedExterns::Loud | JsonUnusedExterns::Silent => true,
+            JsonUnusedExterns::Loud
+            | JsonUnusedExterns::Silent
+            | JsonUnusedExterns::Transparent => true,
         }
     }
 
     pub fn is_loud(&self) -> bool {
         match self {
-            JsonUnusedExterns::No | JsonUnusedExterns::Silent => false,
+            JsonUnusedExterns::No | JsonUnusedExterns::Silent | JsonUnusedExterns::Transparent => {
+                false
+            }
             JsonUnusedExterns::Loud => true,
         }
+    }
+
+    pub fn is_transparent(&self) -> bool {
+        matches!(self, JsonUnusedExterns::Transparent)
     }
 }
 
@@ -2264,6 +2274,9 @@ pub fn parse_json(early_dcx: &EarlyDiagCtxt, matches: &getopts::Matches) -> Json
                 "timings" => json_timings = true,
                 "unused-externs" => json_unused_externs = JsonUnusedExterns::Loud,
                 "unused-externs-silent" => json_unused_externs = JsonUnusedExterns::Silent,
+                "unused-externs-transparent" => {
+                    json_unused_externs = JsonUnusedExterns::Transparent;
+                }
                 "future-incompat" => json_future_incompat = true,
                 s => early_dcx.early_fatal(format!("unknown `--json` option `{s}`")),
             }
