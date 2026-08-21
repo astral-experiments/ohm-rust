@@ -102,7 +102,7 @@ use std::path::{Path, PathBuf};
 use rustc_data_structures::either::Either;
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_data_structures::fx::{FxIndexMap, FxIndexSet};
-use rustc_data_structures::stable_hash::StableHasher;
+use rustc_data_structures::stable_hash::{StableHasher, ToStableHashKey};
 use rustc_data_structures::sync::par_join;
 use rustc_data_structures::unord::{UnordMap, UnordSet};
 use rustc_hir::attrs::lang_items::LangItem;
@@ -197,6 +197,16 @@ where
             names += &format!("- {}\n", cgu.name());
         }
         bug!("unsorted CGUs:\n{names}");
+    }
+
+    if tcx.sess.opts.unstable_opts.ohm_incremental_mono_partitions {
+        // Inlined-item discovery follows the collector's diagnostic order, but the partition's
+        // structural result must not change when identical call-graph edges are reordered.
+        tcx.with_stable_hashing_context(|mut hcx| {
+            for cgu in &mut codegen_units {
+                cgu.items_mut().sort_by_cached_key(|item, _| item.to_stable_hash_key(&mut hcx));
+            }
+        });
     }
 
     codegen_units
@@ -1399,7 +1409,8 @@ fn dump_mono_items_stats<'tcx>(
 pub(crate) fn provide(providers: &mut Providers) {
     providers.queries.collect_and_partition_mono_items = |tcx, ()| {
         let partitions = if tcx.dep_graph.is_fully_enabled()
-            && tcx.sess.opts.unstable_opts.public_api_hash
+            && (tcx.sess.opts.unstable_opts.public_api_hash
+                || tcx.sess.opts.unstable_opts.ohm_incremental_mono_partitions)
             && !tcx.sess.opts.unstable_opts.print_mono_items
             && !tcx.sess.opts.unstable_opts.dump_mono_stats.enabled()
             && !tcx.sess.opts.unstable_opts.profile_closures

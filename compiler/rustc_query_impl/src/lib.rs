@@ -32,11 +32,16 @@ pub fn query_system<'tcx>(
     on_disk_cache: Option<OnDiskCache>,
     incremental: bool,
     public_api_hash: bool,
+    ohm_incremental_mono_partitions: bool,
 ) -> QuerySystem<'tcx> {
     let mut query_vtables = query_vtables::make_query_vtables(incremental);
-    if incremental && public_api_hash {
+    if incremental && (public_api_hash || ohm_incremental_mono_partitions) {
         query_vtables.items_of_instance.hash_value_fn =
             Some(query_vtables::hash_incremental_mono_item_edges);
+    }
+    if incremental && ohm_incremental_mono_partitions {
+        query_vtables.partition_items_of_instance.hash_value_fn =
+            Some(query_vtables::hash_partition_mono_item_edges);
     }
 
     QuerySystem {
