@@ -7,7 +7,9 @@ use rustc_data_structures::memmap::Mmap;
 use rustc_data_structures::sync::{HashMapExt, Lock, RwLock};
 use rustc_data_structures::unhash::UnhashMap;
 use rustc_data_structures::unord::{UnordMap, UnordSet};
-use rustc_hir::def_id::{CrateNum, DefId, DefIndex, LOCAL_CRATE, LocalDefId, StableCrateId};
+use rustc_hir::def_id::{
+    CrateNum, DefId, DefIdSet, DefIndex, LOCAL_CRATE, LocalDefId, StableCrateId,
+};
 use rustc_hir::definitions::DefPathHash;
 use rustc_index::IndexVec;
 use rustc_macros::{Decodable, Encodable};
@@ -25,7 +27,7 @@ use rustc_span::{
 use crate::dep_graph::{DepNodeIndex, QuerySideEffect, SerializedDepNodeIndex};
 use crate::mir::interpret::{AllocDecodingSession, AllocDecodingState};
 use crate::mir::{self, interpret};
-use crate::mono::MonoItem;
+use crate::mono::{CodegenUnit, MonoItem};
 use crate::ty::codec::{RefDecodable, TyDecoder, TyEncoder};
 use crate::ty::{self, Ty, TyCtxt};
 
@@ -697,6 +699,13 @@ impl<'a, 'tcx> Decodable<CacheDecoder<'a, 'tcx>> for &'tcx UnordSet<LocalDefId> 
     }
 }
 
+impl<'a, 'tcx> Decodable<CacheDecoder<'a, 'tcx>> for &'tcx DefIdSet {
+    #[inline]
+    fn decode(d: &mut CacheDecoder<'a, 'tcx>) -> Self {
+        RefDecodable::decode(d)
+    }
+}
+
 impl<'a, 'tcx> Decodable<CacheDecoder<'a, 'tcx>>
     for &'tcx UnordMap<DefId, ty::EarlyBinder<'tcx, Ty<'tcx>>>
 {
@@ -765,6 +774,7 @@ macro_rules! impl_ref_decoder {
 
 impl_ref_decoder! {<'tcx>
     Span,
+    CodegenUnit<'tcx>,
     rustc_hir::Attribute,
     rustc_span::Ident,
     ty::Variance,
