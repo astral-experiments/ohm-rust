@@ -2774,6 +2774,8 @@ written to standard error output)"),
         "the directory the intermediate files are written to"),
     terminal_urls: TerminalUrl = (TerminalUrl::No, parse_terminal_url, [UNTRACKED],
         "use the OSC 8 hyperlink terminal specification to print hyperlinks in the compiler output"),
+    test_harness_filter: Option<String> = (None, parse_opt_string, [TRACKED],
+        "focus on one exact test; skips unselected code generation and backend diagnostics"),
     #[rustc_lint_opt_deny_field_access("use `Session::lto` instead of this field")]
     thinlto: Option<bool> = (None, parse_opt_bool, [TRACKED],
         "enable ThinLTO when possible"),
