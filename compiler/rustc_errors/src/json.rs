@@ -34,6 +34,8 @@ use crate::formatting::{format_diag_message, format_diag_messages};
 use crate::timings::{TimingRecord, TimingSection};
 use crate::{CodeSuggestion, MultiSpan, SpanLabel, Subdiag, Suggestions, TerminalUrl};
 
+const PUBLIC_API_HASH_VERSION: u32 = 1;
+
 #[cfg(test)]
 mod tests;
 
@@ -110,11 +112,11 @@ impl Emitter for JsonEmitter {
     }
 
     fn emit_artifact_notification(&mut self, path: &Path, artifact_type: &str) {
-        let data = ArtifactNotification { artifact: path, emit: artifact_type };
-        let result = self.emit(EmitTyped::Artifact(data));
-        if let Err(e) = result {
-            panic!("failed to print notification: {e:?}");
-        }
+        self.emit_artifact(path, artifact_type, None);
+    }
+
+    fn emit_metadata_artifact_notification(&mut self, path: &Path, public_api_hash: Option<&str>) {
+        self.emit_artifact(path, "metadata", public_api_hash);
     }
 
     fn emit_timing_section(&mut self, record: TimingRecord, event: TimingEvent) {
@@ -174,6 +176,21 @@ impl Emitter for JsonEmitter {
 
     fn should_show_explain(&self) -> bool {
         !self.json_rendered.short()
+    }
+}
+
+impl JsonEmitter {
+    fn emit_artifact(&mut self, path: &Path, artifact_type: &str, public_api_hash: Option<&str>) {
+        let data = ArtifactNotification {
+            artifact: path,
+            emit: artifact_type,
+            public_api_hash: public_api_hash
+                .map(|value| PublicApiHash { version: PUBLIC_API_HASH_VERSION, value }),
+        };
+        let result = self.emit(EmitTyped::Artifact(data));
+        if let Err(e) = result {
+            panic!("failed to print notification: {e:?}");
+        }
     }
 }
 
@@ -259,6 +276,17 @@ struct ArtifactNotification<'a> {
     artifact: &'a Path,
     /// What kind of artifact we're emitting.
     emit: &'a str,
+    /// The public API hash stored in a metadata artifact.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    public_api_hash: Option<PublicApiHash<'a>>,
+}
+
+#[derive(Serialize)]
+struct PublicApiHash<'a> {
+    /// The version of the public API hash transport protocol.
+    version: u32,
+    /// The 32-character lowercase hexadecimal public API hash.
+    value: &'a str,
 }
 
 #[derive(Serialize)]
