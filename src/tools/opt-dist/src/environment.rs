@@ -78,6 +78,34 @@ impl Environment {
             .join(format!("rustc{}", executable_extension()))
     }
 
+    pub fn rustdoc_stage_2(&self) -> Utf8PathBuf {
+        self.build_artifacts()
+            .join("stage2")
+            .join("bin")
+            .join(format!("rustdoc{}", executable_extension()))
+    }
+
+    pub fn clippy_stage_2(&self) -> Utf8PathBuf {
+        self.build_artifacts()
+            .join("stage2")
+            .join("bin")
+            .join(format!("clippy-driver{}", executable_extension()))
+    }
+
+    pub fn rustfmt_stage_2(&self) -> Utf8PathBuf {
+        self.build_artifacts()
+            .join("stage2")
+            .join("bin")
+            .join(format!("rustfmt{}", executable_extension()))
+    }
+
+    pub fn cargo_fmt_stage_2(&self) -> Utf8PathBuf {
+        self.build_artifacts()
+            .join("stage2")
+            .join("bin")
+            .join(format!("cargo-fmt{}", executable_extension()))
+    }
+
     pub fn prebuilt_rustc_perf(&self) -> Option<Utf8PathBuf> {
         self.prebuilt_rustc_perf.clone()
     }

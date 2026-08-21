@@ -29,6 +29,7 @@ use dist::Dist;
 use gcc::Gcc;
 use install::Install;
 use llvm::Llvm;
+use pgo::Pgo;
 use rust::Rust;
 use target::TomlTarget;
 
