@@ -102,6 +102,7 @@ jobs:
             tests/run-make/reset-codegen-1
             tests/run-make/stable-cgu-merging
             tests/run-make/test-harness-exact-filter
+            tests/run-make/parallel-query-depth-limits
           )
           selected=()
 
