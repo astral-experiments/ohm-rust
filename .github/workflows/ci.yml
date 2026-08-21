@@ -124,6 +124,19 @@ jobs:
           tests/ui/wf/nominal-inherited-obligations-fail.rs
           tests/incremental/nominal-inherited-obligations.rs
 
+      - name: Run cached hygiene unit tests
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1 compiler/rustc_span --test-args hygiene::tests
+
+      - name: Run parallel cache promotion incremental tests
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1
+          --compiletest-rustc-args=-Zthreads=8
+          --compiletest-rustc-args=-Zincremental-verify-ich
+          tests/incremental/hygiene tests/incremental/derive_macro_expansion
+
       - name: Run reduced-dependency-rebuild and monomorphization incremental tests
         if: hashFiles('tests/incremental/rdr/**/*.rs') != ''
         run: >-
