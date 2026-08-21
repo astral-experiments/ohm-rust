@@ -95,11 +95,14 @@
 use std::cmp;
 use std::collections::hash_map::Entry;
 use std::fs::{self, File};
+use std::hash::Hash;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use rustc_data_structures::either::Either;
+use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_data_structures::fx::{FxIndexMap, FxIndexSet};
+use rustc_data_structures::stable_hash::StableHasher;
 use rustc_data_structures::sync::par_join;
 use rustc_data_structures::unord::{UnordMap, UnordSet};
 use rustc_hir::attrs::lang_items::LangItem;
@@ -343,6 +346,35 @@ fn merge_codegen_units<'tcx>(
     // then at least one of the biggest N will have to grow. codegen_units[N-1]
     // is the smallest of those, and so has the most room to grow.
     let max_codegen_units = cx.tcx.sess.codegen_units().as_usize();
+    if cx.tcx.sess.opts.incremental.is_some()
+        && cx.tcx.sess.opts.unstable_opts.ohm_stable_cgu_merging
+        && codegen_units.len() > max_codegen_units
+    {
+        // Size-based merging can reshuffle every bucket when one function grows. Assign each
+        // source-level module independently so edits cannot move unrelated modules between CGUs.
+        let mut buckets: Vec<Option<CodegenUnit<'tcx>>> =
+            std::iter::repeat_with(|| None).take(max_codegen_units).collect();
+
+        for mut source in std::mem::take(codegen_units) {
+            let mut hasher = StableHasher::new();
+            source.name().as_str().hash(&mut hasher);
+            let hash: Fingerprint = hasher.finish();
+            let bucket = (hash.to_smaller_hash().as_u64() % max_codegen_units as u64) as usize;
+
+            if let Some(destination) = &mut buckets[bucket] {
+                destination.items_mut().append(source.items_mut());
+                destination.compute_size_estimate();
+
+                let mut consumed_names = cgu_contents.remove(&source.name()).unwrap();
+                cgu_contents.get_mut(&destination.name()).unwrap().append(&mut consumed_names);
+            } else {
+                buckets[bucket] = Some(source);
+            }
+        }
+
+        codegen_units.extend(buckets.into_iter().flatten());
+    }
+
     while codegen_units.len() > max_codegen_units {
         // Sort small CGUs to the back.
         codegen_units.sort_by_key(|cgu| cmp::Reverse(cgu.size_estimate()));
