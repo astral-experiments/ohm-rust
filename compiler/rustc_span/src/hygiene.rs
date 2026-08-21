@@ -49,6 +49,9 @@ use crate::source_map::SourceMap;
 use crate::symbol::{Symbol, kw, sym};
 use crate::{DUMMY_SP, Span, SpanDecoder, SpanEncoder, with_session_globals};
 
+#[cfg(test)]
+mod tests;
+
 /// A `SyntaxContext` represents a chain of pairs `(ExpnId, Transparency)` named "marks".
 ///
 /// See <https://rustc-dev-guide.rust-lang.org/macro-expansion.html> for more explanation.
@@ -1378,8 +1381,20 @@ pub struct HygieneDecodeContext {
 }
 
 /// Register an expansion which has been decoded from the on-disk-cache for the local crate.
+///
+/// The caller must validate the decoded data against `hash` before registration. Concurrent
+/// decoders of the same expansion then reuse the identity registered by the first decoder.
 pub fn register_local_expn_id(data: ExpnData, hash: ExpnHash) -> ExpnId {
     HygieneData::with(|hygiene_data| {
+        if let Some(&expn_id) = hygiene_data.expn_hash_to_expn_id.get(&hash) {
+            assert_eq!(
+                expn_id.krate, LOCAL_CRATE,
+                "cached local expansion hash is registered to a foreign expansion",
+            );
+            assert_eq!(hygiene_data.expn_hash(expn_id), hash, "inconsistent cached expansion hash");
+            return expn_id;
+        }
+
         let expn_id = hygiene_data.local_expn_data.next_index();
         hygiene_data.local_expn_data.push(Some(data));
         let _eid = hygiene_data.local_expn_hashes.push(hash);
