@@ -341,7 +341,7 @@ impl CStore {
         }
         let level =
             tcx.lint_level_spec_at_node(UNUSED_CRATE_DEPENDENCIES, rustc_hir::CRATE_HIR_ID).level();
-        if level != lint::Level::Allow {
+        if level != lint::Level::Allow || json_unused_externs.is_transparent() {
             let unused_externs =
                 self.unused_externs.iter().map(|ident| ident.to_ident_string()).collect::<Vec<_>>();
             let unused_externs = unused_externs.iter().map(String::as_str).collect::<Vec<&str>>();
@@ -1282,7 +1282,9 @@ impl CStore {
             // Got a real unused --extern
             if tcx.sess.opts.json_unused_externs.is_enabled() {
                 self.unused_externs.push(name_interned);
-                continue;
+                if !tcx.sess.opts.json_unused_externs.is_transparent() {
+                    continue;
+                }
             }
 
             tcx.sess.psess.buffer_lint(
