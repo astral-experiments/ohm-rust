@@ -3035,13 +3035,20 @@ impl Step for ReproducibleArtifacts {
     fn run(self, builder: &Builder<'_>) -> Self::Output {
         let mut added_anything = false;
         let tarball = Tarball::new(builder, "reproducible-artifacts", &self.target.triple);
-        if let Some(path) = builder.config.rust_profile_use.as_ref() {
-            tarball.add_file(path, ".", FileType::Regular);
-            added_anything = true;
-        }
-        if let Some(path) = builder.config.llvm_profile_use.as_ref() {
-            tarball.add_file(path, ".", FileType::Regular);
-            added_anything = true;
+        let profiles = [
+            &builder.config.rust_pgo.use_profile,
+            &builder.config.llvm_pgo.use_profile,
+            &builder.config.rustdoc_pgo.use_profile,
+            &builder.config.cargo_pgo.use_profile,
+            &builder.config.clippy_pgo.use_profile,
+            &builder.config.rustfmt_pgo.use_profile,
+        ];
+        let mut included_profiles = HashSet::new();
+        for profile in profiles.into_iter().flatten() {
+            if included_profiles.insert(profile) {
+                tarball.add_file(profile, ".", FileType::Regular);
+                added_anything = true;
+            }
         }
         for profile in &builder.config.reproducible_artifacts {
             tarball.add_file(profile, ".", FileType::Regular);
