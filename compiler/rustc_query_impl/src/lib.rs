@@ -31,10 +31,17 @@ pub fn query_system<'tcx>(
     extern_providers: ExternProviders,
     on_disk_cache: Option<OnDiskCache>,
     incremental: bool,
+    public_api_hash: bool,
 ) -> QuerySystem<'tcx> {
+    let mut query_vtables = query_vtables::make_query_vtables(incremental);
+    if incremental && public_api_hash {
+        query_vtables.items_of_instance.hash_value_fn =
+            Some(query_vtables::hash_incremental_mono_item_edges);
+    }
+
     QuerySystem {
         arenas: Default::default(),
-        query_vtables: query_vtables::make_query_vtables(incremental),
+        query_vtables,
         side_effects: Default::default(),
         on_disk_cache,
         local_providers,
