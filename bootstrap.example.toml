@@ -974,6 +974,41 @@
 
 
 # =============================================================================
+# Profile-guided optimization options
+#
+# Configure instrumentation or an optimized profile independently for each
+# distributed component. A component cannot generate and use a profile in the
+# same invocation.
+# =============================================================================
+
+# Use or generate a profile for the Rust compiler.
+#pgo.rustc.use = "/tmp/profiles/rustc.profdata"
+#pgo.rustc.generate = "/tmp/profiles/rustc"
+
+# Use or generate a separate profile for rustdoc.
+#pgo.rustdoc.use = "/tmp/profiles/rustdoc.profdata"
+#pgo.rustdoc.generate = "/tmp/profiles/rustdoc"
+
+# Use or generate a profile for Cargo. Cargo can share the rustc profile when
+# both components are exercised by the same representative workload.
+#pgo.cargo.use = "/tmp/profiles/rustc.profdata"
+#pgo.cargo.generate = "/tmp/profiles/rustc"
+
+# Use or generate a separate profile for Clippy.
+#pgo.clippy.use = "/tmp/profiles/clippy.profdata"
+#pgo.clippy.generate = "/tmp/profiles/clippy"
+
+# Use or generate a separate profile for rustfmt and cargo-fmt.
+#pgo.rustfmt.use = "/tmp/profiles/rustfmt.profdata"
+#pgo.rustfmt.generate = "/tmp/profiles/rustfmt"
+
+# Use or generate a profile for LLVM. Generation accepts the output directory
+# or profile filename pattern expected by LLVM.
+#pgo.llvm.use = "/tmp/profiles/llvm.profdata"
+#pgo.llvm.generate = "/tmp/profiles/llvm/prof-%p"
+
+
+# =============================================================================
 # Options for specific targets
 #
 # Each of the following options is scoped to the specific target triple in
