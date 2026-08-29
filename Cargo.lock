@@ -688,6 +688,7 @@ dependencies = [
  "declare_clippy_lint",
  "filetime",
  "itertools 0.12.1",
+ "libc",
  "pulldown-cmark",
  "regex",
  "rustc_tools_util 0.4.2",
