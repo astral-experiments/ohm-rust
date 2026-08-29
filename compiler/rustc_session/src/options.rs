@@ -336,6 +336,11 @@ top_level_options!(
         /// directory to store intermediate results.
         incremental: Option<PathBuf> [UNTRACKED],
 
+        /// Additional driver inputs that invalidate incremental query results without changing
+        /// crate identity or generated metadata. Drivers must supply the same value only when
+        /// their otherwise untracked configuration and implementation are compatible.
+        incremental_driver_hash: Option<String> [TRACKED_NO_CRATE_HASH],
+
         unstable_opts: UnstableOptions [SUBSTRUCT] { TARGET_MODIFIER: UnstableOptions(UnstableOptionsTargetModifiers) },
         prints: Vec<PrintRequest> [UNTRACKED],
         cg: CodegenOptions [SUBSTRUCT] { TARGET_MODIFIER: CodegenOptions(CodegenOptionsTargetModifiers) },
