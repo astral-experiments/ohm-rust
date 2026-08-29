@@ -142,6 +142,20 @@ fn assert_non_crate_hash_different(x: &Options, y: &Options) {
     assert_same_clone(y);
 }
 
+#[test]
+fn incremental_driver_hash_does_not_change_crate_identity() {
+    let original = Options::default();
+    let mut driver = original.clone();
+    driver.incremental_driver_hash = Some("driver-and-configuration-v1".into());
+    assert_non_crate_hash_different(&original, &driver);
+
+    let mut changed = driver.clone();
+    changed.incremental_driver_hash = Some("driver-and-configuration-v2".into());
+    assert_non_crate_hash_different(&driver, &changed);
+    changed.incremental_driver_hash = driver.incremental_driver_hash.clone();
+    assert_same_hash(&driver, &changed);
+}
+
 // When the user supplies --test we should implicitly supply --cfg test
 #[test]
 fn test_switch_implies_cfg_test() {
