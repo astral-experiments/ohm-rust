@@ -94,6 +94,12 @@ jobs:
           "$stage0_cargo" test --locked --manifest-path src/bootstrap/Cargo.toml pgo_
           "$stage0_cargo" test --locked -p opt-dist
 
+      - name: Run incremental driver input regression
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1 compiler/rustc_interface
+          --test-args incremental_driver_hash_does_not_change_crate_identity
+
       - name: Run metadata UI tests
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
