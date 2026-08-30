@@ -2835,6 +2835,14 @@ impl<'tcx> TyCtxt<'tcx> {
 }
 
 pub fn provide(providers: &mut Providers) {
+    providers.source_file_hash = |tcx, id| {
+        let sm = tcx.sess.source_map();
+        let file = sm.source_file_by_stable_id(id).expect("source input must be loaded");
+        sm.ensure_source_file_source_present(&file);
+        let available = file.src.is_some()
+            || file.external_src.get().is_some_and(|source| source.get_source().is_some());
+        available.then_some(file.src_hash)
+    };
     providers.is_panic_runtime = |tcx, LocalCrate| find_attr!(tcx, crate, PanicRuntime);
     providers.is_compiler_builtins = |tcx, LocalCrate| find_attr!(tcx, crate, CompilerBuiltins);
     providers.has_panic_handler = |tcx, LocalCrate| {

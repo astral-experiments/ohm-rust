@@ -9,7 +9,7 @@ use rustc_data_structures::sso::SsoHashSet;
 use rustc_data_structures::stable_hash::StableHash;
 use rustc_hir::def_id::{CrateNum, DefId, LOCAL_CRATE, LocalDefId, LocalModDefId};
 use rustc_hir::hir_id::OwnerId;
-use rustc_span::{DUMMY_SP, ExpnId, Ident, LocalExpnId, Span, Symbol};
+use rustc_span::{DUMMY_SP, ExpnId, Ident, LocalExpnId, Span, StableSourceFileId, Symbol};
 
 use crate::dep_graph::DepNodeIndex;
 use crate::infer::canonical::CanonicalQueryInput;
@@ -58,6 +58,12 @@ pub trait QueryKey: Sized + QueryKeyBounds {
 impl QueryKey for () {
     type Cache<V> = SingleCache<V>;
 
+    fn default_span(&self, _: TyCtxt<'_>) -> Span {
+        DUMMY_SP
+    }
+}
+
+impl QueryKey for StableSourceFileId {
     fn default_span(&self, _: TyCtxt<'_>) -> Span {
         DUMMY_SP
     }
