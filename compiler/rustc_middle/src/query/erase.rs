@@ -189,6 +189,7 @@ impl_erasable_for_types_with_no_type_params! {
     Option<rustc_middle::ty::Destructor>,
     Option<rustc_middle::ty::IntrinsicDef>,
     Option<rustc_middle::ty::ScalarInt>,
+    Option<rustc_span::SourceFileHash>,
     Option<rustc_span::Span>,
     Option<rustc_span::def_id::CrateNum>,
     Option<rustc_span::def_id::DefId>,
