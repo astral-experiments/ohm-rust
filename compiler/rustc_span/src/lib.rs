@@ -2142,6 +2142,16 @@ impl fmt::Debug for SourceFile {
 pub struct StableSourceFileId(Hash128);
 
 impl StableSourceFileId {
+    /// Preserve the full file identity in an incremental dependency-node key.
+    pub fn as_u128(self) -> u128 {
+        self.0.as_u128()
+    }
+
+    /// Recover an identity previously stored by `as_u128`.
+    pub fn from_u128(value: u128) -> Self {
+        Self(Hash128::new(value))
+    }
+
     fn from_filename_in_current_crate(filename: &FileName) -> Self {
         Self::from_filename_and_stable_crate_id(filename, None)
     }
