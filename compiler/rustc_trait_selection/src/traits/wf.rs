@@ -3,8 +3,6 @@
 //! well formed is performed elsewhere (e.g. during type checking or item well formedness
 //! checking).
 
-use std::iter;
-
 use rustc_hir as hir;
 use rustc_hir::lang_items::LangItem;
 use rustc_infer::traits::{ObligationCauseCode, PredicateObligations};
@@ -16,6 +14,7 @@ use rustc_middle::ty::{
 use rustc_session::errors::feature_err;
 use rustc_span::def_id::{DefId, LocalDefId};
 use rustc_span::{Span, sym};
+use smallvec::SmallVec;
 use tracing::{debug, instrument, trace};
 
 use crate::infer::InferCtxt;
@@ -579,32 +578,45 @@ impl<'a, 'tcx> WfPredicates<'a, 'tcx> {
             return Default::default();
         }
 
-        let predicates = self.tcx().predicates_of(def_id);
-        let mut origins = vec![def_id; predicates.predicates.len()];
-        let mut head = predicates;
-        while let Some(parent) = head.parent {
-            head = self.tcx().predicates_of(parent);
-            origins.extend(iter::repeat(parent).take(head.predicates.len()));
+        let tcx = self.tcx();
+        let mut ancestors = SmallVec::<[(DefId, &'tcx [(ty::Clause<'tcx>, Span)]); 4]>::new();
+        let mut origin_def_id = def_id;
+        let mut predicates = tcx.predicates_of(origin_def_id);
+        let mut predicate_count = 0;
+
+        // Query every ancestor before instantiating any clauses, preserving the dependencies
+        // and diagnostic origins without allocating an origin for every predicate.
+        loop {
+            predicate_count += predicates.predicates.len();
+            ancestors.push((origin_def_id, predicates.predicates));
+            let Some(parent) = predicates.parent else { break };
+            origin_def_id = parent;
+            predicates = tcx.predicates_of(parent);
         }
 
-        let predicates = predicates.instantiate(self.tcx(), args);
-        trace!("{:#?}", predicates);
-        debug_assert_eq!(predicates.predicates.len(), origins.len());
-
-        iter::zip(predicates, origins.into_iter().rev())
-            .map(|((pred, span), origin_def_id)| {
-                let code = ObligationCauseCode::WhereClause(origin_def_id, span);
-                let cause = self.cause(code);
-                traits::Obligation::with_depth(
-                    self.tcx(),
+        // Instantiate parent-first, as GenericPredicates::instantiate does, directly into the
+        // obligations instead of collecting intermediate predicate and span vectors.
+        let mut obligations = PredicateObligations::with_capacity(predicate_count);
+        for (origin_def_id, predicates) in ancestors.into_iter().rev() {
+            for &(predicate, span) in predicates {
+                let predicate =
+                    ty::EarlyBinder::bind(tcx, predicate).instantiate(tcx, args).skip_norm_wip();
+                let cause = self.cause(ObligationCauseCode::WhereClause(origin_def_id, span));
+                let obligation = traits::Obligation::with_depth(
+                    tcx,
                     cause,
                     self.recursion_depth,
                     self.param_env,
-                    pred.skip_norm_wip(),
-                )
-            })
-            .filter(|pred| !pred.has_escaping_bound_vars())
-            .collect()
+                    predicate,
+                );
+                if !obligation.has_escaping_bound_vars() {
+                    obligations.push(obligation);
+                }
+            }
+        }
+
+        trace!("nominal obligations: {obligations:#?}");
+        obligations
     }
 
     fn add_wf_preds_for_dyn_ty(
