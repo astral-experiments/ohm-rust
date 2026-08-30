@@ -146,6 +146,7 @@ jobs:
             tests/run-make/stable-cgu-merging
             tests/run-make/test-harness-exact-filter
             tests/run-make/parallel-query-depth-limits
+            tests/run-make/incremental-lint-visibilities
           )
           selected=()
 
