@@ -117,6 +117,13 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/ui/unused-crate-deps
 
+      - name: Run well-formedness obligation regression tests
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1 tests/ui/wf/nominal-inherited-obligations.rs
+          tests/ui/wf/nominal-inherited-obligations-fail.rs
+          tests/incremental/nominal-inherited-obligations.rs
+
       - name: Run reduced-dependency-rebuild and monomorphization incremental tests
         if: hashFiles('tests/incremental/rdr/**/*.rs') != ''
         run: >-
