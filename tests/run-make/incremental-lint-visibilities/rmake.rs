@@ -37,7 +37,11 @@ fn main() {
         "pub struct S; impl S { pub fn f(&self) {} }\npub trait T { async fn f(); }\n",
     );
     rfs::write("stable.rs", "/// A documented, unchanged item.\npub struct Stable;\n");
-    let root = "//! A crate used to check visibility-dependent diagnostics.\nmod hidden;\n/// An unchanged module.\npub mod stable;\n";
+    let root = concat!(
+        "//! A crate used to check visibility-dependent diagnostics.\n",
+        "mod hidden;\n",
+        "/// An unchanged module.\npub mod stable;\n",
+    );
     for threads in [1, 4] {
         let cache = format!("incremental-{threads}");
         for (index, (source, expected_docs, expected_async)) in [
