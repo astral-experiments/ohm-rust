@@ -18,7 +18,9 @@ use rustc_span::Span;
 use tracing::debug;
 
 use crate::passes::LateLintPassObject;
-use crate::{LateContext, LateLintPass, LintStore, is_lint_pass_required};
+use crate::{
+    LateContext, LateLintPass, LintEffectiveVisibilities, LintStore, is_lint_pass_required,
+};
 
 /// Extract the [`LintStore`] from [`Session`].
 ///
@@ -343,7 +345,11 @@ pub fn late_lint_mod<'tcx, T: LateLintPass<'tcx> + 'tcx>(
         enclosing_body: None,
         cached_typeck_results: Cell::new(None),
         param_env: ty::ParamEnv::empty(),
-        effective_visibilities: tcx.effective_visibilities(()),
+        effective_visibilities: if tcx.sess.opts.incremental.is_some() {
+            LintEffectiveVisibilities::PerItem(tcx)
+        } else {
+            LintEffectiveVisibilities::WholeCrate(tcx.effective_visibilities(()))
+        },
         last_node_with_lint_attrs: tcx.local_def_id_to_hir_id(module_def_id),
         generics: None,
         only_module: true,
@@ -417,7 +423,9 @@ fn late_lint_crate<'tcx>(tcx: TyCtxt<'tcx>) {
         enclosing_body: None,
         cached_typeck_results: Cell::new(None),
         param_env: ty::ParamEnv::empty(),
-        effective_visibilities: tcx.effective_visibilities(()),
+        effective_visibilities: LintEffectiveVisibilities::WholeCrate(
+            tcx.effective_visibilities(()),
+        ),
         last_node_with_lint_attrs: hir::CRATE_HIR_ID,
         generics: None,
         only_module: false,
