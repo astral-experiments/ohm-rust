@@ -35,6 +35,8 @@ pub enum KeyFingerprintStyle {
     DefPathHash,
     /// The fingerprint is actually a HirId.
     HirId,
+    /// The fingerprint is a stable source-file identity.
+    SourceFileId,
     /// Query key was `()` or equivalent, so fingerprint is just zero.
     Unit,
     /// The fingerprint is an opaque hash, and a key cannot be reconstructed from it.
@@ -52,6 +54,7 @@ impl KeyFingerprintStyle {
             KeyFingerprintStyle::DefPathHash
             | KeyFingerprintStyle::Unit
             | KeyFingerprintStyle::HirId => true,
+            KeyFingerprintStyle::SourceFileId => true,
             KeyFingerprintStyle::Opaque => false,
         }
     }
