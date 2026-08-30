@@ -1,0 +1,53 @@
+error[E0277]: the trait bound `T: Copy` is not satisfied
+  --> $DIR/nominal-inherited-obligations-fail.rs:14:8
+   |
+LL |     P: Parent<T>,
+   |        ^^^^^^^^^ the trait `Copy` is not implemented for `T`
+   |
+note: required by a bound in `Parent`
+  --> $DIR/nominal-inherited-obligations-fail.rs:8:17
+   |
+LL | trait Parent<T: Copy> {
+   |                 ^^^^ required by this bound in `Parent`
+help: consider further restricting type parameter `T` with trait `Copy`
+   |
+LL |     P: Parent<T>, T: std::marker::Copy
+   |                   ++++++++++++++++++++
+
+error[E0277]: the trait bound `T: Copy` is not satisfied
+  --> $DIR/nominal-inherited-obligations-fail.rs:17:32
+   |
+LL |     let _: Option<<P as Parent<T>>::Item<U>>;
+   |                                ^ the trait `Copy` is not implemented for `T`
+   |
+note: required by a bound in `Parent::Item`
+  --> $DIR/nominal-inherited-obligations-fail.rs:8:17
+   |
+LL | trait Parent<T: Copy> {
+   |                 ^^^^ required by this bound in `Parent::Item`
+LL |     type Item<U: Clone>;
+   |          ---- required by a bound in this associated type
+help: consider further restricting type parameter `T` with trait `Copy`
+   |
+LL |     P: Parent<T>, T: std::marker::Copy
+   |                   ++++++++++++++++++++
+
+error[E0277]: the trait bound `U: Clone` is not satisfied
+  --> $DIR/nominal-inherited-obligations-fail.rs:17:42
+   |
+LL |     let _: Option<<P as Parent<T>>::Item<U>>;
+   |                                          ^ the trait `Clone` is not implemented for `U`
+   |
+note: required by a bound in `Parent::Item`
+  --> $DIR/nominal-inherited-obligations-fail.rs:9:18
+   |
+LL |     type Item<U: Clone>;
+   |                  ^^^^^ required by this bound in `Parent::Item`
+help: consider further restricting type parameter `U` with trait `Clone`
+   |
+LL |     P: Parent<T>, U: std::clone::Clone
+   |                   ++++++++++++++++++++
+
+error: aborting due to 3 previous errors
+
+For more information about this error, try `rustc --explain E0277`.
