@@ -78,7 +78,9 @@ use rustc_session::cstore::{
 };
 use rustc_session::lint::StableLintExpectationId;
 use rustc_span::def_id::LOCAL_CRATE;
-use rustc_span::{DUMMY_SP, ExpnId, LocalExpnId, Span, Spanned, Symbol};
+use rustc_span::{
+    DUMMY_SP, ExpnId, LocalExpnId, SourceFileHash, Span, Spanned, StableSourceFileId, Symbol,
+};
 use rustc_target::spec::PanicStrategy;
 
 use crate::infer::canonical::{self, Canonical};
@@ -1154,6 +1156,12 @@ rustc_queries! {
         cache_on_disk
         handle_cycle_error
         separate_provide_extern
+    }
+
+    /// Observe source bytes independently of HIR, including whitespace and comments.
+    query source_file_hash(key: StableSourceFileId) -> Option<SourceFileHash> {
+        eval_always
+        desc { "reading source-file contents for {:?}", key }
     }
 
     /// Performs lint checking for the module.
