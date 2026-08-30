@@ -92,7 +92,7 @@ use crate::middle::debugger_visualizer::DebuggerVisualizerFile;
 use crate::middle::deduced_param_attrs::DeducedParamAttrs;
 use crate::middle::exported_symbols::{ExportedSymbol, SymbolExportInfo};
 use crate::middle::lib_features::LibFeatures;
-use crate::middle::privacy::EffectiveVisibilities;
+use crate::middle::privacy::{EffectiveVisibilities, EffectiveVisibility};
 use crate::middle::resolve_bound_vars::{ObjectLifetimeDefault, ResolveBoundVars, ResolvedArg};
 use crate::middle::stability::DeprecationEntry;
 use crate::mir::interpret::{
@@ -1388,6 +1388,10 @@ rustc_queries! {
     query effective_visibilities(_: ()) -> &'tcx EffectiveVisibilities {
         eval_always
         desc { "checking effective visibilities" }
+    }
+    /// Track one effective-visibility entry without making its consumer depend on the whole map.
+    query effective_visibility(key: LocalDefId) -> Option<&'tcx EffectiveVisibility> {
+        desc { "computing the effective visibility of `{}`", tcx.def_path_str(key) }
     }
     query check_private_in_public(module_def_id: LocalModDefId) {
         desc {
