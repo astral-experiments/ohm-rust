@@ -100,6 +100,12 @@ jobs:
           --set rust.lto=off test --stage 1 compiler/rustc_interface
           --test-args incremental_driver_hash_does_not_change_crate_identity
 
+      - name: Run Cranelift directory-copy tests
+        run: |
+          build/host/stage0/bin/rustc --edition=2021 --test \
+            compiler/rustc_codegen_cranelift/build_system/main.rs -o build/cranelift-directory-copy-tests
+          build/cranelift-directory-copy-tests utils::copy_tests
+
       - name: Run Rust 1.98.1 trait-solver regressions
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
