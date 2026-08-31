@@ -1404,7 +1404,6 @@ impl Step for RustcBook {
         }
 
         let out_base = builder.md_doc_out(self.target).join("rustc");
-        t!(fs::create_dir_all(&out_base));
         let out_listing = out_base.join("src/lints");
         builder.cp_link_r(&builder.src.join("src/doc/rustc"), &out_base);
         builder.info(&format!("Generating lint docs ({})", self.target));
