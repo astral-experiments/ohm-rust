@@ -789,11 +789,9 @@ impl Step for StdLink {
             let host = compiler.host;
             let stage0_bin_dir = builder.out.join(host).join("stage0/bin");
             let sysroot_bin_dir = sysroot.join("bin");
-            t!(fs::create_dir_all(&sysroot_bin_dir));
             builder.cp_link_r(&stage0_bin_dir, &sysroot_bin_dir);
 
             let stage0_lib_dir = builder.out.join(host).join("stage0/lib");
-            t!(fs::create_dir_all(sysroot.join("lib")));
             builder.cp_link_r(&stage0_lib_dir, &sysroot.join("lib"));
 
             // Copy codegen-backends from stage0
