@@ -289,6 +289,11 @@ impl<'tcx> TyCtxt<'tcx> {
     where
         T: TypeFoldable<TyCtxt<'tcx>>,
     {
+        // Keep folding in debug builds so bound-variable validation still runs.
+        if bound_vars == 0 && !cfg!(debug_assertions) {
+            return value;
+        }
+
         let shift_bv = |bv: ty::BoundVar| bv + bound_vars;
         self.replace_escaping_bound_vars_uncached(
             value,
