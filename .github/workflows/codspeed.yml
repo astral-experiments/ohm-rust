@@ -84,8 +84,10 @@ jobs:
               src/tools/codspeed/test_compiler.py --codspeed
 
       - name: Verify compiler profile coverage
+        id: profile-audit
         run: |
           profile_folder="$(cat build/codspeed/profile-folder)"
+          printf 'folder=%s\n' "$profile_folder" >> "$GITHUB_OUTPUT"
           src/tools/codspeed/.venv/bin/python src/tools/codspeed/verify_profiles.py \
             "$profile_folder" --rustc build/host/stage1/bin/rustc \
             --output build/codspeed/measurement-audit.json
@@ -100,3 +102,11 @@ jobs:
             build/codspeed/measurement-audit.json
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Retain profiles for a failed audit
+        if: ${{ failure() && steps.profile-audit.outputs.folder != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codspeed-raw-profiles
+          path: ${{ steps.profile-audit.outputs.folder }}
+          retention-days: 3
