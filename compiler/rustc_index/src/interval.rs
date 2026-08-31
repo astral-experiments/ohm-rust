@@ -317,7 +317,9 @@ impl<I: Idx> IntervalSet<I> {
         assert_eq!(self.domain, other.domain);
         if self.map.len() < other.map.len() {
             let backup = self.clone();
-            self.map.clone_from(&other.map);
+            let (init, tail) = other.map.split_at(self.map.len());
+            self.map.copy_from_slice(init);
+            self.map.extend_from_slice(tail);
             return self.union(&backup);
         }
 

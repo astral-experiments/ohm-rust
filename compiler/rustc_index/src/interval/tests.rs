@@ -197,3 +197,68 @@ fn last_set_in() {
         }
     }
 }
+
+#[test]
+fn union_copy_preserves_contents_and_flags() {
+    fn make(points: &[u32], capacity: usize) -> IntervalSet<u32> {
+        let mut set = IntervalSet::new(64);
+        set.map.reserve(capacity);
+        for &point in points {
+            set.insert(point);
+        }
+        set
+    }
+
+    // The swapped path reports whether the old left side adds to the copied right side.
+    let cases: &[(&str, &[u32], &[u32], &[u32], bool)] = &[
+        ("both_empty", &[], &[], &[], false),
+        ("empty_left", &[], &[2], &[2], false),
+        ("empty_right", &[2], &[], &[2], false),
+        ("equal_inline", &[2, 3], &[2, 3], &[2, 3], false),
+        ("disjoint_inline", &[4], &[0, 8], &[0, 4, 8], true),
+        ("overlap_inline", &[2, 3, 4], &[1, 2, 6], &[1, 2, 3, 4, 6], true),
+        ("adjacent_inline", &[2, 3], &[0, 1, 4, 5], &[0, 1, 2, 3, 4, 5], true),
+        ("left_subset", &[1], &[0, 1, 2, 5], &[0, 1, 2, 5], false),
+        ("right_subset", &[0, 1, 2, 3, 4], &[1, 3], &[0, 1, 2, 3, 4], true),
+        ("empty_to_spill", &[], &[0, 4, 8], &[0, 4, 8], false),
+        ("spilled_disjoint", &[2, 10, 18], &[0, 6, 14, 22], &[0, 2, 6, 10, 14, 18, 22], true),
+        (
+            "spilled_overlap",
+            &[1, 2, 5, 6, 9, 10],
+            &[0, 1, 4, 5, 8, 9, 12, 13],
+            &[0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13],
+            true,
+        ),
+        (
+            "spilled_subset",
+            &[1, 5, 9],
+            &[0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13],
+            &[0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13],
+            false,
+        ),
+        (
+            "smaller_rhs",
+            &[0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13],
+            &[1, 5, 9],
+            &[0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13],
+            false,
+        ),
+    ];
+
+    for capacity in [0, 16] {
+        for &(name, left_points, right_points, expected, expected_flag) in cases {
+            let mut left = make(left_points, capacity);
+            let right = make(right_points, 0);
+            let original_capacity = left.map.capacity();
+            let original_ptr = left.map.as_ptr();
+
+            assert_eq!(left.union(&right), expected_flag, "{name}, capacity {capacity}");
+            assert_eq!(left.iter().collect::<Vec<_>>().as_slice(), expected, "{name}");
+            assert!(left.check_invariants(), "{name}");
+            if capacity != 0 {
+                assert_eq!(left.map.capacity(), original_capacity, "{name}");
+                assert_eq!(left.map.as_ptr(), original_ptr, "{name}");
+            }
+        }
+    }
+}
