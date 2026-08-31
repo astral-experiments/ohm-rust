@@ -23,7 +23,7 @@ pub mod prove_predicate;
 
 pub use rustc_middle::traits::query::type_op::*;
 
-use self::custom::scrape_region_constraints;
+use self::custom::{collect_region_constraints, scrape_region_constraints};
 
 /// "Type ops" are used in NLL to perform some particular action and
 /// extract out the resulting region constraints (or an error if it
@@ -96,6 +96,7 @@ pub trait QueryTypeOp<'tcx>: fmt::Debug + Copy + TypeFoldable<TyCtxt<'tcx>> + 't
         span: Span,
     ) -> Result<Self::QueryResponse, NoSolution>;
 
+    /// Runs the canonical query after the caller has checked `try_fast_path`.
     fn fully_perform_into(
         query_key: ParamEnvAnd<'tcx, Self>,
         infcx: &InferCtxt<'tcx>,
@@ -110,12 +111,6 @@ pub trait QueryTypeOp<'tcx>: fmt::Debug + Copy + TypeFoldable<TyCtxt<'tcx>> + 't
         ),
         NoSolution,
     > {
-        if !infcx.disable_trait_solver_fast_paths()
-            && let Some(result) = QueryTypeOp::try_fast_path(infcx.tcx, &query_key)
-        {
-            return Ok((result, None, PredicateObligations::new(), Certainty::Proven));
-        }
-
         let mut canonical_var_values = OriginalQueryValues::default();
         let old_param_env = query_key.param_env;
         let canonical_self = infcx.canonicalize_query(query_key, &mut canonical_var_values);
@@ -147,6 +142,20 @@ where
         root_def_id: LocalDefId,
         span: Span,
     ) -> Result<TypeOpOutput<'tcx, Self>, ErrorGuaranteed> {
+        if !infcx.disable_trait_solver_fast_paths()
+            && let Some(output) = Q::try_fast_path(infcx.tcx, &self)
+        {
+            if !infcx.next_trait_solver() {
+                assert!(
+                    !infcx.tcx.next_trait_solver_globally(),
+                    "using old solver even though new solver is enabled globally"
+                );
+            }
+            // A fast-path result has no obligations or inference changes. Still
+            // resolve its variables and collect/reset any region constraints.
+            return Ok(collect_region_constraints(infcx, || Ok(output))?.0);
+        }
+
         // In the new trait solver, query type ops are performed locally. This
         // is because query type ops currently use the old canonicalizer, and
         // that doesn't preserve things like opaques which have been registered
@@ -160,14 +169,7 @@ where
                 root_def_id,
                 "query type op",
                 span,
-                |ocx| {
-                    if !infcx.disable_trait_solver_fast_paths()
-                        && let Some(result) = QueryTypeOp::try_fast_path(infcx.tcx, &self)
-                    {
-                        return Ok(result);
-                    }
-                    QueryTypeOp::perform_locally_with_next_solver(ocx, self, span)
-                },
+                |ocx| QueryTypeOp::perform_locally_with_next_solver(ocx, self, span),
             )?
             .0);
         }
