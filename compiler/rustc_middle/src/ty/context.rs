@@ -6,6 +6,7 @@ mod impl_interner;
 pub mod tls;
 
 use std::borrow::{Borrow, Cow};
+use std::cell::Cell;
 use std::cmp::Ordering;
 use std::env::VarError;
 use std::ffi::OsStr;
@@ -22,7 +23,7 @@ use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::intern::Interned;
 use rustc_data_structures::jobserver::Proxy;
 use rustc_data_structures::profiling::SelfProfilerRef;
-use rustc_data_structures::sharded::{IntoPointer, ShardedHashMap};
+use rustc_data_structures::sharded::{IntoPointer, ShardedHashMap, make_hash};
 use rustc_data_structures::stable_hash::StableHash;
 use rustc_data_structures::steal::Steal;
 use rustc_data_structures::sync::{
@@ -131,6 +132,9 @@ impl<'tcx> rustc_type_ir::inherent::Span<TyCtxt<'tcx>> for Span {
 
 type InternedSet<'tcx, T> = ShardedHashMap<InternedInSet<'tcx, T>, ()>;
 
+// A power of two so the hash selects a bounded direct-mapped cache slot.
+const INTERNER_CACHE_LEN: usize = 16384;
+
 pub struct CtxtInterners<'tcx> {
     /// The arena that types, regions, etc. are allocated from.
     arena: &'tcx WorkerLocal<Arena<'tcx>>,
@@ -162,6 +166,11 @@ pub struct CtxtInterners<'tcx> {
     valtree: InternedSet<'tcx, ty::ValTreeKind<TyCtxt<'tcx>>>,
     patterns: InternedSet<'tcx, List<ty::Pattern<'tcx>>>,
     outlives: InternedSet<'tcx, List<ty::ArgOutlivesPredicate<'tcx>>>,
+
+    // Only canonical results from the shared interners are stored here.
+    type_cache: WorkerLocal<[Cell<Option<Ty<'tcx>>>; INTERNER_CACHE_LEN]>,
+    args_cache: WorkerLocal<[Cell<Option<GenericArgsRef<'tcx>>>; INTERNER_CACHE_LEN]>,
+    predicate_cache: WorkerLocal<[Cell<Option<Predicate<'tcx>>>; INTERNER_CACHE_LEN]>,
 }
 
 impl<'tcx> CtxtInterners<'tcx> {
@@ -200,6 +209,9 @@ impl<'tcx> CtxtInterners<'tcx> {
             valtree: InternedSet::with_capacity(N),
             patterns: InternedSet::with_capacity(N),
             outlives: InternedSet::with_capacity(N),
+            type_cache: WorkerLocal::new(|_| [const { Cell::new(None) }; INTERNER_CACHE_LEN]),
+            args_cache: WorkerLocal::new(|_| [const { Cell::new(None) }; INTERNER_CACHE_LEN]),
+            predicate_cache: WorkerLocal::new(|_| [const { Cell::new(None) }; INTERNER_CACHE_LEN]),
         }
     }
 
@@ -207,9 +219,20 @@ impl<'tcx> CtxtInterners<'tcx> {
     #[allow(rustc::usage_of_ty_tykind)]
     #[inline(never)]
     fn intern_ty(&self, kind: TyKind<'tcx>) -> Ty<'tcx> {
-        Ty(Interned::new_unchecked(
+        let hash = make_hash(&kind);
+        let cache = self
+            .type_cache
+            .get_if_registered()
+            .map(|cache| &cache[hash as usize & (INTERNER_CACHE_LEN - 1)]);
+        if let Some(cache) = cache
+            && let Some(ty) = cache.get()
+            && ty.kind() == &kind
+        {
+            return ty;
+        }
+        let ty = Ty(Interned::new_unchecked(
             self.type_
-                .intern(kind, |kind| {
+                .intern_with_hash(hash, kind, |kind| {
                     let flags = ty::FlagComputation::<TyCtxt<'tcx>>::for_kind(&kind);
                     InternedInSet(self.arena.alloc(WithCachedTypeInfo {
                         internee: kind,
@@ -218,7 +241,11 @@ impl<'tcx> CtxtInterners<'tcx> {
                     }))
                 })
                 .0,
-        ))
+        ));
+        if let Some(cache) = cache {
+            cache.set(Some(ty));
+        }
+        ty
     }
 
     /// Interns a const. (Use `mk_*` functions instead, where possible.)
@@ -242,9 +269,20 @@ impl<'tcx> CtxtInterners<'tcx> {
     /// Interns a predicate. (Use `mk_predicate` instead, where possible.)
     #[inline(never)]
     fn intern_predicate(&self, kind: Binder<'tcx, PredicateKind<'tcx>>) -> Predicate<'tcx> {
-        Predicate(Interned::new_unchecked(
+        let hash = make_hash(&kind);
+        let cache = self
+            .predicate_cache
+            .get_if_registered()
+            .map(|cache| &cache[hash as usize & (INTERNER_CACHE_LEN - 1)]);
+        if let Some(cache) = cache
+            && let Some(predicate) = cache.get()
+            && predicate.kind() == kind
+        {
+            return predicate;
+        }
+        let predicate = Predicate(Interned::new_unchecked(
             self.predicate
-                .intern(kind, |kind| {
+                .intern_with_hash(hash, kind, |kind| {
                     let flags = ty::FlagComputation::<TyCtxt<'tcx>>::for_predicate(kind);
                     InternedInSet(self.arena.alloc(WithCachedTypeInfo {
                         internee: kind,
@@ -253,7 +291,11 @@ impl<'tcx> CtxtInterners<'tcx> {
                     }))
                 })
                 .0,
-        ))
+        ));
+        if let Some(cache) = cache {
+            cache.set(Some(predicate));
+        }
+        predicate
     }
 
     fn intern_clauses(&self, clauses: &[Clause<'tcx>]) -> Clauses<'tcx> {
@@ -2029,7 +2071,6 @@ macro_rules! slice_interners {
 // should be used when possible, because it's faster.
 slice_interners!(
     const_lists: pub mk_const_list(Const<'tcx>),
-    args: pub mk_args(GenericArg<'tcx>),
     type_lists: pub mk_type_list(Ty<'tcx>),
     canonical_var_kinds: pub mk_canonical_var_kinds(CanonicalVarKind<'tcx>),
     poly_existential_predicates: intern_poly_existential_predicates(PolyExistentialPredicate<'tcx>),
@@ -2045,6 +2086,34 @@ slice_interners!(
 );
 
 impl<'tcx> TyCtxt<'tcx> {
+    /// Interns a list of generic arguments.
+    pub fn mk_args(self, v: &[GenericArg<'tcx>]) -> GenericArgsRef<'tcx> {
+        if v.is_empty() {
+            return List::empty();
+        }
+        let hash = make_hash(v);
+        let cache = self
+            .interners
+            .args_cache
+            .get_if_registered()
+            .map(|cache| &cache[hash as usize & (INTERNER_CACHE_LEN - 1)]);
+        if let Some(cache) = cache
+            && let Some(args) = cache.get()
+            && args.as_slice() == v
+        {
+            return args;
+        }
+        let args = self
+            .interners
+            .args
+            .intern_ref_with_hash(hash, v, || InternedInSet(List::from_arena(&*self.arena, (), v)))
+            .0;
+        if let Some(cache) = cache {
+            cache.set(Some(args));
+        }
+        args
+    }
+
     /// Given a `fn` sig, returns an equivalent `unsafe fn` type;
     /// that is, a `fn` type that is equivalent in every way for being
     /// unsafe.
