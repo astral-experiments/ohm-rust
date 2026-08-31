@@ -3,7 +3,7 @@ use std::iter;
 use tracing::debug;
 
 use super::{
-    ExpectedFound, RelateResult, StructurallyRelateAliases, TypeRelation,
+    ExpectedFound, RelateResult, StructurallyRelateAliases, TypeRelation, collect_args_reusing,
     structurally_relate_consts, structurally_relate_tys,
 };
 use crate::error::TypeError;
@@ -306,7 +306,7 @@ where
         };
         relation.relate_with_variance(variance, variance_info, a, b)
     });
-    let args = cx.mk_args_from_iter(args)?;
+    let args = collect_args_reusing(cx, a_args, args)?;
 
     // In general, we do not check whether all types which occur during
     // type checking are well-formed. We only check wf of user-provided types
