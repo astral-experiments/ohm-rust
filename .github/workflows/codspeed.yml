@@ -47,7 +47,8 @@ jobs:
 
       - name: Check benchmark state restoration
         run: >-
-          src/tools/codspeed/.venv/bin/python -m pytest src/tools/codspeed/test_harness.py
+          src/tools/codspeed/.venv/bin/python -m pytest
+          src/tools/codspeed/test_harness.py src/tools/codspeed/test_profiles.py
 
       - name: Build candidate compiler and matching standard library
         run: >-
@@ -77,6 +78,25 @@ jobs:
           mode: simulation
           runner-version: "5.2.1"
           simulation-track-subprocess: "true"
-          run: >-
-            src/tools/codspeed/.venv/bin/python -m pytest
-            src/tools/codspeed/test_compiler.py --codspeed
+          run: |
+            printf '%s\n' "$CODSPEED_PROFILE_FOLDER" > build/codspeed/profile-folder
+            src/tools/codspeed/.venv/bin/python -m pytest \
+              src/tools/codspeed/test_compiler.py --codspeed
+
+      - name: Verify compiler profile coverage
+        run: |
+          profile_folder="$(cat build/codspeed/profile-folder)"
+          src/tools/codspeed/.venv/bin/python src/tools/codspeed/verify_profiles.py \
+            "$profile_folder" --rustc build/host/stage1/bin/rustc \
+            --output build/codspeed/measurement-audit.json
+
+      - name: Retain compiler measurement evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codspeed-compiler-evidence
+          path: |
+            build/codspeed/manifest.json
+            build/codspeed/measurement-audit.json
+          if-no-files-found: ignore
+          retention-days: 14

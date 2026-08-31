@@ -29,6 +29,12 @@ The compiler runs with one thread and full incremental hash verification, follow
 rustc-perf's policy for repeatable incremental measurements. The preparation
 manifest records the compiler, Cargo, and benchmark-suite revisions.
 
+After measurement, CI audits the raw profiles for all eight cases. Each benchmark
+must name a spawned process running the selected compiler, with positive instruction
+counts and compiler symbols in its profile. The job summary reports those counts;
+the `codspeed-compiler-evidence` artifact preserves the audit and preparation manifest.
+This checks collection independently of CodSpeed's asynchronous report processing.
+
 These are simulated CPU costs, including modeled cache behavior, rather than raw
 hardware instruction counts or elapsed build times. The compiler configuration is
 fixed in `bootstrap.toml`, without release PGO or BOLT. Ohm's existing development
@@ -54,16 +60,17 @@ uv pip sync --python src/tools/codspeed/.venv/bin/python --require-hashes \
   src/tools/codspeed/requirements.txt
 src/tools/codspeed/.venv/bin/python src/tools/codspeed/prepare.py \
   --rustc build/host/stage1/bin/rustc --cargo build/host/stage0/bin/cargo
-src/tools/codspeed/.venv/bin/python -m pytest src/tools/codspeed/test_harness.py
+src/tools/codspeed/.venv/bin/python -m pytest \
+  src/tools/codspeed/test_harness.py src/tools/codspeed/test_profiles.py
 src/tools/codspeed/.venv/bin/python -m pytest src/tools/codspeed/test_compiler.py
 ```
 
 Without `--codspeed`, each case executes once to check the harness and compiler;
 this does not produce performance measurements. The instrumented CI job requires
 Linux and runs the same cases with `--codspeed` and subprocess tracking enabled.
-Inspect its reported compiler frames to confirm child-process accounting. The
-pinned pytest integration can print `0 benchmarked` for the pedantic API even when
-it emits measurements; use the CodSpeed report to verify collection.
+The profile coverage check verifies child-process accounting. The pinned pytest
+integration can print `0 benchmarked` for the pedantic API even when it emits
+measurements; the audit checks the actual per-process instruction counts.
 
 Preparation rejects an existing output directory to prevent mixing candidates.
 Use `--output` to select a fresh directory and set `RUSTC_CODSPEED_MANIFEST` to its
