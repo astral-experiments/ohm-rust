@@ -359,6 +359,59 @@ fn diamond() {
 }
 
 #[test]
+fn shared_dependency_after_compaction() {
+    // Share one dependency among four roots, then rewrite its dependents when
+    // an earlier node, and optionally its original parent, are removed.
+    for remove_parent in [false, true] {
+        let mut forest = ObligationForest::new();
+        for obligation in ["done", "A", "B", "C", "D"] {
+            forest.register_obligation(obligation);
+        }
+
+        let TestOutcome { completed, errors } = forest.process_obligations(&mut C(
+            |obligation| match *obligation {
+                "done" => ProcessResult::Changed(thin_vec![]),
+                "A" if remove_parent => ProcessResult::Changed(thin_vec!["shared", "parent_error"]),
+                "A" | "B" | "C" | "D" => ProcessResult::Changed(thin_vec!["shared"]),
+                "shared" | "parent_error" => ProcessResult::Unchanged,
+                _ => unreachable!(),
+            },
+            |_| {},
+        ));
+        assert_eq!(completed, vec!["done"]);
+        assert!(errors.is_empty());
+
+        if remove_parent {
+            let TestOutcome { completed, errors } = forest.process_obligations(&mut C(
+                |obligation| match *obligation {
+                    "shared" => ProcessResult::Unchanged,
+                    "parent_error" => ProcessResult::Error("parent failed"),
+                    _ => unreachable!(),
+                },
+                |_| {},
+            ));
+            assert!(completed.is_empty());
+            assert_eq!(
+                errors,
+                vec![Error { error: "parent failed", backtrace: vec!["parent_error", "A"] }]
+            );
+        }
+
+        let TestOutcome { completed, errors } = forest.process_obligations(&mut C(
+            |obligation| {
+                assert_eq!(*obligation, "shared");
+                ProcessResult::Error("shared failed")
+            },
+            |_| {},
+        ));
+        let backtrace = if remove_parent { vec!["shared"] } else { vec!["shared", "A"] };
+        assert!(completed.is_empty());
+        assert_eq!(errors, vec![Error { error: "shared failed", backtrace }]);
+        assert_eq!(forest.len(), 0);
+    }
+}
+
+#[test]
 fn done_dependency() {
     // check that the local cache works
     let mut forest = ObligationForest::new();
