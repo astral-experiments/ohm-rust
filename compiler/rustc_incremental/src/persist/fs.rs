@@ -22,7 +22,7 @@
 //!    considered finalized if the "-working" suffix in the directory name has
 //!    been replaced by the SVH of the crate.
 //! 3. Once the compiler has found a valid, finalized session directory, it will
-//!    hard-link/copy its contents into the new "-working" directory. If all
+//!    clone or hard-link/copy its contents into the new "-working" directory. If all
 //!    goes well, it will have its own, private copy of the source directory and
 //!    subsequently not have to worry about synchronizing with other compiler
 //!    processes.
@@ -242,15 +242,12 @@ pub(crate) fn prepare_session_directory(
         // error without retrying
         let (directory_lock, lock_file_path) = lock_directory(sess, &session_dir);
 
-        // Now that we have the lock, we can actually create the session
-        // directory
-        create_dir(sess, &session_dir, "session");
-
         // Find a suitable source directory to copy from. Ignore those that we
         // have already tried before.
         let source_directory = find_source_directory(&crate_dir, &source_directories_already_tried);
 
         let Some(source_directory) = source_directory else {
+            create_dir(sess, &session_dir, "session");
             // There's nowhere to copy from, we're done
             debug!(
                 "no source directory found. Continuing with empty session \
@@ -280,7 +277,9 @@ pub(crate) fn prepare_session_directory(
 
             // Try to remove the session directory we just allocated. We don't
             // know if there's any garbage in it from the failed copy action.
-            if let Err(err) = std_fs::remove_dir_all(&session_dir) {
+            if let Err(err) = std_fs::remove_dir_all(&session_dir)
+                && err.kind() != ErrorKind::NotFound
+            {
                 sess.dcx().emit_warn(diagnostics::DeletePartial { path: &session_dir, err });
             }
 
@@ -380,6 +379,18 @@ fn copy_files(sess: &Session, target_dir: &Path, source_dir: &Path) -> Result<bo
     let Ok(source_dir_iterator) = source_dir.read_dir() else {
         return Err(());
     };
+
+    // The source lock protects this finalized directory from garbage collection. Keep the
+    // destination absent until cloning has been attempted; its separate lock file is held too.
+    #[cfg(target_os = "macos")]
+    if rustc_fs_util::clone_directory(source_dir, target_dir).is_ok() {
+        if sess.opts.unstable_opts.incremental_info {
+            eprintln!("[incremental] session directory cloned with copy-on-write");
+        }
+        return Ok(true);
+    }
+
+    create_dir(sess, target_dir, "session");
 
     let mut files_linked = 0;
     let mut files_copied = 0;
