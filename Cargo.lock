@@ -4088,6 +4088,7 @@ dependencies = [
 name = "rustc_fs_util"
 version = "0.0.0"
 dependencies = [
+ "libc",
  "tempfile",
 ]
 
