@@ -423,8 +423,13 @@ impl<'tcx> Clause<'tcx> {
             .instantiate(tcx, trait_ref.skip_binder().args)
             .skip_norm_wip();
         // 3) ['x] + ['b] -> ['x, 'b]
-        let bound_vars =
-            tcx.mk_bound_variable_kinds_from_iter(trait_bound_vars.iter().chain(pred_bound_vars));
+        let bound_vars = if trait_bound_vars.is_empty() {
+            pred_bound_vars
+        } else if pred_bound_vars.is_empty() {
+            trait_bound_vars
+        } else {
+            tcx.mk_bound_variable_kinds_from_iter(trait_bound_vars.iter().chain(pred_bound_vars))
+        };
 
         // FIXME: Is it really perf sensitive to use reuse_or_mk_predicate here?
         tcx.reuse_or_mk_predicate(

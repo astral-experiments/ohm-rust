@@ -42,7 +42,21 @@ impl<'a, 'tcx> TypeFolder<TyCtxt<'tcx>> for OpportunisticVarResolver<'a, 'tcx> {
             ty
         } else {
             let shallow = self.infcx.shallow_resolve(t);
-            let res = shallow.super_fold_with(self);
+            // Shallow resolution is idempotent. Reuse the resolved type's flags and
+            // cache entry in this frame, retaining the original debug traversal.
+            let res = if !cfg!(debug_assertions) && shallow != t {
+                if !shallow.has_non_region_infer() {
+                    shallow
+                } else if let Some(&ty) = self.cache.get(&shallow) {
+                    ty
+                } else {
+                    let res = shallow.super_fold_with(self);
+                    assert!(self.cache.insert(shallow, res));
+                    res
+                }
+            } else {
+                shallow.super_fold_with(self)
+            };
             assert!(self.cache.insert(t, res));
             res
         }
