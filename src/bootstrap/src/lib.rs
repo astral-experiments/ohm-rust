@@ -1852,20 +1852,33 @@ impl Build {
         }
     }
 
-    /// Links the `src` directory recursively to `dst`. Both are assumed to exist
-    /// when this function is called.
-    /// Will attempt to use hard links if possible and fall back to copying.
+    /// Copies the `src` directory recursively to `dst`, creating `dst` if needed.
+    /// Tries to clone directories on macOS, then falls back to hard links and copying.
+    /// Existing destination directories are merged with the source.
     #[track_caller]
     pub fn cp_link_r(&self, src: &Path, dst: &Path) {
         if self.config.dry_run() {
             return;
         }
-        for f in self.read_dir(src) {
+
+        let entries = self.read_dir(src);
+
+        #[cfg(target_os = "macos")]
+        {
+            if let Some(parent) = dst.parent() {
+                t!(fs::create_dir_all(parent));
+            }
+            if helpers::try_clone_dir(src, dst).is_ok() {
+                return;
+            }
+        }
+
+        t!(fs::create_dir_all(dst));
+        for f in entries {
             let path = f.path();
             let name = path.file_name().unwrap();
             let dst = dst.join(name);
             if t!(f.file_type()).is_dir() {
-                t!(fs::create_dir_all(&dst));
                 self.cp_link_r(&path, &dst);
             } else {
                 self.copy_link(&path, &dst, FileType::Regular);

@@ -313,7 +313,6 @@ fn build_gcc(metadata: &Meta, builder: &Builder<'_>, target_pair: GccTargetPair)
     if src_dir.exists() {
         builder.remove_dir(&src_dir);
     }
-    builder.create_dir(&src_dir);
     builder.cp_link_r(root, &src_dir);
 
     command(src_dir.join("contrib/download_prerequisites")).current_dir(&src_dir).run(builder);
