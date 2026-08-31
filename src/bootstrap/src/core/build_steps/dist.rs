@@ -527,7 +527,6 @@ impl Step for Rustc {
             let src = builder.sysroot(target_compiler);
 
             // Copy rustc binary
-            t!(fs::create_dir_all(image.join("bin")));
             builder.cp_link_r(&src.join("bin"), &image.join("bin"));
 
             // If enabled, copy rustdoc binary
@@ -1993,7 +1992,6 @@ impl Step for Extended {
             };
 
             let prepare = |name: &str| {
-                builder.create_dir(&pkg.join(name));
                 builder.cp_link_r(
                     &work.join(format!("{}-{}", pkgname(builder, name), target.triple)),
                     &pkg.join(name),
