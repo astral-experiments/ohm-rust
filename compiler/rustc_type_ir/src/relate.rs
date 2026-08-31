@@ -7,6 +7,7 @@ use tracing::{instrument, trace};
 use crate::error::{ExpectedFound, TypeError};
 use crate::fold::TypeFoldable;
 use crate::inherent::*;
+use crate::interner::CollectAndApply;
 use crate::{self as ty, Interner};
 
 pub mod combine;
@@ -120,15 +121,28 @@ pub trait Relate<I: Interner>: TypeFoldable<I> + PartialEq + Copy {
 ///////////////////////////////////////////////////////////////////////////
 // Relate impls
 
+/// Reuses unchanged arguments after evaluating their relations, preserving constraints and errors.
+fn collect_args_reusing<I: Interner>(
+    cx: I,
+    original: I::GenericArgs,
+    args: impl Iterator<Item = RelateResult<I, I::GenericArg>>,
+) -> RelateResult<I, I::GenericArgs> {
+    RelateResult::<I, I::GenericArg>::collect_and_apply(args, |args| {
+        if args == original.as_slice() { original } else { cx.mk_args(args) }
+    })
+}
+
 #[inline]
 pub fn relate_args_invariantly<I: Interner, R: TypeRelation<I>>(
     relation: &mut R,
     a_arg: I::GenericArgs,
     b_arg: I::GenericArgs,
 ) -> RelateResult<I, I::GenericArgs> {
-    relation.cx().mk_args_from_iter(iter::zip(a_arg.iter(), b_arg.iter()).map(|(a, b)| {
+    let cx = relation.cx();
+    let args = iter::zip(a_arg.iter(), b_arg.iter()).map(|(a, b)| {
         relation.relate_with_variance(ty::Invariant, VarianceDiagInfo::default(), a, b)
-    }))
+    });
+    collect_args_reusing(cx, a_arg, args)
 }
 
 pub fn relate_args_with_variances<I: Interner, R: TypeRelation<I>>(
@@ -142,8 +156,7 @@ pub fn relate_args_with_variances<I: Interner, R: TypeRelation<I>>(
         let variance = variances.get(i).unwrap();
         relation.relate_with_variance(variance, VarianceDiagInfo::None, a, b)
     });
-    // FIXME: We can probably try to reuse `a_args` here if it did not change.
-    cx.mk_args_from_iter(args)
+    collect_args_reusing(cx, a_args, args)
 }
 
 impl<I: Interner> Relate<I> for ty::FnSig<I> {
