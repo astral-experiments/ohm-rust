@@ -4,6 +4,9 @@ use std::{fs, io};
 
 use tempfile::TempDir;
 
+#[cfg(all(test, target_os = "macos"))]
+mod tests;
+
 // Unfortunately, on windows, it looks like msvcrt.dll is silently translating
 // verbatim paths under the hood to non-verbatim paths! This manifests itself as
 // gcc looking like it cannot accept paths of the form `\\?\C:\...`, but the
@@ -82,6 +85,26 @@ pub fn link_or_copy<P: AsRef<Path>, Q: AsRef<Path>>(p: P, q: Q) -> io::Result<Li
 
     // Hard linking failed, fall back to copying.
     fs::copy(p, q).map(|_| LinkOrCopy::Copy)
+}
+
+/// Clones a directory tree with copy-on-write data into a nonexistent destination.
+///
+/// The source and destination must be on the same filesystem, which must support cloning.
+/// Callers should fall back to copying when cloning is unavailable.
+#[cfg(target_os = "macos")]
+pub fn clone_directory(src: &Path, dst: &Path) -> io::Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+
+    // Defined in sys/clonefile.h, but not exposed by libc.
+    const CLONE_NOOWNERCOPY: u32 = 0x0002;
+    let src = CString::new(src.as_os_str().as_bytes())?;
+    let dst = CString::new(dst.as_os_str().as_bytes())?;
+    // SAFETY: Both paths are valid, nul-terminated strings that outlive the call.
+    if unsafe { libc::clonefile(src.as_ptr(), dst.as_ptr(), CLONE_NOOWNERCOPY) } == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
 }
 
 #[cfg(any(unix, all(target_os = "wasi", target_env = "p1")))]
