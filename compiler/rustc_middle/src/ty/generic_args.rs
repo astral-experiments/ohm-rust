@@ -584,8 +584,12 @@ impl<'tcx> GenericArgs<'tcx> {
         source_ancestor: DefId,
         target_args: GenericArgsRef<'tcx>,
     ) -> GenericArgsRef<'tcx> {
-        let defs = tcx.generics_of(source_ancestor);
-        tcx.mk_args_from_iter(target_args.iter().chain(self.iter().skip(defs.count())))
+        let count = tcx.generics_of(source_ancestor).count();
+        if count >= self.len() {
+            target_args
+        } else {
+            tcx.mk_args_from_iter(target_args.iter().chain(self.iter().skip(count)))
+        }
     }
 
     /// Truncates this list of generic args to have at most the number of args in `generics`.
