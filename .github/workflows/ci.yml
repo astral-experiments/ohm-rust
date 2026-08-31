@@ -68,7 +68,7 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off --warnings deny check compiler
 
-      - name: Run component PGO bootstrap and training tests
+      - name: Run bootstrap and component PGO tests
         shell: bash
         run: |
           stage0_cargo="$(
@@ -92,6 +92,7 @@ jobs:
           export CARGO_TARGET_DIR="$PWD/build/component-pgo-tests"
 
           "$stage0_cargo" test --locked --manifest-path src/bootstrap/Cargo.toml pgo_
+          "$stage0_cargo" test --locked --manifest-path src/bootstrap/Cargo.toml copy_link_tests
           "$stage0_cargo" test --locked -p opt-dist
 
       - name: Run incremental driver input regression
@@ -159,11 +160,6 @@ jobs:
           tests/incremental/mono_item_partition_test_unreachable_const.rs
           tests/incremental/mono_item_partition_unreachable_const.rs
           tests/incremental/mono_item_partition_unreachable_const_cached.rs
-
-      - name: Run bootstrap directory-copy tests
-        run: |
-          git submodule update --init --depth 1 src/tools/cargo
-          python3 x.py --ci false --set build.submodules=false test src/bootstrap --test-args copy_link_tests
 
       - name: Run focused compiler run-make tests
         shell: bash
