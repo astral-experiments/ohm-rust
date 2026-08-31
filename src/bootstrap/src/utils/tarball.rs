@@ -247,7 +247,6 @@ impl<'a> Tarball<'a> {
     pub(crate) fn add_dir(&self, src: impl AsRef<Path>, dest: impl AsRef<Path>) {
         let dest = self.image_dir.join(dest.as_ref());
 
-        t!(std::fs::create_dir_all(&dest));
         self.builder.cp_link_r(src.as_ref(), &dest);
     }
 

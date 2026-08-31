@@ -1416,7 +1416,6 @@ impl CommandLineStep for RustcBook {
     /// "rustbook" is used to convert it to HTML.
     fn run(self, builder: &Builder<'_>) {
         let out_base = builder.out.join(self.target).join("md-doc").join("rustc");
-        t!(fs::create_dir_all(&out_base));
         let out_listing = out_base.join("src/lints");
         builder.cp_link_r(&builder.src.join("src/doc/rustc"), &out_base);
         builder.info(&format!("Generating lint docs ({})", self.target));
