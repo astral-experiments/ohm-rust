@@ -202,6 +202,53 @@ pub fn move_file<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<(
     }
 }
 
+/// Tries to clone a directory tree using copy-on-write.
+///
+/// The destination must not exist, the source directories must be owner-writable,
+/// and the filesystem must support cloning.
+#[cfg(target_os = "macos")]
+pub fn try_clone_dir(src: &Path, dst: &Path) -> io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn check_directory_permissions(dir: &Path) -> io::Result<()> {
+        // Unlike mkdir, cloning preserves read-only directory permissions. Bootstrap
+        // needs to add and replace files in staging directories, so use the fallback.
+        if dir.metadata()?.permissions().mode() & 0o200 == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "cloning would preserve read-only directory permissions",
+            ));
+        }
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            if entry.file_type()?.is_dir() {
+                check_directory_permissions(&entry.path())?;
+            }
+        }
+        Ok(())
+    }
+
+    // Existing destinations need a merge; avoid walking those source trees twice.
+    if dst.symlink_metadata().is_ok() {
+        return Err(io::ErrorKind::AlreadyExists.into());
+    }
+    check_directory_permissions(src)?;
+
+    let src = CString::new(src.as_os_str().as_bytes())?;
+    let dst = CString::new(dst.as_os_str().as_bytes())?;
+    // Keep ownership with the calling user, matching newly created directories.
+    const CLONE_NOOWNERCOPY: u32 = 0x0002;
+
+    // SAFETY: both paths are valid, null-terminated strings for the duration of the call.
+    if unsafe { libc::clonefile(src.as_ptr(), dst.as_ptr(), CLONE_NOOWNERCOPY) } == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
 pub fn forcing_clang_based_tests() -> bool {
     if let Some(var) = env::var_os("RUSTBUILD_FORCE_CLANG_BASED_TESTS") {
         match &var.to_string_lossy().to_lowercase()[..] {
