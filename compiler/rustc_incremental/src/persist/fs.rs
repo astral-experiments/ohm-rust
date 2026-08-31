@@ -419,6 +419,7 @@ fn lock_directory(
         new_session, // create
         new_session, // exclusive
     ) {
+        Ok(_lock) if !new_session && !session_dir.is_dir() => None,
         Ok(lock) => {
             // Now that we have the lock, we can actually create the session
             // directory
