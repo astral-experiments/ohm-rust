@@ -12,6 +12,8 @@ use crate::{Build, Config, Flags, t};
 
 pub mod git;
 
+mod copy_link_tests;
+
 // Note: tests for `shared_helpers` is separate here, as otherwise shim binaries that include the
 // `shared_helpers` via `#[path]` would fail to find it, breaking `./x check bootstrap`.
 mod shared_helpers_tests;
