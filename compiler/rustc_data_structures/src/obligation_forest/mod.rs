@@ -75,6 +75,7 @@ use std::fmt::Debug;
 use std::hash;
 use std::marker::PhantomData;
 
+use smallvec::{SmallVec, smallvec};
 use thin_vec::ThinVec;
 use tracing::debug;
 
@@ -190,7 +191,7 @@ struct Node<O> {
 
     /// Obligations that depend on this obligation for their completion. They
     /// must all be in a non-pending state.
-    dependents: Vec<usize>,
+    dependents: SmallVec<[usize; 2]>,
 
     /// If true, `dependents[0]` points to a "parent" node, which requires
     /// special treatment upon error but is otherwise treated the same.
@@ -208,7 +209,11 @@ impl<O> Node<O> {
         Node {
             obligation,
             state: Cell::new(NodeState::Pending),
-            dependents: if let Some(parent_index) = parent { vec![parent_index] } else { vec![] },
+            dependents: if let Some(parent_index) = parent {
+                smallvec![parent_index]
+            } else {
+                smallvec![]
+            },
             has_parent: parent.is_some(),
             obligation_tree_id,
         }
