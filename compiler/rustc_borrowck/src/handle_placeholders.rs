@@ -61,6 +61,60 @@ impl scc::Annotations<RegionVid> for SccAnnotations<'_, '_, RegionTracker> {
     type SccIdx = ConstraintSccIndex;
 }
 
+/// Traversal state for a graph whose definitions contain no placeholders.
+#[derive(Copy, Debug, Clone)]
+struct RegionTrackerWithoutPlaceholders {
+    max_nameable_universe: (UniverseIndex, RegionVid),
+    representative: Representative,
+}
+
+impl scc::Annotation for RegionTrackerWithoutPlaceholders {
+    fn update_scc(&mut self, other: &Self) {
+        trace!("{:?} << {:?}", self.representative, other.representative);
+        self.representative = self.representative.min(other.representative);
+        self.update_reachable(other);
+    }
+
+    fn update_reachable(&mut self, other: &Self) {
+        self.max_nameable_universe = self.max_nameable_universe.min(other.max_nameable_universe);
+    }
+}
+
+/// Expands compact traversal state into the unchanged annotation for each completed SCC.
+struct SccAnnotationsWithoutPlaceholders<'a, 'd, 'tcx>(
+    &'a mut SccAnnotations<'d, 'tcx, RegionTracker>,
+);
+
+impl scc::Annotations<RegionVid> for SccAnnotationsWithoutPlaceholders<'_, '_, '_> {
+    fn new(&self, element: RegionVid) -> RegionTrackerWithoutPlaceholders {
+        let definition = &self.0.definitions[element];
+        debug_assert!(!matches!(definition.origin, NllRegionVariableOrigin::Placeholder(_)));
+        RegionTrackerWithoutPlaceholders {
+            max_nameable_universe: (definition.universe, element),
+            representative: Representative::new(element, definition),
+        }
+    }
+
+    fn annotate_scc(
+        &mut self,
+        scc: ConstraintSccIndex,
+        annotation: RegionTrackerWithoutPlaceholders,
+    ) {
+        scc::Annotations::annotate_scc(
+            self.0,
+            scc,
+            RegionTracker {
+                reachable_placeholders: None,
+                max_nameable_universe: annotation.max_nameable_universe,
+                representative: annotation.representative,
+            },
+        );
+    }
+
+    type Ann = RegionTrackerWithoutPlaceholders;
+    type SccIdx = ConstraintSccIndex;
+}
+
 #[derive(Copy, Debug, Clone, PartialEq, Eq)]
 struct PlaceholderReachability {
     /// The largest-universed placeholder we can reach
@@ -259,11 +313,17 @@ pub(crate) fn compute_sccs_applying_placeholder_outlives_constraints<'tcx>(
         };
 
     let mut scc_annotations = SccAnnotations::init(&definitions);
-    let constraint_sccs = compute_sccs(&outlives_constraints, &mut scc_annotations);
+    let constraint_sccs = if has_placeholders {
+        compute_sccs(&outlives_constraints, &mut scc_annotations)
+    } else {
+        ConstraintSccs::new_with_annotation(
+            &outlives_constraints
+                .graph(definitions.len())
+                .region_graph(&outlives_constraints, fr_static),
+            &mut SccAnnotationsWithoutPlaceholders(&mut scc_annotations),
+        )
+    };
 
-    // This code structure is a bit convoluted because it allows for a planned
-    // future change where the early return here has a different type of annotation
-    // that does much less work.
     if !has_placeholders {
         debug!("No placeholder regions found; skipping rewriting logic!");
 
@@ -381,4 +441,104 @@ pub(crate) fn rewrite_placeholder_outlives<'tcx>(
         });
     }
     added_constraints
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compact_matches_full() {
+        // Name, each region's universe, free region IDs, and explicit outlives edges.
+        // Region zero is 'static; the real region graph adds its edges to every node.
+        let cases: &[(&str, &[u32], &[usize], &[(usize, usize)])] = &[
+            ("static_only", &[0], &[0], &[]),
+            ("isolated_non_root_regions", &[0, 3, 1, 0], &[0, 3], &[]),
+            ("equal_universe_id_ties", &[0, 2, 2, 2], &[0], &[(2, 1), (3, 2), (3, 1)]),
+            (
+                "cycles_duplicates_and_free_preference",
+                &[0, 0, 0, 2, 0, 3],
+                &[0, 2, 4],
+                &[(1, 2), (2, 1), (1, 3), (1, 3), (2, 5), (3, 4), (4, 3), (4, 5)],
+            ),
+            (
+                "non_root_cycles_and_reachable_universes",
+                &[0, 4, 3, 3, 1, 5],
+                &[0],
+                &[(1, 2), (2, 1), (2, 3), (3, 4), (4, 3), (2, 5), (5, 4)],
+            ),
+            (
+                "cycle_through_implicit_static_edges",
+                &[0, 2, 0, 1],
+                &[0, 2],
+                &[(3, 1), (1, 0), (2, 3), (3, 1)],
+            ),
+        ];
+
+        for &(name, universes, free_regions, edges) in cases {
+            let definitions: IndexVec<RegionVid, _> = universes
+                .iter()
+                .enumerate()
+                .map(|(index, &universe)| RegionDefinition {
+                    origin: if free_regions.contains(&index) {
+                        NllRegionVariableOrigin::FreeRegion
+                    } else {
+                        NllRegionVariableOrigin::Existential { name: None }
+                    },
+                    universe: UniverseIndex::from_u32(universe),
+                    external_name: None,
+                })
+                .collect();
+            let mut constraints = OutlivesConstraintSet::default();
+            for &(sup, sub) in edges {
+                constraints.push(OutlivesConstraint {
+                    sup: RegionVid::from_usize(sup),
+                    sub: RegionVid::from_usize(sub),
+                    locations: Locations::All(rustc_span::DUMMY_SP),
+                    span: rustc_span::DUMMY_SP,
+                    category: ConstraintCategory::Boring,
+                    variance_info: VarianceDiagInfo::None,
+                    from_closure: false,
+                });
+            }
+            let constraint_graph = constraints.graph(definitions.len());
+            let graph = constraint_graph.region_graph(&constraints, RegionVid::from_u32(0));
+            assert_eq!(
+                graph.outgoing_regions(RegionVid::from_u32(0)).collect::<Vec<_>>(),
+                definitions.indices().collect::<Vec<_>>(),
+                "{name}: implicit static edges",
+            );
+
+            let mut full_annotations = SccAnnotations::init(&definitions);
+            let full = ConstraintSccs::new_with_annotation(&graph, &mut full_annotations);
+            let mut compact_annotations = SccAnnotations::init(&definitions);
+            let compact = ConstraintSccs::new_with_annotation(
+                &graph,
+                &mut SccAnnotationsWithoutPlaceholders(&mut compact_annotations),
+            );
+
+            assert_eq!(full.num_sccs(), compact.num_sccs(), "{name}: SCC count");
+            for region in definitions.indices() {
+                assert_eq!(full.scc(region), compact.scc(region), "{name}: region {region:?}");
+            }
+            for scc in full.all_sccs() {
+                assert_eq!(
+                    full.successors(scc),
+                    compact.successors(scc),
+                    "{name}: ordered successors for {scc:?}",
+                );
+                let full = full_annotations.scc_to_annotation[scc];
+                let compact = compact_annotations.scc_to_annotation[scc];
+                assert_eq!(
+                    (full.reachable_placeholders, full.max_nameable_universe, full.representative),
+                    (
+                        compact.reachable_placeholders,
+                        compact.max_nameable_universe,
+                        compact.representative,
+                    ),
+                    "{name}: expanded annotation for {scc:?}",
+                );
+            }
+        }
+    }
 }
