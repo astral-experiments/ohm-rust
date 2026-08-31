@@ -137,6 +137,12 @@ jobs:
           --compiletest-rustc-args=-Zincremental-verify-ich
           tests/incremental/hygiene tests/incremental/derive_macro_expansion
 
+      - name: Run incremental directory copy tests
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1 compiler/rustc_fs_util
+          tests/run-make/incremental-directory-copy tests/run-make/incremental-session-fail
+
       - name: Run reduced-dependency-rebuild and monomorphization incremental tests
         if: hashFiles('tests/incremental/rdr/**/*.rs') != ''
         run: >-
