@@ -127,6 +127,7 @@ impl<'a, 'tcx> TypeFolder<TyCtxt<'tcx>> for TypeFreshener<'a, 'tcx> {
                 #[cfg(debug_assertions)]
                 ty::Placeholder(..) | ty::Bound(..) => bug!("unexpected type {:?}", t),
 
+                _ if !t.has_non_region_infer() => self.fold_inference_independent_ty(t),
                 _ => t.super_fold_with(self),
             }
         }
@@ -166,6 +167,24 @@ impl<'a, 'tcx> TypeFolder<TyCtxt<'tcx>> for TypeFreshener<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> TypeFreshener<'a, 'tcx> {
+    /// Reuses region-only freshening across inference contexts on this worker.
+    /// The caller excludes types whose result can depend on mutable inference state.
+    #[inline(never)]
+    fn fold_inference_independent_ty(&mut self, ty: Ty<'tcx>) -> Ty<'tcx> {
+        let tcx = self.infcx.tcx;
+        let Some(cache) = tcx.freshened_types.get_if_registered() else {
+            return ty.super_fold_with(self);
+        };
+        if let Some(freshened) = cache.borrow().get(&ty).copied() {
+            return freshened;
+        }
+
+        // Release the lookup borrow before recursively folding nested types.
+        let freshened = ty.super_fold_with(self);
+        cache.borrow_mut().insert(ty, freshened);
+        freshened
+    }
+
     // This is separate from `fold_ty` to keep that method small and inlinable.
     #[inline(never)]
     fn fold_infer_ty(&mut self, ty: ty::InferTy) -> Ty<'tcx> {
