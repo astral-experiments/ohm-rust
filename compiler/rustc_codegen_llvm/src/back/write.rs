@@ -23,7 +23,9 @@ use rustc_middle::ty::TyCtxt;
 use rustc_session::Session;
 use rustc_session::config::{self, Lto, OutputType, Passes, SplitDwarfKind, SwitchWithOptPath};
 use rustc_span::{BytePos, InnerSpan, Pos, RemapPathScopeComponents, SpanData, SyntaxContext, sym};
-use rustc_target::spec::{CodeModel, FloatAbi, RelocModel, SanitizerSet, SplitDebuginfo, TlsModel};
+use rustc_target::spec::{
+    CodeModel, DebuginfoKind, FloatAbi, RelocModel, SanitizerSet, SplitDebuginfo, TlsModel,
+};
 use tracing::{debug, trace};
 
 use crate::back::lto::{Buffer, ModuleBuffer};
@@ -122,8 +124,10 @@ pub(crate) fn create_target_machine(tcx: TyCtxt<'_>, mod_name: &str) -> OwnedTar
         None
     };
 
-    let output_obj_file =
-        Some(tcx.output_filenames(()).temp_path_for_cgu(OutputType::Object, mod_name));
+    // LLVM only uses this filename for CodeView's S_OBJNAME record. Avoid making every
+    // codegen unit depend on the output directory when it cannot affect the generated code.
+    let output_obj_file = (tcx.sess.target.debuginfo_kind == DebuginfoKind::Pdb)
+        .then(|| tcx.output_filenames(()).temp_path_for_cgu(OutputType::Object, mod_name));
     let config = TargetMachineFactoryConfig { split_dwarf_file, output_obj_file };
 
     target_machine_factory(
