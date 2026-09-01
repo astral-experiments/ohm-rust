@@ -25,12 +25,30 @@ use crate::{self as ty, DebruijnIndex, Interner, UniverseIndex, Unnormalized};
 /// for more details.
 ///
 /// `Decodable` and `Encodable` are implemented for `Binder<T>` using the `impl_binder_encode_decode!` macro.
-#[derive_where(Clone, Copy, Hash, PartialEq, Debug; I: Interner, T)]
+#[derive_where(Clone, Copy, Debug; I: Interner, T)]
 #[derive(GenericTypeVisitable, Lift_Generic)]
 #[cfg_attr(feature = "nightly", derive(StableHash_NoContext))]
 pub struct Binder<I: Interner, T> {
     value: T,
     bound_vars: I::BoundVarKinds,
+}
+
+impl<I: Interner, T: Hash> Hash for Binder<I, T> {
+    #[inline(always)]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let Self { value, bound_vars } = self;
+        Hash::hash(value, state);
+        Hash::hash(bound_vars, state);
+    }
+}
+
+impl<I: Interner, T: PartialEq> PartialEq for Binder<I, T> {
+    #[inline(always)]
+    fn eq(&self, other: &Self) -> bool {
+        let Self { value, bound_vars } = self;
+        let Self { value: other_value, bound_vars: other_bound_vars } = other;
+        PartialEq::eq(value, other_value) && PartialEq::eq(bound_vars, other_bound_vars)
+    }
 }
 
 impl<I: Interner, T: Eq> Eq for Binder<I, T> {}
