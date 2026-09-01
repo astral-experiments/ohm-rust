@@ -15,9 +15,23 @@ concurrency:
 
 jobs:
   codspeed:
-    name: Compiler CPU benchmarks
-    runs-on: depot-ubuntu-24.04-16
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Compiler CPU benchmarks
+            runner: depot-ubuntu-24.04-16
+            mode: simulation
+            benchmark: test_compiler.py
+            evidence: codspeed-compiler-evidence
+          - name: Compiler Walltime benchmarks
+            runner: codspeed-macro
+            mode: walltime
+            benchmark: test_compiler_walltime.py
+            evidence: codspeed-walltime-evidence
     permissions:
       contents: read
       id-token: write
@@ -49,6 +63,7 @@ jobs:
         run: >-
           src/tools/codspeed/.venv/bin/python -m pytest
           src/tools/codspeed/test_harness.py src/tools/codspeed/test_profiles.py
+          src/tools/codspeed/test_walltime_results.py
 
       - name: Build candidate compiler and matching standard library
         run: >-
@@ -72,18 +87,19 @@ jobs:
           --rustc build/host/stage1/bin/rustc
           --cargo build/host/stage0/bin/cargo
 
-      - name: Measure compiler CPU cost
+      - name: Measure compiler performance
         uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
         with:
-          mode: simulation
+          mode: ${{ matrix.mode }}
           runner-version: "5.2.1"
-          simulation-track-subprocess: "true"
+          simulation-track-subprocess: ${{ matrix.mode == 'simulation' }}
           run: |
             printf '%s\n' "$CODSPEED_PROFILE_FOLDER" > build/codspeed/profile-folder
             src/tools/codspeed/.venv/bin/python -m pytest \
-              src/tools/codspeed/test_compiler.py --codspeed
+              src/tools/codspeed/${{ matrix.benchmark }} --codspeed
 
       - name: Verify compiler profile coverage
+        if: ${{ matrix.mode == 'simulation' }}
         id: profile-audit
         run: |
           valgrind --version
@@ -93,11 +109,20 @@ jobs:
             "$profile_folder" --rustc build/host/stage1/bin/rustc \
             --output build/codspeed/measurement-audit.json
 
+      - name: Verify compiler Walltime measurements
+        if: ${{ matrix.mode == 'walltime' }}
+        id: walltime-audit
+        run: |
+          profile_folder="$(cat build/codspeed/profile-folder)"
+          printf 'folder=%s\n' "$profile_folder" >> "$GITHUB_OUTPUT"
+          src/tools/codspeed/.venv/bin/python src/tools/codspeed/verify_walltime.py \
+            "$profile_folder" --output build/codspeed/measurement-audit.json
+
       - name: Retain compiler measurement evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: codspeed-compiler-evidence
+          name: ${{ matrix.evidence }}
           path: |
             build/codspeed/manifest.json
             build/codspeed/measurement-audit.json
@@ -113,3 +138,12 @@ jobs:
             ${{ steps.profile-audit.outputs.folder }}/*.out
             ${{ steps.profile-audit.outputs.folder }}/valgrind.*.log
           retention-days: 3
+
+      - name: Retain compiler Walltime statistics
+        if: ${{ !cancelled() && steps.walltime-audit.outputs.folder != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codspeed-walltime-statistics
+          path: ${{ steps.walltime-audit.outputs.folder }}/results/*.json
+          if-no-files-found: error
+          retention-days: 14

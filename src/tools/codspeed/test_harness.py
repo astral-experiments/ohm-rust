@@ -1,17 +1,26 @@
 """Regression tests for the source/cache boundaries of compiler measurements."""
 
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
-
+from pytest_codspeed.config import (
+    BenchmarkMarkerOptions,
+    CodSpeedConfig,
+    PedanticOptions,
+)
+from pytest_codspeed.instruments import MeasurementMode
+from pytest_codspeed.instruments.walltime import WallTimeInstrument
 from test_compiler import (
     compiler_environment,
     prepare_invocation,
+)
+from test_compiler import (
     test_compile as run_benchmark,
 )
+from test_compiler_walltime import test_compile as run_walltime_benchmark
 
 
 @pytest.fixture
@@ -183,3 +192,94 @@ def test_compiler_failure_or_interruption_reaps_the_child(
     assert processes[0].returncode is not None
     if not interrupt:
         assert error.value.returncode == 7
+
+
+@pytest.mark.parametrize("exit_code", [0, 7])
+def test_walltime_compiler_completion_and_failure_are_measured(
+    fixture, monkeypatch, exit_code
+):
+    fixture["command"] = [sys.executable, "-c", f"raise SystemExit({exit_code})"]
+    measured = False
+    processes = []
+    popen = subprocess.Popen
+
+    class CompilerProcess(popen):
+        def __init__(self, *args, **kwargs):
+            assert measured
+            super().__init__(*args, **kwargs)
+            processes.append(self)
+
+        def wait(self, *args, **kwargs):
+            assert measured
+            return super().wait(*args, **kwargs)
+
+    class Benchmark:
+        def pedantic(self, target, *, setup, **_options):
+            nonlocal measured
+            args, kwargs = setup()
+            measured = True
+            try:
+                assert target(*args, **kwargs).returncode == 0
+            finally:
+                measured = False
+
+    monkeypatch.setattr(subprocess, "Popen", CompilerProcess)
+    if exit_code:
+        with pytest.raises(subprocess.CalledProcessError) as error:
+            run_walltime_benchmark(Benchmark(), {"example": fixture}, "example", "Full")
+        assert error.value.returncode == exit_code
+    else:
+        run_walltime_benchmark(Benchmark(), {"example": fixture}, "example", "Full")
+    assert len(processes) == 1
+    assert processes[0].returncode == exit_code
+
+
+def test_walltime_reseeds_for_warmup_rounds_and_result(fixture, monkeypatch):
+    instrument = WallTimeInstrument(CodSpeedConfig(), MeasurementMode.WallTime)
+    run = subprocess.run
+    incremental = Path(fixture["incremental"])
+    in_target = False
+    seeds = []
+    invocations = []
+
+    def record_compile(command, **kwargs):
+        if command[0] != sys.executable:
+            return run(command, **kwargs)
+        assert kwargs["check"] is True
+        source = Path(kwargs["cwd"]) / "src/lib.rs"
+        if in_target:
+            assert source.read_text() == "fn value() -> u8 { 2 }\n"
+            assert sorted(path.name for path in incremental.iterdir()) == ["seed"]
+            invocations.append(source.read_text())
+            (incremental / "previous-output").touch()
+            source.write_text("changed by a previous invocation\n")
+        else:
+            assert source.read_text() == "fn value() -> u8 { 1 }\n"
+            assert not list(incremental.iterdir())
+            seeds.append(source.read_text())
+            (incremental / "seed").touch()
+        return subprocess.CompletedProcess(command, 0)
+
+    class Benchmark:
+        def pedantic(self, target, *, setup, **options):
+            def prepare():
+                nonlocal in_target
+                in_target = False
+                args = setup()
+                in_target = True
+                return args
+
+            return instrument.measure_pedantic(
+                BenchmarkMarkerOptions(),
+                PedanticOptions(target=target, setup=prepare, teardown=None, **options),
+                "example",
+                "example",
+            )
+
+    monkeypatch.setattr(subprocess, "run", record_compile)
+    run_walltime_benchmark(Benchmark(), {"example": fixture}, "example", "IncrPatched")
+
+    # The pinned plugin also makes one untimed call to obtain the result.
+    assert len(seeds) == len(invocations) == 12
+    stats = instrument.benchmarks[0].stats
+    assert (stats.warmup_iters, stats.rounds, stats.iter_per_round) == (1, 10, 1)

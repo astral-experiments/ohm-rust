@@ -1,5 +1,5 @@
-# A fixed, optimized stage-1 compiler for CPU regression measurements.
-# Release PGO/BOLT and parallel wall-time measurements are separate workloads.
+# A fixed, optimized stage-1 compiler for CPU and Walltime measurements.
+# Release PGO/BOLT and parallel builds are separate workloads.
 [build]
 docs = false
 locked-deps = true
