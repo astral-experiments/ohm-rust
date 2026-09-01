@@ -13,6 +13,9 @@ decl_derive!(
 decl_derive!(
     [Lift_Generic, attributes(lift)] => lift_derive
 );
+decl_derive!(
+    [HashPartialEq_Inline] => hash_partial_eq_derive
+);
 #[cfg(not(feature = "nightly"))]
 decl_derive!(
     [GenericTypeVisitable] => customizable_type_visitable_derive
@@ -51,6 +54,77 @@ fn has_ignore_attr(attrs: &[Attribute], name: &'static str, meta: &'static str) 
     });
 
     ignored
+}
+
+/// Full structural Hash and PartialEq for interner keys, with inline methods.
+/// Field bounds must follow from the input's existing generic and where bounds.
+fn hash_partial_eq_derive(mut s: synstructure::Structure<'_>) -> proc_macro2::TokenStream {
+    if !matches!(&s.ast().data, syn::Data::Enum(_)) || s.variants().is_empty() {
+        panic!("HashPartialEq_Inline requires a nonempty enum")
+    }
+    if has_ignore_attr(&s.ast().attrs, "derive_where", "incomparable") {
+        panic!("HashPartialEq_Inline does not support incomparable enums")
+    }
+    for variant in s.variants() {
+        let mut attrs = variant
+            .ast()
+            .attrs
+            .iter()
+            .chain(variant.bindings().iter().flat_map(|binding| binding.ast().attrs.iter()));
+        if attrs.any(|attr| attr.path().is_ident("derive_where")) {
+            panic!("HashPartialEq_Inline does not support derive_where field or variant options")
+        }
+    }
+
+    // Interner parameters need not implement Hash or PartialEq themselves.
+    s.add_bounds(synstructure::AddBounds::None);
+    // Match borrowed scrutinees; bare bindings become references in Rust 2024.
+    s.bind_with(|_| synstructure::BindStyle::Move);
+    let hash_body = s.each_variant(|variant| {
+        let bindings = variant.bindings();
+        quote! {
+            ::core::hash::Hash::hash(&::core::mem::discriminant(self), __state);
+            #(::core::hash::Hash::hash(#bindings, __state);)*
+        }
+    });
+
+    let mut other = s.clone();
+    other.binding_name(|_, index| quote::format_ident!("__other_binding_{index}"));
+    let eq_arms = s.variants().iter().zip(other.variants()).map(|(left, right)| {
+        let left_pat = left.pat();
+        let right_pat = right.pat();
+        let left_bindings = left.bindings();
+        let right_bindings = right.bindings();
+        quote! {
+            (#left_pat, #right_pat) =>
+                true #(&& ::core::cmp::PartialEq::eq(#left_bindings, #right_bindings))*,
+        }
+    });
+
+    s.gen_impl(quote! {
+        #[automatically_derived]
+        gen impl ::core::hash::Hash for @Self {
+            #[inline(always)]
+            fn hash<__H: ::core::hash::Hasher>(&self, __state: &mut __H) {
+                match self { #hash_body }
+            }
+        }
+
+        #[automatically_derived]
+        gen impl ::core::cmp::PartialEq for @Self {
+            #[inline(always)]
+            fn eq(&self, __other: &Self) -> ::core::primitive::bool {
+                if ::core::mem::discriminant(self) == ::core::mem::discriminant(__other) {
+                    match (self, __other) {
+                        #(#eq_arms)*
+                        _ => false,
+                    }
+                } else {
+                    false
+                }
+            }
+        }
+    })
 }
 
 fn type_visitable_derive(mut s: synstructure::Structure<'_>) -> proc_macro2::TokenStream {
