@@ -2,22 +2,27 @@ use std::hash::Hash;
 
 use crate::data_structures::{HashMap, HashSet};
 
+#[cfg(test)]
+mod tests;
+
 const CACHE_CUTOFF: u32 = 32;
 
-/// A hashmap which only starts hashing after ignoring the first few inputs.
+/// A hashmap which only starts hashing after the first few insertions.
+/// Before that, only the most recently inserted entry is retained.
 ///
-/// This is used in type folders as in nearly all cases caching is not worth it
+/// This is used in type folders as in nearly all cases hashing is not worth it
 /// as nearly all folded types are tiny. However, there are very rare incredibly
 /// large types for which caching is necessary to avoid hangs.
 #[derive(Debug)]
 pub struct DelayedMap<K, V> {
     cache: HashMap<K, V>,
+    recent: Option<(K, V)>,
     count: u32,
 }
 
 impl<K, V> Default for DelayedMap<K, V> {
     fn default() -> Self {
-        DelayedMap { cache: Default::default(), count: 0 }
+        DelayedMap { cache: Default::default(), recent: None, count: 0 }
     }
 }
 
@@ -28,6 +33,7 @@ impl<K: Hash + Eq, V> DelayedMap<K, V> {
             self.cold_insert(key, value)
         } else {
             self.count += 1;
+            self.recent = Some((key, value));
             true
         }
     }
@@ -35,11 +41,16 @@ impl<K: Hash + Eq, V> DelayedMap<K, V> {
     #[cold]
     #[inline(never)]
     fn cold_insert(&mut self, key: K, value: V) -> bool {
+        // The recent entry must not shadow an updated value in the hashmap.
+        self.recent = None;
         self.cache.insert(key, value).is_none()
     }
 
     #[inline(always)]
     pub fn get(&self, key: &K) -> Option<&V> {
+        if let Some((recent_key, value)) = &self.recent {
+            return (recent_key == key).then_some(value);
+        }
         if self.cache.is_empty() { None } else { self.cold_get(key) }
     }
 

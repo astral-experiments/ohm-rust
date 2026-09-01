@@ -56,7 +56,7 @@ where
 ///
 /// Any implementation must make sure that each bound variable always
 /// gets mapped to the same result. `BoundVarReplacer` caches by using
-/// a `DelayedMap` which does not cache the first few types it encounters.
+/// a `DelayedMap` which initially retains only the most recent type.
 pub trait BoundVarReplacerDelegate<'tcx> {
     fn replace_region(&mut self, br: ty::BoundRegion<'tcx>) -> ty::Region<'tcx>;
     fn replace_ty(&mut self, bt: ty::BoundTy<'tcx>) -> Ty<'tcx>;
