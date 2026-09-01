@@ -89,6 +89,8 @@ jobs:
 
       - name: Measure compiler performance
         uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
+        env:
+          RUSTC_CODSPEED_WALLTIME_CONTROL: "1"
         with:
           mode: ${{ matrix.mode }}
           runner-version: "5.2.1"

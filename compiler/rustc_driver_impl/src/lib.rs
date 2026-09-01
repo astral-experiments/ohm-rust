@@ -1675,10 +1675,22 @@ pub fn main() -> ExitCode {
     let exit_code =
         catch_with_exit_code(|| run_compiler(&args::raw_args(&early_dcx), &mut callbacks));
 
+    if exit_code == ExitCode::SUCCESS
+        && std::env::var("RUSTC_CODSPEED_WALLTIME_CONTROL").is_ok_and(|value| value == "1")
+    {
+        codspeed_walltime_control();
+    }
+
     if let Some(format) = callbacks.time_passes {
         let end_rss = get_resident_set_size();
         print_time_passes_entry("total", start_time.elapsed(), start_rss, end_rss, format);
     }
 
     exit_code
+}
+
+/// Add a fixed wait after compilation to validate compiler Walltime measurement.
+#[inline(never)]
+fn codspeed_walltime_control() {
+    std::thread::sleep(std::time::Duration::from_millis(500));
 }
