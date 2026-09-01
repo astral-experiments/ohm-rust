@@ -21,7 +21,7 @@ EXPECTED_CASES = {
     for name in BENCHMARKS["FIXTURE_NAMES"]
     for scenario in BENCHMARKS["SCENARIOS"]
 }
-SYSCALL_EVENTS = ("SysCount", "SysTime", "SysCpuTime")
+SYSCALL_EVENTS = ("sysCount", "sysTime", "sysCpuTime")
 
 
 @dataclass
@@ -51,19 +51,26 @@ def read_profile(path: Path) -> Profile:
     uri = None
     children: set[int] = set()
     events: list[str] = []
-    syscalls: dict[str, int] = {}
+    syscalls: dict[str, int] | None = None
+    syscall_footer: dict[str, int] | None = None
 
     def finish_part():
+        # Stopping instrumentation clears the summary counters before pytest
+        # dumps them; the footer still contains the part's accumulated costs.
+        counters = syscall_footer if syscall_footer is not None else syscalls
+        if counters is not None:
+            profile.syscall_parts.append(counters)
         if uri is not None:
             profile.children.setdefault(uri, set()).update(children)
-            profile.benchmark_syscalls.setdefault(uri, []).append(syscalls)
+            profile.benchmark_syscalls.setdefault(uri, []).append(counters or {})
 
     with path.open(errors="replace") as stream:
         for line in stream:
             key, _, value = line.strip().partition(": ")
             if key == "part":
                 finish_part()
-                uri, children, events, syscalls = None, set(), [], {}
+                uri, children, events = None, set(), []
+                syscalls, syscall_footer = None, None
             elif key == "pid":
                 profile.pid = int(value)
             elif key == "cmd":
@@ -75,19 +82,22 @@ def read_profile(path: Path) -> Profile:
                     children.add(int(value.removeprefix("Spawned pid: ")))
             elif key == "events":
                 events = value.split()
-            elif key == "summary":
+            elif key in ("summary", "totals"):
                 if "Ir" not in events:
-                    raise ValueError(f"{path}: summary without an Ir event")
+                    raise ValueError(f"{path}: {key} without an Ir event")
                 counts = [int(count) for count in value.split()]
                 # Callgrind can omit trailing zero counters.
-                index = events.index("Ir")
-                profile.instructions += counts[index] if index < len(counts) else 0
-                syscalls = {
+                counters = {
                     event: counts[index] if index < len(counts) else 0
                     for index, event in enumerate(events)
                     if event in SYSCALL_EVENTS
                 }
-                profile.syscall_parts.append(syscalls)
+                if key == "summary":
+                    index = events.index("Ir")
+                    profile.instructions += counts[index] if index < len(counts) else 0
+                    syscalls = counters
+                else:
+                    syscall_footer = counters
             elif line.startswith(("fn=", "cfn=")) and len(profile.symbols) < 3:
                 symbol = line.partition("=")[2].strip()
                 if "rustc_" in symbol:
@@ -174,9 +184,9 @@ def main():
         parser.exit(1, f"Compiler profile verification failed: {error}\n")
     args.output.write_text(json.dumps(evidence, indent=2) + "\n")
     table = (
-        "| Compiler benchmark | Instructions | Parent SysCount | Parent SysTime (ns) "
-        "| Parent SysCpuTime (ns) | Compiler SysCount | Compiler SysTime (ns) "
-        "| Compiler SysCpuTime (ns) |\n"
+        "| Compiler benchmark | Instructions | Parent sysCount | Parent sysTime (ns) "
+        "| Parent sysCpuTime (ns) | Compiler sysCount | Compiler sysTime (ns) "
+        "| Compiler sysCpuTime (ns) |\n"
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n"
     )
     for row in evidence:
@@ -192,8 +202,8 @@ def main():
         )
     report = (
         "Parent counters cover only the named benchmark's dump parts; compiler counters "
-        "cover its attributed compiler processes. SysCount is the syscall count. "
-        "SysTime (elapsed) and SysCpuTime (thread CPU) are simulator-observed durations, "
+        "cover its attributed compiler processes. sysCount is the syscall count. "
+        "sysTime (elapsed) and sysCpuTime (thread CPU) are simulator-observed durations, "
         "not native kernel timings. An event absent from any contributing part is "
         "shown as not recorded.\n\n" + table
     )

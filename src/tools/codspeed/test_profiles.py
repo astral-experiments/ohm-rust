@@ -104,7 +104,7 @@ def test_scopes_syscalls_to_parent_case_and_compiler(profiles):
                 1,
                 uri=uris[0],
                 children=[10],
-                events="SysTime Ir SysCount SysCpuTime",
+                events="sysTime Ir sysCount sysCpuTime",
                 counts="200 30 3",
             ),
             part(
@@ -112,7 +112,7 @@ def test_scopes_syscalls_to_parent_case_and_compiler(profiles):
                 thread=102,
                 uri=uris[0],
                 children=[10],
-                events="SysCpuTime Ir SysCount SysTime",
+                events="sysCpuTime Ir sysCount sysTime",
                 counts="12 40 2 80",
             ),
             *(
@@ -122,7 +122,7 @@ def test_scopes_syscalls_to_parent_case_and_compiler(profiles):
             # Teardown and other unmarked parent work do not belong to this case.
             part(
                 50,
-                events="Ir SysCount SysTime SysCpuTime",
+                events="Ir sysCount sysTime sysCpuTime",
                 counts="0 100 90000 90000",
             ),
         ],
@@ -136,37 +136,81 @@ def test_scopes_syscalls_to_parent_case_and_compiler(profiles):
             part(
                 1,
                 thread=101,
-                events="SysCpuTime Ir SysTime SysCount",
+                events="sysCpuTime Ir sysTime sysCount",
                 counts="90 100 400 4",
             ),
             part(
                 1,
                 thread=102,
-                events="Dr SysCount Ir SysTime SysCpuTime",
+                events="Dr sysCount Ir sysTime sysCpuTime",
                 counts="22 1 20 600",
             ),
         ],
     )
     with child.open("a") as stream:
-        # The footer repeats costs; only the per-thread summaries are summed.
-        stream.write("totals: 90 120 1000 5\n")
+        # This footer belongs only to the last thread part, in that part's
+        # event order. Its omitted sysCpuTime is zero, not missing.
+        stream.write("totals: 22 1 20 600\n")
     row = verify_profiles(folder, compiler)[0]
     assert row["instructions"] == 120
-    assert row["parent_syscalls"] == {"SysCount": 5, "SysTime": 280, "SysCpuTime": 12}
+    assert row["parent_syscalls"] == {"sysCount": 5, "sysTime": 280, "sysCpuTime": 12}
     assert row["compiler_syscalls"] == {
-        "SysCount": 5,
-        "SysTime": 1000,
-        "SysCpuTime": 90,
+        "sysCount": 5,
+        "sysTime": 1000,
+        "sysCpuTime": 90,
     }
 
     with child.open("a") as stream:
-        stream.write(part(2, events="Ir SysCount SysTime", counts="10 1 100"))
+        stream.write(part(2, events="Ir sysCount sysTime", counts="10 1 100"))
     row = verify_profiles(folder, compiler)[0]
     assert row["compiler_syscalls"] == {
-        "SysCount": 6,
-        "SysTime": 1100,
-        "SysCpuTime": None,
+        "sysCount": 6,
+        "sysTime": 1100,
+        "sysCpuTime": None,
     }
+
+
+def test_stopped_parent_uses_syscall_footer_without_recounting_instructions(profiles):
+    folder, compiler = profiles
+    uris = list(EXPECTED_CASES.values())
+    parent = write_profile(
+        folder,
+        1,
+        "/usr/bin/python -m pytest",
+        [
+            part(
+                10,
+                uri=uris[0],
+                children=[10],
+                events=(
+                    "Ir Dr Dw I1mr D1mr D1mw ILmr DLmr DLmw "
+                    "sysCount sysTime sysCpuTime Ct Cl"
+                ),
+                counts="0",
+            )
+            # Real CodSpeed7 stopped-parent header/footer: summary is zero
+            # after STOP, but costs accumulated in its call graph are not.
+            + "totals: 1634128 401708 231909 2623 6718 1694 1723 2755 698 "
+            "7 1538619 1533870 87471266 328149385\n",
+            *(
+                part(pid, uri=uri, children=[pid], ir=30)
+                for pid, uri in enumerate(uris[1:], 11)
+            ),
+        ],
+        symbol=None,
+    )
+    profile = read_profile(parent)
+    assert profile.instructions == 30 * (len(uris) - 1)
+    assert len(profile.syscall_parts) == len(uris)
+    evidence = verify_profiles(folder, compiler)
+    assert evidence[0]["instructions"] == 100
+    assert evidence[0]["parent_syscalls"] == {
+        "sysCount": 7,
+        "sysTime": 1538619,
+        "sysCpuTime": 1533870,
+    }
+    assert evidence[0]["compiler_syscalls"] == dict.fromkeys(SYSCALL_EVENTS)
+    assert evidence[1]["parent_syscalls"] == dict.fromkeys(SYSCALL_EVENTS)
 
 
 def test_rejects_compiler_pid_reused_across_cases(profiles):
