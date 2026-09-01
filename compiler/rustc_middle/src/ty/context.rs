@@ -6,7 +6,7 @@ mod impl_interner;
 pub mod tls;
 
 use std::borrow::{Borrow, Cow};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
 use std::env::VarError;
 use std::ffi::OsStr;
@@ -217,7 +217,7 @@ impl<'tcx> CtxtInterners<'tcx> {
 
     /// Interns a type. (Use `mk_*` functions instead, where possible.)
     #[allow(rustc::usage_of_ty_tykind)]
-    #[inline(never)]
+    #[inline(always)]
     fn intern_ty(&self, kind: TyKind<'tcx>) -> Ty<'tcx> {
         let hash = make_hash(&kind);
         let cache = self
@@ -230,7 +230,18 @@ impl<'tcx> CtxtInterners<'tcx> {
         {
             return ty;
         }
-        let ty = Ty(Interned::new_unchecked(
+        let ty = self.intern_ty_shared(hash, kind);
+        if let Some(cache) = cache {
+            cache.set(Some(ty));
+        }
+        ty
+    }
+
+    /// Looks up or inserts a type after the worker cache misses.
+    #[allow(rustc::usage_of_ty_tykind)]
+    #[inline(never)]
+    fn intern_ty_shared(&self, hash: u64, kind: TyKind<'tcx>) -> Ty<'tcx> {
+        Ty(Interned::new_unchecked(
             self.type_
                 .intern_with_hash(hash, kind, |kind| {
                     let flags = ty::FlagComputation::<TyCtxt<'tcx>>::for_kind(&kind);
@@ -241,11 +252,7 @@ impl<'tcx> CtxtInterners<'tcx> {
                     }))
                 })
                 .0,
-        ));
-        if let Some(cache) = cache {
-            cache.set(Some(ty));
-        }
-        ty
+        ))
     }
 
     /// Interns a const. (Use `mk_*` functions instead, where possible.)
@@ -267,7 +274,7 @@ impl<'tcx> CtxtInterners<'tcx> {
     }
 
     /// Interns a predicate. (Use `mk_predicate` instead, where possible.)
-    #[inline(never)]
+    #[inline(always)]
     fn intern_predicate(&self, kind: Binder<'tcx, PredicateKind<'tcx>>) -> Predicate<'tcx> {
         let hash = make_hash(&kind);
         let cache = self
@@ -280,7 +287,21 @@ impl<'tcx> CtxtInterners<'tcx> {
         {
             return predicate;
         }
-        let predicate = Predicate(Interned::new_unchecked(
+        let predicate = self.intern_predicate_shared(hash, kind);
+        if let Some(cache) = cache {
+            cache.set(Some(predicate));
+        }
+        predicate
+    }
+
+    /// Looks up or inserts a predicate after the worker cache misses.
+    #[inline(never)]
+    fn intern_predicate_shared(
+        &self,
+        hash: u64,
+        kind: Binder<'tcx, PredicateKind<'tcx>>,
+    ) -> Predicate<'tcx> {
+        Predicate(Interned::new_unchecked(
             self.predicate
                 .intern_with_hash(hash, kind, |kind| {
                     let flags = ty::FlagComputation::<TyCtxt<'tcx>>::for_predicate(kind);
@@ -291,11 +312,7 @@ impl<'tcx> CtxtInterners<'tcx> {
                     }))
                 })
                 .0,
-        ));
-        if let Some(cache) = cache {
-            cache.set(Some(predicate));
-        }
-        predicate
+        ))
     }
 
     fn intern_clauses(&self, clauses: &[Clause<'tcx>]) -> Clauses<'tcx> {
@@ -795,6 +812,10 @@ pub struct GlobalCtxt<'tcx> {
     /// Merge this with `selection_cache`?
     pub evaluation_cache: traits::EvaluationCache<'tcx, ty::TypingEnv<'tcx>>,
 
+    /// Caches completed `TypeFreshener` results with no non-region inference variables.
+    /// These results only erase free regions and do not depend on inference context state.
+    pub freshened_types: WorkerLocal<RefCell<FxHashMap<Ty<'tcx>, Ty<'tcx>>>>,
+
     /// Caches the results of goal evaluation in the new solver.
     pub new_solver_evaluation_cache: Lock<search_graph::GlobalCache<TyCtxt<'tcx>>>,
     pub new_solver_canonical_param_env_cache:
@@ -1023,6 +1044,7 @@ impl<'tcx> TyCtxt<'tcx> {
             ty_rcache: Default::default(),
             selection_cache: Default::default(),
             evaluation_cache: Default::default(),
+            freshened_types: Default::default(),
             new_solver_evaluation_cache: Default::default(),
             new_solver_canonical_param_env_cache: Default::default(),
             canonical_param_env_cache: Default::default(),
@@ -2087,6 +2109,7 @@ slice_interners!(
 
 impl<'tcx> TyCtxt<'tcx> {
     /// Interns a list of generic arguments.
+    #[inline]
     pub fn mk_args(self, v: &[GenericArg<'tcx>]) -> GenericArgsRef<'tcx> {
         if v.is_empty() {
             return List::empty();
@@ -2103,15 +2126,20 @@ impl<'tcx> TyCtxt<'tcx> {
         {
             return args;
         }
-        let args = self
-            .interners
-            .args
-            .intern_ref_with_hash(hash, v, || InternedInSet(List::from_arena(&*self.arena, (), v)))
-            .0;
+        let args = self.mk_args_shared(hash, v);
         if let Some(cache) = cache {
             cache.set(Some(args));
         }
         args
+    }
+
+    /// Looks up or inserts generic arguments after the worker cache misses.
+    #[inline(never)]
+    fn mk_args_shared(self, hash: u64, v: &[GenericArg<'tcx>]) -> GenericArgsRef<'tcx> {
+        self.interners
+            .args
+            .intern_ref_with_hash(hash, v, || InternedInSet(List::from_arena(&*self.arena, (), v)))
+            .0
     }
 
     /// Given a `fn` sig, returns an equivalent `unsafe fn` type;
