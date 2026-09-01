@@ -1,0 +1,101 @@
+name: Compiler performance
+
+on:
+  push:
+    branches: [ohm-1.98.0]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codspeed:
+    name: Compiler Walltime benchmarks
+    runs-on: codspeed-macro
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout candidate compiler
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 128
+          persist-credentials: false
+
+      - name: Checkout pinned compiler and benchmark dependencies
+        run: git submodule update --init --depth 1 library/backtrace src/tools/rustc-perf
+
+      - name: Install benchmark tools
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.7"
+          enable-cache: true
+          cache-dependency-glob: src/tools/codspeed/requirements.txt
+
+      - name: Install benchmark dependencies
+        run: |
+          uv venv --python 3.13.15 src/tools/codspeed/.venv
+          uv pip sync --python src/tools/codspeed/.venv/bin/python --require-hashes \
+            src/tools/codspeed/requirements.txt
+
+      - name: Check benchmark harness
+        run: >-
+          src/tools/codspeed/.venv/bin/python -m pytest
+          src/tools/codspeed/test_harness.py
+          src/tools/codspeed/test_walltime_results.py
+
+      - name: Build candidate compiler and matching standard library
+        run: >-
+          python3 x.py --ci false --config src/tools/codspeed/bootstrap.toml
+          build --stage 1 library
+
+      - name: Verify compiler revision
+        shell: bash
+        run: |
+          version="$(build/host/stage1/bin/rustc -vV)"
+          printf '%s\n' "$version"
+          revision="$(git rev-parse HEAD)"
+          if ! grep -Fxq "commit-hash: $revision" <<< "$version"; then
+            echo "The benchmark compiler does not match the checked-out revision" >&2
+            exit 1
+          fi
+
+      - name: Prepare dependencies and capture compiler invocations
+        run: >-
+          src/tools/codspeed/.venv/bin/python src/tools/codspeed/prepare.py
+          --rustc build/host/stage1/bin/rustc
+          --cargo build/host/stage0/bin/cargo
+
+      - name: Measure compiler performance
+        uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
+        with:
+          mode: walltime
+          runner-version: "5.2.1"
+          run: |
+            set -e
+            src/tools/codspeed/.venv/bin/python -m pytest \
+              src/tools/codspeed/test_compiler_walltime.py --codspeed
+            cp -r "$CODSPEED_PROFILE_FOLDER/results" build/codspeed/results
+
+      - name: Verify compiler Walltime measurements
+        run: >-
+          src/tools/codspeed/.venv/bin/python src/tools/codspeed/verify_walltime.py
+          build/codspeed
+
+      - name: Retain compiler measurement evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codspeed-walltime-evidence
+          path: |
+            build/codspeed/manifest.json
+            build/codspeed/results/
+          if-no-files-found: ignore
+          retention-days: 14
