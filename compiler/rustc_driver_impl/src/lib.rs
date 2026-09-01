@@ -1675,10 +1675,35 @@ pub fn main() -> ExitCode {
     let exit_code =
         catch_with_exit_code(|| run_compiler(&args::raw_args(&early_dcx), &mut callbacks));
 
+    #[cfg(target_arch = "x86_64")]
+    if exit_code == ExitCode::SUCCESS
+        && std::env::var("RUSTC_CODSPEED_INSTRUCTION_CONTROL").is_ok_and(|value| value == "1")
+    {
+        codspeed_instruction_control();
+    }
+
     if let Some(format) = callbacks.time_passes {
         let end_rss = get_resident_set_size();
         print_time_passes_entry("total", start_time.elapsed(), start_rss, end_rss, format);
     }
 
     exit_code
+}
+
+/// Add six billion instructions after compilation to validate CodSpeed child-process tracking.
+#[cfg(target_arch = "x86_64")]
+#[inline(never)]
+fn codspeed_instruction_control() {
+    // SAFETY: This finite loop only changes the declared registers and condition flags.
+    unsafe {
+        std::arch::asm!(
+            "2:",
+            "add rax, 1",
+            "dec rcx",
+            "jnz 2b",
+            inout("rax") 0_u64 => _,
+            inout("rcx") 2_000_000_000_u64 => _,
+            options(nomem, nostack),
+        );
+    }
 }
