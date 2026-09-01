@@ -23,8 +23,12 @@ Dependencies are outside the measured work. Source and cache preparation also ru
 outside measurement, before **every** invocation, including CodSpeed's warmup.
 
 CodSpeed 5.2.1's subprocess tracking includes the spawned compiler. The Python
-benchmark body only launches and waits for that process. We preserve CodSpeed's
-live hooks when restoring Cargo's environment and discard stale jobserver handles.
+benchmark body launches the compiler, then waits for it in unmeasured teardown.
+The child inherits independent instrumentation state, so its instructions continue
+to be counted after the parent's measurement ends. Teardown checks the compiler's
+exit status before the next case can restore sources or incremental state.
+We preserve CodSpeed's live hooks when restoring Cargo's environment and discard
+stale jobserver handles.
 The compiler runs with one thread and full incremental hash verification, following
 rustc-perf's policy for repeatable incremental measurements. The preparation
 manifest records the compiler, Cargo, and benchmark-suite revisions.
@@ -33,7 +37,18 @@ After measurement, CI audits the raw profiles for all eight cases. Each benchmar
 must name a spawned process running the selected compiler, with positive instruction
 counts and compiler symbols in its profile. The job summary reports those counts;
 the `codspeed-compiler-evidence` artifact preserves the audit and preparation manifest.
+The audit also separates parent and compiler syscall counts and observed durations.
+Raw profiles are retained for three days in `codspeed-raw-profiles`, including for
+successful jobs, so syscall warnings can be investigated.
 This checks collection independently of CodSpeed's asynchronous report processing.
+
+Waiting for a simulated child inside the parent's measurement records the child's
+slow instrumented execution as time in the parent's wait syscall. Moving the wait
+to teardown avoids that misleading contribution. The compiler still performs real
+I/O and thread waits, which can produce CodSpeed syscall warnings: those durations
+are excluded from CPU simulation, while the compiler's userspace instructions are
+counted. This launch/teardown boundary is specific to simulation; a walltime
+benchmark must include the wait.
 
 These are simulated CPU costs, including modeled cache behavior, rather than raw
 hardware instruction counts or elapsed build times. The compiler configuration is

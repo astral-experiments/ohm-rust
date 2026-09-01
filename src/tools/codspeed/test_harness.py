@@ -7,7 +7,11 @@ import sys
 
 import pytest
 
-from test_compiler import compiler_environment, prepare_invocation
+from test_compiler import (
+    compiler_environment,
+    prepare_invocation,
+    test_compile as run_benchmark,
+)
 
 
 @pytest.fixture
@@ -110,3 +114,72 @@ def test_failed_seed_aborts_the_benchmark(fixture):
     with pytest.raises(subprocess.CalledProcessError) as error:
         prepare_invocation(fixture, "IncrUnchanged")
     assert error.value.returncode == 7
+
+
+def test_compiler_wait_is_outside_parent_measurement(fixture, monkeypatch):
+    measured = False
+    processes = []
+    popen = subprocess.Popen
+
+    class CompilerProcess(popen):
+        def __init__(self, *args, **kwargs):
+            assert measured
+            super().__init__(*args, **kwargs)
+            processes.append(self)
+
+        def wait(self, *args, **kwargs):
+            assert not measured
+            return super().wait(*args, **kwargs)
+
+    class Benchmark:
+        def pedantic(self, target, *, setup, teardown, **_options):
+            nonlocal measured
+            # Exercise the same lifecycle for warmup and measurement.
+            for _ in range(2):
+                args, kwargs = setup()
+                measured = True
+                try:
+                    target(*args, **kwargs)
+                finally:
+                    measured = False
+                teardown(*args, **kwargs)
+                assert processes[-1].returncode == 0
+
+    monkeypatch.setattr(subprocess, "Popen", CompilerProcess)
+    run_benchmark(Benchmark(), {"example": fixture}, "example", "Full")
+    assert len(processes) == 2
+
+
+@pytest.mark.parametrize("interrupt", [False, True])
+def test_compiler_failure_or_interruption_reaps_the_child(
+    fixture, monkeypatch, interrupt
+):
+    fixture["command"] = [
+        sys.executable,
+        "-c",
+        "import time; time.sleep(60)" if interrupt else "raise SystemExit(7)",
+    ]
+    processes = []
+    popen = subprocess.Popen
+
+    def record_process(*args, **kwargs):
+        process = popen(*args, **kwargs)
+        processes.append(process)
+        return process
+
+    class Benchmark:
+        def pedantic(self, target, *, setup, teardown, **_options):
+            args, kwargs = setup()
+            target(*args, **kwargs)
+            if interrupt:
+                raise RuntimeError("Measurement hook failed")
+            teardown(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", record_process)
+    error_type = RuntimeError if interrupt else subprocess.CalledProcessError
+    with pytest.raises(error_type) as error:
+        run_benchmark(Benchmark(), {"example": fixture}, "example", "Full")
+    assert len(processes) == 1
+    assert processes[0].returncode is not None
+    if not interrupt:
+        assert error.value.returncode == 7

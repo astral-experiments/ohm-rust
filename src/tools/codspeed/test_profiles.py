@@ -7,13 +7,20 @@ import sys
 
 import pytest
 
-from verify_profiles import EXPECTED_CASES, read_profile, verify_profiles
+from verify_profiles import (
+    EXPECTED_CASES,
+    SYSCALL_EVENTS,
+    read_profile,
+    verify_profiles,
+)
 
 
-def part(number, *, uri=None, children=(), ir=0, events="Ir Dr", counts=None):
+def part(
+    number, *, uri=None, children=(), ir=0, events="Ir Dr", counts=None, thread=None
+):
     trigger = f"Client Request: {uri}" if uri else "Program termination"
     return (
-        f"\npart: {number}\nthread: {number + 100}\n"
+        f"\npart: {number}\nthread: {number + 100 if thread is None else thread}\n"
         + "".join(f"desc: Spawned pid: {pid}\n" for pid in children)
         + f"desc: Trigger: {trigger}\nevents: {events}\n"
         + f"summary: {ir if counts is None else counts}\n"
@@ -60,8 +67,8 @@ def test_counts_threads_once_and_uses_event_names(profiles):
         10,
         str(compiler),
         [
-            part(1, events="Dr Ir Dw", counts="23 100"),
-            part(1, events="Ir Dr", counts="20 300"),
+            part(1, thread=101, events="Dr Ir Dw", counts="23 100"),
+            part(1, thread=102, events="Ir Dr", counts="20 300"),
             part(2, events="Dr Ir", counts="12"),
         ],
     )
@@ -73,6 +80,7 @@ def test_counts_threads_once_and_uses_event_names(profiles):
     evidence = verify_profiles(folder, alias)
 
     assert len(evidence) == 8
+    assert evidence[0]["parent_pids"] == [1]
     assert evidence[0]["child_pids"] == [10]
     assert evidence[0]["instructions"] == 120
     assert evidence[0]["uri"] == uri
@@ -80,6 +88,93 @@ def test_counts_threads_once_and_uses_event_names(profiles):
         "rustc_interface::run_compiler",
         "rustc_middle::query",
     ]
+    assert evidence[0]["parent_syscalls"] == dict.fromkeys(SYSCALL_EVENTS)
+    assert evidence[0]["compiler_syscalls"] == dict.fromkeys(SYSCALL_EVENTS)
+
+
+def test_scopes_syscalls_to_parent_case_and_compiler(profiles):
+    folder, compiler = profiles
+    uris = list(EXPECTED_CASES.values())
+    write_profile(
+        folder,
+        1,
+        "/usr/bin/python -m pytest",
+        [
+            part(
+                1,
+                uri=uris[0],
+                children=[10],
+                events="SysTime Ir SysCount SysCpuTime",
+                counts="200 30 3",
+            ),
+            part(
+                1,
+                thread=102,
+                uri=uris[0],
+                children=[10],
+                events="SysCpuTime Ir SysCount SysTime",
+                counts="12 40 2 80",
+            ),
+            *(
+                part(pid, uri=uri, children=[pid], ir=30)
+                for pid, uri in enumerate(uris[1:], 11)
+            ),
+            # Teardown and other unmarked parent work do not belong to this case.
+            part(
+                50,
+                events="Ir SysCount SysTime SysCpuTime",
+                counts="0 100 90000 90000",
+            ),
+        ],
+        symbol=None,
+    )
+    child = write_profile(
+        folder,
+        10,
+        str(compiler),
+        [
+            part(
+                1,
+                thread=101,
+                events="SysCpuTime Ir SysTime SysCount",
+                counts="90 100 400 4",
+            ),
+            part(
+                1,
+                thread=102,
+                events="Dr SysCount Ir SysTime SysCpuTime",
+                counts="22 1 20 600",
+            ),
+        ],
+    )
+    with child.open("a") as stream:
+        # The footer repeats costs; only the per-thread summaries are summed.
+        stream.write("totals: 90 120 1000 5\n")
+    row = verify_profiles(folder, compiler)[0]
+    assert row["instructions"] == 120
+    assert row["parent_syscalls"] == {"SysCount": 5, "SysTime": 280, "SysCpuTime": 12}
+    assert row["compiler_syscalls"] == {
+        "SysCount": 5,
+        "SysTime": 1000,
+        "SysCpuTime": 90,
+    }
+
+    with child.open("a") as stream:
+        stream.write(part(2, events="Ir SysCount SysTime", counts="10 1 100"))
+    row = verify_profiles(folder, compiler)[0]
+    assert row["compiler_syscalls"] == {
+        "SysCount": 6,
+        "SysTime": 1100,
+        "SysCpuTime": None,
+    }
+
+
+def test_rejects_compiler_pid_reused_across_cases(profiles):
+    folder, compiler = profiles
+    with (folder / "1.out").open("a") as stream:
+        stream.write(part(50, uri=list(EXPECTED_CASES.values())[1], children=[10]))
+    with pytest.raises(ValueError, match="Compiler PID 10 reused across cases"):
+        verify_profiles(folder, compiler)
 
 
 @pytest.mark.parametrize(
@@ -161,3 +256,5 @@ def test_cli_writes_evidence_and_step_summary(profiles, monkeypatch):
     assert json.loads(output.read_text()) == verify_profiles(folder, compiler)
     assert result.stdout in summary.read_text()
     assert summary.read_text().startswith("Existing summary\n")
+    assert "simulator-observed durations, not native kernel timings" in result.stdout
+    assert "not recorded" in result.stdout

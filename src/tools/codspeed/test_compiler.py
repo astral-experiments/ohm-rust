@@ -102,10 +102,36 @@ def compiler_fixtures() -> dict[str, dict[str, Any]]:
 )
 def test_compile(benchmark, compiler_fixtures, fixture_name: str, scenario: str):
     fixture = compiler_fixtures[fixture_name]
-    benchmark.pedantic(
-        subprocess.run,
-        setup=lambda: prepare_invocation(fixture, scenario),
-        rounds=1,
-        iterations=1,
-        warmup_rounds=0,
-    )
+    process = None
+
+    def launch_compiler(command, **kwargs):
+        nonlocal process
+        kwargs.pop("check")
+        process = subprocess.Popen(command, **kwargs)
+
+    def wait_for_compiler(*_args, **_kwargs):
+        nonlocal process
+        if process is not None:
+            returncode = process.wait()
+            command = process.args
+            process = None
+            if returncode:
+                raise subprocess.CalledProcessError(returncode, command)
+
+    try:
+        # The child inherits its own instrumentation state at spawn. Stopping
+        # the parent's measurement does not stop counting the compiler. Waiting
+        # in teardown keeps Python's wait4 duration out of the measured region.
+        benchmark.pedantic(
+            launch_compiler,
+            setup=lambda: prepare_invocation(fixture, scenario),
+            teardown=wait_for_compiler,
+            rounds=1,
+            iterations=1,
+            warmup_rounds=0,
+        )
+    finally:
+        # Hooks or a warmup can fail before teardown gets a chance to reap it.
+        if process is not None:
+            process.kill()
+            process.wait()
