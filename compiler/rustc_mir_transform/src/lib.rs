@@ -20,9 +20,10 @@ use rustc_hir::def::{CtorKind, DefKind};
 use rustc_hir::def_id::LocalDefId;
 use rustc_index::IndexVec;
 use rustc_middle::mir::{
-    AnalysisPhase, Body, CallSource, ClearCrossCrate, ConstOperand, ConstQualifs, LocalDecl,
-    MirPhase, Operand, Place, ProjectionElem, Promoted, RuntimePhase, Rvalue, START_BLOCK,
-    SourceInfo, Statement, StatementKind, TerminatorKind, WithRetag,
+    AnalysisPhase, Body, CallSource, ClearCrossCrate, ConstOperand, ConstQualifs,
+    CoroutineLayoutPreparation, LocalDecl, MirPhase, Operand, Place, ProjectionElem, Promoted,
+    RuntimePhase, Rvalue, START_BLOCK, SourceInfo, Statement, StatementKind, TerminatorKind,
+    WithRetag,
 };
 use rustc_middle::ty::{self, TyCtxt, TypeVisitableExt};
 use rustc_middle::util::Providers;
@@ -221,6 +222,8 @@ pub fn provide(providers: &mut Providers) {
         mir_const_qualif,
         mir_promoted,
         mir_drops_elaborated_and_const_checked,
+        mir_coroutine_layout_prepared,
+        mir_coroutine_runtime_info: coroutine::mir_coroutine_runtime_info,
         mir_for_ctfe,
         mir_coroutine_witnesses: coroutine::mir_coroutine_witnesses,
         optimized_mir,
@@ -536,6 +539,78 @@ fn inner_mir_for_ctfe(tcx: TyCtxt<'_>, def: LocalDefId) -> Body<'_> {
 /// mir borrowck *before* doing so in order to ensure that borrowck can be run and doesn't
 /// end up missing the source MIR due to stealing happening.
 fn mir_drops_elaborated_and_const_checked(tcx: TyCtxt<'_>, def: LocalDefId) -> &Steal<Body<'_>> {
+    let body = if tcx.is_coroutine(def.to_def_id()) {
+        // The layout query must borrow the preparation before this query consumes it.
+        tcx.ensure_done().mir_coroutine_runtime_info(def);
+        let (mut body, preparation) = tcx.mir_coroutine_layout_prepared(def).steal();
+        if let Some(preparation) = preparation {
+            let state_transform = coroutine::PreparedStateTransform::new(preparation);
+            let passes = runtime_lowering_passes(&state_transform);
+            let start = passes.iter().position(|pass| pass.name() == "StateTransform").unwrap();
+            pm::run_passes_no_validate(
+                tcx,
+                &mut body,
+                &passes[start..],
+                Some(MirPhase::Runtime(RuntimePhase::Initial)),
+            );
+            run_runtime_cleanup_passes(tcx, &mut body);
+        }
+        body
+    } else {
+        let mut body = mir_after_borrowck(tcx, def);
+        run_analysis_to_runtime_passes(tcx, &mut body);
+        body
+    };
+    tcx.alloc_steal_mir(body)
+}
+
+/// Retains the post-drop-elaboration body at the point where its layout is final.
+fn mir_coroutine_layout_prepared(
+    tcx: TyCtxt<'_>,
+    def: LocalDefId,
+) -> &Steal<(Body<'_>, Option<CoroutineLayoutPreparation<'_>>)> {
+    assert!(tcx.is_coroutine(def.to_def_id()));
+    let mut body = mir_after_borrowck(tcx, def);
+    let opts = &tcx.sess.opts.unstable_opts;
+    // Explicit MIR instrumentation and injected bodies retain the one-shot pass pipeline.
+    if body.is_custom_mir()
+        || body.tainted_by_errors.is_some()
+        || tcx.is_async_drop_in_place_coroutine(def.to_def_id())
+        || opts.dump_mir.is_some()
+        || opts.validate_mir
+        || opts.lint_mir
+        || !opts.mir_enable_passes.is_empty()
+        || opts.mir_opt_bisect_limit.is_some()
+    {
+        run_analysis_to_runtime_passes(tcx, &mut body);
+        return tcx.arena.alloc(Steal::new((body, None)));
+    }
+
+    run_analysis_cleanup_and_drop_checks(tcx, &mut body);
+    let passes = runtime_lowering_passes(&coroutine::StateTransform);
+    let split = passes.iter().position(|pass| pass.name() == "StateTransform").unwrap();
+    pm::run_passes_no_validate(tcx, &mut body, &passes[..split], None);
+    let preparation = if !body.should_skip()
+        && pm::should_run_pass(tcx, &coroutine::StateTransform, pm::Optimizations::Allowed)
+    {
+        coroutine::prepare_coroutine_layout(tcx, &mut body)
+    } else {
+        None
+    };
+    if preparation.is_none() {
+        pm::run_passes_no_validate(
+            tcx,
+            &mut body,
+            &passes[split..],
+            Some(MirPhase::Runtime(RuntimePhase::Initial)),
+        );
+        run_runtime_cleanup_passes(tcx, &mut body);
+    }
+    tcx.arena.alloc(Steal::new((body, preparation)))
+}
+
+/// Completes the checks that borrow promoted MIR before taking ownership of it.
+fn mir_after_borrowck(tcx: TyCtxt<'_>, def: LocalDefId) -> Body<'_> {
     if tcx.is_coroutine(def.to_def_id()) {
         tcx.ensure_done().mir_coroutine_witnesses(def);
     }
@@ -588,14 +663,25 @@ fn mir_drops_elaborated_and_const_checked(tcx: TyCtxt<'_>, def: LocalDefId) -> &
         _ => {}
     }
 
-    run_analysis_to_runtime_passes(tcx, &mut body);
-
-    tcx.alloc_steal_mir(body)
+    body
 }
 
 // Made public so that `mir_drops_elaborated_and_const_checked` can be overridden
 // by custom rustc drivers, running all the steps by themselves. See #114628.
 pub fn run_analysis_to_runtime_passes<'tcx>(tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) {
+    run_analysis_cleanup_and_drop_checks(tcx, body);
+    let did = body.source.def_id();
+
+    debug!("runtime_mir_lowering({:?})", did);
+    run_runtime_lowering_passes(tcx, body);
+    assert!(body.phase == MirPhase::Runtime(RuntimePhase::Initial));
+
+    debug!("runtime_mir_cleanup({:?})", did);
+    run_runtime_cleanup_passes(tcx, body);
+    assert!(body.phase == MirPhase::Runtime(RuntimePhase::PostCleanup));
+}
+
+fn run_analysis_cleanup_and_drop_checks<'tcx>(tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) {
     assert!(body.phase == MirPhase::Analysis(AnalysisPhase::Initial));
     let did = body.source.def_id();
 
@@ -617,14 +703,6 @@ pub fn run_analysis_to_runtime_passes<'tcx>(tcx: TyCtxt<'tcx>, body: &mut Body<'
             pm::Optimizations::Allowed,
         );
     }
-
-    debug!("runtime_mir_lowering({:?})", did);
-    run_runtime_lowering_passes(tcx, body);
-    assert!(body.phase == MirPhase::Runtime(RuntimePhase::Initial));
-
-    debug!("runtime_mir_cleanup({:?})", did);
-    run_runtime_cleanup_passes(tcx, body);
-    assert!(body.phase == MirPhase::Runtime(RuntimePhase::PostCleanup));
 }
 
 // FIXME(JakobDegen): Can we make these lists of passes consts?
@@ -648,9 +726,11 @@ fn run_analysis_cleanup_passes<'tcx>(tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) {
     );
 }
 
-/// Returns the sequence of passes that lowers analysis to runtime MIR.
-fn run_runtime_lowering_passes<'tcx>(tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) {
-    let passes: &[&dyn MirPass<'tcx>] = &[
+/// Returns the passes in their original order, with either a fresh or prepared state transform.
+fn runtime_lowering_passes<'a, 'tcx>(
+    state_transform: &'a dyn MirPass<'tcx>,
+) -> [&'a dyn MirPass<'tcx>; 11] {
+    [
         // These next passes must be executed together.
         &add_call_guards::CriticalCallEdges,
         // Must be done before drop elaboration because we need to drop opaque types, too.
@@ -669,10 +749,18 @@ fn run_runtime_lowering_passes<'tcx>(tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) {
         &add_moves_for_packed_drops::AddMovesForPackedDrops,
         &erase_deref_temps::EraseDerefTemps,
         &elaborate_box_derefs::ElaborateBoxDerefs,
-        &coroutine::StateTransform,
+        state_transform,
         &Lint(known_panics_lint::KnownPanicsLint),
-    ];
-    pm::run_passes_no_validate(tcx, body, passes, Some(MirPhase::Runtime(RuntimePhase::Initial)));
+    ]
+}
+
+fn run_runtime_lowering_passes<'tcx>(tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) {
+    pm::run_passes_no_validate(
+        tcx,
+        body,
+        &runtime_lowering_passes(&coroutine::StateTransform),
+        Some(MirPhase::Runtime(RuntimePhase::Initial)),
+    );
 }
 
 /// Returns the sequence of passes that do the initial cleanup of runtime MIR.
