@@ -32,7 +32,7 @@ use rustc_span::{FileName, InnerSpan, Span, SpanData};
 use rustc_target::spec::{MergeFunctions, SanitizerSet};
 use tracing::debug;
 
-use crate::back::link::ensure_removed;
+use crate::back::link::{ensure_removed, preserve_objects_for_their_debuginfo};
 use crate::back::lto::{self, SerializedModule, check_lto_allowed};
 use crate::diagnostics::ErrorCreatingRemarkDir;
 use crate::traits::*;
@@ -896,7 +896,15 @@ fn execute_copy_from_cache_work_item(
 
     let mut links_from_incr_cache = Vec::new();
 
-    let mut load_from_incr_comp_dir = |output_path: PathBuf, saved_path: &str| {
+    let stable_outputs;
+    let object_outputs = if cgcx.output_filenames.stable_codegen_paths {
+        stable_outputs = cgcx.output_filenames.stable_temp_paths();
+        &stable_outputs
+    } else {
+        &cgcx.output_filenames
+    };
+
+    let mut load_from_incr_comp_dir = |output_path: PathBuf, saved_path: &str, stable: bool| {
         let source_file_in_incr_comp_dir = incr_comp_session_dir.join(saved_path);
         debug!(
             "copying preexisting module `{}` from {:?} to {}",
@@ -904,6 +912,12 @@ fn execute_copy_from_cache_work_item(
             source_file_in_incr_comp_dir,
             output_path.display()
         );
+        if stable {
+            // Unlink before restoring into a stable name: a copy fallback must never
+            // overwrite an inode still linked into a previous incremental session.
+            ensure_removed(dcx, &output_path);
+            dcx.abort_if_errors();
+        }
         match link_or_copy(&source_file_in_incr_comp_dir, &output_path) {
             Ok(_) => {
                 links_from_incr_cache.push(source_file_in_incr_comp_dir);
@@ -922,20 +936,22 @@ fn execute_copy_from_cache_work_item(
 
     let dwarf_object =
         module.source.saved_files.get("dwo").as_ref().and_then(|saved_dwarf_object_file| {
-            let dwarf_obj_out = cgcx
-                .output_filenames
-                .split_dwarf_path(cgcx.split_debuginfo, cgcx.split_dwarf_kind, &module.name)
-                .expect(
-                    "saved dwarf object in work product but `split_dwarf_path` returned `None`",
-                );
-            load_from_incr_comp_dir(dwarf_obj_out, saved_dwarf_object_file)
+            let dwarf_obj_out = object_outputs.temp_path_dwo_for_cgu(&module.name);
+            load_from_incr_comp_dir(
+                dwarf_obj_out,
+                saved_dwarf_object_file,
+                cgcx.output_filenames.stable_codegen_paths,
+            )
         });
 
     let mut load_from_incr_cache = |perform, output_type: OutputType| {
         if perform {
             let saved_file = module.source.saved_files.get(output_type.extension())?;
-            let output_path = cgcx.output_filenames.temp_path_for_cgu(output_type, &module.name);
-            load_from_incr_comp_dir(output_path, &saved_file)
+            let stable =
+                output_type == OutputType::Object && cgcx.output_filenames.stable_codegen_paths;
+            let outputs = if stable { object_outputs } else { &cgcx.output_filenames };
+            let output_path = outputs.temp_path_for_cgu(output_type, &module.name);
+            load_from_incr_comp_dir(output_path, &saved_file, stable)
         } else {
             None
         }
@@ -949,8 +965,12 @@ fn execute_copy_from_cache_work_item(
     let object = load_from_incr_cache(should_emit_obj, OutputType::Object);
     let global_asm_object =
         if should_emit_obj && let Some(saved_file) = module.source.saved_files.get("asm.o") {
-            let output_path = cgcx.output_filenames.temp_path_ext_for_cgu("asm.o", &module.name);
-            load_from_incr_comp_dir(output_path, &saved_file)
+            let output_path = object_outputs.temp_path_ext_for_cgu("asm.o", &module.name);
+            load_from_incr_comp_dir(
+                output_path,
+                &saved_file,
+                cgcx.output_filenames.stable_codegen_paths,
+            )
         } else {
             None
         };
@@ -2228,6 +2248,7 @@ impl<B: WriteBackendMethods> OngoingCodegen<B> {
             &compiled_modules,
         );
         produce_final_output_artifacts(sess, &compiled_modules, &self.output_filenames);
+        publish_retained_objects(sess, &mut compiled_modules, &self.output_filenames);
 
         (compiled_modules, work_products)
     }
@@ -2251,6 +2272,57 @@ impl<B: WriteBackendMethods> OngoingCodegen<B> {
                 // One of the LLVM threads must have panicked, fall through so
                 // error handling can be reached.
             }
+        }
+    }
+}
+
+/// Replace retained objects without overwriting the incremental cache's hard links.
+///
+/// LLVM and incremental cache restores use stable paths directly, after unlinking the previous
+/// output. Publish any remaining backend temporaries here so rebuilds do not accumulate another
+/// set of `.rcgu.o` or `.rcgu.dwo` files. Explicit link-state outputs retain their invocation-specific
+/// paths so saved `.rlink` files remain independent.
+fn publish_retained_objects(
+    sess: &Session,
+    compiled_modules: &mut CompiledModules,
+    outputs: &OutputFilenames,
+) {
+    if !outputs.stable_codegen_paths {
+        return;
+    }
+
+    let stable_outputs = outputs.stable_temp_paths();
+    let (preserve_objects, preserve_dwarf_objects) = preserve_objects_for_their_debuginfo(sess);
+    let publish = |path: &mut Option<PathBuf>, destination: PathBuf| {
+        let Some(source) = path else { return };
+        if *source == destination {
+            return;
+        }
+        if let Err(error) = fs::rename(&*source, &destination) {
+            sess.dcx().emit_fatal(diagnostics::PublishObject {
+                source: source.clone(),
+                destination,
+                error,
+            });
+        }
+        // Renaming two links to the same inode is a no-op on Unix. Remove the temporary
+        // name explicitly so fully cached rebuilds also leave exactly one retained object.
+        ensure_removed(sess.dcx(), source);
+        *source = destination;
+    };
+    for module in &mut compiled_modules.modules {
+        if preserve_objects {
+            publish(
+                &mut module.object,
+                stable_outputs.temp_path_for_cgu(OutputType::Object, &module.name),
+            );
+            publish(
+                &mut module.global_asm_object,
+                stable_outputs.temp_path_ext_for_cgu("asm.o", &module.name),
+            );
+        }
+        if preserve_dwarf_objects {
+            publish(&mut module.dwarf_object, stable_outputs.temp_path_dwo_for_cgu(&module.name));
         }
     }
 }
