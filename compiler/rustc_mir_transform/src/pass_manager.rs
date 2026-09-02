@@ -197,7 +197,7 @@ pub(super) fn run_passes_no_validate<'tcx>(
     passes: &[&dyn MirPass<'tcx>],
     phase_change: Option<MirPhase>,
 ) {
-    run_passes_inner(tcx, body, passes, phase_change, false, Optimizations::Allowed);
+    run_passes_inner(tcx, body, passes, phase_change, false, Optimizations::Allowed, true);
 }
 
 /// The optional `phase_change` is applied after executing all the passes, if present
@@ -208,7 +208,18 @@ pub(super) fn run_passes<'tcx>(
     phase_change: Option<MirPhase>,
     optimizations: Optimizations,
 ) {
-    run_passes_inner(tcx, body, passes, phase_change, true, optimizations);
+    run_passes_inner(tcx, body, passes, phase_change, true, optimizations, true);
+}
+
+/// Prepare a lint-only copy without applying overrides intended for code generation.
+/// The caller supplies only the passes needed by Clippy's minimally optimized view.
+pub(super) fn run_lint_passes<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    body: &mut Body<'tcx>,
+    passes: &[&dyn MirPass<'tcx>],
+    phase_change: Option<MirPhase>,
+) {
+    run_passes_inner(tcx, body, passes, phase_change, true, Optimizations::Allowed, false);
 }
 
 pub(super) fn should_run_pass<'tcx, P>(
@@ -246,8 +257,13 @@ fn run_passes_inner<'tcx>(
     phase_change: Option<MirPhase>,
     validate_each: bool,
     optimizations: Optimizations,
+    honor_overrides: bool,
 ) {
-    let overridden_passes = &tcx.sess.opts.unstable_opts.mir_enable_passes;
+    let overridden_passes = if honor_overrides {
+        tcx.sess.opts.unstable_opts.mir_enable_passes.as_slice()
+    } else {
+        &[]
+    };
     trace!(?overridden_passes);
 
     let named_passes: FxIndexSet<_> =
@@ -290,11 +306,17 @@ fn run_passes_inner<'tcx>(
         for pass in passes {
             let pass_name = pass.name();
 
-            if !should_run_pass(tcx, *pass, optimizations) {
+            let enabled = if honor_overrides {
+                should_run_pass(tcx, *pass, optimizations)
+            } else {
+                pass.is_enabled(tcx.sess)
+            };
+            if !enabled {
                 continue;
             };
 
-            if is_optimization_stage(body, phase_change, optimizations)
+            if honor_overrides
+                && is_optimization_stage(body, phase_change, optimizations)
                 && let Some(limit) = &tcx.sess.opts.unstable_opts.mir_opt_bisect_limit
                 && limited_by_opt_bisect(
                     tcx,

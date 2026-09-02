@@ -221,6 +221,7 @@ pub fn provide(providers: &mut Providers) {
         mir_const_qualif,
         mir_promoted,
         mir_drops_elaborated_and_const_checked,
+        mir_for_lint,
         mir_for_ctfe,
         mir_coroutine_witnesses: coroutine::mir_coroutine_witnesses,
         optimized_mir,
@@ -798,6 +799,49 @@ pub(crate) fn run_optimization_passes<'tcx>(tcx: TyCtxt<'tcx>, body: &mut Body<'
     );
 }
 
+/// Preserve the MIR shape inspected by Clippy without changing the codegen pipeline.
+///
+/// The source is already borrow checked, drop elaborated and lowered to runtime MIR.
+/// Only the passes that normally run at MIR optimization level zero are applied to
+/// the copy. In particular, pointer checks and optimization overrides apply only to
+/// the independently retained codegen body.
+fn mir_for_lint(tcx: TyCtxt<'_>, did: LocalDefId) -> &Body<'_> {
+    assert!(tcx.sess.opts.unstable_opts.clippy_codegen);
+    if tcx.is_constructor(did.to_def_id()) {
+        return tcx.mir_for_ctfe(did);
+    }
+    match tcx.hir_body_const_context(did) {
+        Some(hir::ConstContext::ConstFn) | None => {}
+        Some(other) => panic!("do not use `mir_for_lint` for constants: {other:?}"),
+    }
+
+    let body = tcx.mir_drops_elaborated_and_const_checked(did).borrow().clone();
+    let mut body = remap_mir_for_const_eval_select(tcx, body, hir::Constness::NotConst);
+    if body.tainted_by_errors.is_none() {
+        mentioned_items::MentionedItems.run_pass(tcx, &mut body);
+        if !matches!(body.basic_blocks[START_BLOCK].terminator().kind, TerminatorKind::Unreachable)
+            || !body.basic_blocks[START_BLOCK].statements.is_empty()
+        {
+            pm::run_lint_passes(tcx, &mut body, &[&check_enums::CheckEnums], None);
+            inline::inline_for_lint(tcx, &mut body);
+            pm::run_lint_passes(
+                tcx,
+                &mut body,
+                &[
+                    &remove_unneeded_drops::RemoveUnneededDrops,
+                    &strip_debuginfo::StripDebugInfo,
+                    &add_call_guards::CriticalCallEdges,
+                ],
+                Some(MirPhase::Runtime(RuntimePhase::Optimized)),
+            );
+        }
+    }
+    if let Some(dumper) = rustc_middle::mir::MirDumper::new(tcx, "mir_for_lint", &body) {
+        dumper.set_disambiguator(&"after").dump_mir(&body);
+    }
+    tcx.arena.alloc(body)
+}
+
 /// Optimize the MIR and prepare it for codegen.
 fn optimized_mir(tcx: TyCtxt<'_>, did: LocalDefId) -> &Body<'_> {
     if tcx.is_constructor(did.to_def_id()) {
@@ -812,6 +856,11 @@ fn optimized_mir(tcx: TyCtxt<'_>, did: LocalDefId) -> &Body<'_> {
 }
 
 fn inner_optimized_mir(tcx: TyCtxt<'_>, did: LocalDefId) -> Body<'_> {
+    // A lint can request this view after another query has already needed codegen
+    // MIR. Finish the immutable copy before stealing its source, just as for CTFE.
+    if tcx.sess.opts.unstable_opts.clippy_codegen {
+        tcx.ensure_done().mir_for_lint(did);
+    }
     match tcx.hir_body_const_context(did) {
         // Run the `mir_for_ctfe` query, which depends on `mir_drops_elaborated_and_const_checked`
         // which we are going to steal below. Thus we need to run `mir_for_ctfe` first, so it
