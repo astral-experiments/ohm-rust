@@ -508,6 +508,7 @@ define_tables! {
     trivial_const: Table<RDRHashAll, DefIndex, LazyValue<(ConstValue, Ty<'static>)>>,
     closure_saved_names_of_captured_variables: Table<RDRHashAll, DefIndex, LazyValue<IndexVec<FieldIdx, Symbol>>>,
     mir_coroutine_witnesses: Table<RDRHashAll, DefIndex, LazyValue<mir::CoroutineLayout<'static>>>,
+    mir_coroutine_runtime_info: Table<RDRHashAll, DefIndex, LazyValue<mir::CoroutineRuntimeInfo<'static>>>,
     promoted_mir: Table<RDRHashAll, DefIndex, LazyValue<IndexVec<mir::Promoted, mir::Body<'static>>>>,
     thir_abstract_const: Table<RDRHashAll, DefIndex, LazyValue<ty::EarlyBinder<'static, ty::Const<'static>>>>,
     impl_parent: Table<RDRHashAll, DefIndex, RawDefId>,

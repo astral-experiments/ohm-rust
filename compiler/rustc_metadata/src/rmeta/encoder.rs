@@ -1557,9 +1557,18 @@ fn should_encode_mir(
         DefKind::Ctor(_, _) => (true, false),
         // Constants
         DefKind::AnonConst | DefKind::AssocConst { .. } | DefKind::Const { .. } => (true, false),
-        // Coroutines require optimized MIR to compute layout.
-        DefKind::Closure if tcx.is_coroutine(def_id.to_def_id()) => (false, true),
-        DefKind::SyntheticCoroutineBody => (false, true),
+        // Coroutine layout and drop kind are encoded separately. Their executable
+        // bodies are only needed for codegen, MIR output, or explicit MIR export.
+        DefKind::Closure if tcx.is_coroutine(def_id.to_def_id()) => (
+            false,
+            tcx.sess.opts.output_types.should_codegen()
+                || tcx.sess.opts.unstable_opts.always_encode_mir,
+        ),
+        DefKind::SyntheticCoroutineBody => (
+            false,
+            tcx.sess.opts.output_types.should_codegen()
+                || tcx.sess.opts.unstable_opts.always_encode_mir,
+        ),
         // Full-fledged functions + closures
         DefKind::AssocFn | DefKind::Fn | DefKind::Closure => {
             let opt = tcx.sess.opts.unstable_opts.always_encode_mir
@@ -2391,14 +2400,23 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
 
         let keys_and_jobs = tcx.mir_keys(()).iter().filter_map(|&def_id| {
             let (encode_const, encode_opt) = should_encode_mir(tcx, reachable_set, def_id);
-            if encode_const || encode_opt { Some((def_id, encode_const, encode_opt)) } else { None }
+            let encode_coroutine =
+                matches!(tcx.def_kind(def_id), DefKind::Closure | DefKind::SyntheticCoroutineBody)
+                    && tcx.is_coroutine(def_id.to_def_id());
+            if encode_const || encode_opt || encode_coroutine {
+                Some((def_id, encode_const, encode_opt, encode_coroutine))
+            } else {
+                None
+            }
         });
-        for (def_id, encode_const, encode_opt) in keys_and_jobs {
-            debug_assert!(encode_const || encode_opt);
+        for (def_id, encode_const, encode_opt, encode_coroutine) in keys_and_jobs {
+            debug_assert!(encode_const || encode_opt || encode_coroutine);
 
             debug!("EntryBuilder::encode_mir({:?})", def_id);
             if encode_opt {
                 record!(self.tables.optimized_mir[def_id.to_def_id()] <- tcx.optimized_mir(def_id), hcx);
+            }
+            if encode_opt || encode_coroutine {
                 self.tables.cross_crate_inlinable.set_local_hashed(
                     def_id,
                     self.tcx.cross_crate_inlinable(def_id),
@@ -2406,12 +2424,6 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 );
                 record!(self.tables.closure_saved_names_of_captured_variables[def_id.to_def_id()]
                     <- tcx.closure_saved_names_of_captured_variables(def_id), hcx);
-
-                if self.tcx.is_coroutine(def_id.to_def_id())
-                    && let Some(witnesses) = tcx.mir_coroutine_witnesses(def_id)
-                {
-                    record!(self.tables.mir_coroutine_witnesses[def_id.to_def_id()] <- witnesses, hcx);
-                }
             }
             let mut is_trivial = false;
             if encode_const {
@@ -2449,9 +2461,11 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 record!(self.tables.promoted_mir[def_id.to_def_id()] <- tcx.promoted_mir(def_id), hcx);
             }
 
-            if self.tcx.is_coroutine(def_id.to_def_id())
-                && let Some(witnesses) = tcx.mir_coroutine_witnesses(def_id)
-            {
+            if encode_coroutine && let Some(info) = tcx.mir_coroutine_runtime_info(def_id) {
+                record!(self.tables.mir_coroutine_runtime_info[def_id.to_def_id()] <- info, hcx);
+            }
+
+            if encode_coroutine && let Some(witnesses) = tcx.mir_coroutine_witnesses(def_id) {
                 record!(self.tables.mir_coroutine_witnesses[def_id.to_def_id()] <- witnesses, hcx);
             }
         }
