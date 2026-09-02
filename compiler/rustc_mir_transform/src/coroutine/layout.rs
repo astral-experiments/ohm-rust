@@ -441,6 +441,26 @@ pub(super) fn compute_layout<'tcx>(
     (remap, layout, storage_liveness)
 }
 
+/// Copies only the runtime layout and drop kind before the prepared body is stolen.
+pub(crate) fn mir_coroutine_runtime_info<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_id: LocalDefId,
+) -> Option<CoroutineRuntimeInfo<'tcx>> {
+    let prepared = tcx.mir_coroutine_layout_prepared(def_id).borrow();
+    let (body, preparation) = &*prepared;
+    if let Some(preparation) = preparation {
+        Some(CoroutineRuntimeInfo {
+            layout: preparation.layout.clone(),
+            has_async_drop: preparation.has_async_drop,
+        })
+    } else {
+        body.coroutine_layout_raw().map(|layout| CoroutineRuntimeInfo {
+            layout: layout.clone(),
+            has_async_drop: body.coroutine_drop_async().is_some(),
+        })
+    }
+}
+
 #[instrument(level = "debug", skip(tcx), ret)]
 pub(crate) fn mir_coroutine_witnesses<'tcx>(
     tcx: TyCtxt<'tcx>,
