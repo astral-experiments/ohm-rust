@@ -981,6 +981,14 @@ pub(crate) fn codegen(
     let dcx = DiagCtxt::new(Box::new(shared_emitter.clone()));
     let dcx = dcx.handle();
 
+    let stable_outputs;
+    let object_outputs = if cgcx.output_filenames.stable_codegen_paths {
+        stable_outputs = cgcx.output_filenames.stable_temp_paths();
+        &stable_outputs
+    } else {
+        &cgcx.output_filenames
+    };
+
     {
         let llmod = module.module_llvm.llmod();
         let llcx = &*module.module_llvm.llcx;
@@ -1002,7 +1010,13 @@ pub(crate) fn codegen(
         // otherwise requested.
 
         let bc_out = cgcx.output_filenames.temp_path_for_cgu(OutputType::Bitcode, &module.name);
-        let obj_out = cgcx.output_filenames.temp_path_for_cgu(OutputType::Object, &module.name);
+        let obj_out = object_outputs.temp_path_for_cgu(OutputType::Object, &module.name);
+        if cgcx.output_filenames.stable_codegen_paths && config.emit_obj != EmitObj::None {
+            // LLVM opens object files for writing. Remove the old name first so it cannot
+            // modify an inode still hard-linked into a finalized incremental session.
+            ensure_removed(dcx, &obj_out);
+            dcx.abort_if_errors();
+        }
 
         if config.bitcode_needed() {
             if config.emit_bc || config.emit_obj == EmitObj::Bitcode {
@@ -1114,7 +1128,7 @@ pub(crate) fn codegen(
                 let _timer =
                     prof.generic_activity_with_arg("LLVM_module_codegen_emit_obj", &*module.name);
 
-                let dwo_out = cgcx.output_filenames.temp_path_dwo_for_cgu(&module.name);
+                let dwo_out = object_outputs.temp_path_dwo_for_cgu(&module.name);
                 let dwo_out = match (cgcx.split_debuginfo, cgcx.split_dwarf_kind) {
                     // Don't change how DWARF is emitted when disabled.
                     (SplitDebuginfo::Off, _) => None,
@@ -1128,6 +1142,13 @@ pub(crate) fn codegen(
                     // mode.
                     (_, SplitDwarfKind::Split) => Some(dwo_out.as_path()),
                 };
+
+                if cgcx.output_filenames.stable_codegen_paths
+                    && let Some(dwo_out) = dwo_out
+                {
+                    ensure_removed(dcx, dwo_out);
+                    dcx.abort_if_errors();
+                }
 
                 write_output_file(
                     dcx,
@@ -1172,14 +1193,23 @@ pub(crate) fn codegen(
         && cgcx.target_can_use_split_dwarf
         && cgcx.split_debuginfo != SplitDebuginfo::Off
         && cgcx.split_dwarf_kind == SplitDwarfKind::Split;
-    module.into_compiled_module(
+    let mut compiled = module.into_compiled_module(
         config.emit_obj != EmitObj::None,
         dwarf_object_emitted,
         config.emit_bc,
         config.emit_asm,
         config.emit_ir,
         &cgcx.output_filenames,
-    )
+    );
+    if cgcx.output_filenames.stable_codegen_paths {
+        if let Some(path) = &mut compiled.object {
+            *path = object_outputs.temp_path_for_cgu(OutputType::Object, &compiled.name);
+        }
+        if let Some(path) = &mut compiled.dwarf_object {
+            *path = object_outputs.temp_path_dwo_for_cgu(&compiled.name);
+        }
+    }
+    compiled
 }
 
 fn create_section_with_flags_asm(section_name: &str, section_flags: &str, data: &[u8]) -> Vec<u8> {
