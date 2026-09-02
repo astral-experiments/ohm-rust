@@ -121,6 +121,14 @@ pub(crate) struct CopyPathBuf {
     pub error: Error,
 }
 
+#[derive(Diagnostic)]
+#[diag("unable to publish retained object {$source} at {$destination}: {$error}")]
+pub(crate) struct PublishObject {
+    pub source: PathBuf,
+    pub destination: PathBuf,
+    pub error: Error,
+}
+
 // Reports Paths using `Debug` implementation rather than Path's `Display` implementation.
 #[derive(Diagnostic)]
 #[diag("could not copy {$from} to {$to}: {$error}")]
