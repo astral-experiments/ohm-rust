@@ -54,14 +54,16 @@ mod by_move_body;
 mod drop;
 mod layout;
 
+use std::cell::RefCell;
+
 pub(super) use by_move_body::coroutine_by_move_body_def_id;
 use drop::{
     create_coroutine_drop_shim, create_coroutine_drop_shim_async,
     create_coroutine_drop_shim_proxy_async, elaborate_coroutine_drops, has_async_drops,
     insert_clean_drop,
 };
-pub(super) use layout::mir_coroutine_witnesses;
 use layout::{CoroutineSavedLocals, compute_layout, locals_live_across_suspend_points};
+pub(super) use layout::{mir_coroutine_runtime_info, mir_coroutine_witnesses};
 use rustc_abi::{FieldIdx, VariantIdx};
 use rustc_data_structures::thin_vec::ThinVec;
 use rustc_hir::lang_items::LangItem;
@@ -989,194 +991,255 @@ fn create_cases<'tcx>(
 impl<'tcx> crate::MirPass<'tcx> for StateTransform {
     #[instrument(level = "debug", skip(self, tcx, body), ret)]
     fn run_pass(&self, tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) {
-        debug!(def_id = ?body.source.def_id());
-
-        let Some(old_yield_ty) = body.yield_ty() else {
-            // This only applies to coroutines
-            return;
-        };
-        tracing::trace!(def_id = ?body.source.def_id());
-
-        let old_ret_ty = body.return_ty();
-
-        assert!(body.coroutine_drop().is_none() && body.coroutine_drop_async().is_none());
-
-        if let Some(dumper) = MirDumper::new(tcx, "coroutine_before", body) {
-            dumper.dump_mir(body);
+        if let Some(preparation) = prepare_coroutine_layout(tcx, body) {
+            finish_state_transform(tcx, body, preparation);
         }
-
-        // The first argument is the coroutine type passed by value
-        let coroutine_ty = body.local_decls.raw[1].ty;
-        let coroutine_kind = body.coroutine_kind().unwrap();
-
-        // Get the discriminant type and args which typeck computed
-        let ty::Coroutine(_, args) = coroutine_ty.kind() else {
-            tcx.dcx().span_bug(body.span, format!("unexpected coroutine type {coroutine_ty}"));
-        };
-        let discr_ty = args.as_coroutine().discr_ty(tcx);
-
-        let new_ret_ty = match coroutine_kind {
-            CoroutineKind::Desugared(CoroutineDesugaring::Async, _) => {
-                // Compute Poll<return_ty>
-                let poll_did = tcx.require_lang_item(LangItem::Poll, body.span);
-                let poll_adt_ref = tcx.adt_def(poll_did);
-                let poll_args = tcx.mk_args(&[old_ret_ty.into()]);
-                Ty::new_adt(tcx, poll_adt_ref, poll_args)
-            }
-            CoroutineKind::Desugared(CoroutineDesugaring::Gen, _) => {
-                // Compute Option<yield_ty>
-                let option_did = tcx.require_lang_item(LangItem::Option, body.span);
-                let option_adt_ref = tcx.adt_def(option_did);
-                let option_args = tcx.mk_args(&[old_yield_ty.into()]);
-                Ty::new_adt(tcx, option_adt_ref, option_args)
-            }
-            CoroutineKind::Desugared(CoroutineDesugaring::AsyncGen, _) => {
-                // The yield ty is already `Poll<Option<yield_ty>>`
-                old_yield_ty
-            }
-            CoroutineKind::Coroutine(_) => {
-                // Compute CoroutineState<yield_ty, return_ty>
-                let state_did = tcx.require_lang_item(LangItem::CoroutineState, body.span);
-                let state_adt_ref = tcx.adt_def(state_did);
-                let state_args = tcx.mk_args(&[old_yield_ty.into(), old_ret_ty.into()]);
-                Ty::new_adt(tcx, state_adt_ref, state_args)
-            }
-        };
-
-        // We need to insert clean drop for unresumed state and perform drop elaboration
-        // (finally in open_drop_for_tuple) before async drop expansion.
-        // Async drops, produced by this drop elaboration, will be expanded,
-        // and corresponding futures kept in layout.
-        let has_async_drops = has_async_drops(body);
-
-        if coroutine_kind.is_async_desugaring() {
-            eliminate_get_context_calls(tcx, body);
-        }
-
-        let always_live_locals = always_storage_live_locals(body);
-        let movable = coroutine_kind.movability() == hir::Movability::Movable;
-        let liveness_info =
-            locals_live_across_suspend_points(tcx, body, &always_live_locals, movable);
-
-        if tcx.sess.opts.unstable_opts.validate_mir {
-            let mut vis = EnsureCoroutineFieldAssignmentsNeverAlias {
-                assigned_local: None,
-                saved_locals: &liveness_info.saved_locals,
-                storage_conflicts: &liveness_info.storage_conflicts,
-            };
-
-            vis.visit_body(body);
-        }
-
-        // Extract locals which are live across suspension point into `layout`
-        // `remap` gives a mapping from local indices onto coroutine struct indices
-        // `storage_liveness` tells us which locals have live storage at suspension points
-        let (remap, layout, storage_liveness) = compute_layout(liveness_info, body);
-
-        let can_return = can_return(tcx, body, body.typing_env(tcx));
-
-        // We rename RETURN_PLACE which has type mir.return_ty to new_ret_local
-        // RETURN_PLACE then is a fresh unused local with type ret_ty.
-        let new_ret_local = body.local_decls.push(LocalDecl::new(new_ret_ty, body.span));
-        tracing::trace!(?new_ret_local);
-
-        // Run the transformation which converts Places from Local to coroutine struct
-        // accesses for locals in `remap`.
-        // It also rewrites `return x` and `yield y` as writing a new coroutine state and returning
-        // either `CoroutineState::Complete(x)` and `CoroutineState::Yielded(y)`,
-        // or `Poll::Ready(x)` and `Poll::Pending` respectively depending on the coroutine kind.
-        let mut transform = TransformVisitor {
-            tcx,
-            coroutine_kind,
-            remap,
-            storage_liveness,
-            always_live_locals,
-            suspension_points: Vec::new(),
-            discr_ty,
-            new_ret_local,
-            old_ret_ty,
-            old_yield_ty,
-        };
-        transform.visit_body(body);
-
-        // Swap the actual `RETURN_PLACE` and the provisional `new_ret_local`.
-        transform.replace_local(RETURN_PLACE, new_ret_local, body);
-
-        // MIR parameters are not explicitly assigned-to when entering the MIR body.
-        // If we want to save their values inside the coroutine state, we need to do so explicitly.
-        let source_info = SourceInfo::outermost(body.span);
-        let args_iter = body.args_iter();
-        body.basic_blocks.as_mut()[START_BLOCK].statements.splice(
-            0..0,
-            args_iter.filter_map(|local| {
-                let (ty, variant_index, idx) = transform.remap[local]?;
-                let lhs = transform.make_field(variant_index, idx, ty);
-                let rhs = Rvalue::Use(Operand::Move(local.into()), WithRetag::Yes);
-                let assign = StatementKind::Assign(Box::new((lhs, rhs)));
-                Some(Statement::new(source_info, assign))
-            }),
-        );
-
-        // Remove the context argument within generator bodies.
-        if matches!(coroutine_kind, CoroutineKind::Desugared(CoroutineDesugaring::Gen, _)) {
-            body.arg_count = 1;
-        }
-
-        // The original arguments to the function are no longer arguments, mark them as such.
-        // Otherwise they'll conflict with our new arguments, which although they don't have
-        // argument_index set, will get emitted as unnamed arguments.
-        for var in &mut body.var_debug_info {
-            var.argument_index = None;
-        }
-
-        body.coroutine.as_mut().unwrap().yield_ty = None;
-        body.coroutine.as_mut().unwrap().resume_ty = None;
-        body.coroutine.as_mut().unwrap().coroutine_layout = Some(layout);
-
-        // Insert `drop(coroutine_struct)` which is used to drop upvars for coroutines in
-        // the unresumed state.
-        // This is expanded to a drop ladder in `elaborate_coroutine_drops`.
-        let drop_clean = insert_clean_drop(tcx, body, has_async_drops);
-
-        if let Some(dumper) = MirDumper::new(tcx, "coroutine_pre-elab", body) {
-            dumper.dump_mir(body);
-        }
-
-        // Expand `drop(coroutine_struct)` to a drop ladder which destroys upvars.
-        // If any upvars are moved out of, drop elaboration will handle upvar destruction.
-        // However we need to also elaborate the code generated by `insert_clean_drop`.
-        elaborate_coroutine_drops(tcx, body);
-
-        if let Some(dumper) = MirDumper::new(tcx, "coroutine_post-transform", body) {
-            dumper.dump_mir(body);
-        }
-
-        let can_unwind = can_unwind(tcx, body);
-
-        // Create a copy of our MIR and use it to create the drop shim for the coroutine
-        if has_async_drops {
-            // If coroutine has async drops, generating async drop shim
-            let drop_shim =
-                create_coroutine_drop_shim_async(tcx, &transform, body, drop_clean, can_unwind);
-            body.coroutine.as_mut().unwrap().coroutine_drop_async = Some(drop_shim);
-        } else {
-            // If coroutine has no async drops, generating sync drop shim
-            let drop_shim =
-                create_coroutine_drop_shim(tcx, &transform, coroutine_ty, body, drop_clean);
-            body.coroutine.as_mut().unwrap().coroutine_drop = Some(drop_shim);
-
-            // For coroutine with sync drop, generating async proxy for `future_drop_poll` call
-            let proxy_shim = create_coroutine_drop_shim_proxy_async(tcx, body, coroutine_kind);
-            body.coroutine.as_mut().unwrap().coroutine_drop_proxy_async = Some(proxy_shim);
-        }
-
-        // Create the Coroutine::resume / Future::poll function
-        create_coroutine_resume_function(tcx, transform, body, can_return, can_unwind);
     }
 
     fn is_required(&self) -> bool {
         true
     }
+}
+
+/// Resumes the same pass after its layout has been cached by a separate query.
+pub(super) struct PreparedStateTransform<'tcx>(RefCell<Option<CoroutineLayoutPreparation<'tcx>>>);
+
+impl<'tcx> PreparedStateTransform<'tcx> {
+    pub(super) fn new(preparation: CoroutineLayoutPreparation<'tcx>) -> Self {
+        Self(RefCell::new(Some(preparation)))
+    }
+}
+
+impl<'tcx> crate::MirPass<'tcx> for PreparedStateTransform<'tcx> {
+    fn name(&self) -> &'static str {
+        "StateTransform"
+    }
+
+    fn run_pass(&self, tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) {
+        let preparation = self.0.borrow_mut().take().unwrap();
+        finish_state_transform(tcx, body, preparation);
+    }
+
+    fn is_required(&self) -> bool {
+        true
+    }
+}
+
+/// Computes the final layout without constructing the resume and drop bodies.
+pub(super) fn prepare_coroutine_layout<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    body: &mut Body<'tcx>,
+) -> Option<CoroutineLayoutPreparation<'tcx>> {
+    debug!(def_id = ?body.source.def_id());
+
+    let Some(old_yield_ty) = body.yield_ty() else {
+        // This only applies to coroutines
+        return None;
+    };
+    tracing::trace!(def_id = ?body.source.def_id());
+
+    let old_ret_ty = body.return_ty();
+
+    assert!(body.coroutine_drop().is_none() && body.coroutine_drop_async().is_none());
+
+    if let Some(dumper) = MirDumper::new(tcx, "coroutine_before", body) {
+        dumper.dump_mir(body);
+    }
+
+    // The first argument is the coroutine type passed by value
+    let coroutine_ty = body.local_decls.raw[1].ty;
+    let coroutine_kind = body.coroutine_kind().unwrap();
+
+    // Get the discriminant type and args which typeck computed
+    let ty::Coroutine(..) = coroutine_ty.kind() else {
+        tcx.dcx().span_bug(body.span, format!("unexpected coroutine type {coroutine_ty}"));
+    };
+
+    let new_ret_ty = match coroutine_kind {
+        CoroutineKind::Desugared(CoroutineDesugaring::Async, _) => {
+            // Compute Poll<return_ty>
+            let poll_did = tcx.require_lang_item(LangItem::Poll, body.span);
+            let poll_adt_ref = tcx.adt_def(poll_did);
+            let poll_args = tcx.mk_args(&[old_ret_ty.into()]);
+            Ty::new_adt(tcx, poll_adt_ref, poll_args)
+        }
+        CoroutineKind::Desugared(CoroutineDesugaring::Gen, _) => {
+            // Compute Option<yield_ty>
+            let option_did = tcx.require_lang_item(LangItem::Option, body.span);
+            let option_adt_ref = tcx.adt_def(option_did);
+            let option_args = tcx.mk_args(&[old_yield_ty.into()]);
+            Ty::new_adt(tcx, option_adt_ref, option_args)
+        }
+        CoroutineKind::Desugared(CoroutineDesugaring::AsyncGen, _) => {
+            // The yield ty is already `Poll<Option<yield_ty>>`
+            old_yield_ty
+        }
+        CoroutineKind::Coroutine(_) => {
+            // Compute CoroutineState<yield_ty, return_ty>
+            let state_did = tcx.require_lang_item(LangItem::CoroutineState, body.span);
+            let state_adt_ref = tcx.adt_def(state_did);
+            let state_args = tcx.mk_args(&[old_yield_ty.into(), old_ret_ty.into()]);
+            Ty::new_adt(tcx, state_adt_ref, state_args)
+        }
+    };
+
+    // We need to insert clean drop for unresumed state and perform drop elaboration
+    // (finally in open_drop_for_tuple) before async drop expansion.
+    // Async drops, produced by this drop elaboration, will be expanded,
+    // and corresponding futures kept in layout.
+    let has_async_drops = has_async_drops(body);
+
+    if coroutine_kind.is_async_desugaring() {
+        eliminate_get_context_calls(tcx, body);
+    }
+
+    let always_live_locals = always_storage_live_locals(body);
+    let movable = coroutine_kind.movability() == hir::Movability::Movable;
+    let liveness_info = locals_live_across_suspend_points(tcx, body, &always_live_locals, movable);
+
+    if tcx.sess.opts.unstable_opts.validate_mir {
+        let mut vis = EnsureCoroutineFieldAssignmentsNeverAlias {
+            assigned_local: None,
+            saved_locals: &liveness_info.saved_locals,
+            storage_conflicts: &liveness_info.storage_conflicts,
+        };
+
+        vis.visit_body(body);
+    }
+
+    // Extract locals which are live across suspension point into `layout`
+    // `remap` gives a mapping from local indices onto coroutine struct indices
+    // `storage_liveness` tells us which locals have live storage at suspension points
+    let (remap, layout, storage_liveness) = compute_layout(liveness_info, body);
+
+    Some(CoroutineLayoutPreparation {
+        remap,
+        layout,
+        storage_liveness,
+        always_live_locals,
+        has_async_drop: has_async_drops,
+        new_ret_ty,
+    })
+}
+
+fn finish_state_transform<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    body: &mut Body<'tcx>,
+    preparation: CoroutineLayoutPreparation<'tcx>,
+) {
+    let CoroutineLayoutPreparation {
+        remap,
+        layout,
+        storage_liveness,
+        always_live_locals,
+        has_async_drop: has_async_drops,
+        new_ret_ty,
+    } = preparation;
+    let old_ret_ty = body.return_ty();
+    let old_yield_ty = body.yield_ty().unwrap();
+    let coroutine_ty = body.local_decls.raw[1].ty;
+    let coroutine_kind = body.coroutine_kind().unwrap();
+    let ty::Coroutine(_, args) = coroutine_ty.kind() else { unreachable!() };
+    let discr_ty = args.as_coroutine().discr_ty(tcx);
+
+    let can_return = can_return(tcx, body, body.typing_env(tcx));
+
+    // We rename RETURN_PLACE which has type mir.return_ty to new_ret_local
+    // RETURN_PLACE then is a fresh unused local with type ret_ty.
+    let new_ret_local = body.local_decls.push(LocalDecl::new(new_ret_ty, body.span));
+    tracing::trace!(?new_ret_local);
+
+    // Run the transformation which converts Places from Local to coroutine struct
+    // accesses for locals in `remap`.
+    // It also rewrites `return x` and `yield y` as writing a new coroutine state and returning
+    // either `CoroutineState::Complete(x)` and `CoroutineState::Yielded(y)`,
+    // or `Poll::Ready(x)` and `Poll::Pending` respectively depending on the coroutine kind.
+    let mut transform = TransformVisitor {
+        tcx,
+        coroutine_kind,
+        remap,
+        storage_liveness,
+        always_live_locals,
+        suspension_points: Vec::new(),
+        discr_ty,
+        new_ret_local,
+        old_ret_ty,
+        old_yield_ty,
+    };
+    transform.visit_body(body);
+
+    // Swap the actual `RETURN_PLACE` and the provisional `new_ret_local`.
+    transform.replace_local(RETURN_PLACE, new_ret_local, body);
+
+    // MIR parameters are not explicitly assigned-to when entering the MIR body.
+    // If we want to save their values inside the coroutine state, we need to do so explicitly.
+    let source_info = SourceInfo::outermost(body.span);
+    let args_iter = body.args_iter();
+    body.basic_blocks.as_mut()[START_BLOCK].statements.splice(
+        0..0,
+        args_iter.filter_map(|local| {
+            let (ty, variant_index, idx) = transform.remap[local]?;
+            let lhs = transform.make_field(variant_index, idx, ty);
+            let rhs = Rvalue::Use(Operand::Move(local.into()), WithRetag::Yes);
+            let assign = StatementKind::Assign(Box::new((lhs, rhs)));
+            Some(Statement::new(source_info, assign))
+        }),
+    );
+
+    // Remove the context argument within generator bodies.
+    if matches!(coroutine_kind, CoroutineKind::Desugared(CoroutineDesugaring::Gen, _)) {
+        body.arg_count = 1;
+    }
+
+    // The original arguments to the function are no longer arguments, mark them as such.
+    // Otherwise they'll conflict with our new arguments, which although they don't have
+    // argument_index set, will get emitted as unnamed arguments.
+    for var in &mut body.var_debug_info {
+        var.argument_index = None;
+    }
+
+    body.coroutine.as_mut().unwrap().yield_ty = None;
+    body.coroutine.as_mut().unwrap().resume_ty = None;
+    body.coroutine.as_mut().unwrap().coroutine_layout = Some(layout);
+
+    // Insert `drop(coroutine_struct)` which is used to drop upvars for coroutines in
+    // the unresumed state.
+    // This is expanded to a drop ladder in `elaborate_coroutine_drops`.
+    let drop_clean = insert_clean_drop(tcx, body, has_async_drops);
+
+    if let Some(dumper) = MirDumper::new(tcx, "coroutine_pre-elab", body) {
+        dumper.dump_mir(body);
+    }
+
+    // Expand `drop(coroutine_struct)` to a drop ladder which destroys upvars.
+    // If any upvars are moved out of, drop elaboration will handle upvar destruction.
+    // However we need to also elaborate the code generated by `insert_clean_drop`.
+    elaborate_coroutine_drops(tcx, body);
+
+    if let Some(dumper) = MirDumper::new(tcx, "coroutine_post-transform", body) {
+        dumper.dump_mir(body);
+    }
+
+    let can_unwind = can_unwind(tcx, body);
+
+    // Create a copy of our MIR and use it to create the drop shim for the coroutine
+    if has_async_drops {
+        // If coroutine has async drops, generating async drop shim
+        let drop_shim =
+            create_coroutine_drop_shim_async(tcx, &transform, body, drop_clean, can_unwind);
+        body.coroutine.as_mut().unwrap().coroutine_drop_async = Some(drop_shim);
+    } else {
+        // If coroutine has no async drops, generating sync drop shim
+        let drop_shim = create_coroutine_drop_shim(tcx, &transform, coroutine_ty, body, drop_clean);
+        body.coroutine.as_mut().unwrap().coroutine_drop = Some(drop_shim);
+
+        // For coroutine with sync drop, generating async proxy for `future_drop_poll` call
+        let proxy_shim = create_coroutine_drop_shim_proxy_async(tcx, body, coroutine_kind);
+        body.coroutine.as_mut().unwrap().coroutine_drop_proxy_async = Some(proxy_shim);
+    }
+
+    // Create the Coroutine::resume / Future::poll function
+    create_coroutine_resume_function(tcx, transform, body, can_return, can_unwind);
 }
 
 /// Looks for any assignments between locals (e.g., `_4 = _5`) that will both be converted to fields
