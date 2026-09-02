@@ -1913,11 +1913,11 @@ impl<'tcx> TyCtxt<'tcx> {
         args: GenericArgsRef<'tcx>,
     ) -> Result<&'tcx CoroutineLayout<'tcx>, &'tcx LayoutError<'tcx>> {
         let coroutine_kind_ty = args.as_coroutine().kind_ty();
-        let mir = self.optimized_mir(def_id);
+        let layout = self.mir_coroutine_runtime_info(def_id).map(|info| &info.layout);
         let ty = || Ty::new_coroutine(self, def_id, args);
         // Regular coroutine
         if coroutine_kind_ty.is_unit() {
-            mir.coroutine_layout_raw().ok_or_else(|| self.layout_error(LayoutError::Unknown(ty())))
+            layout.ok_or_else(|| self.layout_error(LayoutError::Unknown(ty())))
         } else {
             // If we have a `Coroutine` that comes from an coroutine-closure,
             // then it may be a by-move or by-ref body.
@@ -1930,16 +1930,15 @@ impl<'tcx> TyCtxt<'tcx> {
             // If the types differ, then we must be getting the by-move body of
             // a by-ref coroutine.
             if identity_kind_ty == coroutine_kind_ty {
-                mir.coroutine_layout_raw()
-                    .ok_or_else(|| self.layout_error(LayoutError::Unknown(ty())))
+                layout.ok_or_else(|| self.layout_error(LayoutError::Unknown(ty())))
             } else {
                 assert_matches!(coroutine_kind_ty.to_opt_closure_kind(), Some(ClosureKind::FnOnce));
                 assert_matches!(
                     identity_kind_ty.to_opt_closure_kind(),
                     Some(ClosureKind::Fn | ClosureKind::FnMut)
                 );
-                self.optimized_mir(self.coroutine_by_move_body_def_id(def_id))
-                    .coroutine_layout_raw()
+                self.mir_coroutine_runtime_info(self.coroutine_by_move_body_def_id(def_id))
+                    .map(|info| &info.layout)
                     .ok_or_else(|| self.layout_error(LayoutError::Unknown(ty())))
             }
         }

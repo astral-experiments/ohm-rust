@@ -12,6 +12,11 @@ macro_rules! arena_types {
             [] adt_def: rustc_middle::ty::AdtDefData,
             [] steal_thir: rustc_data_structures::steal::Steal<rustc_middle::thir::Thir<'tcx>>,
             [] steal_mir: rustc_data_structures::steal::Steal<rustc_middle::mir::Body<'tcx>>,
+            [] steal_coroutine_layout:
+                rustc_data_structures::steal::Steal<(
+                    rustc_middle::mir::Body<'tcx>,
+                    Option<rustc_middle::mir::CoroutineLayoutPreparation<'tcx>>,
+                )>,
             [decode] mir: rustc_middle::mir::Body<'tcx>,
             [] steal_promoted:
                 rustc_data_structures::steal::Steal<
