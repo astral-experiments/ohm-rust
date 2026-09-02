@@ -30,7 +30,6 @@ use rustc_index::IndexVec;
 use rustc_middle::dep_graph::{DepKind, DepNode, WorkProduct, WorkProductId};
 use rustc_middle::hir::map::compute_hir_hash;
 use rustc_middle::ich::StableHashState;
-use rustc_middle::middle::resolve::ModChild;
 use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use rustc_middle::middle::dependency_format::Linkage;
 use rustc_middle::middle::exported_symbols::SymbolExportLevel;
@@ -1011,6 +1010,40 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         })
     }
 
+    /// Finish the private SVH at the boundary between the hashed root and the filename trailer.
+    fn finish_crate_hash(&mut self) -> Svh {
+        // By default the crate hash (SVH) is derived from the encoded metadata bytes. With
+        // `-Z metadata-crate-hash=no` we instead store the legacy HIR-based hash, which the
+        // `crate_hash` query computes directly without consulting `local_crate_hash`.
+        let hash = if self.tcx.sess.opts.unstable_opts.metadata_crate_hash {
+            self.opaque.flush();
+            Svh::new(Fingerprint::from_le_bytes(
+                self.metadata_hasher.lock().unwrap().finish_128().to_le_bytes(),
+            ))
+        } else {
+            self.tcx.crate_hash(LOCAL_CRATE)
+        };
+        self.tcx.untracked().local_crate_hash.set(hash).expect("local_crate_hash set twice");
+        hash
+    }
+
+    fn encode_unhashed_crate_root(&mut self) -> LazyValue<CrateRootUnhashed> {
+        // Indexed by dependency `CrateNum`, matching the numbering `encode_crate_deps` uses.
+        // Slot 0 (`LOCAL_CRATE`) is filler; this crate's own value is `extra_filename`.
+        let mut dep_extra_filenames = IndexVec::from_elem_n(String::new(), 1);
+        if !self.is_proc_macro {
+            for &cnum in self.tcx.crates(()).iter() {
+                let idx = dep_extra_filenames.push(self.tcx.extra_filename(cnum).to_owned());
+                assert_eq!(idx, cnum, "dep_extra_filenames must be indexed by CrateNum");
+            }
+        }
+
+        self.lazy(CrateRootUnhashed {
+            extra_filename: self.tcx.sess.opts.cg.extra_filename.clone(),
+            dep_extra_filenames,
+        })
+    }
+
     fn encode_crate_root<'h>(
         &mut self,
         hcx: &mut impl PublicApiHashState<'h>,
@@ -1199,7 +1232,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             lang_items,
             diagnostic_items,
             canonical_symbols,
-                fake_doc_items,
+            fake_doc_items,
             lang_items_missing,
             stripped_cfg_items,
             native_libraries,
@@ -1223,7 +1256,8 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             specialization_enabled_in: tcx.specialization_enabled_in(LOCAL_CRATE),
             public_api_hash_opt_enabled: hcx.enabled(),
         };
-        let (crate_root, public_hash) = stat!("public hashes", || crate_root.into_crate_root(self, hcx));
+        let (crate_root, public_hash) =
+            stat!("public hashes", || crate_root.into_crate_root(self, hcx));
 
         let root = stat!("final", || { self.lazy(crate_root) });
 
@@ -1293,7 +1327,20 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             eprint!("{s}");
         }
 
-        (root, unhashed, CrateHashes { private_hash: hash, public_hash: public_hash.unwrap_or(hash) })
+        // Green marking stops at the first red edge. Record all fields that the prefix must
+        // preserve before the inputs whose bytes or source maps can be refreshed.
+        if M::HASH_PUBLIC_API
+            && tcx.dep_graph.is_fully_enabled()
+            && tcx.sess.opts.unstable_opts.metadata_crate_hash
+        {
+            let _ = tcx.ohm_metadata_input_hashes(());
+        }
+        track_metadata_source_files(tcx, source_files);
+        (
+            root,
+            unhashed,
+            CrateHashes { private_hash: hash, public_hash: public_hash.unwrap_or(hash) },
+        )
     }
 }
 
@@ -1605,9 +1652,18 @@ fn should_encode_mir(
         DefKind::Ctor(_, _) => (true, false),
         // Constants
         DefKind::AnonConst | DefKind::AssocConst | DefKind::Const => (true, false),
-        // Coroutines require optimized MIR to compute layout.
-        DefKind::Closure if tcx.is_coroutine(def_id.to_def_id()) => (false, true),
-        DefKind::SyntheticCoroutineBody => (false, true),
+        // Coroutine layout and drop kind are encoded separately. Their executable
+        // bodies are only needed for codegen, MIR output, or explicit MIR export.
+        DefKind::Closure if tcx.is_coroutine(def_id.to_def_id()) => (
+            false,
+            tcx.sess.opts.output_types.should_codegen()
+                || tcx.sess.opts.unstable_opts.always_encode_mir,
+        ),
+        DefKind::SyntheticCoroutineBody => (
+            false,
+            tcx.sess.opts.output_types.should_codegen()
+                || tcx.sess.opts.unstable_opts.always_encode_mir,
+        ),
         // Full-fledged functions + closures
         DefKind::AssocFn | DefKind::Fn | DefKind::Closure => {
             let opt = tcx.sess.opts.unstable_opts.always_encode_mir
@@ -2122,7 +2178,9 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             if let DefKind::Static { .. } = def_kind {
                 if !self.tcx.is_foreign_item(def_id) {
                     match self.tcx.eval_static_initializer(def_id) {
-                        Ok(data) => record!(self.tables.eval_static_initializer[def_id] <- data, hcx),
+                        Ok(data) => {
+                            record!(self.tables.eval_static_initializer[def_id] <- data, hcx)
+                        }
                         Err(err) => match err {
                             interpret::ErrorHandled::Reported(_, _) => {
                                 self.tcx.dcx().delayed_bug(format!(
@@ -2442,14 +2500,23 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
 
         let keys_and_jobs = tcx.mir_keys(()).iter().filter_map(|&def_id| {
             let (encode_const, encode_opt) = should_encode_mir(tcx, reachable_set, def_id);
-            if encode_const || encode_opt { Some((def_id, encode_const, encode_opt)) } else { None }
+            let encode_coroutine =
+                matches!(tcx.def_kind(def_id), DefKind::Closure | DefKind::SyntheticCoroutineBody)
+                    && tcx.is_coroutine(def_id.to_def_id());
+            if encode_const || encode_opt || encode_coroutine {
+                Some((def_id, encode_const, encode_opt, encode_coroutine))
+            } else {
+                None
+            }
         });
-        for (def_id, encode_const, encode_opt) in keys_and_jobs {
-            debug_assert!(encode_const || encode_opt);
+        for (def_id, encode_const, encode_opt, encode_coroutine) in keys_and_jobs {
+            debug_assert!(encode_const || encode_opt || encode_coroutine);
 
             debug!("EntryBuilder::encode_mir({:?})", def_id);
             if encode_opt {
                 record!(self.tables.optimized_mir[def_id.to_def_id()] <- tcx.optimized_mir(def_id), hcx);
+            }
+            if encode_opt || encode_coroutine {
                 self.tables.cross_crate_inlinable.set_local_hashed(
                     def_id,
                     self.tcx.cross_crate_inlinable(def_id),
@@ -2457,12 +2524,6 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 );
                 record!(self.tables.closure_saved_names_of_captured_variables[def_id.to_def_id()]
                     <- tcx.closure_saved_names_of_captured_variables(def_id), hcx);
-
-                if self.tcx.is_coroutine(def_id.to_def_id())
-                    && let Some(witnesses) = tcx.mir_coroutine_witnesses(def_id)
-                {
-                    record!(self.tables.mir_coroutine_witnesses[def_id.to_def_id()] <- witnesses, hcx);
-                }
             }
             let mut is_trivial = false;
             if encode_const {
@@ -2500,9 +2561,11 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 record!(self.tables.promoted_mir[def_id.to_def_id()] <- tcx.promoted_mir(def_id), hcx);
             }
 
-            if self.tcx.is_coroutine(def_id.to_def_id())
-                && let Some(witnesses) = tcx.mir_coroutine_witnesses(def_id)
-            {
+            if encode_coroutine && let Some(info) = tcx.mir_coroutine_runtime_info(def_id) {
+                record!(self.tables.mir_coroutine_runtime_info[def_id.to_def_id()] <- info, hcx);
+            }
+
+            if encode_coroutine && let Some(witnesses) = tcx.mir_coroutine_witnesses(def_id) {
                 record!(self.tables.mir_coroutine_witnesses[def_id.to_def_id()] <- witnesses, hcx);
             }
         }
@@ -2623,8 +2686,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             },
             |(this, _, expn_data_table, expn_hash_table), index, expn_data, hash| {
                 if let Some(index) = index.as_local() {
-                    this
-                        .with_record_mode(RecordMode::From(index.into()), |this| {
+                    this.with_record_mode(RecordMode::From(index.into()), |this| {
                         expn_data_table.set_some_hashed(
                             index,
                             this.lazy(expn_data.expect("local expn")),
@@ -2860,10 +2922,18 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         )
     }
 
-    fn encode_fake_doc_items<'h>(&mut self, hcx: &mut impl PublicApiHashState<'h>) -> Hashed<LazyArray<DefIndex>> {
+    fn encode_fake_doc_items<'h>(
+        &mut self,
+        hcx: &mut impl PublicApiHashState<'h>,
+    ) -> Hashed<LazyArray<DefIndex>> {
         empty_proc_macro!(self);
         let tcx = self.tcx;
-        hashed_lazy_array!(self, tcx.fake_doc_items(LOCAL_CRATE).iter().copied(), hcx, |id: DefId| id.index)
+        hashed_lazy_array!(
+            self,
+            tcx.fake_doc_items(LOCAL_CRATE).iter().copied(),
+            hcx,
+            |id: DefId| id.index
+        )
     }
 
     fn encode_diagnostic_items<'h>(
