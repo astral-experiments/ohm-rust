@@ -112,6 +112,19 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/ui/rmeta
 
+      - name: Run coroutine runtime layout regression tests
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1
+          tests/ui/coroutine/metadata-sufficient-for-layout.rs
+          tests/ui/coroutine/xcrate.rs tests/ui/coroutine/drop-env.rs
+          tests/ui/async-await/async-closures/drop.rs
+          tests/ui/async-await/async-closures/by-move-body-inlined-attrs.rs
+          tests/ui/async-await/async-drop/metadata-only-layout.rs
+          tests/ui/ohm/clippy-codegen-mir.rs
+          tests/ui/pattern/non-structural-match-types-cycle-err.rs
+          tests/incremental/coroutine-runtime-layout.rs
+
       - name: Run unused-dependency JSON UI tests
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true

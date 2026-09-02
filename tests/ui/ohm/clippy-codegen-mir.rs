@@ -1,9 +1,12 @@
 //@ run-pass
-//@ revisions: serial parallel
+//@ revisions: serial parallel lazy
 //@ edition: 2024
-//@ compile-flags: -Zclippy-codegen -Zvalidate-mir -Zmir-opt-level=3
-//@[serial] compile-flags: -Zthreads=1
-//@[parallel] compile-flags: -Zthreads=4
+//@ compile-flags: -Zclippy-codegen -Zmir-opt-level=3
+//@[serial] compile-flags: -Zthreads=1 -Zvalidate-mir
+//@[parallel] compile-flags: -Zthreads=4 -Zvalidate-mir
+//@[lazy] compile-flags: -Zthreads=4
+
+// The lazy revision prepares coroutine layouts before cloning the lint body.
 
 #![feature(const_eval_select, core_intrinsics, rustc_attrs)]
 #![allow(internal_features)]
