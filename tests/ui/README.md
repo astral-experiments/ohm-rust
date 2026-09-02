@@ -1019,6 +1019,10 @@ See:
 
 Exercises the [`std::mem::offset_of` macro](https://doc.rust-lang.org/beta/std/mem/macro.offset_of.html).
 
+## `tests/ui/ohm/`
+
+Regression tests for Ohm compiler extensions, including separate lint MIR during code generation.
+
 ## `tests/ui/on-unimplemented/`
 
 Exercises the `#[rustc_on_unimplemented]`.
