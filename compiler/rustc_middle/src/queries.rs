@@ -643,6 +643,12 @@ rustc_queries! {
         desc { "elaborating drops for `{}`", tcx.def_path_str(key) }
     }
 
+    /// An immutable, minimally optimized view of a local function for Clippy.
+    /// Code generation retains its own MIR and the requested optimization settings.
+    query mir_for_lint(key: LocalDefId) -> &'tcx mir::Body<'tcx> {
+        desc { "preparing lint MIR for `{}`", tcx.def_path_str(key) }
+    }
+
     query mir_for_ctfe(
         key: DefId
     ) -> &'tcx mir::Body<'tcx> {
