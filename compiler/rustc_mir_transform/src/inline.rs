@@ -112,6 +112,10 @@ trait Inliner<'tcx> {
     fn history(&self) -> &[DefId];
     fn caller_def_id(&self) -> DefId;
 
+    fn uses_lint_mir(&self) -> bool {
+        false
+    }
+
     /// Has the caller body been changed?
     fn changed(self) -> bool;
 
@@ -146,7 +150,7 @@ trait Inliner<'tcx> {
     fn on_inline_failure(&self, callsite: &CallSite<'tcx>, reason: &'static str);
 }
 
-struct ForceInliner<'tcx> {
+struct ForceInliner<'tcx, const FOR_LINT: bool = false> {
     tcx: TyCtxt<'tcx>,
     typing_env: ty::TypingEnv<'tcx>,
     /// `DefId` of caller.
@@ -161,7 +165,7 @@ struct ForceInliner<'tcx> {
     changed: bool,
 }
 
-impl<'tcx> Inliner<'tcx> for ForceInliner<'tcx> {
+impl<'tcx, const FOR_LINT: bool> Inliner<'tcx> for ForceInliner<'tcx, FOR_LINT> {
     fn new(tcx: TyCtxt<'tcx>, def_id: DefId, body: &Body<'tcx>) -> Self {
         Self { tcx, typing_env: body.typing_env(tcx), def_id, history: Vec::new(), changed: false }
     }
@@ -180,6 +184,10 @@ impl<'tcx> Inliner<'tcx> for ForceInliner<'tcx> {
 
     fn caller_def_id(&self) -> DefId {
         self.def_id
+    }
+
+    fn uses_lint_mir(&self) -> bool {
+        FOR_LINT
     }
 
     fn changed(self) -> bool {
@@ -268,7 +276,7 @@ impl<'tcx> Inliner<'tcx> for ForceInliner<'tcx> {
     }
 }
 
-struct NormalInliner<'tcx> {
+struct NormalInliner<'tcx, const FOR_LINT: bool = false> {
     tcx: TyCtxt<'tcx>,
     typing_env: ty::TypingEnv<'tcx>,
     /// `DefId` of caller.
@@ -290,13 +298,13 @@ struct NormalInliner<'tcx> {
     caller_is_inline_forwarder: bool,
 }
 
-impl<'tcx> NormalInliner<'tcx> {
+impl<'tcx, const FOR_LINT: bool> NormalInliner<'tcx, FOR_LINT> {
     fn past_depth_limit(&self) -> bool {
         self.history.len() > HISTORY_DEPTH_LIMIT || self.top_down_counter > TOP_DOWN_DEPTH_LIMIT
     }
 }
 
-impl<'tcx> Inliner<'tcx> for NormalInliner<'tcx> {
+impl<'tcx, const FOR_LINT: bool> Inliner<'tcx> for NormalInliner<'tcx, FOR_LINT> {
     fn new(tcx: TyCtxt<'tcx>, def_id: DefId, body: &Body<'tcx>) -> Self {
         let typing_env = body.typing_env(tcx);
         let codegen_fn_attrs = tcx.codegen_fn_attrs(def_id);
@@ -321,6 +329,10 @@ impl<'tcx> Inliner<'tcx> for NormalInliner<'tcx> {
 
     fn caller_def_id(&self) -> DefId {
         self.def_id
+    }
+
+    fn uses_lint_mir(&self) -> bool {
+        FOR_LINT
     }
 
     fn typing_env(&self) -> ty::TypingEnv<'tcx> {
@@ -489,6 +501,20 @@ impl<'tcx> Inliner<'tcx> for NormalInliner<'tcx> {
     fn on_inline_failure(&self, _: &CallSite<'tcx>, _: &'static str) {}
 }
 
+/// Apply Clippy's level-zero inlining policy to its separate MIR view.
+pub(super) fn inline_for_lint<'tcx>(tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) {
+    if inline::<ForceInliner<'_, true>>(tcx, body) {
+        simplify_cfg(tcx, body);
+    }
+    // An explicit inline-mir setting is honored by ordinary Clippy even at level zero.
+    if tcx.sess.opts.unstable_opts.inline_mir == Some(true)
+        && !tcx.codegen_fn_attrs(body.source.def_id()).optimize.do_not_optimize()
+        && inline::<NormalInliner<'_, true>>(tcx, body)
+    {
+        simplify_cfg(tcx, body);
+    }
+}
+
 fn inline<'tcx, T: Inliner<'tcx>>(tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) -> bool {
     let def_id = body.source.def_id();
 
@@ -632,7 +658,7 @@ fn try_inlining<'tcx, I: Inliner<'tcx>>(
         }
     }
 
-    let callee_body = try_instance_mir(tcx, callsite.callee.def)?;
+    let callee_body = try_instance_mir(tcx, callsite.callee.def, inliner.uses_lint_mir())?;
     check_inline::is_inline_valid_on_body(tcx, callee_body)?;
     inliner.check_callee_mir_body(callsite, callee_body, callee_attrs)?;
 
@@ -1373,6 +1399,7 @@ impl<'tcx> MutVisitor<'tcx> for Integrator<'_, 'tcx> {
 fn try_instance_mir<'tcx>(
     tcx: TyCtxt<'tcx>,
     instance: InstanceKind<'tcx>,
+    for_lint: bool,
 ) -> Result<&'tcx Body<'tcx>, &'static str> {
     if let ty::InstanceKind::Shim(ty::ShimKind::DropGlue(_, Some(ty)))
     | ty::InstanceKind::Shim(ty::ShimKind::AsyncDropGlueCtor(_, ty)) = instance
@@ -1385,6 +1412,12 @@ fn try_instance_mir<'tcx>(
                 return Err("cannot build drop shim for polymorphic type");
             }
         }
+    }
+    if for_lint
+        && let ty::InstanceKind::Item(def_id) = instance
+        && let Some(local_def_id) = def_id.as_local()
+    {
+        return Ok(tcx.mir_for_lint(local_def_id));
     }
     Ok(tcx.instance_mir(instance))
 }
