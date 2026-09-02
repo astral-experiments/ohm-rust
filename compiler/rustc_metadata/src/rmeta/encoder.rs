@@ -1563,6 +1563,8 @@ fn should_encode_mir(
     reachable_set: &LocalDefIdSet,
     def_id: LocalDefId,
 ) -> (bool, bool) {
+    let encode_coroutine_mir = tcx.sess.opts.output_types.should_codegen()
+        || tcx.sess.opts.unstable_opts.always_encode_mir;
     match tcx.def_kind(def_id) {
         // instance_mir uses mir_for_ctfe rather than optimized_mir for constructors
         DefKind::Ctor(_, _) => (true, false),
@@ -1573,16 +1575,8 @@ fn should_encode_mir(
         | DefKind::Const { .. } => (true, false),
         // Coroutine layout and drop kind are encoded separately. Their executable
         // bodies are only needed for codegen, MIR output, or explicit MIR export.
-        DefKind::Closure if tcx.is_coroutine(def_id.to_def_id()) => (
-            false,
-            tcx.sess.opts.output_types.should_codegen()
-                || tcx.sess.opts.unstable_opts.always_encode_mir,
-        ),
-        DefKind::SyntheticCoroutineBody => (
-            false,
-            tcx.sess.opts.output_types.should_codegen()
-                || tcx.sess.opts.unstable_opts.always_encode_mir,
-        ),
+        DefKind::Closure if tcx.is_coroutine(def_id.to_def_id()) => (false, encode_coroutine_mir),
+        DefKind::SyntheticCoroutineBody => (false, encode_coroutine_mir),
         // Full-fledged functions + closures
         DefKind::AssocFn | DefKind::Fn | DefKind::Closure => {
             let opt = tcx.sess.opts.unstable_opts.always_encode_mir
