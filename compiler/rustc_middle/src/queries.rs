@@ -643,6 +643,15 @@ rustc_queries! {
         desc { "elaborating drops for `{}`", tcx.def_path_str(key) }
     }
 
+    /// A coroutine body and its computed layout, before state-machine lowering.
+    query mir_coroutine_layout_prepared(key: LocalDefId) -> &'tcx Steal<(
+        mir::Body<'tcx>,
+        Option<mir::CoroutineLayoutPreparation<'tcx>>,
+    )> {
+        no_hash
+        desc { "preparing the runtime layout of coroutine `{}`", tcx.def_path_str(key) }
+    }
+
     query mir_for_ctfe(
         key: DefId
     ) -> &'tcx mir::Body<'tcx> {
@@ -682,6 +691,14 @@ rustc_queries! {
     query mir_coroutine_witnesses(key: DefId) -> Option<&'tcx mir::CoroutineLayout<'tcx>> {
         arena_cache
         desc { "coroutine witness types for `{}`", tcx.def_path_str(key) }
+        cache_on_disk
+        separate_provide_extern
+    }
+
+    /// The final coroutine layout and drop kind, independent of its executable MIR.
+    query mir_coroutine_runtime_info(key: DefId) -> Option<&'tcx mir::CoroutineRuntimeInfo<'tcx>> {
+        arena_cache
+        desc { "computing the runtime layout of coroutine `{}`", tcx.def_path_str(key) }
         cache_on_disk
         separate_provide_extern
     }
