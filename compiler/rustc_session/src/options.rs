@@ -2324,6 +2324,8 @@ options! {
         "show all expected values in check-cfg diagnostics (default: no)"),
     checksum_hash_algorithm: Option<SourceFileHashAlgorithm> = (None, parse_cargo_src_file_hash, [TRACKED],
         "hash algorithm of source files used to check freshness in cargo (`blake3` or `sha256`)"),
+    clippy_codegen: bool = (false, parse_bool, [TRACKED_NO_CRATE_HASH],
+        "retain separate lint MIR while compiling with Clippy (default: no)"),
     codegen_backend: Option<String> = (None, parse_opt_string, [TRACKED],
         "the backend to use"),
     codegen_emit_retag: Option<CodegenRetagOptions> = (None, parse_codegen_retag_options, [TRACKED],
