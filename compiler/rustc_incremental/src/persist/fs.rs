@@ -662,10 +662,21 @@ pub(crate) fn garbage_collect_session_directories(
         }
     }
 
+    // Some platforms permit a process to reacquire its own lock. Compare the lock
+    // names since finalization renames the directory without changing its lock.
+    let current_lock = lock_file_path(&incr_comp_session.new_session_directory);
+    let previous_lock =
+        incr_comp_session.old_session_directory.as_ref().map(|dir| lock_file_path(dir));
+
     // Now garbage collect the valid session directories.
     let deletion_candidates =
         lock_file_to_session_dir.items().filter_map(|(lock_file_name, directory_name)| {
             debug!("garbage_collect_session_directories() - inspecting: {}", directory_name);
+
+            let lock = crate_directory.join(lock_file_name);
+            if lock == current_lock || previous_lock.as_ref() == Some(&lock) {
+                return None;
+            }
 
             let Ok(timestamp) = extract_timestamp_from_session_dir(directory_name) else {
                 debug!(
