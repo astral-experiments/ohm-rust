@@ -21,7 +21,8 @@ use rustc_middle::dep_graph::WorkProductMap;
 use rustc_middle::ty::{CurrentGcx, TyCtxt};
 use rustc_query_impl::{CollectActiveJobsKind, collect_active_query_jobs};
 use rustc_session::config::{
-    Cfg, CrateType, OutFileName, OutputFilenames, OutputTypes, Sysroot, host_tuple,
+    Cfg, CrateType, DebugInfo, OutFileName, OutputFilenames, OutputType, OutputTypes, Sysroot,
+    host_tuple,
 };
 use rustc_session::{EarlyDiagCtxt, Session, filesearch};
 use rustc_span::edition::Edition;
@@ -625,6 +626,18 @@ pub fn build_output_filenames(attrs: &[ast::Attribute], sess: &Session) -> Outpu
         .as_ref()
         .map(|_| rng().next_u32().to_base_fixed_len(CASE_INSENSITIVE).to_string());
 
+    let stable_codegen_paths = sess.opts.incremental.is_some()
+        && sess.opts.debuginfo != DebugInfo::None
+        && sess.split_debuginfo() == rustc_target::spec::SplitDebuginfo::Unpacked
+        // Saved link state must keep referring to its original object code, even after
+        // another compilation replaces the ordinary output files.
+        && !sess.opts.unstable_opts.emit_rlink
+        && !sess.opts.unstable_opts.no_link
+        && !sess.opts.cg.save_temps
+        // Explicit object outputs have already been reported at their temporary paths.
+        && !sess.opts.output_types.contains_key(&OutputType::Object)
+        && sess.opts.output_types.should_link();
+
     match sess.io.output_file {
         None => {
             // "-" as input file will cause the parser to read from stdin so we
@@ -642,6 +655,7 @@ pub fn build_output_filenames(attrs: &[ast::Attribute], sess: &Session) -> Outpu
                 None,
                 sess.io.temps_dir.clone(),
                 invocation_temp,
+                stable_codegen_paths,
                 sess.opts.unstable_opts.split_dwarf_out_dir.clone(),
                 sess.opts.cg.extra_filename.clone(),
                 sess.opts.output_types.clone(),
@@ -673,6 +687,7 @@ pub fn build_output_filenames(attrs: &[ast::Attribute], sess: &Session) -> Outpu
                 ofile,
                 sess.io.temps_dir.clone(),
                 invocation_temp,
+                stable_codegen_paths,
                 sess.opts.unstable_opts.split_dwarf_out_dir.clone(),
                 sess.opts.cg.extra_filename.clone(),
                 sess.opts.output_types.clone(),
