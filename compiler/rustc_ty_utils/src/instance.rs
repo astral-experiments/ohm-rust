@@ -45,7 +45,10 @@ fn resolve_instance_raw<'tcx>(
                     ty::Coroutine(coroutine_def_id, ..) => {
                         // FIXME: sync drop of coroutine with async drop (generate both versions?)
                         // Currently just ignored
-                        if tcx.optimized_mir(coroutine_def_id).coroutine_drop_async().is_some() {
+                        if tcx
+                            .mir_coroutine_runtime_info(coroutine_def_id)
+                            .is_some_and(|info| info.has_async_drop)
+                        {
                             ty::ShimKind::DropGlue(def_id, None)
                         } else {
                             ty::ShimKind::DropGlue(def_id, Some(ty))

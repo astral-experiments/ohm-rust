@@ -280,6 +280,7 @@ provide! { tcx, def_id, other, cdata,
     trivial_const => { table }
     closure_saved_names_of_captured_variables => { table }
     mir_coroutine_witnesses => { table }
+    mir_coroutine_runtime_info => { table }
     promoted_mir => { table }
     def_span => { table }
     def_ident_span => { table }
