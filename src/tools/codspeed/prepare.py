@@ -8,7 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 
-from benchmarks import RUSTC_PERF_FIXTURES, WORKSPACES
+from benchmarks import RUSTC_PERF_FIXTURES, SHARDS, WORKSPACES, selected_fixtures
 
 REPOSITORY = Path(__file__).resolve().parents[3]
 
@@ -17,6 +17,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--rustc", type=Path, required=True)
     parser.add_argument("--cargo", type=Path, required=True)
+    parser.add_argument("--shard", choices=SHARDS)
     parser.add_argument(
         "--suite",
         type=Path,
@@ -118,7 +119,10 @@ def main():
         )
         for name, spec in WORKSPACES.items()
     ]
+    selected = selected_fixtures(args.shard)
     for name, source, crate_name, profile, workspace in fixtures:
+        if name not in selected:
+            continue
         cwd = output / "fixtures" / name
         shutil.copytree(source, cwd, ignore=shutil.ignore_patterns(".git"))
         # Force Cargo to invoke the leaf even if an external target directory was reused.
