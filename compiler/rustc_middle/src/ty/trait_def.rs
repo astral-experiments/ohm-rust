@@ -13,7 +13,7 @@ use crate::query::LocalCrate;
 use crate::traits::specialization_graph;
 use crate::ty::fast_reject::{self, SimplifiedType, TreatParams};
 use crate::ty::print::{with_crate_prefix, with_no_trimmed_paths};
-use crate::ty::{Ident, Ty, TyCtxt};
+use crate::ty::{self, Ident, Ty, TyCtxt};
 
 /// A trait's definition with type information.
 #[derive(StableHash, Encodable, Decodable)]
@@ -168,6 +168,36 @@ impl TraitImpls {
     }
 }
 
+/// A secondary index for large groups of ADT impls that differ in a const argument.
+#[derive(Debug, StableHash)]
+pub struct ConstArgImpls<'tcx> {
+    /// The first const parameter of the ADT, including preceding type and lifetime parameters.
+    const_arg: usize,
+    values: FxIndexMap<ty::ValTree<'tcx>, Vec<(usize, DefId)>>,
+    /// Generic and unevaluated consts can match any value.
+    fallback: Vec<(usize, DefId)>,
+}
+
+impl<'tcx> ConstArgImpls<'tcx> {
+    /// Merges a value's impls with the fallback impls in their original iteration order.
+    fn for_each(&self, value: Option<ty::ValTree<'tcx>>, mut f: impl FnMut(DefId)) {
+        let mut values =
+            value.and_then(|value| self.values.get(&value)).map_or(&[][..], Vec::as_slice);
+        for &(position, impl_def_id) in &self.fallback {
+            while let Some(&(value_position, value_impl)) = values.first()
+                && value_position < position
+            {
+                f(value_impl);
+                values = &values[1..];
+            }
+            f(impl_def_id);
+        }
+        for &(_, impl_def_id) in values {
+            f(impl_def_id);
+        }
+    }
+}
+
 impl<'tcx> TraitDef {
     pub fn ancestors(
         &self,
@@ -179,6 +209,41 @@ impl<'tcx> TraitDef {
 }
 
 impl<'tcx> TyCtxt<'tcx> {
+    /// Iterates impl candidates with the old solver's rigid-obligation/infer-impl semantics.
+    ///
+    /// Unlike `for_each_relevant_impl`, this can reject concrete const arguments against a
+    /// parameter or placeholder in the obligation. Callers must not instantiate those arguments.
+    pub fn for_each_relevant_impl_for_selection(
+        self,
+        trait_def_id: DefId,
+        self_ty: Ty<'tcx>,
+        mut f: impl FnMut(DefId),
+    ) {
+        if let ty::Adt(adt, args) = self_ty.kind()
+            && let Some(ct) = args.iter().find_map(|arg| arg.as_const())
+        {
+            let value = match ct.kind() {
+                ty::ConstKind::Value(value) => Some(value.valtree),
+                ty::ConstKind::Param(_) | ty::ConstKind::Placeholder(_) => None,
+                // These may normalize or unify with any value, so retain the original scan.
+                _ => return self.for_each_relevant_impl(trait_def_id, self_ty, f),
+            };
+            let impls = self.trait_impls_of(trait_def_id);
+            if let Some(bucket) = impls.non_blanket_impls.get(&SimplifiedType::Adt(adt.did()))
+                && bucket.len() >= 16
+            {
+                let index = self.trait_impls_by_const_arg((trait_def_id, adt.did()));
+                debug_assert_eq!(args[index.const_arg].as_const(), Some(ct));
+                for &impl_def_id in &impls.blanket_impls {
+                    f(impl_def_id);
+                }
+                index.for_each(value, f);
+                return;
+            }
+        }
+        self.for_each_relevant_impl(trait_def_id, self_ty, f);
+    }
+
     /// Iterate over every impl that could possibly match the self type `self_ty`.
     ///
     /// `trait_def_id` MUST BE the `DefId` of a trait.
@@ -285,6 +350,36 @@ pub(super) fn trait_impls_of_provider(tcx: TyCtxt<'_>, trait_id: DefId) -> Trait
     }
 
     impls
+}
+
+/// Indexes one ADT bucket without changing the metadata or diagnostics view of trait impls.
+pub(super) fn trait_impls_by_const_arg_provider(
+    tcx: TyCtxt<'_>,
+    (trait_id, adt_id): (DefId, DefId),
+) -> ConstArgImpls<'_> {
+    let const_arg = tcx
+        .generics_of(adt_id)
+        .own_params
+        .iter()
+        .find(|param| matches!(param.kind, ty::GenericParamDefKind::Const { .. }))
+        .expect("const-argument index requires an ADT with a const parameter")
+        .index as usize;
+    let mut index =
+        ConstArgImpls { const_arg, values: FxIndexMap::default(), fallback: Vec::new() };
+    let impls = tcx.trait_impls_of(trait_id);
+    for (position, &impl_def_id) in
+        impls.non_blanket_impls[&SimplifiedType::Adt(adt_id)].iter().enumerate()
+    {
+        let self_ty = tcx.type_of(impl_def_id).instantiate_identity().skip_norm_wip();
+        if let ty::Adt(_, args) = self_ty.kind()
+            && let ty::ConstKind::Value(value) = args.const_at(const_arg).kind()
+        {
+            index.values.entry(value.valtree).or_default().push((position, impl_def_id));
+        } else {
+            index.fallback.push((position, impl_def_id));
+        }
+    }
+    index
 }
 
 /// Query provider for `incoherent_impls`.
