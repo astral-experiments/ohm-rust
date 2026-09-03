@@ -14,10 +14,61 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  codspeed:
-    name: Compiler Walltime benchmarks
+  compiler:
+    name: Build benchmark compiler
     runs-on: codspeed-macro
-    timeout-minutes: 120
+    timeout-minutes: 50
+    outputs:
+      shards: ${{ steps.shards.outputs.value }}
+    steps:
+      - name: Checkout candidate compiler
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 128
+          persist-credentials: false
+
+      - name: Checkout pinned compiler dependencies
+        run: git submodule update --init --depth 1 library/backtrace
+
+      - name: Select benchmark shards
+        id: shards
+        working-directory: src/tools/codspeed
+        run: >-
+          python3 -c 'import json; from benchmarks import SHARDS; print("value=" + json.dumps(SHARDS))'
+          >> "$GITHUB_OUTPUT"
+
+      - name: Build candidate compiler and matching standard library
+        run: >-
+          python3 x.py --ci false --config src/tools/codspeed/bootstrap.toml
+          build --stage 1 library
+
+      - name: Package compiler and pinned Cargo
+        # Bootstrap links these source directories back to the checkout, including build/.
+        run: >-
+          tar --dereference -czf build/codspeed-toolchain.tar.gz
+          --exclude=stage1/lib/rustlib/src
+          --exclude=stage1/lib/rustlib/rustc-src
+          -C build/host stage1 stage0/bin/cargo
+
+      - name: Retain benchmark compiler
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codspeed-toolchain
+          path: build/codspeed-toolchain.tar.gz
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+  codspeed:
+    name: Compiler Walltime benchmarks (${{ matrix.shard }})
+    needs: compiler
+    runs-on: codspeed-macro
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.compiler.outputs.shards) }}
     permissions:
       contents: read
       id-token: write
@@ -29,8 +80,19 @@ jobs:
           fetch-depth: 128
           persist-credentials: false
 
-      - name: Checkout pinned compiler and benchmark dependencies
-        run: git submodule update --init --depth 1 library/backtrace src/tools/rustc-perf
+      - name: Checkout pinned benchmark dependencies
+        run: git submodule update --init --depth 1 src/tools/rustc-perf
+
+      - name: Download benchmark compiler
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codspeed-toolchain
+          path: build
+
+      - name: Unpack benchmark compiler
+        run: |
+          mkdir -p build/codspeed-toolchain
+          tar -xzf build/codspeed-toolchain.tar.gz -C build/codspeed-toolchain
 
       - name: Checkout Ruff benchmark sources
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -67,15 +129,10 @@ jobs:
           src/tools/codspeed/test_harness.py
           src/tools/codspeed/test_walltime_results.py
 
-      - name: Build candidate compiler and matching standard library
-        run: >-
-          python3 x.py --ci false --config src/tools/codspeed/bootstrap.toml
-          build --stage 1 library
-
       - name: Verify compiler revision
         shell: bash
         run: |
-          version="$(build/host/stage1/bin/rustc -vV)"
+          version="$(build/codspeed-toolchain/stage1/bin/rustc -vV)"
           printf '%s\n' "$version"
           revision="$(git rev-parse HEAD)"
           if ! grep -Fxq "commit-hash: $revision" <<< "$version"; then
@@ -86,10 +143,12 @@ jobs:
       - name: Prepare dependencies and capture compiler invocations
         run: >-
           src/tools/codspeed/.venv/bin/python src/tools/codspeed/prepare.py
-          --rustc build/host/stage1/bin/rustc
-          --cargo build/host/stage0/bin/cargo
+          --rustc build/codspeed-toolchain/stage1/bin/rustc
+          --cargo build/codspeed-toolchain/stage0/bin/cargo
+          --shard '${{ matrix.shard }}'
 
       - name: Measure compiler performance
+        timeout-minutes: 35
         uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
         with:
           mode: walltime
@@ -97,19 +156,19 @@ jobs:
           run: |
             set -e
             src/tools/codspeed/.venv/bin/python -m pytest \
-              src/tools/codspeed/test_compiler_walltime.py --codspeed
+              src/tools/codspeed/test_compiler_walltime.py --codspeed -k '${{ matrix.shard }}'
             cp -r "$CODSPEED_PROFILE_FOLDER/results" build/codspeed/results
 
       - name: Verify compiler Walltime measurements
         run: >-
           src/tools/codspeed/.venv/bin/python src/tools/codspeed/verify_walltime.py
-          build/codspeed
+          build/codspeed --shard '${{ matrix.shard }}'
 
       - name: Retain compiler measurement evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: codspeed-walltime-evidence
+          name: codspeed-walltime-evidence-${{ matrix.shard }}
           path: |
             build/codspeed/manifest.json
             build/codspeed/results/
