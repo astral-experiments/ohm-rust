@@ -12,7 +12,8 @@ from pytest_codspeed.config import (
 )
 from pytest_codspeed.instruments import MeasurementMode, walltime
 
-from test_compiler_walltime import SCENARIOS, prepare_invocation
+from benchmarks import SCENARIOS
+from test_compiler_walltime import prepare_invocation
 from test_compiler_walltime import test_compile as run_benchmark
 
 
@@ -49,6 +50,31 @@ def test_failed_seed_aborts_the_benchmark(fixture):
     with pytest.raises(subprocess.CalledProcessError) as error:
         prepare_invocation(fixture, "IncrUnchanged")
     assert error.value.returncode == 7
+
+
+def test_full_workspace_invocation_needs_no_patch(fixture):
+    source = Path(fixture["source"])
+    (source / "0-println.patch").unlink()
+    del fixture["patch"]
+    member = source / "crates/member/src"
+    member.mkdir(parents=True)
+    (member / "lib.rs").write_text("pub fn member() {}\n")
+    fixture["command"] = [
+        sys.executable,
+        "-c",
+        "from pathlib import Path; "
+        "assert Path('crates/member/src/lib.rs').read_text() == 'pub fn member() {}\\n'",
+    ]
+    incremental = Path(fixture["incremental"])
+    incremental.mkdir(parents=True)
+    (incremental / "previous-output").touch()
+
+    args, kwargs = prepare_invocation(fixture, "Full")
+
+    assert args == (fixture["command"],)
+    assert not incremental.exists()
+    assert not (Path(fixture["cwd"]) / "0-println.patch").exists()
+    subprocess.run(*args, **kwargs)
 
 
 @pytest.mark.parametrize("exit_code", [0, 7])

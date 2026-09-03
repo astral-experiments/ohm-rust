@@ -7,7 +7,7 @@ import sys
 
 import pytest
 
-from verify_walltime import verify_walltime
+from verify_walltime import EXPECTED_CASES, verify_walltime
 
 
 @pytest.fixture
@@ -16,10 +16,7 @@ def results(tmp_path):
     document = {
         "benchmarks": [
             {
-                "uri": (
-                    "src/tools/codspeed/test_compiler_walltime.py"
-                    f"::test_compile[{name}-{scenario}]"
-                ),
+                "uri": uri,
                 "stats": {
                     "rounds": 10,
                     "iter_per_round": 1,
@@ -28,8 +25,7 @@ def results(tmp_path):
                     "mean_ns": 2000,
                 },
             }
-            for name in ("bitmaps-3.2.1", "syn-2.0.101")
-            for scenario in ("Full", "IncrFull", "IncrUnchanged", "IncrPatched")
+            for uri in sorted(EXPECTED_CASES)
         ]
     }
     path = tmp_path / "results/run.json"
@@ -51,8 +47,35 @@ def test_complete_results_cli(results):
         capture_output=True,
         text=True,
     )
-    assert result.stdout == "Verified 8 walltime benchmarks.\n"
+    assert result.stdout == "Verified 22 walltime benchmarks.\n"
     assert path.read_bytes() == original
+
+
+def test_expected_cases_preserve_original_ids_and_full_only_fixtures():
+    cases = {
+        f"{name}-{scenario}"
+        for name in (
+            "bitmaps-3.2.1",
+            "syn-2.0.101",
+            "serde-1.0.219",
+            "regex-automata-0.4.8",
+        )
+        for scenario in ("Full", "IncrFull", "IncrUnchanged", "IncrPatched")
+    }
+    cases.update(
+        f"{name}-Debug-Full"
+        for name in (
+            "bitmaps-3.2.1",
+            "syn-2.0.101",
+            "serde-1.0.219",
+            "regex-automata-0.4.8",
+        )
+    )
+    cases.update(("ruff-ty_python_semantic-Full", "uv-resolver-Full"))
+    assert EXPECTED_CASES == {
+        f"src/tools/codspeed/test_compiler_walltime.py::test_compile[{case}]"
+        for case in cases
+    }
 
 
 @pytest.mark.parametrize("fault", ["missing", "duplicate", "unexpected"])
