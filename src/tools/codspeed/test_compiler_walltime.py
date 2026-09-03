@@ -9,8 +9,8 @@ from typing import Any
 
 import pytest
 
-FIXTURE_NAMES = ("bitmaps-3.2.1", "syn-2.0.101")
-SCENARIOS = ("Full", "IncrFull", "IncrUnchanged", "IncrPatched")
+from benchmarks import FIXTURE_SCENARIOS, SCENARIOS
+
 DEFAULT_MANIFEST = Path(__file__).resolve().parents[3] / "build/codspeed/manifest.json"
 
 
@@ -31,7 +31,9 @@ def prepare_invocation(
         environment.pop(name, None)
 
     # Cargo dependencies and outputs are outside this source-only directory.
-    shutil.copytree(source, cwd, dirs_exist_ok=True)
+    shutil.copytree(
+        source, cwd, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".git")
+    )
     if incremental.exists():
         shutil.rmtree(incremental)
     if scenario != "Full":
@@ -70,8 +72,8 @@ def compiler_fixtures() -> dict[str, dict[str, Any]]:
     ("fixture_name", "scenario"),
     [
         pytest.param(name, scenario, id=f"{name}-{scenario}")
-        for name in FIXTURE_NAMES
-        for scenario in SCENARIOS
+        for name, scenarios in FIXTURE_SCENARIOS.items()
+        for scenario in scenarios
     ],
 )
 def test_compile(benchmark, compiler_fixtures, fixture_name: str, scenario: str):

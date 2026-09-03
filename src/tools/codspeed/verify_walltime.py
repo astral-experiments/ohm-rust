@@ -4,14 +4,12 @@ import argparse
 import json
 import math
 from pathlib import Path
-from runpy import run_path
+from benchmarks import FIXTURE_SCENARIOS
 
-
-BENCHMARKS = run_path(str(Path(__file__).with_name("test_compiler_walltime.py")))
 EXPECTED_CASES = {
     f"src/tools/codspeed/test_compiler_walltime.py::test_compile[{name}-{scenario}]"
-    for name in BENCHMARKS["FIXTURE_NAMES"]
-    for scenario in BENCHMARKS["SCENARIOS"]
+    for name, scenarios in FIXTURE_SCENARIOS.items()
+    for scenario in scenarios
 }
 
 
