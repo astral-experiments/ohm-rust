@@ -80,6 +80,9 @@ pub struct FunctionCx<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> {
     /// The funclet status of each basic block
     cleanup_kinds: Option<IndexVec<mir::BasicBlock, analyze::CleanupKind>>,
 
+    /// Cleanup paths that become empty once their drop types are monomorphized.
+    noop_cleanups: Option<analyze::NoopCleanups>,
+
     /// When targeting MSVC, this stores the cleanup info for each funclet BB.
     /// This is initialized at the same time as the `landing_pads` entry for the
     /// funclets' head block, i.e. when needed by an unwind / `cleanup_ret` edge.
@@ -255,6 +258,7 @@ pub fn codegen_mir<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         unreachable_block: None,
         terminate_blocks: IndexVec::from_elem(None, &mir.basic_blocks),
         cleanup_kinds,
+        noop_cleanups: None,
         landing_pads: IndexVec::from_elem(None, &mir.basic_blocks),
         funclets: IndexVec::from_fn_n(|_| None, mir.basic_blocks.len()),
         cold_blocks: find_cold_blocks(tcx, mir),
@@ -275,7 +279,7 @@ pub fn codegen_mir<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         fx.compute_per_local_var_debug_info(&mut start_bx).unzip();
     fx.per_local_var_debug_info = per_local_var_debug_info;
 
-    let traversal_order = traversal::mono_reachable_reverse_postorder(mir, tcx, instance);
+    let mut traversal_order = traversal::mono_reachable_reverse_postorder(mir, tcx, instance);
     let memory_locals = analyze::non_ssa_locals(&fx, &traversal_order);
 
     // Allocate variable and temp allocas
@@ -330,6 +334,13 @@ pub fn codegen_mir<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     // The builders will be created separately for each basic block at `codegen_block`.
     // So drop the builder of `start_llbb` to avoid having two at the same time.
     drop(start_bx);
+
+    // Keep the original MIR and local/debug analysis. Only lower fewer unwind edges and
+    // omit bodies made unreachable by those edges after monomorphizing no-op drops.
+    fx.noop_cleanups = analyze::NoopCleanups::analyze(&fx, &traversal_order);
+    if let Some(noops) = &fx.noop_cleanups {
+        noops.retain_reachable(mir, tcx, instance, &mut traversal_order);
+    }
 
     let mut unreached_blocks = DenseBitSet::new_filled(mir.basic_blocks.len());
     // Codegen the body of each reachable block using our reverse postorder list.
