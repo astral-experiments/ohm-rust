@@ -24,3 +24,16 @@ FIXTURE_SCENARIOS = {
     **{f"{name}-Debug": ("Full",) for name in RUSTC_PERF_FIXTURES},
     **{name: ("Full",) for name in WORKSPACES},
 }
+SHARDS = (*RUSTC_PERF_FIXTURES, *WORKSPACES)
+
+
+def selected_fixtures(shard: str | None = None) -> dict[str, tuple[str, ...]]:
+    if shard is None:
+        return FIXTURE_SCENARIOS
+    if shard not in SHARDS:
+        raise ValueError(f"Unknown compiler benchmark shard: {shard}")
+    return {
+        name: scenarios
+        for name, scenarios in FIXTURE_SCENARIOS.items()
+        if name in (shard, f"{shard}-Debug")
+    }
