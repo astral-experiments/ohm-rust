@@ -224,7 +224,22 @@ impl<I: Interner, const INSTANTIATE_LHS_WITH_INFER: bool, const INSTANTIATE_RHS_
         self.types_may_unify_inner(lhs, rhs, depth_limit)
     }
 
+    #[inline]
     fn args_may_unify_inner(
+        self,
+        obligation_args: I::GenericArgs,
+        impl_args: I::GenericArgs,
+        depth: usize,
+    ) -> bool {
+        match (obligation_args.as_slice(), impl_args.as_slice()) {
+            ([obl], [imp]) => self.arg_may_unify(*obl, *imp, depth),
+            _ => self.args_may_unify_many(obligation_args, impl_args, depth),
+        }
+    }
+
+    /// Keeps the argument loop out of the single-argument path, which can tail-call its check.
+    #[inline(never)]
+    fn args_may_unify_many(
         self,
         obligation_args: I::GenericArgs,
         impl_args: I::GenericArgs,
@@ -233,21 +248,29 @@ impl<I: Interner, const INSTANTIATE_LHS_WITH_INFER: bool, const INSTANTIATE_RHS_
         // No need to decrement the depth here as this function is only
         // recursively reachable via `types_may_unify_inner` which already
         // increments the depth for us.
-        iter::zip(obligation_args.iter(), impl_args.iter()).all(|(obl, imp)| {
-            match (obl.kind(), imp.kind()) {
-                // We don't fast reject based on regions.
-                (ty::GenericArgKind::Lifetime(_), ty::GenericArgKind::Lifetime(_)) => true,
-                (ty::GenericArgKind::Type(obl), ty::GenericArgKind::Type(imp)) => {
-                    self.types_may_unify_inner(obl, imp, depth)
-                }
-                (ty::GenericArgKind::Const(obl), ty::GenericArgKind::Const(imp)) => {
-                    self.consts_may_unify_inner(obl, imp)
-                }
-                _ => panic!("kind mismatch: {obl:?} {imp:?}"),
-            }
-        })
+        iter::zip(obligation_args.iter(), impl_args.iter())
+            .all(|(obl, imp)| self.arg_may_unify(obl, imp, depth))
     }
 
+    #[inline]
+    fn arg_may_unify(self, obl: I::GenericArg, imp: I::GenericArg, depth: usize) -> bool {
+        if obl == imp {
+            return true;
+        }
+        match (obl.kind(), imp.kind()) {
+            // We don't fast reject based on regions.
+            (ty::GenericArgKind::Lifetime(_), ty::GenericArgKind::Lifetime(_)) => true,
+            (ty::GenericArgKind::Type(obl), ty::GenericArgKind::Type(imp)) => {
+                self.types_may_unify_inner(obl, imp, depth)
+            }
+            (ty::GenericArgKind::Const(obl), ty::GenericArgKind::Const(imp)) => {
+                self.consts_may_unify_inner(obl, imp)
+            }
+            _ => panic!("kind mismatch: {obl:?} {imp:?}"),
+        }
+    }
+
+    #[inline]
     fn types_may_unify_inner(self, lhs: I::Ty, rhs: I::Ty, depth: usize) -> bool {
         if lhs == rhs {
             return true;
@@ -292,6 +315,13 @@ impl<I: Interner, const INSTANTIATE_LHS_WITH_INFER: bool, const INSTANTIATE_RHS_
             | ty::UnsafeBinder(_) => {}
         };
 
+        self.types_may_unify_structurally(lhs, rhs, depth)
+    }
+
+    /// Checks structural compatibility after handling identical types and the permissive RHS cases.
+    /// Keeping this recursive path out of line lets the common fast paths avoid its stack frame.
+    #[inline(never)]
+    fn types_may_unify_structurally(self, lhs: I::Ty, rhs: I::Ty, depth: usize) -> bool {
         // The type system needs to support exponentially large types
         // as long as they are self-similar. While most other folders
         // use caching to handle them, this folder exists purely as a
