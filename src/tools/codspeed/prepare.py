@@ -8,8 +8,8 @@ from pathlib import Path
 import shutil
 import subprocess
 
+from benchmarks import RUSTC_PERF_FIXTURES, WORKSPACES
 
-FIXTURES = {"bitmaps-3.2.1": "bitmaps", "syn-2.0.101": "syn"}
 REPOSITORY = Path(__file__).resolve().parents[3]
 
 
@@ -23,19 +23,23 @@ def main():
         default=REPOSITORY / "src/tools/rustc-perf/collector/compile-benchmarks",
     )
     parser.add_argument("--output", type=Path, default=REPOSITORY / "build/codspeed")
+    parser.add_argument(
+        "--workspaces", type=Path, default=REPOSITORY / "build/codspeed-sources"
+    )
     args = parser.parse_args()
     rustc = args.rustc.resolve(strict=True)
     cargo = args.cargo.resolve(strict=True)
     suite = args.suite.resolve(strict=True)
     output = args.output.resolve()
+    workspaces = args.workspaces.resolve(strict=True)
 
     if output.exists():
         parser.error(
             f"output already exists; preparation requires a fresh directory: {output}"
         )
-    if output.is_relative_to(suite):
-        parser.error("output must be outside the rustc-perf source suite")
-    for name in FIXTURES:
+    if output.is_relative_to(suite) or output.is_relative_to(workspaces):
+        parser.error("output must be outside the benchmark sources")
+    for name in RUSTC_PERF_FIXTURES:
         for filename in ("Cargo.toml", "Cargo.lock", "0-println.patch"):
             if not (suite / name / filename).is_file():
                 parser.error(f"missing fixture file: {suite / name / filename}")
@@ -52,12 +56,33 @@ def main():
             "--porcelain",
             "--untracked-files=all",
             "--",
-            *FIXTURES,
+            *RUSTC_PERF_FIXTURES,
         ],
         text=True,
     )
     if source_changes:
         parser.error("selected rustc-perf fixtures must have no local changes")
+
+    for workspace in WORKSPACES.values():
+        source = workspaces / workspace["directory"]
+        revision = subprocess.check_output(
+            ["git", "-C", str(source), "rev-parse", "HEAD"], text=True
+        ).strip()
+        if revision != workspace["revision"]:
+            parser.error(f"unexpected workspace revision for {source}: {revision}")
+        changes = subprocess.check_output(
+            [
+                "git",
+                "-C",
+                str(source),
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+            ],
+            text=True,
+        )
+        if changes:
+            parser.error(f"workspace must have no local changes: {source}")
 
     manifest = {
         "rustc_version": subprocess.check_output(
@@ -73,22 +98,46 @@ def main():
     output.mkdir(parents=True)
     targets = Path(os.environ.get("CARGO_TARGET_DIR", output / "targets")).resolve()
 
-    for name, crate_name in FIXTURES.items():
-        source = suite / name
+    fixtures = [
+        (
+            name if profile == "check" else f"{name}-Debug",
+            suite / name,
+            crate,
+            profile,
+            None,
+        )
+        for name, crate in RUSTC_PERF_FIXTURES.items()
+        for profile in ("check", "dev")
+    ] + [
+        (
+            name,
+            workspaces / spec["directory"],
+            spec["package"].replace("-", "_"),
+            "check",
+            spec,
+        )
+        for name, spec in WORKSPACES.items()
+    ]
+    for name, source, crate_name, profile, workspace in fixtures:
         cwd = output / "fixtures" / name
-        shutil.copytree(source, cwd)
+        shutil.copytree(source, cwd, ignore=shutil.ignore_patterns(".git"))
         # Force Cargo to invoke the leaf even if an external target directory was reused.
-        (cwd / "src/lib.rs").touch()
-        patch = cwd / "0-println.patch"
+        leaf = cwd / "crates" / workspace["package"] if workspace else cwd
+        (leaf / "src/lib.rs").touch()
+        patch = cwd / "0-println.patch" if workspace is None else None
 
         # Otherwise Git discovers the enclosing rust repository and silently skips this patch.
-        patch_env = os.environ.copy()
-        patch_env.pop("GIT_DIR", None)
-        patch_env.pop("GIT_WORK_TREE", None)
-        patch_env["GIT_CEILING_DIRECTORIES"] = str(cwd.parent)
-        subprocess.run(
-            ["git", "apply", "--check", str(patch)], cwd=cwd, env=patch_env, check=True
-        )
+        if patch is not None:
+            patch_env = os.environ.copy()
+            patch_env.pop("GIT_DIR", None)
+            patch_env.pop("GIT_WORK_TREE", None)
+            patch_env["GIT_CEILING_DIRECTORIES"] = str(cwd.parent)
+            subprocess.run(
+                ["git", "apply", "--check", str(patch)],
+                cwd=cwd,
+                env=patch_env,
+                check=True,
+            )
 
         capture = output / f"{name}.json"
         environment = os.environ.copy()
@@ -108,6 +157,9 @@ def main():
             RUSTC_WRAPPER=str(Path(__file__).with_name("capture.py").resolve()),
             RUSTFLAGS="",
         )
+        extra = ["--package", workspace["package"]] if workspace else []
+        if workspace and workspace["features"]:
+            extra.extend(["--features", ",".join(workspace["features"])])
         subprocess.run(
             [
                 str(cargo),
@@ -115,7 +167,8 @@ def main():
                 "--locked",
                 "--lib",
                 "--profile",
-                "check",
+                profile,
+                *extra,
                 "--",
                 "-Zthreads=1",
                 "-Zincremental-verify-ich",
@@ -133,9 +186,13 @@ def main():
             {
                 **invocation,
                 "name": name,
+                "profile": profile,
                 "source": str(source),
+                "source_revision": workspace["revision"]
+                if workspace
+                else suite_revision,
                 "incremental": str(output / "incremental" / name),
-                "patch": str(patch),
+                "patch": str(patch) if patch is not None else None,
             }
         )
 

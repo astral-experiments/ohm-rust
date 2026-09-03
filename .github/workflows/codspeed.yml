@@ -32,6 +32,22 @@ jobs:
       - name: Checkout pinned compiler and benchmark dependencies
         run: git submodule update --init --depth 1 library/backtrace src/tools/rustc-perf
 
+      - name: Checkout Ruff benchmark sources
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: astral-sh/ruff
+          ref: efcffd2178ce62e9951a53d4c50cadc225a0cfec
+          path: build/codspeed-sources/ruff
+          persist-credentials: false
+
+      - name: Checkout uv benchmark sources
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: astral-sh/uv
+          ref: 3392e29bdc4f09bb4f6d92f7aca8d450b835ce4f
+          path: build/codspeed-sources/uv
+          persist-credentials: false
+
       - name: Install benchmark tools
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
