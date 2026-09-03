@@ -92,6 +92,20 @@ fn diamond() {
 }
 
 #[test]
+fn duplicate_successors_preserve_order_across_components() {
+    let graph = TestGraph::new(
+        5,
+        &[(0, 0), (0, 3), (0, 1), (0, 3), (0, 2), (0, 1), (4, 2), (4, 3), (4, 2), (4, 1)],
+    );
+    let sccs: UsizeSccs = Sccs::new(&graph);
+
+    // Both components reach the same three successors, but in different orders.
+    assert_eq!(sccs.successors(sccs.scc(0)), &[sccs.scc(3), sccs.scc(1), sccs.scc(2)]);
+    assert_eq!(sccs.successors(sccs.scc(4)), &[sccs.scc(2), sccs.scc(3), sccs.scc(1)]);
+    assert!(sccs.successors(sccs.scc(5)).is_empty());
+}
+
+#[test]
 fn test_big_scc() {
     // The order in which things will be visited is important to this
     // test.
