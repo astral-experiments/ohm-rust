@@ -6,12 +6,17 @@ use rustc_data_structures::graph::dominators::Dominators;
 use rustc_index::bit_set::DenseBitSet;
 use rustc_index::{IndexSlice, IndexVec};
 use rustc_middle::mir::visit::{MutatingUseContext, NonMutatingUseContext, PlaceContext, Visitor};
-use rustc_middle::mir::{self, DefLocation, Location, TerminatorKind, traversal};
+use rustc_middle::mir::{
+    self, BasicBlock, Body, DefLocation, Location, TerminatorKind, UnwindAction, traversal,
+};
 use rustc_middle::ty::layout::{HasTyCtxt, LayoutOf};
+use rustc_middle::ty::{Instance, TyCtxt};
 use rustc_middle::{bug, span_bug, ty};
+use rustc_session::config::OptLevel;
 use tracing::debug;
 
 use super::FunctionCx;
+use crate::base;
 use crate::traits::*;
 
 pub(crate) fn non_ssa_locals<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
@@ -404,4 +409,140 @@ pub(crate) fn cleanup_kinds(
     propagate(&mut result, mir);
     debug!("cleanup_kinds: result={:?}", result);
     result
+}
+
+pub(super) struct NoopCleanups {
+    blocks: DenseBitSet<BasicBlock>,
+    drops: DenseBitSet<BasicBlock>,
+}
+
+impl NoopCleanups {
+    /// Certify cleanup paths without changing MIR, parameter attributes, or debug storage.
+    pub(super) fn analyze<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
+        fx: &FunctionCx<'a, 'tcx, Bx>,
+        order: &[BasicBlock],
+    ) -> Option<Self> {
+        let tcx = fx.cx.tcx();
+        // Funclet ownership is still computed from generic MIR. Keep that path unchanged.
+        if tcx.sess.opts.optimize != OptLevel::No
+            || !tcx.sess.panic_strategy().unwinds()
+            || base::wants_new_eh_instructions(tcx.sess)
+            || !order.iter().any(|&bb| {
+                fx.mir[bb].is_cleanup
+                    && matches!(fx.mir[bb].terminator().kind, TerminatorKind::UnwindResume)
+            })
+        {
+            return None;
+        }
+
+        let mut drops = DenseBitSet::new_empty(fx.mir.basic_blocks.len());
+        for &bb in order {
+            if let TerminatorKind::Drop { place, drop: None, .. } = fx.mir[bb].terminator().kind {
+                let ty = fx.monomorphize(place.ty(fx.mir, tcx).ty);
+                // Match codegen_drop_terminator exactly, including the current coroutine rules.
+                if matches!(
+                    Instance::resolve_drop_glue(tcx, ty).def,
+                    ty::InstanceKind::Shim(ty::ShimKind::DropGlue(_, None))
+                ) {
+                    drops.insert(bb);
+                }
+            }
+        }
+        if drops.is_empty() {
+            return None;
+        }
+
+        let mut blocks = DenseBitSet::new_empty(fx.mir.basic_blocks.len());
+        // The existing mono RPO reversed visits successors first. Starting with no certificates
+        // means a backedge cannot certify an infinite cleanup loop as a path to Resume.
+        for &bb in order.iter().rev() {
+            let data = &fx.mir[bb];
+            if !data.is_cleanup
+                || !data.after_last_stmt_debuginfos.is_empty()
+                || data.statements.iter().any(|statement| {
+                    !matches!(statement.kind, mir::StatementKind::Nop)
+                        || !statement.debuginfos.is_empty()
+                })
+            {
+                continue;
+            }
+            let empty = match data.terminator().kind {
+                TerminatorKind::UnwindResume => true,
+                TerminatorKind::Goto { target } => blocks.contains(target),
+                TerminatorKind::Drop { target, drop: None, .. } if drops.contains(bb) => {
+                    // A no-op drop cannot take its unwind edge.
+                    blocks.contains(target)
+                }
+                TerminatorKind::SwitchInt { ref targets, .. } => {
+                    targets.all_targets().iter().all(|&target| blocks.contains(target))
+                }
+                // In particular, Terminate, Unreachable, and real destructors are not Resume.
+                _ => false,
+            };
+            if empty {
+                blocks.insert(bb);
+            }
+        }
+        if blocks.is_empty() {
+            return None;
+        }
+        Some(Self { blocks, drops })
+    }
+
+    pub(super) fn is_noop_drop(&self, bb: BasicBlock) -> bool {
+        self.drops.contains(bb)
+    }
+
+    pub(super) fn unwind_action(&self, unwind: UnwindAction) -> UnwindAction {
+        if let UnwindAction::Cleanup(target) = unwind
+            && self.blocks.contains(target)
+        {
+            UnwindAction::Continue
+        } else {
+            unwind
+        }
+    }
+
+    /// Keep normal predecessors, while dropping the same unwind edges that lowering omits.
+    pub(super) fn retain_reachable<'tcx>(
+        &self,
+        body: &Body<'tcx>,
+        tcx: TyCtxt<'tcx>,
+        instance: Instance<'tcx>,
+        order: &mut Vec<BasicBlock>,
+    ) {
+        let mut reached = DenseBitSet::new_empty(body.basic_blocks.len());
+        let mut work = vec![mir::START_BLOCK];
+        while let Some(bb) = work.pop() {
+            if !reached.insert(bb) {
+                continue;
+            }
+            let data = &body[bb];
+            match &data.terminator().kind {
+                TerminatorKind::Call { target, unwind, .. }
+                    if self.unwind_action(*unwind) != *unwind =>
+                {
+                    work.extend(target.iter().copied());
+                }
+                TerminatorKind::Drop { target, unwind, drop: None, .. }
+                    if self.drops.contains(bb) || self.unwind_action(*unwind) != *unwind =>
+                {
+                    work.push(*target);
+                }
+                TerminatorKind::Assert { target, unwind, .. }
+                    if self.unwind_action(*unwind) != *unwind =>
+                {
+                    work.push(*target);
+                }
+                TerminatorKind::InlineAsm { targets, unwind, .. }
+                    if self.unwind_action(*unwind) != *unwind =>
+                {
+                    work.extend(targets.iter().copied());
+                }
+                _ => work.extend(data.mono_successors(tcx, instance)),
+            }
+        }
+        // Filtering preserves the original ordering used by block merging and local analysis.
+        order.retain(|bb| reached.contains(*bb));
+    }
 }
