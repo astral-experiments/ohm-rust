@@ -64,6 +64,7 @@ where
     BF: FnMut(&[O]),
 {
     type Obligation = O;
+    type Child = O;
     type Error = E;
     type OUT = TestOutcome<O, E>;
 
@@ -78,6 +79,10 @@ where
         (self.process_obligation)(obligation)
     }
 
+    fn prepare_child(&self, _parent: &O, child: O) -> Option<O> {
+        Some(child)
+    }
+
     fn process_backedge<'c, I>(
         &mut self,
         _cycle: I,
@@ -88,6 +93,89 @@ where
     {
         Ok(())
     }
+}
+
+#[test]
+fn prepare_children_preserves_parent_and_order() {
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct Obligation(&'static str, usize);
+
+    impl ForestObligation for Obligation {
+        type CacheKey = &'static str;
+
+        fn as_cache_key(&self) -> Self::CacheKey {
+            self.0
+        }
+    }
+
+    struct Processor {
+        processed: Vec<Obligation>,
+    }
+
+    impl ObligationProcessor for Processor {
+        type Obligation = Obligation;
+        type Child = &'static str;
+        type Error = &'static str;
+        type OUT = TestOutcome<Obligation, Self::Error>;
+
+        fn needs_process_obligation(&self, _obligation: &Obligation) -> bool {
+            true
+        }
+
+        fn process_obligation(
+            &mut self,
+            obligation: &mut Obligation,
+        ) -> ProcessResult<Self::Child, Self::Error> {
+            self.processed.push(obligation.clone());
+            match obligation.0 {
+                "root" => ProcessResult::Changed(thin_vec!["proven", "left", "right"]),
+                "proven_parent" => ProcessResult::Changed(thin_vec!["proven"]),
+                "left" => ProcessResult::Changed(thin_vec!["leaf"]),
+                "right" => ProcessResult::Changed(thin_vec![]),
+                "leaf" => ProcessResult::Error("leaf failed"),
+                _ => panic!("unexpected obligation: {obligation:?}"),
+            }
+        }
+
+        fn prepare_child(&self, parent: &Obligation, child: Self::Child) -> Option<Obligation> {
+            (child != "proven").then(|| Obligation(child, parent.1 + 1))
+        }
+
+        fn process_backedge<'c, I>(
+            &mut self,
+            _cycle: I,
+            _marker: PhantomData<&'c Obligation>,
+        ) -> Result<(), Self::Error>
+        where
+            I: Clone + Iterator<Item = &'c Obligation>,
+        {
+            panic!("unexpected cycle")
+        }
+    }
+
+    let mut forest = ObligationForest::new();
+    forest.register_obligation(Obligation("root", 0));
+    forest.register_obligation(Obligation("proven_parent", 0));
+    let mut processor = Processor { processed: vec![] };
+    let outcome = forest.process_obligations(&mut processor);
+    assert_eq!(
+        processor.processed,
+        vec![
+            Obligation("root", 0),
+            Obligation("proven_parent", 0),
+            Obligation("left", 1),
+            Obligation("right", 1),
+            Obligation("leaf", 2),
+        ]
+    );
+    assert_eq!(outcome.errors.len(), 1);
+    assert_eq!(outcome.errors[0].error, "leaf failed");
+    assert_eq!(
+        outcome.errors[0].backtrace,
+        vec![Obligation("leaf", 2), Obligation("left", 1), Obligation("root", 0)]
+    );
+    assert_eq!(outcome.completed, vec![Obligation("proven_parent", 0), Obligation("right", 1)]);
+    assert_eq!(forest.len(), 0);
 }
 
 #[test]
