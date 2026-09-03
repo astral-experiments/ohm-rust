@@ -7,7 +7,8 @@ import sys
 
 import pytest
 
-from verify_walltime import EXPECTED_CASES, verify_walltime
+from benchmarks import SHARDS, selected_fixtures
+from verify_walltime import EXPECTED_CASES, expected_cases, verify_walltime
 
 
 @pytest.fixture
@@ -76,6 +77,32 @@ def test_expected_cases_preserve_original_ids_and_full_only_fixtures():
         f"src/tools/codspeed/test_compiler_walltime.py::test_compile[{case}]"
         for case in cases
     }
+
+
+def test_shards_cover_every_case_once():
+    cases = [case for shard in SHARDS for case in expected_cases(shard)]
+    assert len(SHARDS) == 6
+    assert len(cases) == len(set(cases)) == 22
+    assert set(cases) == EXPECTED_CASES
+    assert [len(expected_cases(shard)) for shard in SHARDS] == [5, 5, 5, 5, 1, 1]
+    with pytest.raises(ValueError, match="Unknown compiler benchmark shard"):
+        selected_fixtures("missing")
+
+
+@pytest.mark.parametrize("shard", SHARDS)
+def test_shard_results_reject_missing_and_unassigned_cases(results, shard):
+    folder, path, document = results
+    with pytest.raises(ValueError, match="Unexpected or duplicate"):
+        verify_walltime(folder, shard=shard)
+    document["benchmarks"] = [
+        case for case in document["benchmarks"] if case["uri"] in expected_cases(shard)
+    ]
+    path.write_text(json.dumps(document))
+    assert verify_walltime(folder, shard=shard) == len(expected_cases(shard))
+    document["benchmarks"].pop()
+    path.write_text(json.dumps(document))
+    with pytest.raises(ValueError, match="Missing walltime benchmarks"):
+        verify_walltime(folder, shard=shard)
 
 
 @pytest.mark.parametrize("fault", ["missing", "duplicate", "unexpected"])
