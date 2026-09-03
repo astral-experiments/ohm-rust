@@ -6,6 +6,7 @@ use rustc_index::bit_set::{DenseBitSet, GrowableBitSet};
 use rustc_middle::mir::visit::*;
 use rustc_middle::mir::*;
 use rustc_middle::ty::{self, Ty, TyCtxt};
+use rustc_mir_dataflow::debuginfo::debuginfo_locals;
 use rustc_mir_dataflow::value_analysis::{excluded_locals, iter_fields};
 use rustc_span::bug;
 use tracing::{debug, instrument};
@@ -17,7 +18,7 @@ pub(super) struct ScalarReplacementOfAggregates;
 
 impl<'tcx> crate::MirPass<'tcx> for ScalarReplacementOfAggregates {
     fn policy(&self, ctx: &crate::PassCtx<'_>) -> PassPolicy {
-        PassPolicy::optional(ctx.mir_opt_level() >= 2)
+        PassPolicy::optional(ctx.mir_opt_level() >= 1)
     }
 
     #[instrument(level = "debug", skip(self, tcx, body))]
@@ -30,6 +31,22 @@ impl<'tcx> crate::MirPass<'tcx> for ScalarReplacementOfAggregates {
         }
 
         let mut excluded = excluded_locals(body);
+        if tcx.sess.mir_opt_level() == 1
+            && !tcx
+                .sess
+                .opts
+                .unstable_opts
+                .mir_enable_passes
+                .iter()
+                .rev()
+                .find(|(name, _)| name == self.name())
+                .is_some_and(|(_, enabled)| *enabled)
+        {
+            // At MIR1, preserve debug-visible objects instead of splitting them into fragments.
+            for local in debuginfo_locals(body).iter() {
+                excluded.insert(local);
+            }
+        }
         let typing_env = body.typing_env(tcx);
         loop {
             debug!(?excluded);
