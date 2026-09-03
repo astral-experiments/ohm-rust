@@ -213,6 +213,8 @@ impl<'a, 'tcx> TerminatorCodegenHelper<'tcx> {
 
         if !fn_abi.can_unwind {
             unwind = mir::UnwindAction::Unreachable;
+        } else if let Some(noops) = &fx.noop_cleanups {
+            unwind = noops.unwind_action(unwind);
         }
 
         let unwind_block = match unwind {
@@ -318,6 +320,7 @@ impl<'a, 'tcx> TerminatorCodegenHelper<'tcx> {
         instance: Instance<'_>,
         mergeable_succ: bool,
     ) -> MergingSucc {
+        let unwind = fx.noop_cleanups.as_ref().map_or(unwind, |noops| noops.unwind_action(unwind));
         let unwind_target = match unwind {
             mir::UnwindAction::Cleanup(cleanup) => Some(self.llbb_with_cleanup(fx, cleanup)),
             mir::UnwindAction::Terminate(reason) => Some(fx.terminate_block(reason, None)),
@@ -631,6 +634,9 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         unwind: mir::UnwindAction,
         mergeable_succ: bool,
     ) -> MergingSucc {
+        if self.noop_cleanups.as_ref().is_some_and(|noops| noops.is_noop_drop(helper.bb)) {
+            return helper.funclet_br(self, bx, target, mergeable_succ, &[]);
+        }
         let ty = location.ty(self.mir, bx.tcx()).ty;
         let ty = self.monomorphize(ty);
         let drop_fn = Instance::resolve_drop_glue(bx.tcx(), ty);
