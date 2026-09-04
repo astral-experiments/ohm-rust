@@ -724,7 +724,7 @@ impl EverInitializedPlaces<'_, '_> {
             else {
                 bug!("`NonPanicPathOnly` should only be seen on terminators with return edges");
             };
-            queue.extend(return_.into_iter().map(BasicBlock::start_location));
+            queue.extend(return_.iter().copied().map(BasicBlock::start_location));
         } else {
             // This case mirrors `apply_primary_terminator_effect`.
             queue.extend(init_block_data.terminator().successors().map(BasicBlock::start_location));

@@ -977,7 +977,8 @@ impl<'tcx> TyCtxt<'tcx> {
     }
 
     pub fn is_sizedness_trait(self, def_id: DefId) -> bool {
-        matches!(self.as_lang_item(def_id), Some(LangItem::Sized | LangItem::MetaSized))
+        let lang_items = self.lang_items();
+        Some(def_id) == lang_items.sized_trait() || Some(def_id) == lang_items.meta_sized_trait()
     }
 
     pub fn lift<T: Lift<TyCtxt<'tcx>>>(self, value: T) -> T::Lifted {
@@ -2219,7 +2220,7 @@ impl<'tcx> TyCtxt<'tcx> {
         self.interners.intern_predicate(binder)
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn reuse_or_mk_predicate(
         self,
         pred: Predicate<'tcx>,
