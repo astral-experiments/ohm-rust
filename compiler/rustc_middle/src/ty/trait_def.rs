@@ -179,6 +179,16 @@ pub struct ConstArgImpls<'tcx> {
 }
 
 impl<'tcx> ConstArgImpls<'tcx> {
+    /// Returns the concrete and fallback impls that may match this const value.
+    pub fn impls_for_value(&self, value: ty::ValTree<'tcx>) -> impl Iterator<Item = DefId> {
+        self.values
+            .get(&value)
+            .into_iter()
+            .flatten()
+            .chain(&self.fallback)
+            .map(|&(_, impl_def_id)| impl_def_id)
+    }
+
     /// Merges a value's impls with the fallback impls in their original iteration order.
     fn for_each(&self, value: Option<ty::ValTree<'tcx>>, mut f: impl FnMut(DefId)) {
         let mut values =
