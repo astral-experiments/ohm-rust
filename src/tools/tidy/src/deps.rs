@@ -391,6 +391,7 @@ const PERMITTED_RUSTC_DEPENDENCIES: &[&str] = &[
     "leb128fmt",
     "libc",
     "libloading",
+    "libmimalloc-sys",
     "linux-raw-sys",
     "litemap",
     "lock_api",
