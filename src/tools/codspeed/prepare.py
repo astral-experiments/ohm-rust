@@ -114,7 +114,7 @@ def main():
             name,
             workspaces / spec["directory"],
             spec["package"].replace("-", "_"),
-            "check",
+            spec.get("profile", "check"),
             spec,
         )
         for name, spec in WORKSPACES.items()

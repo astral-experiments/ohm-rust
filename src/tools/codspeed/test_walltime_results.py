@@ -48,7 +48,7 @@ def test_complete_results_cli(results):
         capture_output=True,
         text=True,
     )
-    assert result.stdout == "Verified 22 walltime benchmarks.\n"
+    assert result.stdout == "Verified 23 walltime benchmarks.\n"
     assert path.read_bytes() == original
 
 
@@ -72,7 +72,13 @@ def test_expected_cases_preserve_original_ids_and_full_only_fixtures():
             "regex-automata-0.4.8",
         )
     )
-    cases.update(("ruff-ty_python_semantic-Full", "uv-resolver-Full"))
+    cases.update(
+        (
+            "ruff-ty_python_semantic-Full",
+            "uv-resolver-Full",
+            "uv-release-resolver-Full",
+        )
+    )
     assert EXPECTED_CASES == {
         f"src/tools/codspeed/test_compiler_walltime.py::test_compile[{case}]"
         for case in cases
@@ -81,10 +87,13 @@ def test_expected_cases_preserve_original_ids_and_full_only_fixtures():
 
 def test_shards_cover_every_case_once():
     cases = [case for shard in SHARDS for case in expected_cases(shard)]
-    assert len(SHARDS) == 6
-    assert len(cases) == len(set(cases)) == 22
+    assert len(SHARDS) == 7
+    assert len(cases) == len(set(cases)) == 23
     assert set(cases) == EXPECTED_CASES
-    assert [len(expected_cases(shard)) for shard in SHARDS] == [5, 5, 5, 5, 1, 1]
+    assert [len(expected_cases(shard)) for shard in SHARDS] == [5, 5, 5, 5, 1, 1, 1]
+    # The workflow selects shards with pytest -k, which matches substrings.
+    for shard in SHARDS:
+        assert {case for case in EXPECTED_CASES if shard in case} == expected_cases(shard)
     with pytest.raises(ValueError, match="Unknown compiler benchmark shard"):
         selected_fixtures("missing")
 

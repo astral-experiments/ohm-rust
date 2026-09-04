@@ -1,100 +1,68 @@
-name: Compiler performance
+name: UV Release artifact comparison (107 vs 108)
 
+# Temporary experiment on this registered workflow path; no push/PR trigger.
 on:
-  push:
-    branches: [ohm-1.98.0]
-  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: uv-release-artifact-comparison-107-108
+  cancel-in-progress: false
 
 jobs:
-  compiler:
-    name: Build benchmark compiler
+  compare:
+    name: Raw UV Release walltime (107 vs 108)
     runs-on: codspeed-macro
     timeout-minutes: 50
-    outputs:
-      shards: ${{ steps.shards.outputs.value }}
     steps:
-      - name: Checkout candidate compiler
+      - name: Checkout experiment harness
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 128
+          ref: ${{ github.sha }}
+          fetch-depth: 1
           persist-credentials: false
 
-      - name: Checkout pinned compiler dependencies
-        run: git submodule update --init --depth 1 library/backtrace
+      - name: Verify pinned artifact metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 src/tools/codspeed/compare_release_artifacts.py --check-artifacts
 
-      - name: Select benchmark shards
-        id: shards
-        working-directory: src/tools/codspeed
-        run: >-
-          python3 -c 'import json; from benchmarks import SHARDS; print("value=" + json.dumps(SHARDS))'
-          >> "$GITHUB_OUTPUT"
-
-      - name: Build candidate compiler and matching standard library
-        run: >-
-          python3 x.py --ci false --config src/tools/codspeed/bootstrap.toml
-          build --stage 1 library
-
-      - name: Package compiler and pinned Cargo
-        # Bootstrap links these source directories back to the checkout, including build/.
-        run: >-
-          tar --dereference -czf build/codspeed-toolchain.tar.gz
-          --exclude=stage1/lib/rustlib/src
-          --exclude=stage1/lib/rustlib/rustc-src
-          -C build/host stage1 stage0/bin/cargo
-
-      - name: Retain benchmark compiler
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: codspeed-toolchain
-          path: build/codspeed-toolchain.tar.gz
-          compression-level: 0
-          retention-days: 1
-          if-no-files-found: error
-
-  codspeed:
-    name: Compiler Walltime benchmarks (${{ matrix.shard }})
-    needs: compiler
-    runs-on: codspeed-macro
-    timeout-minutes: 50
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ${{ fromJSON(needs.compiler.outputs.shards) }}
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Checkout candidate compiler
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 128
-          persist-credentials: false
-
-      - name: Checkout pinned benchmark dependencies
-        run: git submodule update --init --depth 1 src/tools/rustc-perf
-
-      - name: Download benchmark compiler
+      - name: Download exact 107 compiler artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: codspeed-toolchain
-          path: build
+          repository: astral-sh/ohm-rust
+          run-id: 33842773781
+          artifact-ids: 9926674271
+          github-token: ${{ github.token }}
+          digest-mismatch: error
+          path: build/uv-release-comparison/downloads/A
 
-      - name: Unpack benchmark compiler
+      - name: Download exact 108 compiler artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          repository: astral-sh/ohm-rust
+          run-id: 33897058066
+          artifact-ids: 9946685343
+          github-token: ${{ github.token }}
+          digest-mismatch: error
+          path: build/uv-release-comparison/downloads/B
+
+      - name: Unpack the independent toolchains
         run: |
-          mkdir -p build/codspeed-toolchain
-          tar -xzf build/codspeed-toolchain.tar.gz -C build/codspeed-toolchain
+          for arm in A B; do
+            mkdir -p "build/uv-release-comparison/toolchains/$arm"
+            tar -xzf "build/uv-release-comparison/downloads/$arm/codspeed-toolchain.tar.gz" \
+              --no-same-owner -C "build/uv-release-comparison/toolchains/$arm"
+          done
 
-      - name: Checkout Ruff benchmark sources
+      # prepare.py verifies these sources even for a workspace-only shard.
+      - name: Checkout pinned rustc-perf fixtures
+        run: git submodule update --init --depth 1 src/tools/rustc-perf
+
+      - name: Checkout pinned Ruff workspace
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: astral-sh/ruff
@@ -102,7 +70,7 @@ jobs:
           path: build/codspeed-sources/ruff
           persist-credentials: false
 
-      - name: Checkout uv benchmark sources
+      - name: Checkout pinned UV workspace
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: astral-sh/uv
@@ -110,67 +78,39 @@ jobs:
           path: build/codspeed-sources/uv
           persist-credentials: false
 
-      - name: Install benchmark tools
+      - name: Install pinned uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          version: "0.12.7"
-          enable-cache: true
-          cache-dependency-glob: src/tools/codspeed/requirements.txt
+          version: 0.12.7
+          enable-cache: false
 
-      - name: Install benchmark dependencies
+      - name: Prepare the existing pinned Python harness
+        # No inherited private index credentials or user configuration.
         run: |
-          uv venv --python 3.13.15 src/tools/codspeed/.venv
-          uv pip sync --python src/tools/codspeed/.venv/bin/python --require-hashes \
-            src/tools/codspeed/requirements.txt
+          env -i PATH="$PATH" HOME="$HOME" UV_CACHE_DIR="$PWD/build/uv-release-python-cache" \
+            uv --no-config venv --python 3.13.15 src/tools/codspeed/.venv
+          env -i PATH="$PATH" HOME="$HOME" UV_CACHE_DIR="$PWD/build/uv-release-python-cache" \
+            uv --no-config pip sync --python src/tools/codspeed/.venv/bin/python \
+            --default-index https://pypi.org/simple --require-hashes src/tools/codspeed/requirements.txt
 
-      - name: Check benchmark harness
+      - name: Check the harness without compiler invocations
         run: >-
           src/tools/codspeed/.venv/bin/python -m pytest
-          src/tools/codspeed/test_harness.py
-          src/tools/codspeed/test_walltime_results.py
+          src/tools/codspeed/test_harness.py src/tools/codspeed/test_walltime_results.py
 
-      - name: Verify compiler revision
-        shell: bash
-        run: |
-          version="$(build/codspeed-toolchain/stage1/bin/rustc -vV)"
-          printf '%s\n' "$version"
-          revision="$(git rev-parse HEAD)"
-          if ! grep -Fxq "commit-hash: $revision" <<< "$version"; then
-            echo "The benchmark compiler does not match the checked-out revision" >&2
-            exit 1
-          fi
-
-      - name: Prepare dependencies and capture compiler invocations
+      - name: Prepare separate dependencies and measure warm AB then ABBA three times
+        # The Python process replaces its inherited env before preparation and
+        # compiler calls. Setup/source restoration/JSON writes are not timed.
+        # A process-group timeout leaves time for evidence upload within 50 min.
         run: >-
-          src/tools/codspeed/.venv/bin/python src/tools/codspeed/prepare.py
-          --rustc build/codspeed-toolchain/stage1/bin/rustc
-          --cargo build/codspeed-toolchain/stage0/bin/cargo
-          --shard '${{ matrix.shard }}'
+          timeout --signal=TERM --kill-after=30s 44m
+          src/tools/codspeed/.venv/bin/python src/tools/codspeed/compare_release_artifacts.py
 
-      - name: Measure compiler performance
-        timeout-minutes: 35
-        uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
-        with:
-          mode: walltime
-          runner-version: "5.2.1"
-          run: |
-            set -e
-            src/tools/codspeed/.venv/bin/python -m pytest \
-              src/tools/codspeed/test_compiler_walltime.py --codspeed -k '${{ matrix.shard }}'
-            cp -r "$CODSPEED_PROFILE_FOLDER/results" build/codspeed/results
-
-      - name: Verify compiler Walltime measurements
-        run: >-
-          src/tools/codspeed/.venv/bin/python src/tools/codspeed/verify_walltime.py
-          build/codspeed --shard '${{ matrix.shard }}'
-
-      - name: Retain compiler measurement evidence
-        if: ${{ !cancelled() }}
+      - name: Retain raw comparison evidence
+        if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: codspeed-walltime-evidence-${{ matrix.shard }}
-          path: |
-            build/codspeed/manifest.json
-            build/codspeed/results/
-          if-no-files-found: ignore
+          name: uv-release-107-108-raw-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/uv-release-comparison/evidence
+          if-no-files-found: warn
           retention-days: 14

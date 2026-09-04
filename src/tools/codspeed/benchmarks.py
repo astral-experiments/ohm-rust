@@ -19,6 +19,10 @@ WORKSPACES = {
         "features": ["clap"],
     },
 }
+WORKSPACES["uv-release-resolver"] = {
+    **WORKSPACES["uv-resolver"],
+    "profile": "release",
+}
 FIXTURE_SCENARIOS = {
     **{name: SCENARIOS for name in RUSTC_PERF_FIXTURES},
     **{f"{name}-Debug": ("Full",) for name in RUSTC_PERF_FIXTURES},
