@@ -404,9 +404,8 @@ impl<'tcx> GenericPredicates<'tcx> {
     + DoubleEndedIterator
     + ExactSizeIterator
     + Clone {
-        EarlyBinder::bind_iter(self.predicates).iter_instantiated_copied(tcx, args).map(|u| {
-            let (clause, span) = u.unzip();
-            (clause, span.skip_normalization())
+        self.predicates.iter().map(move |&(clause, span)| {
+            (tcx.instantiate_clause(EarlyBinder::bind_no_rigid_aliases(clause), args), span)
         })
     }
 
@@ -433,7 +432,9 @@ impl<'tcx> GenericPredicates<'tcx> {
             tcx.predicates_of(def_id).instantiate_into(tcx, instantiated, args);
         }
         instantiated.predicates.extend(
-            self.predicates.iter().map(|(p, _)| EarlyBinder::bind(tcx, *p).instantiate(tcx, args)),
+            self.predicates
+                .iter()
+                .map(|(p, _)| tcx.instantiate_clause(EarlyBinder::bind(tcx, *p), args)),
         );
         instantiated.spans.extend(self.predicates.iter().map(|(_, sp)| *sp));
     }
