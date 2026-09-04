@@ -333,7 +333,16 @@ impl<'tcx> Clause<'tcx> {
     /// poly-trait-ref holds. This is slightly different from a normal
     /// instantiation in terms of what happens with bound regions. See
     /// lengthy comment below for details.
+    #[inline]
     pub fn instantiate_supertrait(
+        self,
+        tcx: TyCtxt<'tcx>,
+        trait_ref: ty::PolyTraitRef<'tcx>,
+    ) -> Clause<'tcx> {
+        tcx.instantiate_supertrait(self, trait_ref)
+    }
+
+    pub(crate) fn instantiate_supertrait_uncached(
         self,
         tcx: TyCtxt<'tcx>,
         trait_ref: ty::PolyTraitRef<'tcx>,

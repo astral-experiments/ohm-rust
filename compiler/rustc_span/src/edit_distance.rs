@@ -22,9 +22,23 @@ mod tests;
 ///
 /// [edit distance]: https://en.wikipedia.org/wiki/Edit_distance
 pub fn edit_distance(a: &str, b: &str, limit: usize) -> Option<usize> {
-    let mut a = &a.chars().collect::<Vec<_>>()[..];
-    let mut b = &b.chars().collect::<Vec<_>>()[..];
+    if a.is_ascii() && b.is_ascii() {
+        edit_distance_from_slices(a.as_bytes(), b.as_bytes(), limit)
+    } else {
+        edit_distance_from_slices(
+            &a.chars().collect::<Vec<_>>(),
+            &b.chars().collect::<Vec<_>>(),
+            limit,
+        )
+    }
+}
 
+/// Computes the distance over Unicode scalar values or equivalent ASCII bytes.
+fn edit_distance_from_slices<'a, T: Eq>(
+    mut a: &'a [T],
+    mut b: &'a [T],
+    limit: usize,
+) -> Option<usize> {
     // Ensure that `b` is the shorter string, minimizing memory use.
     if a.len() < b.len() {
         mem::swap(&mut a, &mut b);
