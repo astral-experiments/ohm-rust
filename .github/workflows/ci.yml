@@ -112,6 +112,11 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/ui/rmeta
 
+      - name: Run LLVM prelink function-merging regression
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1 tests/codegen-llvm/merge-functions-prelink.rs
+
       - name: Run coroutine runtime layout regression tests
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
