@@ -14,6 +14,9 @@ use tracing::debug;
 
 use crate::{BorrowSet, PlaceConflictBias, PlaceExt, RegionInferenceContext, places_conflict};
 
+#[cfg(test)]
+mod tests;
+
 // This analysis is different to most others. Its results aren't computed with
 // `iterate_to_fixpoint`, but are instead composed from the results of three sub-analyses that are
 // computed individually with `iterate_to_fixpoint`.
@@ -145,11 +148,36 @@ where
 }
 
 /// The transient state of the dataflow analyses used by the borrow checker.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) struct BorrowckDomain {
     pub(crate) borrows: BorrowsDomain,
     pub(crate) uninits: MaybeUninitializedPlacesDomain,
     pub(crate) ever_inits: EverInitializedPlacesDomain,
+}
+
+impl Clone for BorrowckDomain {
+    fn clone(&self) -> Self {
+        Self {
+            borrows: self.borrows.clone(),
+            uninits: self.uninits.clone(),
+            ever_inits: self.ever_inits.clone(),
+        }
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        // Cursor resets reuse the bitsets for the same body. MixedBitSet's
+        // clone_from requires matching domains, so replace the state otherwise.
+        if self.borrows.domain_size() == source.borrows.domain_size()
+            && self.uninits.domain_size() == source.uninits.domain_size()
+            && self.ever_inits.domain_size() == source.ever_inits.domain_size()
+        {
+            self.borrows.clone_from(&source.borrows);
+            self.uninits.clone_from(&source.uninits);
+            self.ever_inits.clone_from(&source.ever_inits);
+        } else {
+            *self = source.clone();
+        }
+    }
 }
 
 rustc_index::newtype_index! {
