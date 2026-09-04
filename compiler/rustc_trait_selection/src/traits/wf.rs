@@ -347,6 +347,18 @@ impl<'a, 'tcx> WfPredicates<'a, 'tcx> {
             return self.out;
         }
 
+        // Return the existing list when resolution and normalization have no work.
+        // Errors must still pass through resolve_vars_if_possible to taint the context.
+        let flags = ty::TypeFlags::HAS_ALIAS
+            | ty::TypeFlags::HAS_ERROR
+            | (ty::TypeFlags::HAS_INFER - ty::TypeFlags::HAS_RE_INFER);
+        if self.out.iter().all(|obligation| !obligation.predicate.has_type_flags(flags)) {
+            for obligation in &self.out {
+                assert!(!obligation.has_escaping_bound_vars());
+            }
+            return self.out;
+        }
+
         let cause = self.cause(ObligationCauseCode::WellFormed(None));
         let param_env = self.param_env;
         let mut obligations = PredicateObligations::with_capacity(self.out.len());
