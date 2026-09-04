@@ -134,6 +134,15 @@ type InternedSet<'tcx, T> = ShardedHashMap<InternedInSet<'tcx, T>, ()>;
 
 // A power of two so the hash selects a bounded direct-mapped cache slot.
 const INTERNER_CACHE_LEN: usize = 16384;
+const SUPERTRAIT_CACHE_LEN: usize = 16384;
+const CLAUSE_INSTANTIATION_CACHE_LEN: usize = 16384;
+const FN_SIG_INSTANTIATION_CACHE_LEN: usize = 16384;
+
+type SupertraitCacheEntry<'tcx> = (Clause<'tcx>, ty::PolyTraitRef<'tcx>, Clause<'tcx>);
+type ClauseInstantiationCacheEntry<'tcx> =
+    (Clause<'tcx>, GenericArgsRef<'tcx>, ty::Unnormalized<'tcx, Clause<'tcx>>);
+type FnSigInstantiationCacheEntry<'tcx> =
+    (PolyFnSig<'tcx>, GenericArgsRef<'tcx>, ty::Unnormalized<'tcx, PolyFnSig<'tcx>>);
 
 pub struct CtxtInterners<'tcx> {
     /// The arena that types, regions, etc. are allocated from.
@@ -170,7 +179,15 @@ pub struct CtxtInterners<'tcx> {
     // Only canonical results from the shared interners are stored here.
     type_cache: WorkerLocal<[Cell<Option<Ty<'tcx>>>; INTERNER_CACHE_LEN]>,
     args_cache: WorkerLocal<[Cell<Option<GenericArgsRef<'tcx>>>; INTERNER_CACHE_LEN]>,
+    type_lists_cache: WorkerLocal<[Cell<Option<&'tcx List<Ty<'tcx>>>>; INTERNER_CACHE_LEN]>,
     predicate_cache: WorkerLocal<[Cell<Option<Predicate<'tcx>>>; INTERNER_CACHE_LEN]>,
+    supertrait_cache: WorkerLocal<[Cell<Option<SupertraitCacheEntry<'tcx>>>; SUPERTRAIT_CACHE_LEN]>,
+    clause_instantiation_cache: WorkerLocal<
+        [Cell<Option<ClauseInstantiationCacheEntry<'tcx>>>; CLAUSE_INSTANTIATION_CACHE_LEN],
+    >,
+    fn_sig_instantiation_cache: WorkerLocal<
+        [Cell<Option<FnSigInstantiationCacheEntry<'tcx>>>; FN_SIG_INSTANTIATION_CACHE_LEN],
+    >,
 }
 
 impl<'tcx> CtxtInterners<'tcx> {
@@ -211,7 +228,17 @@ impl<'tcx> CtxtInterners<'tcx> {
             outlives: InternedSet::with_capacity(N),
             type_cache: WorkerLocal::new(|_| [const { Cell::new(None) }; INTERNER_CACHE_LEN]),
             args_cache: WorkerLocal::new(|_| [const { Cell::new(None) }; INTERNER_CACHE_LEN]),
+            type_lists_cache: WorkerLocal::new(|_| [const { Cell::new(None) }; INTERNER_CACHE_LEN]),
             predicate_cache: WorkerLocal::new(|_| [const { Cell::new(None) }; INTERNER_CACHE_LEN]),
+            supertrait_cache: WorkerLocal::new(|_| {
+                [const { Cell::new(None) }; SUPERTRAIT_CACHE_LEN]
+            }),
+            clause_instantiation_cache: WorkerLocal::new(|_| {
+                [const { Cell::new(None) }; CLAUSE_INSTANTIATION_CACHE_LEN]
+            }),
+            fn_sig_instantiation_cache: WorkerLocal::new(|_| {
+                [const { Cell::new(None) }; FN_SIG_INSTANTIATION_CACHE_LEN]
+            }),
         }
     }
 
@@ -2094,7 +2121,6 @@ macro_rules! slice_interners {
 // should be used when possible, because it's faster.
 slice_interners!(
     const_lists: pub mk_const_list(Const<'tcx>),
-    type_lists: pub mk_type_list(Ty<'tcx>),
     canonical_var_kinds: pub mk_canonical_var_kinds(CanonicalVarKind<'tcx>),
     poly_existential_predicates: intern_poly_existential_predicates(PolyExistentialPredicate<'tcx>),
     projs: pub mk_projs(ProjectionKind),
@@ -2109,6 +2135,40 @@ slice_interners!(
 );
 
 impl<'tcx> TyCtxt<'tcx> {
+    /// Interns a type list, reusing canonical lists from the current worker when possible.
+    #[inline]
+    pub fn mk_type_list(self, v: &[Ty<'tcx>]) -> &'tcx List<Ty<'tcx>> {
+        if v.is_empty() {
+            return List::empty();
+        }
+        let hash = make_hash(v);
+        let cache = self
+            .interners
+            .type_lists_cache
+            .get_if_registered()
+            .map(|cache| &cache[hash as usize & (INTERNER_CACHE_LEN - 1)]);
+        if let Some(cache) = cache
+            && let Some(types) = cache.get()
+            && types.as_slice() == v
+        {
+            return types;
+        }
+        let types = self.mk_type_list_shared(hash, v);
+        if let Some(cache) = cache {
+            cache.set(Some(types));
+        }
+        types
+    }
+
+    /// Looks up or inserts a type list after the worker cache misses.
+    #[inline(never)]
+    fn mk_type_list_shared(self, hash: u64, v: &[Ty<'tcx>]) -> &'tcx List<Ty<'tcx>> {
+        self.interners
+            .type_lists
+            .intern_ref_with_hash(hash, v, || InternedInSet(List::from_arena(&*self.arena, (), v)))
+            .0
+    }
+
     /// Interns a list of generic arguments.
     #[inline]
     pub fn mk_args(self, v: &[GenericArg<'tcx>]) -> GenericArgsRef<'tcx> {
@@ -2229,6 +2289,99 @@ impl<'tcx> TyCtxt<'tcx> {
         binder: Binder<'tcx, PredicateKind<'tcx>>,
     ) -> Predicate<'tcx> {
         if pred.kind() != binder { self.mk_predicate(binder) } else { pred }
+    }
+
+    /// Reuses signature substitutions after the caller has queried the uninstantiated signature.
+    pub(crate) fn instantiate_fn_sig(
+        self,
+        bound_sig: ty::EarlyBinder<'tcx, PolyFnSig<'tcx>>,
+        args: GenericArgsRef<'tcx>,
+    ) -> ty::Unnormalized<'tcx, PolyFnSig<'tcx>> {
+        use ty::TypeVisitableExt;
+
+        if cfg!(debug_assertions) {
+            return bound_sig.instantiate(self, args);
+        }
+
+        let sig = bound_sig.skip_binder();
+        if !sig.has_param() {
+            return ty::Unnormalized::new(sig);
+        }
+        let cache = self.interners.fn_sig_instantiation_cache.get_if_registered().map(|cache| {
+            &cache[make_hash(&(sig, args)) as usize & (FN_SIG_INSTANTIATION_CACHE_LEN - 1)]
+        });
+        if let Some(cache) = cache
+            && let Some((cached_sig, cached_args, result)) = cache.get()
+            && cached_sig == sig
+            && cached_args == args
+        {
+            return result;
+        }
+        let result = bound_sig.instantiate(self, args);
+        if let Some(cache) = cache {
+            cache.set(Some((sig, args, result)));
+        }
+        result
+    }
+
+    /// Reuses structural clause instantiation without caching normalization or inference results.
+    pub fn instantiate_clause(
+        self,
+        bound_clause: ty::EarlyBinder<'tcx, Clause<'tcx>>,
+        args: GenericArgsRef<'tcx>,
+    ) -> ty::Unnormalized<'tcx, Clause<'tcx>> {
+        use ty::TypeVisitableExt;
+
+        if cfg!(debug_assertions) {
+            return bound_clause.instantiate(self, args);
+        }
+
+        let clause = bound_clause.skip_binder();
+        if !clause.has_param() {
+            return ty::Unnormalized::new(clause);
+        }
+        let cache = self.interners.clause_instantiation_cache.get_if_registered().map(|cache| {
+            &cache[make_hash(&(clause, args)) as usize & (CLAUSE_INSTANTIATION_CACHE_LEN - 1)]
+        });
+        if let Some(cache) = cache
+            && let Some((cached_clause, cached_args, result)) = cache.get()
+            && cached_clause == clause
+            && cached_args == args
+        {
+            return result;
+        }
+        let result = bound_clause.instantiate(self, args);
+        if let Some(cache) = cache {
+            cache.set(Some((clause, args, result)));
+        }
+        result
+    }
+
+    /// Reuses pure supertrait substitutions, including their complete binder, within a worker.
+    pub(crate) fn instantiate_supertrait(
+        self,
+        clause: Clause<'tcx>,
+        trait_ref: ty::PolyTraitRef<'tcx>,
+    ) -> Clause<'tcx> {
+        if cfg!(debug_assertions) {
+            return clause.instantiate_supertrait_uncached(self, trait_ref);
+        }
+
+        let cache = self.interners.supertrait_cache.get_if_registered().map(|cache| {
+            &cache[make_hash(&(clause, trait_ref)) as usize & (SUPERTRAIT_CACHE_LEN - 1)]
+        });
+        if let Some(cache) = cache
+            && let Some((cached_clause, cached_trait_ref, result)) = cache.get()
+            && cached_clause == clause
+            && cached_trait_ref == trait_ref
+        {
+            return result;
+        }
+        let result = clause.instantiate_supertrait_uncached(self, trait_ref);
+        if let Some(cache) = cache {
+            cache.set(Some((clause, trait_ref, result)));
+        }
+        result
     }
 
     pub fn check_args_compatible(self, def_id: DefId, args: &'tcx [ty::GenericArg<'tcx>]) -> bool {
