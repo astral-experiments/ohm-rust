@@ -19,4 +19,6 @@ debuginfo-level = 1
 codegen-units = 16
 codegen-units-std = 1
 lto = "thin-local"
+jemalloc = false
+mimalloc = true
 omit-git-hash = false
