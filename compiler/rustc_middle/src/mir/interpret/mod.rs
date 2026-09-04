@@ -10,6 +10,7 @@ mod value;
 
 use std::io::{Read, Write};
 use std::num::NonZero;
+use std::sync::Arc;
 use std::{fmt, io};
 
 use rustc_abi::{AddressSpace, Align, Endian, HasDataLayout, Size};
@@ -150,6 +151,8 @@ pub struct AllocDecodingState {
     decoding_state: Vec<Lock<State>>,
     // The offsets of each allocation in the data stream.
     data_offsets: Vec<u64>,
+    // Retained and rewritten copies of an allocation must decode to the same ID.
+    aliases: Vec<Option<(Arc<AllocDecodingState>, usize)>>,
 }
 
 impl AllocDecodingState {
@@ -162,9 +165,39 @@ impl AllocDecodingState {
         let decoding_state =
             std::iter::repeat_with(|| Lock::new(State::Empty)).take(data_offsets.len()).collect();
 
-        Self { decoding_state, data_offsets }
+        Self { decoding_state, data_offsets, aliases: Vec::new() }
+    }
+
+    /// Shares allocation identity with entries retained from an older cache generation.
+    pub(crate) fn with_aliases(mut self, aliases: Vec<Option<(Arc<Self>, usize)>>) -> Self {
+        assert!(aliases.is_empty() || aliases.len() == self.decoding_state.len());
+        self.aliases = aliases;
+        self
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.decoding_state.len()
+    }
+
+    fn state_at(&self, index: usize) -> &Lock<State> {
+        if let Some(Some((state, index))) = self.aliases.get(index) {
+            state.state_at(*index)
+        } else {
+            &self.decoding_state[index]
+        }
+    }
+
+    /// Identifies loaded allocations that a new cache may serialize again.
+    pub(crate) fn decoded_alloc_ids(&self) -> impl Iterator<Item = (usize, AllocId)> {
+        (0..self.len()).filter_map(move |index| match *self.state_at(index).lock() {
+            State::Empty => None,
+            State::Done(id) => Some((index, id)),
+        })
     }
 }
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Copy, Clone)]
 pub struct AllocDecodingSession<'s> {
@@ -200,7 +233,7 @@ impl<'s> AllocDecodingSession<'s> {
         // It is also impossible to create two allocations (call them A and B) where A is a pointer to B, and B
         // is a pointer to A, because attempting to evaluate either of those consts will produce a
         // query cycle, failing compilation.
-        let mut entry = self.state.decoding_state[idx].lock();
+        let mut entry = self.state.state_at(idx).lock();
         // Check the decoding state to see if it's already decoded or if we should
         // decode it here.
         if let State::Done(alloc_id) = *entry {
