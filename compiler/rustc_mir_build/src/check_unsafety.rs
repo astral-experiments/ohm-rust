@@ -1060,6 +1060,15 @@ pub(crate) fn check_unsafety(tcx: TyCtxt<'_>, def: LocalDefId) {
         return;
     }
 
+    // A direct literal cannot contain unsafe operations or unused unsafe blocks.
+    // Keep building MIR here, as the regular checker does after building THIR.
+    if !tcx.sess.opts.unstable_opts.no_steal_thir
+        && crate::builder::literal_const_info(tcx, def).is_some()
+    {
+        tcx.ensure_done().mir_built(def);
+        return;
+    }
+
     let Ok((thir, expr)) = tcx.thir_body(def) else { return };
     // Runs all other queries that depend on THIR.
     tcx.ensure_done().mir_built(def);
