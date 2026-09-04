@@ -277,7 +277,7 @@ impl Direction for Forward {
 
                 if !return_.is_empty() {
                     analysis.apply_call_return_effect(exit_state, block, place);
-                    for target in return_ {
+                    for &target in return_.iter() {
                         propagate(target, exit_state);
                     }
                 }
