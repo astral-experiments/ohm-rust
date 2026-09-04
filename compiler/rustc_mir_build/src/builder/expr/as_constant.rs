@@ -111,7 +111,10 @@ pub(crate) fn as_constant_inner<'tcx>(
 }
 
 #[instrument(skip(tcx, lit_input))]
-fn lit_to_mir_constant<'tcx>(tcx: TyCtxt<'tcx>, lit_input: LitToConstInput<'tcx>) -> Const<'tcx> {
+pub(crate) fn lit_to_mir_constant<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    lit_input: LitToConstInput<'tcx>,
+) -> Const<'tcx> {
     let LitToConstInput { lit, ty, neg } = lit_input;
 
     let ty = ty.expect("type of literal must be known at this point");
