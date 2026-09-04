@@ -17,7 +17,9 @@ use crate::core::build_steps::vendor::VENDOR_DIR;
 use crate::core::builder::{Builder, Kind};
 use crate::core::compiler::Compiler;
 use crate::core::config::flags::{self, Subcommand};
-use crate::core::config::{BootstrapOverrideLld, Config, DryRun, LlvmLibunwind, TargetSelection};
+use crate::core::config::{
+    Allocator, BootstrapOverrideLld, Config, DryRun, LlvmLibunwind, TargetSelection,
+};
 use crate::core::download::{DownloadContext, download_beta_toolchain};
 use crate::core::metadata::Crate;
 #[cfg(feature = "tracing")]
@@ -690,6 +692,18 @@ impl Session {
             crates.is_empty() || possible_features_by_crates.contains(feature)
         };
         let mut features = vec![];
+
+        if self.config.mimalloc && check("mimalloc") {
+            assert!(
+                target.contains("linux") && target.contains("gnu"),
+                "rust.mimalloc currently supports Linux GNU hosts only"
+            );
+            assert!(
+                self.config.allocator(target) != Allocator::Jemalloc,
+                "set build.allocator=system when enabling rust.mimalloc"
+            );
+            features.push("mimalloc");
+        }
 
         if let Some(allocator_feature_name) = self.config.allocator(target).feature_name()
             && check(allocator_feature_name)
