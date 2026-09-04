@@ -174,6 +174,14 @@ struct ParentScope<'ra> {
     derives: &'ra [ast::Path],
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct TraitsInScopeKey<'ra> {
+    module: Module<'ra>,
+    current_trait: Option<Module<'ra>>,
+    ctxt: Macros20NormalizedSyntaxContext,
+    assoc_item: Option<(Symbol, Namespace)>,
+}
+
 impl<'ra> ParentScope<'ra> {
     /// Creates a parent scope with the passed argument used as the module scope component,
     /// and other scope components set to default empty values.
@@ -1405,6 +1413,7 @@ pub struct Resolver<'ra, 'tcx> {
     visibilities_for_hashing: Vec<(LocalDefId, Visibility)> = Vec::new(),
     used_imports: FxHashSet<NodeId> = default::fx_hash_set(),
     maybe_unused_trait_imports: FxIndexSet<LocalDefId>,
+    traits_in_scope_cache: FxHashMap<TraitsInScopeKey<'ra>, &'tcx [TraitCandidate<'tcx>]>,
 
     /// Privacy errors are delayed until the end in order to deduplicate them.
     privacy_errors: Vec<PrivacyError<'ra>> = Vec::new(),
@@ -1825,6 +1834,7 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
 
             glob_map: Default::default(),
             maybe_unused_trait_imports: Default::default(),
+            traits_in_scope_cache: Default::default(),
 
             arenas,
             dummy_decl: arenas.new_pub_def_decl(Res::Err, DUMMY_SP, LocalExpnId::ROOT),
@@ -2087,6 +2097,18 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
         sp: Span,
         assoc_item: Option<(Symbol, Namespace)>,
     ) -> &'tcx [TraitCandidate<'tcx>] {
+        let ctxt = Macros20NormalizedSyntaxContext::new(sp.ctxt());
+        let key = TraitsInScopeKey {
+            module: parent_scope.module.nearest_item_scope(),
+            current_trait,
+            ctxt,
+            assoc_item,
+        };
+        // Imports are fixed during late resolution. Repeated lookups also repeat
+        // only idempotent insertions into the trait-import and glob-use sets.
+        if let Some(&traits) = self.traits_in_scope_cache.get(&key) {
+            return traits;
+        }
         let mut found_traits = Vec::new();
 
         if let Some(module) = current_trait {
@@ -2101,7 +2123,6 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
         }
 
         let scope_set = ScopeSet::All(TypeNS);
-        let ctxt = Macros20NormalizedSyntaxContext::new(sp.ctxt());
         let cmr = self.cm_mut();
         cmr.visit_scopes(scope_set, parent_scope, ctxt, sp, None, |mut this, scope, _, _| {
             match scope {
@@ -2125,7 +2146,12 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
             ControlFlow::<()>::Continue(())
         });
 
-        self.tcx.hir_arena.alloc_slice(&found_traits)
+        let found_traits = self.tcx.hir_arena.alloc_slice(&found_traits);
+        if self.traits_in_scope_cache.len() == 16384 {
+            self.traits_in_scope_cache.clear();
+        }
+        self.traits_in_scope_cache.insert(key, found_traits);
+        found_traits
     }
 
     fn traits_in_module(
