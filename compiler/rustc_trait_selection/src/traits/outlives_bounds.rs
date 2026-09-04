@@ -6,7 +6,8 @@ use rustc_macros::extension;
 use rustc_middle::infer::canonical::{OriginalQueryValues, QueryRegionConstraints};
 pub use rustc_middle::traits::query::OutlivesBound;
 use rustc_middle::ty::{self, ParamEnv, Ty, TypeFolder, TypeVisitableExt};
-use rustc_span::{def_id::LocalDefId, sym};
+use rustc_span::def_id::LocalDefId;
+use rustc_span::sym;
 use tracing::instrument;
 
 use crate::infer::InferCtxt;
