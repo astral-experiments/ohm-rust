@@ -1,5 +1,6 @@
 //! Functionality for terminators and helper types that appear in terminators.
 
+use std::borrow::Cow;
 use std::slice;
 
 use rustc_ast::InlineAsmOptions;
@@ -689,7 +690,7 @@ pub enum TerminatorEdges<'mir, 'tcx> {
     Double(BasicBlock, BasicBlock),
     /// Special action for `Yield`, `Call` and `InlineAsm` terminators.
     AssignOnReturn {
-        return_: Box<[BasicBlock]>,
+        return_: Cow<'mir, [BasicBlock]>,
         /// The cleanup block, if it exists.
         cleanup: Option<BasicBlock>,
         place: CallReturnPlaces<'mir, 'tcx>,
@@ -760,19 +761,25 @@ impl<'tcx> TerminatorKind<'tcx> {
 
             Yield { resume: target, drop, resume_arg, value: _ } => {
                 TerminatorEdges::AssignOnReturn {
-                    return_: [target].into_iter().chain(drop.into_iter()).collect(),
+                    return_: Cow::Owned([target].into_iter().chain(drop.into_iter()).collect()),
                     cleanup: None,
                     place: CallReturnPlaces::Yield(resume_arg),
                 }
             }
 
-            Call { unwind, destination, target, func: _, args: _, fn_span: _, call_source: _ } => {
-                TerminatorEdges::AssignOnReturn {
-                    return_: target.into_iter().collect(),
-                    cleanup: unwind.cleanup_block(),
-                    place: CallReturnPlaces::Call(destination),
-                }
-            }
+            Call {
+                unwind,
+                destination,
+                ref target,
+                func: _,
+                args: _,
+                fn_span: _,
+                call_source: _,
+            } => TerminatorEdges::AssignOnReturn {
+                return_: Cow::Borrowed(target.as_slice()),
+                cleanup: unwind.cleanup_block(),
+                place: CallReturnPlaces::Call(destination),
+            },
 
             InlineAsm {
                 asm_macro: _,
@@ -783,7 +790,7 @@ impl<'tcx> TerminatorKind<'tcx> {
                 ref targets,
                 unwind,
             } => TerminatorEdges::AssignOnReturn {
-                return_: targets.to_owned(),
+                return_: Cow::Borrowed(targets),
                 cleanup: unwind.cleanup_block(),
                 place: CallReturnPlaces::InlineAsm(operands),
             },

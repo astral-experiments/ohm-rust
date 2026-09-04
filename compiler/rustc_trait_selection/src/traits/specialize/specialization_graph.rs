@@ -77,6 +77,7 @@ impl<'tcx> Children {
         &mut self,
         tcx: TyCtxt<'tcx>,
         impl_def_id: DefId,
+        trait_ref: ty::TraitRef<'tcx>,
         simplified_self: Option<SimplifiedType>,
         overlap_mode: OverlapMode,
     ) -> Result<Inserted<'tcx>, OverlapError<'tcx>> {
@@ -84,7 +85,7 @@ impl<'tcx> Children {
         let mut replace_children = Vec::new();
 
         let possible_siblings = match simplified_self {
-            Some(st) => PotentialSiblings::Filtered(filtered_children(self, st)),
+            Some(st) => PotentialSiblings::Filtered(filtered_children(tcx, self, st, trait_ref)),
             None => PotentialSiblings::Unfiltered(iter_children(self)),
         };
 
@@ -198,9 +199,38 @@ fn iter_children(children: &Children) -> impl Iterator<Item = DefId> {
     children.blanket_impls.iter().chain(nonblanket).cloned()
 }
 
-fn filtered_children(children: &mut Children, st: SimplifiedType) -> impl Iterator<Item = DefId> {
-    let nonblanket = children.non_blanket_impls.entry(st).or_default().iter();
+fn filtered_children<'a, 'tcx>(
+    tcx: TyCtxt<'tcx>,
+    children: &'a mut Children,
+    st: SimplifiedType,
+    trait_ref: ty::TraitRef<'tcx>,
+) -> impl Iterator<Item = DefId> + use<'a> {
+    let bucket = children.non_blanket_impls.entry(st).or_default();
+    let candidates = if bucket.len() >= 16 { const_arg_candidates(tcx, trait_ref) } else { None };
+    let nonblanket = bucket
+        .iter()
+        .filter(move |impl_def_id| candidates.as_ref().is_none_or(|ids| ids.contains(impl_def_id)));
     children.blanket_impls.iter().chain(nonblanket).cloned()
+}
+
+/// Prunes a large sibling scan when the const index leaves only a few candidates.
+fn const_arg_candidates<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    trait_ref: ty::TraitRef<'tcx>,
+) -> Option<smallvec::SmallVec<[DefId; 8]>> {
+    let ty::Adt(adt, args) = trait_ref.self_ty().kind() else { return None };
+    let ct = args.iter().find_map(|arg| arg.as_const())?;
+    let ty::ConstKind::Value(value) = ct.kind() else { return None };
+    let index = tcx.trait_impls_by_const_arg((trait_ref.def_id, adt.did()));
+    let mut candidates = smallvec::SmallVec::<[DefId; 8]>::new();
+    for impl_def_id in index.impls_for_value(value.valtree) {
+        // Keep the membership test bounded and avoid allocating for broad buckets.
+        if candidates.len() == 8 {
+            return None;
+        }
+        candidates.push(impl_def_id);
+    }
+    Some(candidates)
 }
 
 // A custom iterator used by Children::insert
@@ -276,6 +306,7 @@ impl<'tcx> Graph {
             let insert_result = self.children.entry(parent).or_default().insert(
                 tcx,
                 impl_def_id,
+                trait_ref,
                 simplified,
                 overlap_mode,
             )?;

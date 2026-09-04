@@ -292,7 +292,7 @@ fn emit_mermaid_cfg(body: &Body<'_>, out: &mut dyn io::Write) -> io::Result<()> 
                 }
             }
             TerminatorEdges::AssignOnReturn { return_, cleanup, .. } => {
-                for to_idx in return_ {
+                for &to_idx in return_.iter() {
                     writeln!(out, "{block_idx} --> {}", to_idx.as_usize())?;
                 }
 
