@@ -500,6 +500,35 @@ fn shared_dependency_after_compaction() {
 }
 
 #[test]
+fn completed_obligation_with_changed_key() {
+    let mut forest = ObligationForest::new();
+    forest.register_obligation("unresolved");
+
+    let outcome = forest.process_obligations(&mut C(
+        |obligation| {
+            *obligation = "resolved";
+            ProcessResult::Changed(thin_vec![])
+        },
+        |_| {},
+    ));
+    assert_eq!(outcome.completed, vec!["resolved"]);
+    assert!(outcome.errors.is_empty());
+
+    // Only the resolved key is proven; the old key must be processed again.
+    forest.register_obligation("unresolved");
+    forest.register_obligation("resolved");
+    let outcome = forest.process_obligations(&mut C(
+        |obligation| {
+            assert_eq!(*obligation, "unresolved");
+            ProcessResult::Changed(thin_vec![])
+        },
+        |_| {},
+    ));
+    assert_eq!(outcome.completed, vec!["unresolved"]);
+    assert!(outcome.errors.is_empty());
+}
+
+#[test]
 fn done_dependency() {
     // check that the local cache works
     let mut forest = ObligationForest::new();
