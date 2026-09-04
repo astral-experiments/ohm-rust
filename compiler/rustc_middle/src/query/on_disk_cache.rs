@@ -33,6 +33,7 @@ use crate::ty::codec::{RefDecodable, TyDecoder, TyEncoder};
 use crate::ty::{self, Ty, TyCtxt};
 
 const TAG_FILE_FOOTER: u128 = 0xC0FFEE_C0FFEE_C0FFEE_C0FFEE_C0FFEE;
+const MAX_CACHE_GENERATIONS: usize = 3;
 
 // A normal span encoded with both location information and a `SyntaxContext`
 const TAG_FULL_SPAN: u8 = 0;
@@ -52,9 +53,21 @@ const SYMBOL_PREDEFINED: u8 = 2;
 /// previous compilation session. This data will eventually include the results
 /// of a few selected queries (like `typeck` and `mir_optimized`) and
 /// any side effects that have been emitted during a query.
+///
+/// Unused green values can remain in their original serialized form. Each retained
+/// generation is a prefix of the file with its own footer and decoding context;
+/// aliases map current dependency-node indices to indices in the previous generation.
+/// Keeping absolute byte positions preserves type and symbol shorthands. After
+/// `MAX_CACHE_GENERATIONS`, normal promotion re-encodes live values into a fresh file.
 pub struct OnDiskCache {
     // The complete cache data in serialized form.
-    serialized_data: RwLock<Option<Mmap>>,
+    serialized_data: RwLock<Option<Arc<Mmap>>>,
+    start_pos: usize,
+    data_len: usize,
+    generation_count: usize,
+    previous_cache: Option<Box<OnDiskCache>>,
+    forwarded_query_values: FxHashMap<SerializedDepNodeIndex, SerializedDepNodeIndex>,
+    pending_query_values: Lock<Vec<(SerializedDepNodeIndex, SerializedDepNodeIndex)>>,
 
     file_index_to_stable_id: FxHashMap<SourceFileIndex, EncodedSourceFileId>,
 
@@ -69,7 +82,7 @@ pub struct OnDiskCache {
     /// of its serialized [`QuerySideEffect`] in `serialized_data`.
     side_effects_index: FxHashMap<SerializedDepNodeIndex, AbsoluteBytePos>,
 
-    alloc_decoding_state: AllocDecodingState,
+    alloc_decoding_state: Arc<AllocDecodingState>,
 
     // A map from syntax context ids to the position of their associated
     // `SyntaxContextData`. We use a `u32` instead of a `SyntaxContext`
@@ -99,6 +112,9 @@ pub struct OnDiskCache {
 // This type is used only for serialization and deserialization.
 #[derive(Encodable, Decodable)]
 struct Footer {
+    previous_cache_len: Option<usize>,
+    forwarded_query_values: Vec<(SerializedDepNodeIndex, SerializedDepNodeIndex)>,
+    forwarded_allocations: Vec<(usize, usize, usize)>,
     file_index_to_stable_id: FxHashMap<SourceFileIndex, EncodedSourceFileId>,
     query_values_index: Vec<(SerializedDepNodeIndex, AbsoluteBytePos)>,
     side_effects_index: Vec<(SerializedDepNodeIndex, AbsoluteBytePos)>,
@@ -111,6 +127,14 @@ struct Footer {
     // See `OnDiskCache.expn_data`
     expn_data: UnhashMap<ExpnHash, AbsoluteBytePos>,
     foreign_expn_data: UnhashMap<ExpnHash, u32>,
+}
+
+/// Serialized values retained without loading them into the current query cache.
+pub struct QueryCachePromotion {
+    data: Vec<u8>,
+    start_pos: usize,
+    query_values: Vec<(SerializedDepNodeIndex, SerializedDepNodeIndex)>,
+    allocation_origins: FxHashMap<interpret::AllocId, (usize, usize)>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, Encodable, Decodable)]
@@ -155,7 +179,22 @@ impl OnDiskCache {
     pub fn new(sess: &Session, data: Mmap, start_pos: usize) -> Result<Self, ()> {
         assert!(sess.opts.incremental.is_some());
 
-        let mut decoder = MemDecoder::new(&data, start_pos)?;
+        let data_len = data.len();
+        Self::new_shared(Arc::new(data), start_pos, data_len, 0)
+    }
+
+    /// Reads one generation while sharing its backing storage with retained generations.
+    fn new_shared(
+        data: Arc<Mmap>,
+        start_pos: usize,
+        data_len: usize,
+        depth: usize,
+    ) -> Result<Self, ()> {
+        if depth >= MAX_CACHE_GENERATIONS {
+            return Err(());
+        }
+
+        let mut decoder = MemDecoder::new(&data[..data_len], start_pos)?;
 
         // Decode the *position* of the footer, which can be found in the
         // last 8 bytes of the file.
@@ -167,13 +206,58 @@ impl OnDiskCache {
         let footer: Footer =
             decoder.with_position(footer_pos, |decoder| decode_tagged(decoder, TAG_FILE_FOOTER));
 
+        let previous_cache = if let Some(previous_len) = footer.previous_cache_len {
+            if previous_len <= start_pos || previous_len > footer_pos {
+                return Err(());
+            }
+            Some(Box::new(Self::new_shared(Arc::clone(&data), start_pos, previous_len, depth + 1)?))
+        } else {
+            if !footer.forwarded_query_values.is_empty() {
+                return Err(());
+            }
+            None
+        };
+        let generation_count =
+            previous_cache.as_ref().map_or(1, |cache| cache.generation_count + 1);
+        let mut aliases = if footer.forwarded_allocations.is_empty() {
+            Vec::new()
+        } else {
+            vec![None; footer.interpret_alloc_index.len()]
+        };
+        for (index, depth, previous_index) in footer.forwarded_allocations {
+            if depth == 0
+                || depth >= generation_count
+                || index >= aliases.len()
+                || aliases[index].is_some()
+            {
+                return Err(());
+            }
+            let mut ancestor = previous_cache.as_deref();
+            for _ in 1..depth {
+                ancestor = ancestor.and_then(|cache| cache.previous_cache.as_deref());
+            }
+            let Some(ancestor) = ancestor else { return Err(()) };
+            if previous_index >= ancestor.alloc_decoding_state.len() {
+                return Err(());
+            }
+            aliases[index] = Some((Arc::clone(&ancestor.alloc_decoding_state), previous_index));
+        }
+        let alloc_decoding_state =
+            Arc::new(AllocDecodingState::new(footer.interpret_alloc_index).with_aliases(aliases));
+
         Ok(Self {
             serialized_data: RwLock::new(Some(data)),
+            start_pos,
+            data_len,
+            generation_count,
+            previous_cache,
+            forwarded_query_values: footer.forwarded_query_values.into_iter().collect(),
+            pending_query_values: Default::default(),
             file_index_to_stable_id: footer.file_index_to_stable_id,
             file_index_to_file: Default::default(),
             query_values_index: footer.query_values_index.into_iter().collect(),
             side_effects_index: footer.side_effects_index.into_iter().collect(),
-            alloc_decoding_state: AllocDecodingState::new(footer.interpret_alloc_index),
+            alloc_decoding_state,
             syntax_contexts: footer.syntax_contexts,
             expn_data: footer.expn_data,
             foreign_expn_data: footer.foreign_expn_data,
@@ -184,11 +268,17 @@ impl OnDiskCache {
     pub fn new_empty() -> Self {
         Self {
             serialized_data: RwLock::new(None),
+            start_pos: 0,
+            data_len: 0,
+            generation_count: 0,
+            previous_cache: None,
+            forwarded_query_values: Default::default(),
+            pending_query_values: Default::default(),
             file_index_to_stable_id: Default::default(),
             file_index_to_file: Default::default(),
             query_values_index: Default::default(),
             side_effects_index: Default::default(),
-            alloc_decoding_state: AllocDecodingState::new(Vec::new()),
+            alloc_decoding_state: Arc::new(AllocDecodingState::new(Vec::new())),
             syntax_contexts: FxHashMap::default(),
             expn_data: UnhashMap::default(),
             foreign_expn_data: UnhashMap::default(),
@@ -200,13 +290,79 @@ impl OnDiskCache {
     pub fn close_serialized_data_mmap(&self) {
         // Obtain a write lock, and replace the mmap with None to drop it.
         *self.serialized_data.write() = None;
+        if let Some(previous_cache) = &self.previous_cache {
+            previous_cache.close_serialized_data_mmap();
+        }
+    }
+
+    /// Retains an eligible, green query without decoding its unused value.
+    pub fn try_forward_query_value(
+        &self,
+        previous_index: SerializedDepNodeIndex,
+        current_index: DepNodeIndex,
+    ) -> bool {
+        // Periodically use normal promotion to discard obsolete generations.
+        if self.generation_count >= MAX_CACHE_GENERATIONS
+            || !self.loadable_from_disk(previous_index)
+        {
+            return false;
+        }
+        let current_index = SerializedDepNodeIndex::from_curr_for_serialization(current_index);
+        self.pending_query_values.lock().push((current_index, previous_index));
+        true
+    }
+
+    /// Copies retained data before releasing every mmap and replacing the cache file.
+    pub fn take_query_cache_promotion(&self) -> Option<QueryCachePromotion> {
+        let mut query_values = mem::take(&mut *self.pending_query_values.lock());
+        if query_values.is_empty() {
+            return None;
+        }
+        query_values.sort_unstable_by_key(|(index, _)| index.as_u32());
+        let mut allocation_origins = FxHashMap::default();
+        let mut cache = Some(self);
+        let mut depth = 1;
+        while let Some(current) = cache {
+            for (index, id) in current.alloc_decoding_state.decoded_alloc_ids() {
+                allocation_origins.entry(id).or_insert((depth, index));
+            }
+            cache = current.previous_cache.as_deref();
+            depth += 1;
+        }
+        let data = self.serialized_data.read();
+        let data = data.as_ref().unwrap()[..self.data_len].to_vec();
+        Some(QueryCachePromotion {
+            data,
+            start_pos: self.start_pos,
+            query_values,
+            allocation_origins,
+        })
     }
 
     /// Serialize the current-session data that will be loaded by [`OnDiskCache`]
     /// in a subsequent incremental compilation session.
-    pub fn serialize(tcx: TyCtxt<'_>, encoder: FileEncoder<'static>) -> FileEncodeResult {
+    pub fn serialize(
+        tcx: TyCtxt<'_>,
+        mut encoder: FileEncoder<'static>,
+        promotion: Option<QueryCachePromotion>,
+    ) -> FileEncodeResult {
         // Serializing the `DepGraph` should not modify it.
         tcx.dep_graph.with_ignore(|| {
+            let (previous_cache_len, forwarded_query_values, allocation_origins) =
+                if let Some(promotion) = promotion {
+                    // Preserve every old byte position, including type and symbol shorthands.
+                    // The already-written header belongs to the same compiler version.
+                    assert_eq!(encoder.position(), promotion.start_pos);
+                    encoder.emit_raw_bytes(&promotion.data[promotion.start_pos..]);
+                    (
+                        Some(promotion.data.len()),
+                        promotion.query_values,
+                        promotion.allocation_origins,
+                    )
+                } else {
+                    (None, Vec::new(), FxHashMap::default())
+                };
+
             // Allocate `SourceFileIndex`es.
             let (file_to_file_index, file_index_to_stable_id) = {
                 let files = tcx.sess.source_map().files();
@@ -252,6 +408,7 @@ impl OnDiskCache {
                 encoder.encode_side_effect(dep_node_index, side_effect);
             }
 
+            let mut forwarded_allocations = Vec::new();
             let interpret_alloc_index = {
                 let mut interpret_alloc_index = Vec::new();
                 let mut n = 0;
@@ -265,6 +422,9 @@ impl OnDiskCache {
                     interpret_alloc_index.reserve(new_n - n);
                     for idx in n..new_n {
                         let id = encoder.interpret_allocs[idx];
+                        if let Some(&(depth, previous_index)) = allocation_origins.get(&id) {
+                            forwarded_allocations.push((idx, depth, previous_index));
+                        }
                         let pos: u64 = encoder.position().try_into().unwrap();
                         interpret_alloc_index.push(pos);
                         interpret::specialized_encode_alloc_id(&mut encoder, tcx, id);
@@ -306,6 +466,9 @@ impl OnDiskCache {
             encoder.encode_tagged(
                 TAG_FILE_FOOTER,
                 &Footer {
+                    previous_cache_len,
+                    forwarded_query_values,
+                    forwarded_allocations,
                     file_index_to_stable_id,
                     query_values_index,
                     side_effects_index,
@@ -342,6 +505,7 @@ impl OnDiskCache {
     #[inline]
     pub fn loadable_from_disk(&self, dep_node_index: SerializedDepNodeIndex) -> bool {
         self.query_values_index.contains_key(&dep_node_index)
+            || self.forwarded_query_values.contains_key(&dep_node_index)
         // with_decoder is infallible, so we can stop here
     }
 
@@ -349,8 +513,14 @@ impl OnDiskCache {
     pub(crate) fn cached_query_indices(&self) -> Vec<SerializedDepNodeIndex> {
         // Restore the old graph traversal order before promoting query values.
         #[allow(rustc::potential_query_instability)]
-        let mut indices: Vec<_> = self.query_values_index.keys().copied().collect();
+        let mut indices: Vec<_> = self
+            .query_values_index
+            .keys()
+            .chain(self.forwarded_query_values.keys())
+            .copied()
+            .collect();
         indices.sort_unstable_by_key(|index| index.as_u32());
+        indices.dedup();
         indices
     }
 
@@ -363,7 +533,10 @@ impl OnDiskCache {
     where
         T: for<'a> Decodable<CacheDecoder<'a, 'tcx>>,
     {
-        self.load_indexed(tcx, dep_node_index, &self.query_values_index)
+        self.load_indexed(tcx, dep_node_index, &self.query_values_index).or_else(|| {
+            let previous_index = *self.forwarded_query_values.get(&dep_node_index)?;
+            self.previous_cache.as_ref()?.try_load_query_value(tcx, previous_index)
+        })
     }
 
     fn load_indexed<'tcx, T>(
@@ -392,8 +565,11 @@ impl OnDiskCache {
         let serialized_data = self.serialized_data.read();
         let mut decoder = CacheDecoder {
             tcx,
-            opaque: MemDecoder::new(serialized_data.as_deref().unwrap_or(&[]), pos.to_usize())
-                .unwrap(),
+            opaque: MemDecoder::new(
+                serialized_data.as_ref().map_or(&[], |data| &data[..self.data_len]),
+                pos.to_usize(),
+            )
+            .unwrap(),
             file_index_to_file: &self.file_index_to_file,
             file_index_to_stable_id: &self.file_index_to_stable_id,
             alloc_decoding_session: self.alloc_decoding_state.new_decoding_session(),
