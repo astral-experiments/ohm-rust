@@ -5,6 +5,9 @@
 
 use std::process::ExitCode;
 
+// Like jemalloc, override the C allocator so rustc and LLVM use the same heap.
+#[cfg(feature = "mimalloc")]
+use libmimalloc_sys as _;
 // A note about jemalloc: rustc uses jemalloc when built for CI and
 // distribution. The obvious way to do this is with the `#[global_allocator]`
 // mechanism. However, for complicated reasons (see
@@ -39,6 +42,9 @@ use std::process::ExitCode;
 // for an example of how to do so.
 #[cfg(feature = "jemalloc")]
 use tikv_jemalloc_sys as _;
+
+#[cfg(all(feature = "jemalloc", feature = "mimalloc"))]
+compile_error!("jemalloc and mimalloc cannot both override the system allocator");
 
 fn main() -> ExitCode {
     rustc_driver::main()
