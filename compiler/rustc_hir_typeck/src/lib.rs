@@ -41,6 +41,7 @@ mod writeback;
 
 pub use coercion::can_coerce;
 use fn_ctxt::FnCtxt;
+use rustc_ast as ast;
 use rustc_data_structures::unord::UnordSet;
 use rustc_errors::codes::*;
 use rustc_errors::{Applicability, Diag, ErrorGuaranteed, pluralize, struct_span_code_err};
@@ -124,8 +125,34 @@ fn typeck_with_inspect<'tcx>(
         span_bug!(span, "can't type-check body of {:?}", def_id);
     });
     let body = tcx.hir_body(body_id);
-
     let param_env = tcx.param_env(def_id);
+
+    // For a small unsuffixed integer literal in a `usize` constant, typeck
+    // records only the owner and expression types: there are no inference
+    // variables, adjustments, or obligations to resolve.
+    if inspector.is_none()
+        && (matches!(
+            node,
+            hir::Node::ImplItem(hir::ImplItem { kind: hir::ImplItemKind::Const(..), .. })
+        ) || (matches!(node, hir::Node::AnonConst(_))
+            && matches!(tcx.parent_hir_node(id), hir::Node::ConstArg(_))))
+        && node.ty().is_none_or(|ty| !ty.is_suggestable_infer_ty())
+        && body.params.is_empty()
+        && let hir::ExprKind::Lit(lit) = body.value.kind
+        && let ast::LitKind::Int(value, ast::LitIntType::Unsuffixed) = lit.node
+        && value.get() <= u16::MAX as u128
+        && tcx.type_of(def_id).instantiate_identity().skip_norm_wip() == tcx.types.usize
+        && tcx.hir_attrs(id).is_empty()
+        && tcx.hir_attrs(body.value.hir_id).is_empty()
+    {
+        if matches!(node, hir::Node::AnonConst(_)) {
+            tcx.require_lang_item(hir::LangItem::Sized, body.value.span);
+        }
+        let mut results = ty::TypeckResults::new(id.owner);
+        results.node_types_mut().insert(id, tcx.types.usize);
+        results.node_types_mut().insert(body.value.hir_id, tcx.types.usize);
+        return tcx.arena.alloc(results);
+    }
 
     let root_ctxt = TypeckRootCtxt::new(tcx, def_id);
     if let Some(inspector) = inspector {

@@ -24,6 +24,7 @@ use itertools::Itertools;
 use rustc_abi::{ExternAbi, FieldIdx};
 use rustc_apfloat::Float;
 use rustc_apfloat::ieee::{Double, Half, Quad, Single};
+use rustc_ast as ast;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::sorted_map::SortedIndexMultiMap;
 use rustc_errors::ErrorGuaranteed;
@@ -66,6 +67,9 @@ pub(crate) fn closure_saved_names_of_captured_variables<'tcx>(
 /// be called by the query `mir_built`.
 pub(crate) fn build_mir_inner_impl<'tcx>(tcx: TyCtxt<'tcx>, def: LocalDefId) -> Body<'tcx> {
     tcx.ensure_done().thir_abstract_const(def);
+    if let Some(body) = build_literal_const(tcx, def) {
+        return body;
+    }
     if let Err(e) = tcx.ensure_result().check_match(def) {
         return construct_error(tcx, def, e);
     }
@@ -104,6 +108,108 @@ pub(crate) fn build_mir_inner_impl<'tcx>(tcx: TyCtxt<'tcx>, def: LocalDefId) -> 
     );
 
     body
+}
+
+/// Data needed to build an unadjusted integer-literal const body.
+#[derive(Clone, Copy)]
+pub(crate) struct LiteralConst {
+    span: Span,
+    return_span: Span,
+    expr_span: Span,
+    lit: ast::LitKind,
+}
+
+/// A direct literal const has no patterns, tail calls, unsafe operations, or drops.
+pub(crate) fn literal_const_info(tcx: TyCtxt<'_>, def: LocalDefId) -> Option<LiteralConst> {
+    if tcx.sess.instrument_coverage() || tcx.sess.opts.unstable_opts.maximal_hir_to_mir_coverage {
+        return None;
+    }
+
+    let hir_id = tcx.local_def_id_to_hir_id(def);
+    let (span, return_span) = match tcx.hir_node(hir_id) {
+        Node::AnonConst(ct) if matches!(tcx.parent_hir_node(hir_id), Node::ConstArg(_)) => {
+            (ct.span, ct.span)
+        }
+        Node::ImplItem(hir::ImplItem {
+            kind: hir::ImplItemKind::Const(ty, hir::ConstItemRhs::Body(_)),
+            span,
+            ..
+        }) if !ty.is_suggestable_infer_ty() => (*span, ty.span),
+        _ => return None,
+    };
+
+    let hir_body = tcx.hir_body_owned_by(def);
+    let expr = hir_body.value;
+    let hir::ExprKind::Lit(lit) = expr.kind else { return None };
+    let ast::LitKind::Int(value, ast::LitIntType::Unsuffixed) = lit.node else {
+        return None;
+    };
+    if value.get() > u16::MAX as u128
+        || !hir_body.params.is_empty()
+        || tcx.parent_hir_id(expr.hir_id) != hir_id
+        || !tcx.hir_attrs(hir_id).is_empty()
+        || !tcx.hir_attrs(expr.hir_id).is_empty()
+    {
+        return None;
+    }
+
+    let typeck = tcx.typeck(def);
+    if typeck.tainted_by_errors.is_some()
+        || typeck.node_type_opt(hir_id) != Some(tcx.types.usize)
+        || typeck.expr_ty_opt(expr) != Some(tcx.types.usize)
+        || !typeck.expr_adjustments(expr).is_empty()
+    {
+        return None;
+    }
+
+    Some(LiteralConst { span, return_span, expr_span: expr.span, lit: lit.node })
+}
+
+/// Build a small integer-literal const without THIR or the general MIR builder.
+fn build_literal_const<'tcx>(tcx: TyCtxt<'tcx>, def: LocalDefId) -> Option<Body<'tcx>> {
+    let LiteralConst { span, return_span, expr_span, lit } = literal_const_info(tcx, def)?;
+    let constant = expr::as_constant::lit_to_mir_constant(
+        tcx,
+        ty::LitToConstInput { lit, ty: Some(tcx.types.usize), neg: false },
+    );
+    let mut cfg = CFG { basic_blocks: IndexVec::new() };
+    assert_eq!(cfg.start_new_block(), START_BLOCK);
+    cfg.push_assign(
+        START_BLOCK,
+        SourceInfo::outermost(expr_span),
+        Place::return_place(),
+        Rvalue::Use(
+            Operand::Constant(Box::new(ConstOperand {
+                span: expr_span,
+                user_ty: None,
+                const_: constant,
+            })),
+            WithRetag::Yes,
+        ),
+    );
+    cfg.terminate(START_BLOCK, SourceInfo::outermost(span), TerminatorKind::Return);
+
+    let hir_id = tcx.local_def_id_to_hir_id(def);
+    let source_scopes = IndexVec::from_iter([SourceScopeData {
+        span,
+        parent_scope: None,
+        inlined: None,
+        inlined_parent_scope: None,
+        local_data: ClearCrossCrate::Set(SourceScopeLocalData { lint_root: hir_id }),
+    }]);
+    let local_decls = IndexVec::from_iter([LocalDecl::new(tcx.types.usize, return_span)]);
+    Some(Body::new(
+        MirSource::item(def.to_def_id()),
+        cfg.basic_blocks,
+        source_scopes,
+        local_decls,
+        IndexVec::new(),
+        0,
+        vec![],
+        span,
+        None,
+        None,
+    ))
 }
 
 ///////////////////////////////////////////////////////////////////////////
