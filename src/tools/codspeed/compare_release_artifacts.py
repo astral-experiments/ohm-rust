@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""One-off #107/#108 UV Release comparison; no CodSpeed upload or acceptance gate."""
+"""One-off #107/#108 Release comparison; no CodSpeed upload or acceptance gate."""
 
+import argparse
 import hashlib
 import json
 import os
@@ -13,10 +14,11 @@ import time
 import urllib.request
 
 REPO = Path(__file__).resolve().parents[3]
-OUT = REPO / "build/uv-release-comparison"
+OUT = REPO / "build/release-comparison"
 EVIDENCE = OUT / "evidence"
 UV = "3392e29bdc4f09bb4f6d92f7aca8d450b835ce4f"
 RUFF = "efcffd2178ce62e9951a53d4c50cadc225a0cfec"
+CODEX = "74004b5397b24662a87a5264a6ae80664168c7f3"
 SUITE = "c0301bc44d175b9b2c5442b25049475c39d7700c"
 EXPECTED = {
     "A": {
@@ -91,6 +93,7 @@ def source_records():
     for name, path, revision in (
         ("uv", REPO / "build/codspeed-sources/uv", UV),
         ("ruff", REPO / "build/codspeed-sources/ruff", RUFF),
+        ("codex", REPO / "build/codspeed-sources/codex/codex-rs", CODEX),
         ("rustc-perf", REPO / "src/tools/rustc-perf", SUITE),
     ):
         actual = subprocess.check_output(
@@ -122,7 +125,8 @@ def normalized(arm, value):
     return value
 
 
-def main():
+def main(shard):
+    from benchmarks import WORKSPACES
     from capture import COMPILE_ENV
     from test_compiler_walltime import prepare_invocation
 
@@ -194,17 +198,19 @@ def main():
             sys.executable, str(Path(__file__).with_name("prepare.py")),
             "--rustc", runtimes[arm]["rustc"]["path"],
             "--cargo", runtimes[arm]["cargo"]["path"],
-            "--shard", "uv-release-resolver", "--output", str(PREPARED[arm]),
+            "--shard", shard, "--output", str(PREPARED[arm]),
         ]
         save(f"prepare-{arm}-command.json", {"argv": command, "env": environment})
+        print(f"Preparing {shard} for arm {arm}", flush=True)
         with (EVIDENCE / f"prepare-{arm}.stdout.txt").open("wb") as stdout, (EVIDENCE / f"prepare-{arm}.stderr.txt").open("wb") as stderr:
             subprocess.run(command, check=True, stdout=stdout, stderr=stderr)
+        print(f"Prepared {shard} for arm {arm}", flush=True)
         manifest_path = PREPARED[arm] / "manifest.json"
         manifest = json.loads(manifest_path.read_text())
         if len(manifest["fixtures"]) != 1:
             raise ValueError("Expected exactly one prepared Release fixture")
         fixture = manifest["fixtures"][0]
-        if not (fixture["name"] == "uv-release-resolver" and fixture["profile"] == "release" and fixture["source_revision"] == UV):
+        if not (fixture["name"] == shard and fixture["profile"] == "release" and fixture["source_revision"] == WORKSPACES[shard]["revision"]):
             raise ValueError("Wrong Release fixture")
         if any(key not in COMPILE_ENV and not key.startswith(("CARGO_PKG_", "CARGO_FEATURE_")) for key in fixture["env"]):
             raise ValueError("Unreviewed environment key in captured manifest")
@@ -213,7 +219,7 @@ def main():
         if "opt-level=3" not in fixture["command"] or "--emit=dep-info,metadata,link" not in fixture["command"]:
             raise ValueError("Captured command is not the expected optimized library build")
         shutil.copy2(manifest_path, EVIDENCE / f"manifest-{arm}.json")
-        shutil.copy2(PREPARED[arm] / "uv-release-resolver.json", EVIDENCE / f"capture-{arm}.json")
+        shutil.copy2(PREPARED[arm] / f"{shard}.json", EVIDENCE / f"capture-{arm}.json")
         fixtures[arm] = fixture
         args, kwargs = prepare_invocation(fixture, "Full")
         invocations[arm] = {"argv": args[0], "cwd": kwargs["cwd"], "env": kwargs["env"]}
@@ -230,7 +236,7 @@ def main():
     result = {
         "status": "running", "role": "one-off descriptive walltime comparison",
         "baseline": EXPECTED["A"], "candidate": EXPECTED["B"],
-        "case": "uv-release-resolver-Full", "scenario": "Full",
+        "case": f"{shard}-Full", "scenario": "Full",
         "planned_warmups": 2, "planned_measured": 12,
         "preparation_leaf_compilations": 2,
         "order": "warm AB; measured ABBA ABBA ABBA",
@@ -284,9 +290,11 @@ def main():
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] == ["--check-artifacts"]:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check-artifacts", action="store_true")
+    parser.add_argument("--shard", choices=("uv-release-resolver", "codex-release-protocol"), default="uv-release-resolver")
+    args = parser.parse_args()
+    if args.check_artifacts:
         check_artifacts()
-    elif not sys.argv[1:]:
-        main()
     else:
-        raise SystemExit("Only --check-artifacts or the default comparison is supported")
+        main(args.shard)

@@ -1,20 +1,28 @@
-name: UV Release artifact comparison (107 vs 108)
+name: Release artifact comparison (107 vs 108)
 
 # Temporary experiment on this registered workflow path; no push/PR trigger.
 on:
   workflow_dispatch:
+    inputs:
+      shard:
+        description: Release workload to compare
+        type: choice
+        options:
+          - uv-release-resolver
+          - codex-release-protocol
+        default: codex-release-protocol
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: uv-release-artifact-comparison-107-108
+  group: release-artifact-comparison-107-108
   cancel-in-progress: false
 
 jobs:
   compare:
-    name: Raw UV Release walltime (107 vs 108)
+    name: Raw Release walltime (107 vs 108, ${{ inputs.shard }})
     runs-on: codspeed-macro
     timeout-minutes: 50
     steps:
@@ -38,7 +46,7 @@ jobs:
           artifact-ids: 9926674271
           github-token: ${{ github.token }}
           digest-mismatch: error
-          path: build/uv-release-comparison/downloads/A
+          path: build/release-comparison/downloads/A
 
       - name: Download exact 108 compiler artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -48,14 +56,14 @@ jobs:
           artifact-ids: 9946685343
           github-token: ${{ github.token }}
           digest-mismatch: error
-          path: build/uv-release-comparison/downloads/B
+          path: build/release-comparison/downloads/B
 
       - name: Unpack the independent toolchains
         run: |
           for arm in A B; do
-            mkdir -p "build/uv-release-comparison/toolchains/$arm"
-            tar -xzf "build/uv-release-comparison/downloads/$arm/codspeed-toolchain.tar.gz" \
-              --no-same-owner -C "build/uv-release-comparison/toolchains/$arm"
+            mkdir -p "build/release-comparison/toolchains/$arm"
+            tar -xzf "build/release-comparison/downloads/$arm/codspeed-toolchain.tar.gz" \
+              --no-same-owner -C "build/release-comparison/toolchains/$arm"
           done
 
       # prepare.py verifies these sources even for a workspace-only shard.
@@ -78,6 +86,14 @@ jobs:
           path: build/codspeed-sources/uv
           persist-credentials: false
 
+      - name: Checkout pinned Codex workspace
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: openai/codex
+          ref: 74004b5397b24662a87a5264a6ae80664168c7f3
+          path: build/codspeed-sources/codex
+          persist-credentials: false
+
       - name: Install pinned uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
@@ -87,9 +103,9 @@ jobs:
       - name: Prepare the existing pinned Python harness
         # No inherited private index credentials or user configuration.
         run: |
-          env -i PATH="$PATH" HOME="$HOME" UV_CACHE_DIR="$PWD/build/uv-release-python-cache" \
+          env -i PATH="$PATH" HOME="$HOME" UV_CACHE_DIR="$PWD/build/release-python-cache" \
             uv --no-config venv --python 3.13.15 src/tools/codspeed/.venv
-          env -i PATH="$PATH" HOME="$HOME" UV_CACHE_DIR="$PWD/build/uv-release-python-cache" \
+          env -i PATH="$PATH" HOME="$HOME" UV_CACHE_DIR="$PWD/build/release-python-cache" \
             uv --no-config pip sync --python src/tools/codspeed/.venv/bin/python \
             --default-index https://pypi.org/simple --require-hashes src/tools/codspeed/requirements.txt
 
@@ -98,19 +114,21 @@ jobs:
           src/tools/codspeed/.venv/bin/python -m pytest
           src/tools/codspeed/test_harness.py src/tools/codspeed/test_walltime_results.py
 
-      - name: Prepare separate dependencies and measure warm AB then ABBA three times
+      - name: Prepare dependencies and compare Release compilation
         # The Python process replaces its inherited env before preparation and
         # compiler calls. Setup/source restoration/JSON writes are not timed.
         # A process-group timeout leaves time for evidence upload within 50 min.
+        env:
+          SHARD: ${{ inputs.shard }}
         run: >-
           timeout --signal=TERM --kill-after=30s 44m
-          src/tools/codspeed/.venv/bin/python src/tools/codspeed/compare_release_artifacts.py
+          src/tools/codspeed/.venv/bin/python src/tools/codspeed/compare_release_artifacts.py --shard "$SHARD"
 
       - name: Retain raw comparison evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: uv-release-107-108-raw-${{ github.run_id }}-${{ github.run_attempt }}
-          path: build/uv-release-comparison/evidence
+          name: release-${{ inputs.shard }}-107-108-raw-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/release-comparison/evidence
           if-no-files-found: warn
           retention-days: 14
