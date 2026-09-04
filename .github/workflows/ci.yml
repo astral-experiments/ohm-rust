@@ -149,6 +149,13 @@ jobs:
           --compiletest-rustc-args=-Zincremental-verify-ich
           tests/incremental/hygiene tests/incremental/derive_macro_expansion
           tests/incremental/promote-cached-query-value.rs
+          tests/incremental/forward-cached-query-value.rs
+
+      - name: Run retained allocation identity test
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1 compiler/rustc_middle
+          --test-args aliases_preserve_allocation_identity
 
       - name: Run incremental directory copy tests
         run: >-
