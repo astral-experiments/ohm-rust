@@ -1,0 +1,8 @@
+error: requires `sized` lang_item
+  --> $DIR/anon-const-requires-sized-lang-item.rs:7:24
+   |
+LL | type Chosen = BitsImpl<7>;
+   |                        ^
+
+error: aborting due to 1 previous error
+
