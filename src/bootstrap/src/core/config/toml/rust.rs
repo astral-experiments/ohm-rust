@@ -62,6 +62,7 @@ define_config! {
         remap_debuginfo: Option<bool> = "remap-debuginfo",
         // FIXME: Remove this option in Q1 2027
         jemalloc: Option<bool> = "jemalloc",
+        mimalloc: Option<bool> = "mimalloc",
         test_compare_mode: Option<bool> = "test-compare-mode",
         llvm_libunwind: Option<String> = "llvm-libunwind",
         control_flow_guard: Option<bool> = "control-flow-guard",
@@ -348,6 +349,7 @@ pub fn check_incompatible_options_for_ci_rustc(
         stack_protector,
         strip,
         jemalloc,
+        mimalloc,
         rpath,
         channel,
         default_linker,
@@ -419,6 +421,7 @@ pub fn check_incompatible_options_for_ci_rustc(
     err!(current_rust_config.llvm_tools, llvm_tools, "rust");
     err!(current_rust_config.llvm_bitcode_linker, llvm_bitcode_linker, "rust");
     err!(current_rust_config.jemalloc, jemalloc, "rust");
+    err!(current_rust_config.mimalloc, mimalloc, "rust");
     err!(current_rust_config.default_linker, default_linker, "rust");
     err!(current_rust_config.stack_protector, stack_protector, "rust");
     err!(current_rust_config.std_features, std_features, "rust");
