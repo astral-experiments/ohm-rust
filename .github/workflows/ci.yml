@@ -155,6 +155,7 @@ jobs:
           --compiletest-rustc-args=-Zthreads=8
           --compiletest-rustc-args=-Zincremental-verify-ich
           tests/incremental/hygiene tests/incremental/derive_macro_expansion
+          tests/incremental/promote-cached-query-value.rs
 
       - name: Run incremental directory copy tests
         run: >-
