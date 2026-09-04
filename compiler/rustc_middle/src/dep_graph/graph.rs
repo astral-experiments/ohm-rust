@@ -1111,21 +1111,23 @@ impl DepGraph {
         let _prof_timer = tcx.prof.generic_activity("incr_comp_query_cache_promotion");
 
         let data = self.data.as_ref().unwrap();
-        for prev_index in data.colors.values.indices() {
-            match data.colors.get(prev_index) {
-                DepNodeColor::Green(dep_node_index) => {
-                    let dep_node = data.previous.index_to_node(prev_index);
-                    if let Some(promote_fn) =
-                        tcx.dep_kind_vtable(dep_node.kind).promote_from_disk_fn
-                    {
-                        promote_fn(tcx, *dep_node, prev_index, dep_node_index)
-                    };
-                }
-                DepNodeColor::Unknown | DepNodeColor::Red => {
-                    // We can skip red nodes because a node can only be marked
-                    // as red if the query result was recomputed and thus is
-                    // already in memory.
-                }
+        let previous_node_count = data.colors.values.len();
+        let on_disk_cache = tcx.query_system.on_disk_cache.as_ref().unwrap();
+
+        // Only nodes with saved query values can need promotion. Avoid scanning the entire old
+        // graph and recovering keys for queries that never had a disk-cached value.
+        for prev_index in on_disk_cache.cached_query_indices() {
+            // Ignore invalid cache entries that the old graph could not have referenced.
+            if prev_index.as_usize() >= previous_node_count {
+                continue;
+            }
+            let DepNodeColor::Green(dep_node_index) = data.colors.get(prev_index) else {
+                // Red nodes were recomputed and their values are already in memory.
+                continue;
+            };
+            let dep_node = data.previous.index_to_node(prev_index);
+            if let Some(promote_fn) = tcx.dep_kind_vtable(dep_node.kind).promote_from_disk_fn {
+                promote_fn(tcx, *dep_node, prev_index, dep_node_index)
             }
         }
     }
