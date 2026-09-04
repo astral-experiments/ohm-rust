@@ -1101,33 +1101,25 @@ impl DepGraph {
         let _prof_timer = tcx.prof.generic_activity("incr_comp_query_cache_promotion");
 
         let data = self.data.as_ref().unwrap();
-        const PROMOTION_CHUNK_SIZE: usize = 4096;
         let previous_node_count = data.colors.values.len();
+        let on_disk_cache = tcx.query_system.on_disk_cache.as_ref().unwrap();
 
-        // Each old node has a unique query key, and deserialization forbids executing queries.
-        // Disjoint ranges can therefore populate the query caches independently. Chunk the index
-        // range so the parallel iterator does not allocate an entry for every old dep node.
-        // The scoped parallel operation preserves query TLS and joins before the caller closes
-        // the previous session's query-cache mmap.
-        par_for_each_in((0..previous_node_count).step_by(PROMOTION_CHUNK_SIZE), |&start| {
-            let end = (start + PROMOTION_CHUNK_SIZE).min(previous_node_count);
-            for index in start..end {
-                let prev_index = SerializedDepNodeIndex::from_usize(index);
-                match data.colors.get(prev_index) {
-                    DepNodeColor::Green(dep_node_index) => {
-                        let dep_node = data.previous.index_to_node(prev_index);
-                        if let Some(promote_fn) =
-                            tcx.dep_kind_vtable(dep_node.kind).promote_from_disk_fn
-                        {
-                            promote_fn(tcx, *dep_node, prev_index, dep_node_index)
-                        };
-                    }
-                    DepNodeColor::Unknown | DepNodeColor::Red => {
-                        // We can skip red nodes because a node can only be marked
-                        // as red if the query result was recomputed and thus is
-                        // already in memory.
-                    }
-                }
+        // Only nodes with saved query values can need promotion. Avoid scanning the entire old
+        // graph and recovering keys for queries that never had a disk-cached value.
+        // Each index has a unique query key, and deserialization cannot execute queries, so these
+        // promotions remain independent. The scoped operation joins before the mmap is closed.
+        par_for_each_in(on_disk_cache.cached_query_indices(), |&prev_index| {
+            // Ignore invalid cache entries that the old graph could not have referenced.
+            if prev_index.as_usize() >= previous_node_count {
+                return;
+            }
+            let DepNodeColor::Green(dep_node_index) = data.colors.get(prev_index) else {
+                // Red nodes were recomputed and their values are already in memory.
+                return;
+            };
+            let dep_node = data.previous.index_to_node(prev_index);
+            if let Some(promote_fn) = tcx.dep_kind_vtable(dep_node.kind).promote_from_disk_fn {
+                promote_fn(tcx, *dep_node, prev_index, dep_node_index)
             }
         });
     }
