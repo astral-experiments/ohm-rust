@@ -1,0 +1,17 @@
+error[E0597]: `value` does not live long enough
+  --> $DIR/copy-proofs-region-bound.rs:13:27
+   |
+LL |     let value = 7;
+   |         ----- binding `value` declared here
+LL |     let data = OnlyStatic(&value);
+   |                           ^^^^^^ borrowed value does not live long enough
+...
+LL |     consume(data);
+   |             ---- copying this value requires that `value` is borrowed for `'static`
+...
+LL | }
+   | - `value` dropped here while still borrowed
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0597`.

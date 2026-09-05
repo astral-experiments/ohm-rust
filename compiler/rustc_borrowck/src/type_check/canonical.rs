@@ -5,7 +5,7 @@ use rustc_infer::infer::canonical::Canonical;
 use rustc_infer::infer::outlives::env::RegionBoundPairs;
 use rustc_middle::bug;
 use rustc_middle::mir::{Body, ConstraintCategory};
-use rustc_middle::ty::{self, Ty, TyCtxt, TypeFoldable, Unnormalized, Upcast};
+use rustc_middle::ty::{self, Ty, TyCtxt, TypeFoldable, TypeVisitableExt, Unnormalized, Upcast};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_trait_selection::traits::ObligationCause;
@@ -18,6 +18,8 @@ use crate::diagnostics::ToUniverseInfo;
 use crate::type_check::{MirTypeckRegionConstraints, constraint_conversion};
 use crate::universal_regions::UniversalRegions;
 
+/// Returns the output, a flag indicating no raw region constraints and no new universes,
+/// and any error information that was not consumed to explain new universes.
 #[instrument(skip(infcx, constraints, op), level = "trace")]
 pub(crate) fn fully_perform_op_raw<'tcx, R: fmt::Debug, Op>(
     infcx: &BorrowckInferCtxt<'tcx>,
@@ -29,14 +31,14 @@ pub(crate) fn fully_perform_op_raw<'tcx, R: fmt::Debug, Op>(
     locations: Locations,
     category: ConstraintCategory<'tcx>,
     op: Op,
-) -> Result<R, ErrorGuaranteed>
+) -> Result<(R, bool, Option<Op::ErrorInfo>), ErrorGuaranteed>
 where
     Op: type_op::TypeOp<'tcx, Output = R>,
     Op::ErrorInfo: ToUniverseInfo<'tcx>,
 {
     let old_universe = infcx.universe();
 
-    let TypeOpOutput { output, constraints: query_constraints, error_info } =
+    let TypeOpOutput { output, constraints: query_constraints, mut error_info } =
         op.fully_perform(infcx, infcx.root_def_id, locations.span(body))?;
     if cfg!(debug_assertions) {
         let data = infcx.take_and_reset_region_constraints();
@@ -65,7 +67,7 @@ where
     // cause of these new universes for improved diagnostics.
     let universe = infcx.universe();
     if old_universe != universe
-        && let Some(error_info) = error_info
+        && let Some(error_info) = error_info.take()
     {
         let universe_info = error_info.to_universe_info(old_universe);
         for u in (old_universe + 1)..=universe {
@@ -73,7 +75,7 @@ where
         }
     }
 
-    Ok(output)
+    Ok((output, query_constraints.is_none() && old_universe == universe, error_info))
 }
 
 impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
@@ -109,6 +111,7 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
             category,
             op,
         )
+        .map(|(output, _, _)| output)
     }
 
     pub(super) fn instantiate_canonical<T>(
@@ -176,11 +179,51 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
     ) {
         let param_env = self.infcx.param_env;
         let predicate = predicate.upcast(self.tcx());
-        let _: Result<_, ErrorGuaranteed> = self.fully_perform_op(
+        let cacheable = !cfg!(debug_assertions)
+            && matches!(category, ConstraintCategory::CopyBound)
+            && !self.infcx.next_trait_solver()
+            && !self.infcx.disable_trait_solver_fast_paths()
+            && self.infcx.num_open_snapshots() == 0
+            && !predicate.has_non_region_infer()
+            && !predicate.has_aliases()
+            && !predicate.references_error()
+            && !param_env.has_non_region_infer()
+            && !param_env.references_error()
+            && {
+                // A cached proof must not bypass the normal scraping of pending constraints
+                // or depend on an opaque type whose hidden value can still change.
+                let mut inner = self.infcx.inner.borrow_mut();
+                inner.region_obligations().is_empty()
+                    && inner.region_assumptions().is_empty()
+                    && inner.opaque_types().is_empty()
+                    && inner.unwrap_region_constraints().data().is_empty()
+            };
+        if cacheable && self.proven_copy_predicates.contains(&predicate) {
+            return;
+        }
+
+        let result = fully_perform_op_raw(
+            self.infcx,
+            self.body,
+            self.universal_regions,
+            self.region_bound_pairs,
+            self.known_type_outlives_obligations,
+            self.constraints,
             locations,
             category,
             param_env.and(type_op::prove_predicate::ProvePredicate { predicate }),
         );
+        // Keep every region identity in the key and require an actual, effect-free proof.
+        // A converted constraint list can be empty even when raw constraints mattered.
+        // The type-op interface also permits ambiguous query responses, so check certainty
+        // through the already-cached query before retaining a successful Copy proof.
+        if cacheable
+            && let Ok(((), true, Some(goal))) = result
+            && !self.infcx.has_opaque_types_in_storage()
+            && self.tcx().type_op_prove_predicate(goal).is_ok_and(|r| r.value.is_proven())
+        {
+            self.proven_copy_predicates.insert(predicate);
+        }
     }
 
     pub(super) fn normalize<T>(

@@ -5,7 +5,7 @@ use std::{fmt, iter, mem};
 
 use rustc_abi::FieldIdx;
 use rustc_data_structures::frozen::Frozen;
-use rustc_data_structures::fx::{FxIndexMap, FxIndexSet};
+use rustc_data_structures::fx::{FxHashSet, FxIndexMap, FxIndexSet};
 use rustc_errors::ErrorGuaranteed;
 use rustc_hir as hir;
 use rustc_hir::def::DefKind;
@@ -155,6 +155,7 @@ pub(crate) fn type_check<'tcx>(
         region_bound_pairs: &region_bound_pairs,
         known_type_outlives_obligations: &known_type_outlives_obligations,
         reported_errors: Default::default(),
+        proven_copy_predicates: Default::default(),
         universal_regions: &universal_region_relations.universal_regions,
         location_table,
         polonius_facts,
@@ -241,6 +242,9 @@ struct TypeChecker<'a, 'tcx> {
     region_bound_pairs: &'a RegionBoundPairs<'tcx>,
     known_type_outlives_obligations: &'a [ty::PolyTypeOutlivesPredicate<'tcx>],
     reported_errors: FxIndexSet<(Ty<'tcx>, Span)>,
+    /// Proven Copy predicates whose evaluation produces no location-dependent effects.
+    /// The parameter environment and inference context are fixed for this type checker.
+    proven_copy_predicates: FxHashSet<ty::Predicate<'tcx>>,
     universal_regions: &'a UniversalRegions<'tcx>,
     location_table: &'a PoloniusLocationTable,
     polonius_facts: &'a mut Option<PoloniusFacts>,
