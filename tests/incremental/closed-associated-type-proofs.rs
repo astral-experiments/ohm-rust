@@ -22,4 +22,26 @@ impl Storage for B {
     //[bfail2]~^ ERROR the trait bound `[u8; 4]: Required` is not satisfied
 }
 
+// A shared concrete definition must not hide an associated type's own
+// Self-dependent where clause when one impl loses its required bound.
+trait Bound {}
+struct Good;
+struct Bad;
+impl Bound for Good {}
+#[cfg(bpass1)]
+impl Bound for Bad {}
+
+trait ConditionalStorage {
+    type Value: Copy
+    where
+        Self: Bound;
+}
+impl ConditionalStorage for Good {
+    type Value = u8;
+}
+impl ConditionalStorage for Bad {
+    type Value = u8;
+    //[bfail2]~^ ERROR the trait bound `Bad: Bound` is not satisfied
+}
+
 fn main() {}
