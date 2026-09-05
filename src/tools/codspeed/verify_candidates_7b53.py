@@ -36,6 +36,8 @@ CANDIDATES = {
     "interner_cache": ("c320a2b6ad359b0e8a36d694780a25415b7a0360", 33973762897),
     "wf_nominal": ("33036e29a96f566733bc26bc3ba12ed0c13400f8", 33973833734),
     "hir_trait_proofs": ("7442c4ca9ea86b089bc36616bfbb873908c34f9c", 33974598690),
+    "wf_reference": ("928d323cc522b25aa52ed0cb9a23466df18c9f87", 33975415242),
+    "local_wf": ("5bcf3b8256639ecfb531de1dc3873721e197a7eb", 33976115645),
 }
 
 
@@ -686,7 +688,7 @@ def main():
                         ("E0119", "conflicting implementations of trait `Coherent` for type `Duplicate`"),
                     ), **controls,
                 )
-        if kind in ("wf_adt", "wf_nominal"):
+        if kind in ("wf_adt", "wf_nominal", "wf_reference"):
             for solver in ("current", "next", "slow"):
                 controls = {
                     "revision": solver,
@@ -720,7 +722,7 @@ def main():
                     errors=(("E0072", "recursive type `Invalid` has infinite size"),),
                     **controls,
                 )
-        if kind == "wf_nominal":
+        if kind in ("wf_nominal", "wf_reference"):
             for solver in ("current", "next", "slow"):
                 controls = {
                     "next_solver": solver == "next",
@@ -756,6 +758,83 @@ def main():
                         execute=False, extra_flags=("--emit=metadata",),
                         errors=((None, "lifetime may not live long enough"),) * 2
                         if revision == "bfail2" else (), **controls,
+                    )
+        if kind in ("wf_reference", "local_wf"):
+            for solver in ("current", "next", "slow"):
+                controls = {
+                    "revision": solver,
+                    "next_solver": solver == "next",
+                    "disable_fast_paths": solver == "slow",
+                }
+                check(f"direct-outlives-{solver}", "tests/ui/ohm/direct-outlives.rs", **controls)
+                check(
+                    f"direct-outlives-lifetimes-{solver}",
+                    "tests/ui/ohm/direct-outlives-lifetimes.rs",
+                    errors=(
+                        (None, "lifetime may not live long enough"),
+                        (None, "lifetime may not live long enough"),
+                        ("E0521", "borrowed data escapes outside of function"),
+                        ("E0521", "borrowed data escapes outside of function"),
+                        ("E0310", "the parameter type `T` may not live long enough"),
+                        ("E0309", "the parameter type `T` may not live long enough"),
+                        ("E0310", "the associated type `<T as Project>::Output` may not live long enough"),
+                    ), **controls,
+                )
+                check(
+                    f"direct-outlives-higher-ranked-{solver}",
+                    "tests/ui/ohm/direct-outlives-higher-ranked.rs",
+                    errors=(
+                        ("E0521", "borrowed data escapes outside of function"),
+                        ("E0521", "borrowed data escapes outside of function"),
+                        (None, "lifetime may not live long enough"),
+                    ), **controls,
+                )
+                check(
+                    f"direct-outlives-local-{solver}",
+                    "tests/ui/ohm/direct-outlives-local.rs",
+                    errors=(("E0597", "`local` does not live long enough"),), **controls,
+                )
+                if kind == "wf_reference":
+                    check(f"wf-reference-{solver}", "tests/ui/ohm/wf-reference.rs", **controls)
+                    check(
+                        f"wf-reference-lifetimes-{solver}",
+                        "tests/ui/ohm/wf-reference-lifetimes.rs",
+                        errors=((None, "lifetime may not live long enough"),)
+                        + (("E0309", "the parameter type `T` may not live long enough"),) * 4
+                        + (("E0597", "`value` does not live long enough"),),
+                        required_spans=(
+                            (10, 5, 27, True, "requires that `'b` must outlive `'a`"),
+                            (15, 5, 21, True, "...so that the type `T` will meet its required lifetime bounds"),
+                            (20, 5, 29, True, "...so that the type `T` will meet its required lifetime bounds"),
+                            (25, 5, 28, True, "...so that the type `T` will meet its required lifetime bounds"),
+                            (30, 5, 36, True, "...so that the type `T` will meet its required lifetime bounds"),
+                            (36, 20, 26, True, "borrowed value does not live long enough"),
+                        ), **controls,
+                    )
+                    check(
+                        f"wf-reference-fallback-{solver}",
+                        "tests/ui/ohm/wf-reference-fallback.rs",
+                        errors=(("E0277", "the trait bound `NotClone: Clone` is not satisfied"),)
+                        * (2 if solver == "next" else 1) + (
+                            ("E0309", "the associated type `<T as Project>::Output` may not live long enough"),
+                            (None, "lifetime may not live long enough"),
+                            ("E0521", "borrowed data escapes outside of function"),
+                        ), **controls,
+                    )
+                else:
+                    check(f"local-wf-{solver}", "tests/ui/ohm/local-wf.rs", **controls)
+                    check(
+                        f"local-wf-lifetimes-{solver}", "tests/ui/ohm/local-wf-lifetimes.rs",
+                        errors=(("E0309", "the parameter type `T` may not live long enough"),)
+                        + ((None, "lifetime may not live long enough"),) * 5, **controls,
+                    )
+                    check(
+                        f"local-wf-bounds-{solver}", "tests/ui/ohm/local-wf-bounds.rs",
+                        errors=(
+                            ("E0277", "the size for values of type `T` cannot be known at compilation time"),
+                            ("E0277", "the trait bound `String: Copy` is not satisfied"),
+                        ) * (2 if solver == "next" else 1)
+                        + (("E0038", "the trait `NotDyn` is not dyn compatible"),), **controls,
                     )
         if kind == "early_sized":
             for solver in ("current", "next", "slow"):
