@@ -1,0 +1,25 @@
+error[E0597]: `local` does not live long enough
+  --> $DIR/direct-outlives-local.rs:11:22
+   |
+LL | fn local_borrow<'a>(_: &'a ()) {
+   |                 -- lifetime `'a` defined here
+LL |     let local = String::from("local");
+   |         ----- binding `local` declared here
+LL |     require::<'a, _>(&local);
+   |     -----------------^^^^^^-
+   |     |                |
+   |     |                borrowed value does not live long enough
+   |     argument requires that `local` is borrowed for `'a`
+LL |     //~^ ERROR `local` does not live long enough
+LL | }
+   | - `local` dropped here while still borrowed
+   |
+note: requirement that the value outlives `'a` introduced here
+  --> $DIR/direct-outlives-local.rs:7:19
+   |
+LL | fn require<'a, T: 'a>(_: T) {}
+   |                   ^^
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0597`.

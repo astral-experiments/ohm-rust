@@ -96,7 +96,18 @@ pub trait QueryTypeOp<'tcx>: fmt::Debug + Copy + TypeFoldable<TyCtxt<'tcx>> + 't
         span: Span,
     ) -> Result<Self::QueryResponse, NoSolution>;
 
-    /// Runs the canonical query after the caller has checked `try_fast_path`.
+    /// Performs an old-solver operation by registering region constraints directly.
+    ///
+    /// Called inside the operation's inference transaction. Success must not create
+    /// universes or leave pending obligations; returning `None` must not change inference.
+    fn try_perform_locally(
+        _infcx: &InferCtxt<'tcx>,
+        _key: &ParamEnvAnd<'tcx, Self>,
+    ) -> Option<Self::QueryResponse> {
+        None
+    }
+
+    /// Completes the old-solver operation, using a canonical query when needed.
     fn fully_perform_into(
         query_key: ParamEnvAnd<'tcx, Self>,
         infcx: &InferCtxt<'tcx>,
@@ -111,6 +122,12 @@ pub trait QueryTypeOp<'tcx>: fmt::Debug + Copy + TypeFoldable<TyCtxt<'tcx>> + 't
         ),
         NoSolution,
     > {
+        if !infcx.disable_trait_solver_fast_paths()
+            && let Some(output) = Self::try_perform_locally(infcx, &query_key)
+        {
+            return Ok((output, None, PredicateObligations::new(), Certainty::Proven));
+        }
+
         let mut canonical_var_values = OriginalQueryValues::default();
         let old_param_env = query_key.param_env;
         let canonical_self = infcx.canonicalize_query(query_key, &mut canonical_var_values);

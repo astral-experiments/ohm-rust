@@ -1,0 +1,95 @@
+error: lifetime may not live long enough
+  --> $DIR/direct-outlives-lifetimes.rs:12:5
+   |
+LL | fn regions<'a, 'b>(a: &'a (), b: &'b ()) {
+   |            --  -- lifetime `'b` defined here
+   |            |
+   |            lifetime `'a` defined here
+LL |     require_region::<'a, 'b>(a, b);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^ requires that `'b` must outlive `'a`
+   |
+   = help: consider adding the following bound: `'b: 'a`
+
+error[E0521]: borrowed data escapes outside of function
+  --> $DIR/direct-outlives-lifetimes.rs:17:5
+   |
+LL | fn borrowed<'a>(value: &'a str) {
+   |             --  ----- `value` is a reference that is only valid in the function body
+   |             |
+   |             lifetime `'a` defined here
+LL |     require::<'static, _>(value);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |     |
+   |     `value` escapes the function body here
+   |     argument requires that `'a` must outlive `'static`
+
+error: lifetime may not live long enough
+  --> $DIR/direct-outlives-lifetimes.rs:22:5
+   |
+LL | fn unequal<'a, 'b>(value: Pair<'a, 'b>) {
+   |            --  -- lifetime `'b` defined here
+   |            |
+   |            lifetime `'a` defined here
+LL |     require::<'a, _>(value);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^ argument requires that `'b` must outlive `'a`
+   |
+   = help: consider adding the following bound: `'b: 'a`
+
+error[E0310]: the parameter type `T` may not live long enough
+  --> $DIR/direct-outlives-lifetimes.rs:27:5
+   |
+LL |     require::<'static, _>(value);
+   |     ^^^^^^^^^^^^^^^^^^^^^
+   |     |
+   |     the parameter type `T` must be valid for the static lifetime...
+   |     ...so that the type `T` will meet its required lifetime bounds
+   |
+help: consider adding an explicit lifetime bound
+   |
+LL | fn generic<T: 'static>(value: T) {
+   |             +++++++++
+
+error[E0309]: the parameter type `T` may not live long enough
+  --> $DIR/direct-outlives-lifetimes.rs:32:5
+   |
+LL | fn nested_generic<'a, T>(value: [Option<T>; 1]) {
+   |                   -- the parameter type `T` must be valid for the lifetime `'a` as defined here...
+LL |     require::<'a, _>(value);
+   |     ^^^^^^^^^^^^^^^^ ...so that the type `T` will meet its required lifetime bounds
+   |
+help: consider adding an explicit lifetime bound
+   |
+LL | fn nested_generic<'a, T: 'a>(value: [Option<T>; 1]) {
+   |                        ++++
+
+error[E0310]: the associated type `<T as Project>::Output` may not live long enough
+  --> $DIR/direct-outlives-lifetimes.rs:38:5
+   |
+LL |     require::<'static, _>(value);
+   |     ^^^^^^^^^^^^^^^^^^^^^
+   |     |
+   |     the associated type `<T as Project>::Output` must be valid for the static lifetime...
+   |     ...so that the type `<T as Project>::Output` will meet its required lifetime bounds
+   |
+help: consider adding an explicit lifetime bound
+   |
+LL | fn projection<T: Project>(value: T::Output) where <T as Project>::Output: 'static {
+   |                                             +++++++++++++++++++++++++++++++++++++
+
+error[E0521]: borrowed data escapes outside of function
+  --> $DIR/direct-outlives-lifetimes.rs:43:5
+   |
+LL | fn generic_const<'a, const N: usize>(value: [&'a str; N]) {
+   |                  --                  ----- `value` is a reference that is only valid in the function body
+   |                  |
+   |                  lifetime `'a` defined here
+LL |     require::<'static, _>(value);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |     |
+   |     `value` escapes the function body here
+   |     argument requires that `'a` must outlive `'static`
+
+error: aborting due to 7 previous errors
+
+Some errors have detailed explanations: E0309, E0310, E0521.
+For more information about an error, try `rustc --explain E0309`.

@@ -1,12 +1,17 @@
+use std::ops::ControlFlow;
+
 use rustc_infer::traits::Obligation;
 use rustc_middle::traits::ObligationCause;
 use rustc_middle::traits::query::NoSolution;
 pub use rustc_middle::traits::query::type_op::ProvePredicate;
-use rustc_middle::ty::{self, ParamEnvAnd, TyCtxt};
+use rustc_middle::ty::{
+    self, ParamEnvAnd, Ty, TyCtxt, TypeSuperVisitable, TypeVisitable, TypeVisitableExt, TypeVisitor,
+};
 use rustc_span::Span;
 
+use crate::infer::InferCtxt;
 use crate::infer::canonical::{CanonicalQueryInput, CanonicalQueryResponse};
-use crate::traits::{ObligationCtxt, sizedness_fast_path};
+use crate::traits::{ObligationCtxt, sizedness_fast_path, wf};
 
 impl<'tcx> super::QueryTypeOp<'tcx> for ProvePredicate<'tcx> {
     type QueryResponse = ();
@@ -29,6 +34,119 @@ impl<'tcx> super::QueryTypeOp<'tcx> for ProvePredicate<'tcx> {
         None
     }
 
+    fn try_perform_locally(
+        infcx: &InferCtxt<'tcx>,
+        key: &ParamEnvAnd<'tcx, Self>,
+    ) -> Option<Self::QueryResponse> {
+        let predicate = key.value.predicate.kind();
+        if cfg!(debug_assertions)
+            || !infcx.considering_regions
+            || infcx.tcx.assumptions_on_binders()
+            || !predicate.bound_vars().is_empty()
+            || key.param_env.references_error()
+        {
+            return None;
+        }
+        let ty::PredicateKind::Clause(clause) = predicate.skip_binder() else { return None };
+        if !matches!(
+            clause,
+            ty::ClauseKind::RegionOutlives(_)
+                | ty::ClauseKind::TypeOutlives(_)
+                | ty::ClauseKind::WellFormed(_)
+        ) {
+            return None;
+        }
+        let flags = ty::TypeFlags::HAS_ALIAS
+            | ty::TypeFlags::HAS_ERROR
+            | ty::TypeFlags::HAS_PLACEHOLDER
+            | ty::TypeFlags::HAS_BOUND_VARS
+            | ty::TypeFlags::HAS_RE_ERASED
+            | ty::TypeFlags::HAS_TY_FRESH
+            | ty::TypeFlags::HAS_CT_FRESH
+            | (ty::TypeFlags::HAS_INFER - ty::TypeFlags::HAS_RE_INFER);
+        if key.value.predicate.has_type_flags(flags) {
+            return None;
+        }
+
+        // Prove all requirements before registering constraints in this transaction,
+        // where the normal TypeOp collector drains them.
+        let cause = ObligationCause::dummy();
+        match clause {
+            ty::ClauseKind::RegionOutlives(predicate) => infcx.register_region_outlives_constraint(
+                predicate,
+                ty::VisibleForLeakCheck::Yes,
+                &cause,
+            ),
+            ty::ClauseKind::TypeOutlives(ty::OutlivesPredicate(ty, region)) => {
+                infcx.register_type_outlives_constraint(ty, region, &cause);
+            }
+            ty::ClauseKind::WellFormed(term) => {
+                let ty = term.as_type()?;
+                if ty.visit_with(&mut WfInput { remaining: 64 }).is_break() {
+                    return None;
+                }
+                let obligations = wf::unnormalized_obligations(
+                    infcx,
+                    key.param_env,
+                    term,
+                    cause.span,
+                    cause.body_id,
+                )?;
+                if obligations.len() > 64 {
+                    return None;
+                }
+
+                // Nominal bounds can introduce aliases and binders absent from the input.
+                // Only skip normalization when every generated predicate is also eligible.
+                // These children are handled before fulfillment's general overflow check.
+                for obligation in &obligations {
+                    let predicate = obligation.predicate;
+                    if !predicate.kind().bound_vars().is_empty() || predicate.has_type_flags(flags)
+                    {
+                        return None;
+                    }
+                    match predicate.kind().skip_binder() {
+                        ty::PredicateKind::Clause(
+                            ty::ClauseKind::RegionOutlives(_) | ty::ClauseKind::TypeOutlives(_),
+                        )
+                        | ty::PredicateKind::DynCompatible(_) => {}
+                        _ if sizedness_fast_path(infcx.tcx, predicate, obligation.param_env) => {}
+                        _ => return None,
+                    }
+                }
+
+                // Dyn compatibility can run queries, so first reject every unsupported goal.
+                for obligation in &obligations {
+                    if let ty::PredicateKind::DynCompatible(def_id) =
+                        obligation.predicate.kind().skip_binder()
+                        && !infcx.tcx.is_dyn_compatible(def_id)
+                    {
+                        return None;
+                    }
+                }
+                for obligation in &obligations {
+                    match obligation.predicate.kind().skip_binder() {
+                        ty::PredicateKind::Clause(ty::ClauseKind::RegionOutlives(predicate)) => {
+                            infcx.register_region_outlives_constraint(
+                                predicate,
+                                ty::VisibleForLeakCheck::Yes,
+                                &obligation.cause,
+                            );
+                        }
+                        ty::PredicateKind::Clause(ty::ClauseKind::TypeOutlives(
+                            ty::OutlivesPredicate(ty, region),
+                        )) => {
+                            infcx.register_type_outlives_constraint(ty, region, &obligation.cause);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => unreachable!(),
+        }
+        Some(())
+    }
+
     fn perform_query(
         tcx: TyCtxt<'tcx>,
         canonicalized: CanonicalQueryInput<'tcx, ParamEnvAnd<'tcx, Self>>,
@@ -48,5 +166,83 @@ impl<'tcx> super::QueryTypeOp<'tcx> for ProvePredicate<'tcx> {
             key.value.predicate,
         ));
         Ok(())
+    }
+}
+
+/// Bounds the input traversal and excludes WF paths that inspect hidden types or emit diagnostics.
+/// This only checks the input shape; `wf::unnormalized_obligations` supplies the WF requirements.
+struct WfInput {
+    remaining: u8,
+}
+
+impl WfInput {
+    fn visit_node(&mut self) -> ControlFlow<()> {
+        let Some(remaining) = self.remaining.checked_sub(1) else {
+            return ControlFlow::Break(());
+        };
+        self.remaining = remaining;
+        ControlFlow::Continue(())
+    }
+}
+
+impl<'tcx> TypeVisitor<TyCtxt<'tcx>> for WfInput {
+    type Result = ControlFlow<()>;
+
+    fn visit_ty(&mut self, ty: Ty<'tcx>) -> Self::Result {
+        self.visit_node()?;
+        match ty.kind() {
+            ty::Bool
+            | ty::Char
+            | ty::Int(_)
+            | ty::Uint(_)
+            | ty::Float(_)
+            | ty::Str
+            | ty::Never
+            | ty::Param(_)
+            | ty::Foreign(_)
+            | ty::Adt(..)
+            | ty::Tuple(_)
+            | ty::Ref(..)
+            | ty::RawPtr(..)
+            | ty::Slice(_)
+            | ty::Array(..)
+            | ty::FnPtr(..) => {}
+            ty::Dynamic(predicates, _) => {
+                if predicates.len() > usize::from(self.remaining) {
+                    return ControlFlow::Break(());
+                }
+                self.remaining -= predicates.len() as u8;
+                // Associated const bindings inspect their declared types during WF generation.
+                if predicates
+                    .projection_bounds()
+                    .any(|predicate| predicate.skip_binder().term.as_const().is_some())
+                {
+                    return ControlFlow::Break(());
+                }
+            }
+            _ => return ControlFlow::Break(()),
+        }
+        ty.super_visit_with(self)
+    }
+
+    fn visit_region(&mut self, _region: ty::Region<'tcx>) -> Self::Result {
+        self.visit_node()
+    }
+
+    fn visit_const(&mut self, constant: ty::Const<'tcx>) -> Self::Result {
+        self.visit_node()?;
+        match constant.kind() {
+            ty::ConstKind::Param(_) => ControlFlow::Continue(()),
+            // Aggregate values can inspect ADT fields with min_generic_const_args enabled.
+            ty::ConstKind::Value(value)
+                if matches!(
+                    value.ty.kind(),
+                    ty::Bool | ty::Char | ty::Int(_) | ty::Uint(_) | ty::Float(_)
+                ) =>
+            {
+                constant.super_visit_with(self)
+            }
+            _ => ControlFlow::Break(()),
+        }
     }
 }

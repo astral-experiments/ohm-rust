@@ -1,0 +1,71 @@
+error[E0309]: the parameter type `T` may not live long enough
+  --> $DIR/local-wf-lifetimes.rs:13:13
+   |
+LL | fn nominal_type<'a, T>() {
+   |                 -- the parameter type `T` must be valid for the lifetime `'a` as defined here...
+LL |     let _ = None::<Required<'a, T>>;
+   |             ^^^^^^^^^^^^^^^^^^^^^^^ ...so that the type `T` will meet its required lifetime bounds
+   |
+help: consider adding an explicit lifetime bound
+   |
+LL | fn nominal_type<'a, T: 'a>() {
+   |                      ++++
+
+error: lifetime may not live long enough
+  --> $DIR/local-wf-lifetimes.rs:18:13
+   |
+LL | fn nominal_region<'a, 'b>() {
+   |                   --  -- lifetime `'b` defined here
+   |                   |
+   |                   lifetime `'a` defined here
+LL |     let _ = None::<Regions<'a, 'b>>;
+   |             ^^^^^^^^^^^^^^^^^^^^^^^ requires that `'b` must outlive `'a`
+   |
+   = help: consider adding the following bound: `'b: 'a`
+
+error: lifetime may not live long enough
+  --> $DIR/local-wf-lifetimes.rs:26:13
+   |
+LL | fn dyn_supertraits<'a, 'b>() {
+   |                    --  -- lifetime `'b` defined here
+   |                    |
+   |                    lifetime `'a` defined here
+LL |     let _ = None::<*const (dyn Both<'a> + 'b)>;
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ requires that `'b` must outlive `'a`
+   |
+   = help: consider adding the following bound: `'b: 'a`
+
+error: lifetime may not live long enough
+  --> $DIR/local-wf-lifetimes.rs:38:13
+   |
+LL | fn nominal_alias<'a>() {
+   |                  -- lifetime `'a` defined here
+LL |     let _ = None::<Projected<'a>>;
+   |             ^^^^^^^^^^^^^^^^^^^^^ requires that `'a` must outlive `'static`
+
+error: lifetime may not live long enough
+  --> $DIR/local-wf-lifetimes.rs:45:13
+   |
+LL | fn nominal_forall<'a>() {
+   |                   -- lifetime `'a` defined here
+LL |     let _ = None::<ForAll<&'a ()>>;
+   |             ^^^^^^^^^^^^^^^^^^^^^^ requires that `'a` must outlive `'static`
+   |
+note: due to a current limitation of the type system, this implies a `'static` lifetime
+  --> $DIR/local-wf-lifetimes.rs:42:27
+   |
+LL | struct ForAll<T>(T) where for<'a> T: 'a;
+   |                           ^^^^^^^^^^^^^
+
+error: lifetime may not live long enough
+  --> $DIR/local-wf-lifetimes.rs:52:13
+   |
+LL | fn partial_plan<'a, const N: usize>() {
+   |                 -- lifetime `'a` defined here
+...
+LL |     let _ = None::<(&'static &'a (), [u8; N])>;
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ requires that `'a` must outlive `'static`
+
+error: aborting due to 6 previous errors
+
+For more information about this error, try `rustc --explain E0309`.
