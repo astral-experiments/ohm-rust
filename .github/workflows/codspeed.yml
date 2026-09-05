@@ -57,7 +57,7 @@ jobs:
           path: build/compiler-candidate
           persist-credentials: false
 
-      - name: Apply only the reviewed scheduling change
+      - name: Apply the reviewed codegen change
         run: >-
           python3 src/tools/codspeed/compare_release_artifacts.py
           --prepare-candidate-source build/compiler-candidate

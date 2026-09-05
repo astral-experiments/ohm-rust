@@ -750,27 +750,13 @@ pub fn codegen_crate<
     // Instead, we can compromise by ordering CGUs such that the largest and
     // smallest are first, second largest and smallest are next, etc. If there
     // are large size variations, this can reduce memory usage significantly.
-    let mut codegen_units: Vec<_> = {
+    let codegen_units: Vec<_> = {
         let mut sorted_cgus = codegen_units.iter().collect::<Vec<_>>();
         sorted_cgus.sort_by_key(|cgu| cmp::Reverse(cgu.size_estimate()));
 
         let (first_half, second_half) = sorted_cgus.split_at(sorted_cgus.len() / 2);
         first_half.iter().interleave(second_half.iter().rev()).copied().collect()
     };
-
-    if tcx.sess.opts.incremental.is_none() && codegen_units.len() > 1 {
-        codegen_units.sort_by_cached_key(|cgu| {
-            cmp::Reverse(
-                cgu.items()
-                    .keys()
-                    .map(|item| match item {
-                        MonoItem::Fn(instance) => tcx.instance_mir(instance.def).basic_blocks.len(),
-                        MonoItem::Static(_) | MonoItem::GlobalAsm(_) => 0,
-                    })
-                    .sum::<usize>(),
-            )
-        });
-    }
 
     // Calculate the CGU reuse
     let cgu_reuse = tcx.sess.time("find_cgu_reuse", || {

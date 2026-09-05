@@ -23,8 +23,8 @@ UV = "3392e29bdc4f09bb4f6d92f7aca8d450b835ce4f"
 RUFF = "efcffd2178ce62e9951a53d4c50cadc225a0cfec"
 CODEX = "74004b5397b24662a87a5264a6ae80664168c7f3"
 SUITE = "c0301bc44d175b9b2c5442b25049475c39d7700c"
-CANDIDATE_TREE = "ff43ac080b0e0d21fbcb7491ba5851224d78370c"
-CANDIDATE_PATCH_SHA = "7a46d4bd984ac8134592bebb900cd6d44659115c2d3afd2ba6ca53210571084a"
+CANDIDATE_TREE = "05491635bd49b73847b589f131af795a6b49a477"
+CANDIDATE_PATCH_SHA = "6c061e7e500164c1639d82101185818b930107822a42629ecdddbb3fc8f70379"
 BOOTSTRAP_SHA = "9aa59b04767b1d89a3bc57c52895020423a3a189130820e1e33fb733b47db169"
 EXPECTED = {
     "A": {
@@ -97,7 +97,7 @@ def candidate_source(source, *, prepare):
         subprocess.run(["git", "-C", str(source), "apply", "--index", "-"], input=patch, check=True)
     if (git("write-tree") != CANDIDATE_TREE or git("diff", "--name-only")
             or git("ls-files", "--others", "--exclude-standard")):
-        raise ValueError("Candidate source differs from #107 plus the scheduling patch")
+        raise ValueError("Candidate source differs from #107 plus the reviewed codegen patch")
     if record(source / "src/tools/codspeed/bootstrap.toml")["sha256"] != BOOTSTRAP_SHA:
         raise ValueError("Candidate compiler recipe changed")
     return source
