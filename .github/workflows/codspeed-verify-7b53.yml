@@ -19,9 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - kind: stage1_thin_lto
-            sha: 198269f763718786fcfbd22b82555d9c6d656ab9
-            run: 33982576401
+          - kind: resolved_fold_cache
+            sha: f1266b5556879e70ecb33af080c0668108736e8e
+            run: 33982201018
     steps:
       - name: Checkout validation script
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
