@@ -612,7 +612,7 @@ fn get_flow_results<'a, 'tcx>(
     // We compute these three analyses individually, but them combine them into
     // a single results so that `mbcx` can visit them all together.
     let borrows = Borrows::new(tcx, body, regioncx, borrow_set);
-    let borrows = if borrow_set.len() == 0 {
+    let borrows = if borrow_set.len() == 0 && !tcx.sess.opts.unstable_opts.dump_mir_dataflow {
         // With no loans to generate, the borrow state is empty at every block entry.
         // Avoid traversing the MIR just to compute this fixed point.
         Results {
