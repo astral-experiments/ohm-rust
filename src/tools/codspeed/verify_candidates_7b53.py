@@ -30,6 +30,10 @@ CANDIDATES = {
     "dense_interners": ("ea4e9cc5343eb98dc3d42d0099da8b8416145471", 33971439882),
     "thin_stalled": ("fe7c0d0c1d1a0dfae692641b020ed214364142b5", 33971705326),
     "nested_argfolder": ("8a6a1c5dba9e4136f37e53f58634b41dae59adc3", 33971787859),
+    "copy_adt": ("284f7a09c013ce6fac94e023861309f4f3798ea1", 33972891567),
+    "wf_adt": ("a62dbad7aa17c1f4239e081218090a12f0c33291", 33973221790),
+    "trait_impl_schema": ("f4655021ef46126bed6893d0a5de8aa87bbfc9fe", 33973544227),
+    "interner_cache": ("c320a2b6ad359b0e8a36d694780a25415b7a0360", 33973762897),
 }
 
 
@@ -358,8 +362,8 @@ def main():
                         next_solver=next_solver, threads=threads,
                         errors=(("E0597", "`s` does not live long enough"),),
                     )
-        if kind in ("query_cache", "interner_tables", "packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "nested_argfolder"):
-            thread_counts = (4,) if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "nested_argfolder") else (1, 4)
+        if kind in ("query_cache", "interner_tables", "packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "nested_argfolder", "interner_cache"):
+            thread_counts = (4,) if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "nested_argfolder", "interner_cache") else (1, 4)
             for threads in thread_counts:
                 rlib = output / "bin" / f"liba_threads_{threads}.rlib"
                 auxiliary_cache = output / "incremental" / f"query-cache-aux-{threads}"
@@ -380,7 +384,7 @@ def main():
                         require_loaded=revision != "rpass1",
                         extra_flags=("-Zquery-dep-graph", "--extern", f"a={rlib}"),
                     )
-        if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "nested_argfolder"):
+        if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "nested_argfolder", "interner_cache"):
             for solver in ("current", "next"):
                 next_solver = solver == "next"
                 check(
@@ -476,7 +480,7 @@ def main():
                     next_solver=solver == "next",
                     errors=((None, "lifetime may not live long enough"),),
                 )
-        if kind in ("copy_impl_schema", "lazy_copy"):
+        if kind in ("copy_impl_schema", "lazy_copy", "copy_adt", "trait_impl_schema"):
             fixtures = Path(__file__).resolve().parent / "cases" / "copy_impl_schema"
             for solver in ("current", "next", "slow"):
                 controls = {
@@ -542,6 +546,143 @@ def main():
                         errors=((None, "lifetime may not live long enough"),)
                         if revision == "restricted" else (), **controls,
                     )
+        if kind in ("copy_adt", "trait_impl_schema"):
+            failures = {
+                "lifetimes": ((None, "lifetime may not live long enough"),) * 6,
+                "params": (("E0507", "cannot move out of `*value` which is behind a shared reference"),) * 3,
+                "invalid": (
+                    ("E0204", "the trait `Copy` cannot be implemented for this type"),
+                    ("E0184", "the trait `Copy` cannot be implemented for this type; the type has a destructor"),
+                ),
+                "missing-clone": (("E0277", "the trait bound `MissingClone: Clone` is not satisfied"),),
+                "no-core-invalid": (("E0277", "the trait bound `MissingSupertrait: Required` is not satisfied"),),
+            }
+            for solver in ("current", "next", "slow"):
+                controls = {
+                    "next_solver": solver == "next",
+                    "disable_fast_paths": solver == "slow",
+                }
+                check(
+                    f"schema-adts-{solver}", "tests/ui/ohm/copy-impl-schema-adts.rs",
+                    revision=solver, **controls,
+                )
+                check(
+                    f"schema-adts-no-core-{solver}",
+                    "tests/ui/ohm/copy-impl-schema-adts-no-core.rs", revision=solver,
+                    execute=False, extra_flags=("--emit=metadata",), **controls,
+                )
+                for case, errors in failures.items():
+                    check(
+                        f"schema-adts-{case}-{solver}",
+                        f"tests/ui/ohm/copy-impl-schema-adts-{case}.rs", revision=solver,
+                        errors=errors, **controls,
+                    )
+                cache = output / "incremental" / f"schema-local-{solver}"
+                for phase, revision, errors in (
+                    ("unconditional", "bpass1", ()),
+                    ("restricted", "bfail2", ((None, "lifetime may not live long enough"),) * 2),
+                    ("removed", "removed", (("E0507", "cannot move out of `*value` which is behind a shared reference"),) * 2),
+                    ("restored", "bpass1", ()),
+                ):
+                    check(
+                        f"schema-local-{solver}-{phase}",
+                        "tests/incremental/copy-impl-schema-local.rs", revision=revision,
+                        incremental=cache, require_loaded=phase != "unconditional",
+                        execute=False, extra_flags=("--emit=metadata",), errors=errors,
+                        **controls,
+                    )
+        if kind == "trait_impl_schema":
+            failures = {
+                "arguments": (
+                    (None, "lifetime may not live long enough"),
+                    (None, "lifetime may not live long enough"),
+                    ("E0277", "the trait bound `Unit: ConstArg<2>` is not satisfied"),
+                ),
+                "const-effect": (("E0277", "the trait bound `Ordinary: const Value` is not satisfied"),),
+                "lifetimes": (
+                    ("E0521", "borrowed data escapes outside of function"),
+                    ("E0521", "borrowed data escapes outside of function"),
+                    (None, "lifetime may not live long enough"),
+                    (None, "lifetime may not live long enough"),
+                ),
+                "param-env": ((None, "lifetime may not live long enough"),) * 3,
+            }
+            fixtures = Path(__file__).resolve().parent / "cases" / "trait_impl_schema"
+            for solver in ("current", "next", "slow"):
+                controls = {
+                    "next_solver": solver == "next",
+                    "disable_fast_paths": solver == "slow",
+                }
+                for case in ("basics", "fallbacks"):
+                    check(
+                        f"trait-schema-{case}-{solver}",
+                        f"tests/ui/ohm/trait-impl-schema-{case}.rs", revision=solver,
+                        **controls,
+                    )
+                for case, errors in failures.items():
+                    check(
+                        f"trait-schema-{case}-{solver}",
+                        f"tests/ui/ohm/trait-impl-schema-{case}.rs", revision=solver,
+                        errors=errors, **controls,
+                    )
+                rlib = output / "bin" / f"libproof_traits_{solver}.rmeta"
+                auxiliary_cache = output / "incremental" / f"trait-schema-aux-{solver}"
+                consumer_cache = output / "incremental" / f"trait-schema-consumer-{solver}"
+                for phase, revision, errors in (
+                    ("unconditional", "unconditional", ()),
+                    ("restricted", "restricted", ((None, "lifetime may not live long enough"),)),
+                    ("removed", "removed", (("E0277", "the trait bound `Value<'a>: Changing` is not satisfied"),)),
+                    ("restored", "unconditional", ()),
+                ):
+                    check(
+                        f"trait-schema-incremental-aux-{solver}-{phase}",
+                        str(fixtures / "proof_traits.rs"), revision=revision,
+                        crate_name="proof_traits", artifact=rlib, execute=False,
+                        incremental=auxiliary_cache, require_loaded=phase != "unconditional",
+                        extra_flags=("--crate-type=rlib", "--emit=metadata"), **controls,
+                    )
+                    check(
+                        f"trait-schema-incremental-consumer-{solver}-{phase}",
+                        str(fixtures / "consumer.rs"),
+                        crate_name="trait_schema_consumer", execute=False,
+                        incremental=consumer_cache, require_loaded=phase != "unconditional",
+                        extra_flags=("--crate-type=rlib", "--emit=metadata", "--extern", f"proof_traits={rlib}"),
+                        errors=errors, **controls,
+                    )
+        if kind == "wf_adt":
+            for solver in ("current", "next", "slow"):
+                controls = {
+                    "revision": solver,
+                    "next_solver": solver == "next",
+                    "disable_fast_paths": solver == "slow",
+                }
+                check(f"wf-adts-{solver}", "tests/ui/ohm/wf-adt.rs", **controls)
+                check(
+                    f"wf-adts-lifetimes-{solver}", "tests/ui/ohm/wf-adt-lifetimes.rs",
+                    errors=(
+                        (None, "lifetime may not live long enough"),
+                        (None, "lifetime may not live long enough"),
+                        ("E0309", "the parameter type `T` may not live long enough"),
+                    ), **controls,
+                )
+                check(
+                    f"wf-adts-higher-ranked-{solver}", "tests/ui/ohm/wf-adt-higher-ranked.rs",
+                    errors=(("E0277", "expected an `FnOnce(Local<'a>)` closure, found `fn(Local<'static>) {only_static}`"),)
+                    if solver == "next" else ((None, "implementation of `FnOnce` is not general enough"),) * 2,
+                    **controls,
+                )
+                check(
+                    f"wf-adts-params-{solver}", "tests/ui/ohm/wf-adt-params.rs",
+                    errors=(
+                        ("E0277", "the size for values of type `str` cannot be known at compilation time"),
+                        (None, "the constant `N` is not of type `usize`"),
+                    ) * (2 if solver == "next" else 1), **controls,
+                )
+                check(
+                    f"wf-adts-invalid-{solver}", "tests/ui/ohm/wf-adt-invalid.rs",
+                    errors=(("E0072", "recursive type `Invalid` has infinite size"),),
+                    **controls,
+                )
         if kind == "early_sized":
             for solver in ("current", "next", "slow"):
                 options = {

@@ -19,9 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - kind: nested_argfolder
-            sha: 8a6a1c5dba9e4136f37e53f58634b41dae59adc3
-            run: 33971787859
+          - kind: copy_adt
+            sha: 284f7a09c013ce6fac94e023861309f4f3798ea1
+            run: 33972891567
     steps:
       - name: Checkout validation script
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
