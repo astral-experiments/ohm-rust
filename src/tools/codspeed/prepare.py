@@ -179,7 +179,6 @@ def main():
                 *extra,
                 "--",
                 "-Zthreads=1",
-                "-Zincremental-verify-ich",
             ],
             cwd=cwd,
             env=environment,

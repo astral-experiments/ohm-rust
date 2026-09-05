@@ -335,7 +335,7 @@ def main(shard, cycles):
     result = {
         "status": "running", "role": "descriptive walltime comparison",
         "baseline": EXPECTED["A"], "candidate": EXPECTED["B"],
-        "case": f"{shard}-Full", "scenario": "Full",
+        "case": f"{shard}-Full-NoICH", "scenario": "Full",
         "planned_warmups": 2, "planned_measured": 4 * cycles,
         "preparation_leaf_compilations": 2,
         "leaf_cpu_affinity": leaf_cpus,
