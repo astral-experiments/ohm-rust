@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   style:
+    if: ${{ github.ref != 'refs/heads/charlie/codex-codspeed-span-unit-verify' }}
     name: Formatting and tidy
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 30
@@ -47,6 +48,7 @@ jobs:
           test tidy
 
   compiler:
+    if: ${{ github.ref != 'refs/heads/charlie/codex-codspeed-span-unit-verify' }}
     name: ${{ matrix.os == 'depot-ubuntu-24.04-16' && 'Compiler and regression tests' || 'Compiler and regression tests (macOS)' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -213,3 +215,22 @@ jobs:
             python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true \
               --set rust.lto=off test --stage 1 "${selected[@]}"
           fi
+
+  span_line_cache_unit:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/charlie/codex-codspeed-span-unit-verify' }}
+    name: Verify next-line span cache
+    runs-on: depot-ubuntu-24.04-16
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: e224b42361fa7cfc73a7f7eaf1e21555f4f989bf
+          fetch-depth: 128
+          persist-credentials: false
+      - name: Checkout standard-library backtrace submodule
+        run: git submodule update --init --depth 1 library/backtrace
+      - name: Run span cache unit test
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1 compiler/rustc_span
+          --test-args line_cache_handles_next_line_eof_and_file_switches
