@@ -126,7 +126,7 @@ jobs:
           # Omit per-query keys and individual cache-hit events to bound trace size.
           with (profile / 'rustc-stderr.txt').open('w') as stderr:
               subprocess.run(
-                  [*command, f'-Zself-profile={profile}', '-Zself-profile-events=default', '-Ztime-passes'],
+                  [*command, f'-Zself-profile={profile}', '-Zself-profile-events=default'],
                   stderr=stderr, **kwargs,
               )
           (trace,) = profile.glob('*.mm_profdata')
