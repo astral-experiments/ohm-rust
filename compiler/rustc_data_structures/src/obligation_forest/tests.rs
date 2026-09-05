@@ -179,6 +179,35 @@ fn prepare_children_preserves_parent_and_order() {
 }
 
 #[test]
+fn small_forest_completion_and_spill() {
+    let mut forest = ObligationForest::new();
+    let mut processor = C(|_| ProcessResult::Changed(thin_vec![]), |_| {});
+    forest.register_obligation("A");
+    let outcome = forest.process_obligations(&mut processor);
+    assert_eq!(outcome.completed, vec!["A"]);
+    assert!(outcome.errors.is_empty());
+    // A successful node without dependents needs no cycle stack.
+    assert_eq!(forest.reused_node_vec.capacity(), 0);
+
+    forest.register_obligation("A");
+    assert_eq!(forest.len(), 0);
+
+    // Spill the node storage, then the completed-key storage. The first
+    // completed key must remain cached across both transitions.
+    forest.register_obligation("B");
+    forest.register_obligation("C");
+    let outcome = forest.process_obligations(&mut processor);
+    assert_eq!(outcome.completed, vec!["B", "C"]);
+    assert!(outcome.errors.is_empty());
+    assert_eq!(forest.reused_node_vec.capacity(), 0);
+
+    for obligation in ["A", "B", "C"] {
+        forest.register_obligation(obligation);
+    }
+    assert_eq!(forest.len(), 0);
+}
+
+#[test]
 fn push_pop() {
     let mut forest = ObligationForest::new();
     forest.register_obligation("A");

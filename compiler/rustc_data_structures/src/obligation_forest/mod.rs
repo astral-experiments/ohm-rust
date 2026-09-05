@@ -167,10 +167,10 @@ pub struct ObligationForest<O: ForestObligation> {
     /// [`rustc_index::newtype_index!`] indices, because this code is hot enough
     /// that the `u32`-to-`usize` conversions that would be required are
     /// significant, and space considerations are not important.
-    nodes: Vec<Node<O>>,
+    nodes: SmallVec<[Node<O>; 1]>,
 
     /// A cache of predicates that have been successfully completed.
-    done_cache: FxHashSet<O::CacheKey>,
+    done_cache: DoneCache<O::CacheKey>,
 
     /// A cache of the nodes in `nodes`, indexed by predicate. Unfortunately,
     /// its contents are not guaranteed to match those of `nodes`. See the
@@ -191,6 +191,43 @@ pub struct ObligationForest<O: ForestObligation> {
     ///
     /// [details]: https://github.com/rust-lang/rust/pull/53255#issuecomment-421184780
     error_cache: FxHashMap<ObligationTreeId, FxHashSet<O::CacheKey>>,
+}
+
+/// Keeps the first completed obligation inline for small, short-lived forests.
+enum DoneCache<K> {
+    One(Option<K>),
+    Many(FxHashSet<K>),
+}
+
+impl<K> Default for DoneCache<K> {
+    fn default() -> Self {
+        Self::One(None)
+    }
+}
+
+impl<K: Eq + hash::Hash> DoneCache<K> {
+    fn contains(&self, key: &K) -> bool {
+        match self {
+            Self::One(first) => first.as_ref() == Some(key),
+            Self::Many(set) => set.contains(key),
+        }
+    }
+
+    fn insert(&mut self, key: K) {
+        match self {
+            Self::One(None) => *self = Self::One(Some(key)),
+            Self::One(Some(first)) if *first == key => {}
+            Self::One(first) => {
+                let mut set = FxHashSet::default();
+                set.extend(first.take());
+                set.insert(key);
+                *self = Self::Many(set);
+            }
+            Self::Many(set) => {
+                set.insert(key);
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -332,7 +369,7 @@ mod helper {
         #[define_opaque(ObligationTreeIdGenerator)]
         pub fn new() -> ObligationForest<O> {
             ObligationForest {
-                nodes: vec![],
+                nodes: smallvec![],
                 done_cache: Default::default(),
                 active_cache: Default::default(),
                 reused_node_vec: vec![],
@@ -638,6 +675,10 @@ impl<O: ForestObligation> ObligationForest<O> {
     {
         let node = &self.nodes[index];
         if node.state.get() == NodeState::Success {
+            if node.dependents.is_empty() {
+                node.state.set(NodeState::Done);
+                return;
+            }
             match stack.iter().rposition(|&n| n == index) {
                 None => {
                     stack.push(index);
