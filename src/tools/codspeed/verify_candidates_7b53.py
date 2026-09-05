@@ -25,6 +25,9 @@ CANDIDATES = {
     "packed_aliases": ("778457af4760eb79cd2b047d5a67a2729411ee4f", 33969983049),
     "interned_arenas": ("00b45135ef5d7be659351ce89c8b63595736380c", 33970652704),
     "copy_impl_schema": ("db029ae942064533f669fd3d78caff31d5aa1443", 33970806995),
+    "lazy_copy": ("6e7ba93e7fa550912fb96e1b602dd29567edd809", 33971290579),
+    "nightly_hasher": ("9bd0045de920bbae10d45b9045945d5a1137321e", 33971229116),
+    "dense_interners": ("ea4e9cc5343eb98dc3d42d0099da8b8416145471", 33971439882),
 }
 
 
@@ -353,8 +356,8 @@ def main():
                         next_solver=next_solver, threads=threads,
                         errors=(("E0597", "`s` does not live long enough"),),
                     )
-        if kind in ("query_cache", "interner_tables", "packed_aliases", "interned_arenas"):
-            thread_counts = (4,) if kind in ("packed_aliases", "interned_arenas") else (1, 4)
+        if kind in ("query_cache", "interner_tables", "packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners"):
+            thread_counts = (4,) if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners") else (1, 4)
             for threads in thread_counts:
                 rlib = output / "bin" / f"liba_threads_{threads}.rlib"
                 auxiliary_cache = output / "incremental" / f"query-cache-aux-{threads}"
@@ -375,7 +378,7 @@ def main():
                         require_loaded=revision != "rpass1",
                         extra_flags=("-Zquery-dep-graph", "--extern", f"a={rlib}"),
                     )
-        if kind in ("packed_aliases", "interned_arenas"):
+        if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners"):
             for solver in ("current", "next"):
                 next_solver = solver == "next"
                 check(
@@ -435,7 +438,7 @@ def main():
                     extra_flags=("--extern", f"associated_types_cc_lib={rlib}"),
                     expected_stdout="22\n",
                 )
-        if kind == "copy_impl_schema":
+        if kind in ("copy_impl_schema", "lazy_copy"):
             fixtures = Path(__file__).resolve().parent / "cases" / "copy_impl_schema"
             for solver in ("current", "next", "slow"):
                 controls = {
