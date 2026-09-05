@@ -873,6 +873,10 @@ impl Build {
                 "rust.mimalloc currently supports Linux GNU hosts only"
             );
             features.push("mimalloc");
+            // rustdoc and Clippy load jemalloc from the compiler's sysroot.
+            if self.config.jemalloc(target) && check("jemalloc-sys") {
+                features.push("jemalloc-sys");
+            }
         } else if self.config.jemalloc(target) && check("jemalloc") {
             features.push("jemalloc");
         }
