@@ -35,7 +35,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: release-artifact-comparison-pr108-partition
+  group: release-artifact-comparison-pr108-partition-depot-arm4
   cancel-in-progress: false
 
 jobs:
@@ -124,7 +124,7 @@ jobs:
     if: ${{ always() && !cancelled() && inputs.operation != 'build-only' && (needs.compiler.result == 'success' || inputs.operation == 'compare-only') }}
     env:
       CANDIDATE_ARTIFACT: ${{ needs.compiler.outputs.artifact || inputs.candidate_artifact }}
-    runs-on: codspeed-macro
+    runs-on: depot-ubuntu-24.04-arm-4
     timeout-minutes: ${{ inputs.confirm && 90 || 50 }}
     steps:
       - name: Checkout experiment harness
