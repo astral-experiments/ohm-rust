@@ -2136,7 +2136,7 @@ slice_interners!(
 
 impl<'tcx> TyCtxt<'tcx> {
     /// Interns a type list, reusing canonical lists from the current worker when possible.
-    #[inline]
+    #[inline(always)]
     pub fn mk_type_list(self, v: &[Ty<'tcx>]) -> &'tcx List<Ty<'tcx>> {
         if v.is_empty() {
             return List::empty();
@@ -2170,7 +2170,7 @@ impl<'tcx> TyCtxt<'tcx> {
     }
 
     /// Interns a list of generic arguments.
-    #[inline]
+    #[inline(always)]
     pub fn mk_args(self, v: &[GenericArg<'tcx>]) -> GenericArgsRef<'tcx> {
         if v.is_empty() {
             return List::empty();
