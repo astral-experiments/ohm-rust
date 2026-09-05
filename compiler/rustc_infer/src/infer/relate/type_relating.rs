@@ -130,6 +130,22 @@ impl<'tcx> TypeRelation<TyCtxt<'tcx>> for TypeRelating<'_, 'tcx> {
         let a = infcx.shallow_resolve(a);
         let b = infcx.shallow_resolve(b);
 
+        // Self-relations can still emit alias or bivariant well-formedness
+        // obligations, propagate errors, or reject bound and fresh variables.
+        if a == b
+            && !a.has_type_flags(
+                ty::TypeFlags::HAS_TY_INFER
+                    | ty::TypeFlags::HAS_CT_INFER
+                    | ty::TypeFlags::HAS_ALIAS
+                    | ty::TypeFlags::HAS_ERROR
+                    | ty::TypeFlags::HAS_BOUND_VARS
+                    | ty::TypeFlags::HAS_TY_FRESH
+                    | ty::TypeFlags::HAS_CT_FRESH,
+            )
+        {
+            return Ok(a);
+        }
+
         if self.cache.contains(&(self.ambient_variance, a, b)) {
             return Ok(a);
         }
@@ -222,6 +238,11 @@ impl<'tcx> TypeRelation<TyCtxt<'tcx>> for TypeRelating<'_, 'tcx> {
         a: ty::Region<'tcx>,
         b: ty::Region<'tcx>,
     ) -> RelateResult<'tcx, ty::Region<'tcx>> {
+        // Keep the collector's assertion for bound-region subtyping.
+        if a == b && !matches!(a.kind(), ty::ReBound(..)) {
+            return Ok(a);
+        }
+
         let origin = SubregionOrigin::Subtype(Box::new(self.trace.clone()));
 
         match self.ambient_variance {

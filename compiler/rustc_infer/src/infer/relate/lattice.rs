@@ -130,6 +130,22 @@ impl<'tcx> TypeRelation<TyCtxt<'tcx>> for LatticeOp<'_, 'tcx> {
         let a = infcx.shallow_resolve(a);
         let b = infcx.shallow_resolve(b);
 
+        // Self-relations can still emit alias or bivariant well-formedness
+        // obligations, propagate errors, or reject bound and fresh variables.
+        if a == b
+            && !a.has_type_flags(
+                ty::TypeFlags::HAS_TY_INFER
+                    | ty::TypeFlags::HAS_CT_INFER
+                    | ty::TypeFlags::HAS_ALIAS
+                    | ty::TypeFlags::HAS_ERROR
+                    | ty::TypeFlags::HAS_BOUND_VARS
+                    | ty::TypeFlags::HAS_TY_FRESH
+                    | ty::TypeFlags::HAS_CT_FRESH,
+            )
+        {
+            return Ok(a);
+        }
+
         match (a.kind(), b.kind()) {
             // If one side is known to be a variable and one is not,
             // create a variable (`v`) to represent the LUB. Make sure to
@@ -188,6 +204,10 @@ impl<'tcx> TypeRelation<TyCtxt<'tcx>> for LatticeOp<'_, 'tcx> {
         a: ty::Region<'tcx>,
         b: ty::Region<'tcx>,
     ) -> RelateResult<'tcx, ty::Region<'tcx>> {
+        if a == b {
+            return Ok(a);
+        }
+
         let origin = SubregionOrigin::Subtype(Box::new(self.trace.clone()));
         let mut inner = self.infcx.inner.borrow_mut();
         let mut constraints = inner.unwrap_region_constraints();
