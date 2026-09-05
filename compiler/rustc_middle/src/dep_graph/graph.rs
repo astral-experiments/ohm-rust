@@ -526,6 +526,14 @@ impl DepGraph {
                     data.current.total_read_count.fetch_add(1, Ordering::Relaxed);
                 }
 
+                let recent_slot = dep_node_index.as_usize() & (TaskDeps::RECENT_READS_LEN - 1);
+                if task_deps.recent_reads[recent_slot] == Some(dep_node_index) {
+                    if cfg!(debug_assertions) {
+                        data.current.total_duplicate_read_count.fetch_add(1, Ordering::Relaxed);
+                    }
+                    return;
+                }
+
                 let new_read = task_deps.reads.insert(dep_node_index, &data.read_recorder_pool);
                 if new_read {
                     #[cfg(debug_assertions)]
@@ -542,6 +550,8 @@ impl DepGraph {
                 } else if cfg!(debug_assertions) {
                     data.current.total_duplicate_read_count.fetch_add(1, Ordering::Relaxed);
                 }
+
+                task_deps.recent_reads[recent_slot] = Some(dep_node_index);
             })
         }
     }
@@ -1345,15 +1355,23 @@ pub struct TaskDeps {
     node: Option<DepNode>,
 
     reads: TaskReads,
+
+    /// Recently recorded edges, indexed by their low bits. Entries are only
+    /// added after recording the edge, and edges are never removed.
+    recent_reads: [Option<DepNodeIndex>; TaskDeps::RECENT_READS_LEN],
 }
 
 impl TaskDeps {
+    // Must be a power of two, so the index can be masked into the array.
+    const RECENT_READS_LEN: usize = 64;
+
     #[inline]
     fn new(#[cfg(debug_assertions)] node: Option<DepNode>) -> Self {
         TaskDeps {
             #[cfg(debug_assertions)]
             node,
             reads: TaskReads::new(),
+            recent_reads: [None; Self::RECENT_READS_LEN],
         }
     }
 
