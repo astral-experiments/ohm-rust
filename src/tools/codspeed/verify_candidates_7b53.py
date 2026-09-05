@@ -12,6 +12,9 @@ CANDIDATES = {
     "folds": ("d9b0fecdbe558ff6a1022982ff68e5faf04c98b0", 33964529181),
     "mir": ("861d55a0be872c0b47ea71e2fac044420e8f0198", 33964702894),
     "instantiation": ("b5e4d14dc9797f71a49561906d0a9cda53ac1842", 33965090737),
+    "combined": ("b9bcf51550f7be847c41d9e76547c253c368539b", 33965430528),
+    "copy_proofs": ("23ebc5cf12881b1cb27984d06e78a8eb6cea8c39", 33965794444),
+    "query_response": ("d8cd3b4fc6298ef1e1cb9091c88fb10fdc09e8e7", 33965881981),
 }
 
 
@@ -29,7 +32,9 @@ def main():
         "cases": [],
     }
 
-    def check(name, fixture, *, revision=None, next_solver=False, errors=()):
+    def check(
+        name, fixture, *, revision=None, next_solver=False, disable_fast_paths=False, errors=()
+    ):
         """Compile one explicit fixture; successful fixtures must also execute."""
         binary = output / "bin" / name
         command = [
@@ -48,6 +53,8 @@ def main():
             command.extend(["--cfg", revision])
         if next_solver:
             command.append("-Znext-solver=globally")
+        if disable_fast_paths:
+            command.append("-Zdisable-fast-paths")
         if errors:
             command.append("--emit=metadata")
         record = {
@@ -106,15 +113,20 @@ def main():
         ).strip()
         report["source_sha"] = actual_sha
         assert actual_sha == expected_sha, (actual_sha, expected_sha)
+        architecture = subprocess.check_output(["uname", "-m"], text=True).strip()
+        report["runner_architecture"] = architecture
+        (output / "runner-architecture.txt").write_text(architecture + "\n")
         version = subprocess.run(
             [str(rustc), "-vV"], capture_output=True, text=True, timeout=30
         )
         (output / "rustc-version.txt").write_text(version.stdout + version.stderr)
         assert version.returncode == 0, version.stderr
+        assert architecture == "aarch64", architecture
+        assert "host: aarch64-unknown-linux-gnu" in version.stdout.splitlines(), version.stdout
         assert f"commit-hash: {expected_sha}" in version.stdout.splitlines(), version.stdout
         report["compiler_sha_verified"] = True
 
-        if kind == "folds":
+        if kind in ("folds", "combined"):
             for solver in ("current", "next"):
                 check(
                     f"canonical-{solver}", "tests/ui/ohm/repeated-canonical-types.rs",
@@ -128,7 +140,7 @@ def main():
                         (None, "lifetime may not live long enough"),
                     ),
                 )
-        elif kind == "mir":
+        if kind in ("mir", "combined"):
             for revision in ("current", "next", "params", "params_next"):
                 check(
                     f"sized-places-{revision}", "tests/ui/ohm/mir-typeck-sized-places.rs",
@@ -173,7 +185,7 @@ def main():
                     errors=(sized_error, mismatch_error, mismatch_error)
                     if next_solver else (sized_error, sized_error),
                 )
-        else:
+        if kind in ("instantiation", "combined"):
             for solver in ("current", "next"):
                 check(
                     f"instantiation-{solver}", "tests/ui/ohm/type-instantiation-cache.rs",
@@ -184,6 +196,50 @@ def main():
                     "tests/ui/ohm/type-instantiation-cache-lifetimes.rs",
                     revision=solver, next_solver=solver == "next",
                     errors=((None, "lifetime may not live long enough"),),
+                )
+        if kind == "copy_proofs":
+            for solver in ("current", "next", "slow"):
+                options = {
+                    "revision": solver,
+                    "next_solver": solver == "next",
+                    "disable_fast_paths": solver == "slow",
+                }
+                check(
+                    f"copy-proofs-{solver}", "tests/ui/ohm/copy-proofs-repeated.rs",
+                    **options,
+                )
+                check(
+                    f"copy-region-bound-{solver}", "tests/ui/ohm/copy-proofs-region-bound.rs",
+                    errors=(("E0597", "`value` does not live long enough"),), **options,
+                )
+                check(
+                    f"copy-no-core-{solver}", "tests/ui/ohm/copy-proofs-no-core.rs",
+                    errors=((None, "lifetime may not live long enough"),), **options,
+                )
+                for suffix in ("", "-proj"):
+                    check(
+                        f"copy-lifetime{suffix}-{solver}",
+                        f"tests/ui/nll/do-not-ignore-lifetime-bounds-in-copy{suffix}.rs",
+                        errors=(("E0597", "`s` does not live long enough"),), **options,
+                    )
+        if kind == "query_response":
+            for solver in ("current", "next", "slow"):
+                options = {
+                    "revision": solver,
+                    "next_solver": solver == "next",
+                    "disable_fast_paths": solver == "slow",
+                }
+                check(
+                    f"query-response-{solver}", "tests/ui/ohm/query-response-identity.rs",
+                    **options,
+                )
+                check(
+                    f"query-response-lifetimes-{solver}",
+                    "tests/ui/ohm/query-response-lifetime-effects.rs",
+                    errors=(
+                        ("E0597", "`value` does not live long enough"),
+                        (None, "lifetime may not live long enough"),
+                    ), **options,
                 )
         failed = [case["name"] for case in report["cases"] if case["status"] != "passed"]
         assert not failed, f"Failed cases: {', '.join(failed)}"

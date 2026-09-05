@@ -13,21 +13,15 @@ jobs:
   validate:
     if: ${{ github.ref == 'refs/heads/charlie/codex-codspeed-verify-7b53' }}
     name: Validate measured compiler (${{ matrix.kind }})
-    runs-on: codspeed-macro
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         include:
-          - kind: folds
-            sha: d9b0fecdbe558ff6a1022982ff68e5faf04c98b0
-            run: 33964529181
-          - kind: mir
-            sha: 861d55a0be872c0b47ea71e2fac044420e8f0198
-            run: 33964702894
-          - kind: instantiation
-            sha: b5e4d14dc9797f71a49561906d0a9cda53ac1842
-            run: 33965090737
+          - kind: combined
+            sha: b9bcf51550f7be847c41d9e76547c253c368539b
+            run: 33965430528
     steps:
       - name: Checkout validation script
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
