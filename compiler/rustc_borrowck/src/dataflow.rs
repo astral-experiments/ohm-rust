@@ -11,6 +11,7 @@ use rustc_mir_dataflow::impls::{
     EverInitializedPlaces, EverInitializedPlacesDomain, MaybeUninitializedPlaces,
     MaybeUninitializedPlacesDomain,
 };
+use rustc_mir_dataflow::move_paths::{HasMoveData, MoveData};
 use rustc_mir_dataflow::{Analysis, GenKill, JoinSemiLattice};
 use tracing::debug;
 
@@ -19,13 +20,17 @@ use crate::{BorrowSet, PlaceConflictBias, PlaceExt, RegionInferenceContext, plac
 #[cfg(test)]
 mod tests;
 
-// This analysis is different to most others. Its results aren't computed with
-// `iterate_to_fixpoint`, but are instead composed from the results of three sub-analyses that are
-// computed individually with `iterate_to_fixpoint`.
+/// Solves the borrow, maybe-uninitialized, and ever-initialized analyses together.
 pub(crate) struct Borrowck<'a, 'tcx> {
     pub(crate) borrows: Borrows<'a, 'tcx>,
     pub(crate) uninits: MaybeUninitializedPlaces<'a, 'tcx>,
     pub(crate) ever_inits: EverInitializedPlaces<'a, 'tcx>,
+}
+
+impl<'tcx> HasMoveData<'tcx> for Borrowck<'_, 'tcx> {
+    fn move_data(&self) -> &MoveData<'tcx> {
+        self.uninits.move_data()
+    }
 }
 
 impl<'a, 'tcx> Analysis<'tcx> for Borrowck<'a, 'tcx> {
@@ -41,9 +46,10 @@ impl<'a, 'tcx> Analysis<'tcx> for Borrowck<'a, 'tcx> {
         }
     }
 
-    fn initialize_start_block(&self, _body: &mir::Body<'tcx>, _state: &mut Self::Domain) {
-        // This is only reachable from `iterate_to_fixpoint`, which this analysis doesn't use.
-        unreachable!();
+    fn initialize_start_block(&self, body: &mir::Body<'tcx>, state: &mut Self::Domain) {
+        self.borrows.initialize_start_block(body, &mut state.borrows);
+        self.uninits.initialize_start_block(body, &mut state.uninits);
+        self.ever_inits.initialize_start_block(body, &mut state.ever_inits);
     }
 
     fn apply_early_statement_effect(
@@ -52,7 +58,9 @@ impl<'a, 'tcx> Analysis<'tcx> for Borrowck<'a, 'tcx> {
         stmt: &mir::Statement<'tcx>,
         loc: Location,
     ) {
-        self.borrows.apply_early_statement_effect(&mut state.borrows, stmt, loc);
+        if self.borrows.borrow_set.len() != 0 {
+            self.borrows.apply_early_statement_effect(&mut state.borrows, stmt, loc);
+        }
         self.uninits.apply_early_statement_effect(&mut state.uninits, stmt, loc);
         self.ever_inits.apply_early_statement_effect(&mut state.ever_inits, stmt, loc);
     }
@@ -63,7 +71,9 @@ impl<'a, 'tcx> Analysis<'tcx> for Borrowck<'a, 'tcx> {
         stmt: &mir::Statement<'tcx>,
         loc: Location,
     ) {
-        self.borrows.apply_primary_statement_effect(&mut state.borrows, stmt, loc);
+        if self.borrows.borrow_set.len() != 0 {
+            self.borrows.apply_primary_statement_effect(&mut state.borrows, stmt, loc);
+        }
         self.uninits.apply_primary_statement_effect(&mut state.uninits, stmt, loc);
         self.ever_inits.apply_primary_statement_effect(&mut state.ever_inits, stmt, loc);
     }
@@ -74,7 +84,9 @@ impl<'a, 'tcx> Analysis<'tcx> for Borrowck<'a, 'tcx> {
         term: &mir::Terminator<'tcx>,
         loc: Location,
     ) {
-        self.borrows.apply_early_terminator_effect(&mut state.borrows, term, loc);
+        if self.borrows.borrow_set.len() != 0 {
+            self.borrows.apply_early_terminator_effect(&mut state.borrows, term, loc);
+        }
         self.uninits.apply_early_terminator_effect(&mut state.uninits, term, loc);
         self.ever_inits.apply_early_terminator_effect(&mut state.ever_inits, term, loc);
     }
@@ -85,30 +97,32 @@ impl<'a, 'tcx> Analysis<'tcx> for Borrowck<'a, 'tcx> {
         term: &'mir mir::Terminator<'tcx>,
         loc: Location,
     ) -> TerminatorEdges<'mir, 'tcx> {
-        self.borrows.apply_primary_terminator_effect(&mut state.borrows, term, loc);
-        self.uninits.apply_primary_terminator_effect(&mut state.uninits, term, loc);
+        if self.borrows.borrow_set.len() != 0 {
+            self.borrows.apply_primary_terminator_effect(&mut state.borrows, term, loc);
+        }
+        // The three analyses use the same CFG edges with the borrowck settings.
+        let edges = self.uninits.apply_primary_terminator_effect(&mut state.uninits, term, loc);
         self.ever_inits.apply_primary_terminator_effect(&mut state.ever_inits, term, loc);
-
-        // This return value doesn't matter. It's only used by `iterate_to_fixpoint`, which this
-        // analysis doesn't use.
-        TerminatorEdges::None
+        edges
     }
 
     fn apply_call_return_effect(
         &self,
-        _state: &mut Self::Domain,
-        _block: BasicBlock,
-        _return_places: CallReturnPlaces<'_, 'tcx>,
+        state: &mut Self::Domain,
+        block: BasicBlock,
+        return_places: CallReturnPlaces<'_, 'tcx>,
     ) {
-        // This is only reachable from `iterate_to_fixpoint`, which this analysis doesn't use.
-        unreachable!();
+        self.borrows.apply_call_return_effect(&mut state.borrows, block, return_places);
+        self.uninits.apply_call_return_effect(&mut state.uninits, block, return_places);
+        self.ever_inits.apply_call_return_effect(&mut state.ever_inits, block, return_places);
     }
 }
 
 impl JoinSemiLattice for BorrowckDomain {
-    fn join(&mut self, _other: &Self) -> bool {
-        // This is only reachable from `iterate_to_fixpoint`, which this analysis doesn't use.
-        unreachable!();
+    fn join(&mut self, other: &Self) -> bool {
+        self.borrows.join(&other.borrows)
+            | self.uninits.join(&other.uninits)
+            | self.ever_inits.join(&other.ever_inits)
     }
 }
 
