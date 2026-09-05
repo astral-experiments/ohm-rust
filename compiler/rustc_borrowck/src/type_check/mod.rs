@@ -819,12 +819,8 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                 // don't have to check it twice.
                 //
                 // See #91068 for an example.
-                self.prove_predicates(
-                    unnormalized_sig.inputs_and_output.iter().map(|ty| {
-                        ty::Binder::dummy(ty::PredicateKind::Clause(ty::ClauseKind::WellFormed(
-                            ty.into(),
-                        )))
-                    }),
+                self.prove_well_formed_types(
+                    unnormalized_sig.inputs_and_output,
                     term_location.to_locations(),
                     ConstraintCategory::Boring,
                 );
@@ -834,12 +830,8 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                 // with built-in `Fn` implementations, since the impl may not be
                 // well-formed itself.
                 if sig != unnormalized_sig {
-                    self.prove_predicates(
-                        sig.inputs_and_output.iter().map(|ty| {
-                            ty::Binder::dummy(ty::PredicateKind::Clause(
-                                ty::ClauseKind::WellFormed(ty.into()),
-                            ))
-                        }),
+                    self.prove_well_formed_types(
+                        sig.inputs_and_output,
                         term_location.to_locations(),
                         ConstraintCategory::Boring,
                     );

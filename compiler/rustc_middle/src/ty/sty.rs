@@ -2085,6 +2085,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::Placeholder(_)
             | ty::Bound(..) => true,
 
+            ty::Tuple(tys) => tys.is_empty(),
             ty::Slice(ty) => {
                 ty.is_trivially_wf(tcx) && ty.has_trivial_sizedness(tcx, SizedTraitKind::Sized)
             }
@@ -2102,7 +2103,6 @@ impl<'tcx> Ty<'tcx> {
             },
 
             ty::Adt(_, _)
-            | ty::Tuple(_)
             | ty::Array(..)
             | ty::Foreign(_)
             | ty::Pat(_, _)

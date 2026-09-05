@@ -156,6 +156,32 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
         }
     }
 
+    /// Checks type well-formedness, collecting pending region constraints once when
+    /// every proof is trivial. The first original operation retains the normal drain.
+    pub(super) fn prove_well_formed_types(
+        &mut self,
+        types: &[Ty<'tcx>],
+        locations: Locations,
+        category: ConstraintCategory<'tcx>,
+    ) {
+        let count = if !cfg!(debug_assertions)
+            && !self.infcx.disable_trait_solver_fast_paths()
+            && types.len() > 1
+            && types.iter().all(|ty| ty.is_trivially_wf(self.tcx()))
+        {
+            1
+        } else {
+            types.len()
+        };
+        self.prove_predicates(
+            types[..count].iter().map(|&ty| {
+                ty::Binder::dummy(ty::PredicateKind::Clause(ty::ClauseKind::WellFormed(ty.into())))
+            }),
+            locations,
+            category,
+        );
+    }
+
     pub(super) fn prove_predicates(
         &mut self,
         predicates: impl IntoIterator<Item: Upcast<TyCtxt<'tcx>, ty::Predicate<'tcx>> + std::fmt::Debug>,

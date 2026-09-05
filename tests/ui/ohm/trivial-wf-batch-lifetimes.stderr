@@ -1,0 +1,60 @@
+error[E0521]: borrowed data escapes outside of function
+  --> $DIR/trivial-wf-batch-lifetimes.rs:14:5
+   |
+LL | fn trivial_input(value: &u32) {
+   |                  -----  - let's call the lifetime of this reference `'1`
+   |                  |
+   |                  `value` is a reference that is only valid in the function body
+LL |     require_static((), value, false);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |     |
+   |     `value` escapes the function body here
+   |     argument requires that `'1` must outlive `'static`
+
+error: lifetime may not live long enough
+  --> $DIR/trivial-wf-batch-lifetimes.rs:19:5
+   |
+LL | fn trivial_output(value: &u32) -> &'static u32 {
+   |                          - let's call the lifetime of this reference `'1`
+LL |     identity(value, ())
+   |     ^^^^^^^^^^^^^^^^^^^ returning this value requires that `'1` must outlive `'static`
+
+error: lifetime may not live long enough
+  --> $DIR/trivial-wf-batch-lifetimes.rs:24:5
+   |
+LL | fn mixed_tuple<'a, 'b>() {
+   |                --  -- lifetime `'b` defined here
+   |                |
+   |                lifetime `'a` defined here
+LL |     tuple::<&'a &'b ()>((), (None,));
+   |     ^^^^^^^^^^^^^^^^^^^ requires that `'b` must outlive `'a`
+   |
+   = help: consider adding the following bound: `'b: 'a`
+
+error: lifetime may not live long enough
+  --> $DIR/trivial-wf-batch-lifetimes.rs:29:5
+   |
+LL | fn mixed_nominal<'a, 'b>() {
+   |                  --  -- lifetime `'b` defined here
+   |                  |
+   |                  lifetime `'a` defined here
+LL |     nominal::<&'a &'b ()>((), None, false);
+   |     ^^^^^^^^^^^^^^^^^^^^^ requires that `'b` must outlive `'a`
+   |
+   = help: consider adding the following bound: `'b: 'a`
+
+error: lifetime may not live long enough
+  --> $DIR/trivial-wf-batch-lifetimes.rs:34:5
+   |
+LL | fn mixed_output<'a, 'b>() {
+   |                 --  -- lifetime `'b` defined here
+   |                 |
+   |                 lifetime `'a` defined here
+LL |     output::<&'a &'b ()>(0);
+   |     ^^^^^^^^^^^^^^^^^^^^ requires that `'b` must outlive `'a`
+   |
+   = help: consider adding the following bound: `'b: 'a`
+
+error: aborting due to 5 previous errors
+
+For more information about this error, try `rustc --explain E0521`.
