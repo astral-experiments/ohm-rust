@@ -8,6 +8,8 @@ use rustc_span::Span;
 use crate::infer::canonical::{CanonicalQueryInput, CanonicalQueryResponse};
 use crate::traits::{ObligationCtxt, sizedness_fast_path};
 
+mod proof_stats;
+
 impl<'tcx> super::QueryTypeOp<'tcx> for ProvePredicate<'tcx> {
     type QueryResponse = ();
 
@@ -26,6 +28,7 @@ impl<'tcx> super::QueryTypeOp<'tcx> for ProvePredicate<'tcx> {
             return Some(());
         }
 
+        proof_stats::record(tcx, key);
         None
     }
 
