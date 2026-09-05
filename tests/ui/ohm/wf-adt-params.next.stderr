@@ -1,0 +1,67 @@
+error[E0277]: the size for values of type `str` cannot be known at compilation time
+  --> $DIR/wf-adt-params.rs:14:15
+   |
+LL |     require::<SizedType<str>>();
+   |               ^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: the trait `Sized` is not implemented for `str`
+note: required by an implicit `Sized` bound in `SizedType`
+  --> $DIR/wf-adt-params.rs:8:18
+   |
+LL | struct SizedType<T>(T);
+   |                  ^ required by the implicit `Sized` requirement on this type parameter in `SizedType`
+help: you could relax the implicit `Sized` bound on `T` if it were used through indirection like `&T` or `Box<T>`
+  --> $DIR/wf-adt-params.rs:8:18
+   |
+LL | struct SizedType<T>(T);
+   |                  ^  - ...if indirection were used here: `Box<T>`
+   |                  |
+   |                  this could be changed to `T: ?Sized`...
+
+error[E0277]: the size for values of type `str` cannot be known at compilation time
+  --> $DIR/wf-adt-params.rs:14:5
+   |
+LL |     require::<SizedType<str>>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: the trait `Sized` is not implemented for `str`
+note: required by an implicit `Sized` bound in `SizedType`
+  --> $DIR/wf-adt-params.rs:8:18
+   |
+LL | struct SizedType<T>(T);
+   |                  ^ required by the implicit `Sized` requirement on this type parameter in `SizedType`
+help: you could relax the implicit `Sized` bound on `T` if it were used through indirection like `&T` or `Box<T>`
+  --> $DIR/wf-adt-params.rs:8:18
+   |
+LL | struct SizedType<T>(T);
+   |                  ^  - ...if indirection were used here: `Box<T>`
+   |                  |
+   |                  this could be changed to `T: ?Sized`...
+
+error: the constant `N` is not of type `usize`
+  --> $DIR/wf-adt-params.rs:20:15
+   |
+LL |     require::<ConstType<N>>();
+   |               ^^^^^^^^^^^^ expected `usize`, found `u32`
+   |
+note: required by a const generic parameter in `ConstType`
+  --> $DIR/wf-adt-params.rs:9:18
+   |
+LL | struct ConstType<const N: usize>;
+   |                  ^^^^^^^^^^^^^^ required by this const generic parameter in `ConstType`
+
+error: the constant `N` is not of type `usize`
+  --> $DIR/wf-adt-params.rs:20:5
+   |
+LL |     require::<ConstType<N>>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^ expected `usize`, found `u32`
+   |
+note: required by a const generic parameter in `ConstType`
+  --> $DIR/wf-adt-params.rs:9:18
+   |
+LL | struct ConstType<const N: usize>;
+   |                  ^^^^^^^^^^^^^^ required by this const generic parameter in `ConstType`
+
+error: aborting due to 4 previous errors
+
+For more information about this error, try `rustc --explain E0277`.

@@ -2,7 +2,7 @@ use rustc_infer::traits::Obligation;
 use rustc_middle::traits::ObligationCause;
 use rustc_middle::traits::query::NoSolution;
 pub use rustc_middle::traits::query::type_op::ProvePredicate;
-use rustc_middle::ty::{self, ParamEnvAnd, TyCtxt};
+use rustc_middle::ty::{self, ParamEnvAnd, TyCtxt, TypeVisitableExt};
 use rustc_span::Span;
 
 use crate::infer::canonical::{CanonicalQueryInput, CanonicalQueryResponse};
@@ -21,9 +21,28 @@ impl<'tcx> super::QueryTypeOp<'tcx> for ProvePredicate<'tcx> {
 
         if let ty::PredicateKind::Clause(ty::ClauseKind::WellFormed(term)) =
             key.value.predicate.kind().skip_binder()
-            && term.is_trivially_wf(tcx)
         {
-            return Some(());
+            if term.is_trivially_wf(tcx) {
+                return Some(());
+            }
+
+            if !cfg!(debug_assertions)
+                && key.value.predicate.kind().bound_vars().is_empty()
+                && let Some(ty) = term.as_type()
+                && !ty.has_non_region_infer()
+                && !ty.has_aliases()
+                && !ty.has_escaping_bound_vars()
+                && !ty.references_error()
+                && let ty::Adt(def, args) = *ty.kind()
+                && args.iter().all(|arg| matches!(arg.kind(), ty::GenericArgKind::Lifetime(_)))
+            {
+                // ADT well-formedness checks its predicates and generic arguments, not its
+                // fields. Lifetime arguments need no further well-formedness obligations.
+                let predicates = tcx.predicates_of(def.did());
+                if predicates.parent.is_none() && predicates.predicates.is_empty() {
+                    return Some(());
+                }
+            }
         }
 
         None

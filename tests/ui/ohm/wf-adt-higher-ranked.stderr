@@ -1,0 +1,10 @@
+error: implementation of `FnOnce` is not general enough
+  --> $DIR/wf-adt-higher-ranked.rs:15:5
+   |
+LL |     require(only_static);
+   |     ^^^^^^^^^^^^^^^^^^^^ implementation of `FnOnce` is not general enough
+   |
+   = note: `fn(Local<'static>) {only_static}` must implement `FnOnce<(Local<'0>,)>`, for any lifetime `'0`...
+   = note: ...but it actually implements `FnOnce<(Local<'static>,)>`
+
+error: aborting due to 1 previous error

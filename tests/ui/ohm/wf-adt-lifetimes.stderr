@@ -1,0 +1,40 @@
+error: lifetime may not live long enough
+  --> $DIR/wf-adt-lifetimes.rs:18:5
+   |
+LL | fn inferred<'a, 'b>() {
+   |             --  -- lifetime `'b` defined here
+   |             |
+   |             lifetime `'a` defined here
+LL |     require::<Inferred<'a, 'b>>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ requires that `'b` must outlive `'a`
+   |
+   = help: consider adding the following bound: `'b: 'a`
+
+error: lifetime may not live long enough
+  --> $DIR/wf-adt-lifetimes.rs:23:5
+   |
+LL | fn explicit<'a, 'b>() {
+   |             --  -- lifetime `'b` defined here
+   |             |
+   |             lifetime `'a` defined here
+LL |     require::<Explicit<'a, 'b>>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ requires that `'b` must outlive `'a`
+   |
+   = help: consider adding the following bound: `'b: 'a`
+
+error[E0309]: the parameter type `T` may not live long enough
+  --> $DIR/wf-adt-lifetimes.rs:28:5
+   |
+LL | fn type_parameter<'a, T>() {
+   |                   -- the parameter type `T` must be valid for the lifetime `'a` as defined here...
+LL |     require::<Borrowed<'a, T>>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^ ...so that the type `T` will meet its required lifetime bounds
+   |
+help: consider adding an explicit lifetime bound
+   |
+LL | fn type_parameter<'a, T: 'a>() {
+   |                        ++++
+
+error: aborting due to 3 previous errors
+
+For more information about this error, try `rustc --explain E0309`.

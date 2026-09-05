@@ -1,0 +1,24 @@
+error[E0277]: expected an `FnOnce(Local<'a>)` closure, found `fn(Local<'static>) {only_static}`
+  --> $DIR/wf-adt-higher-ranked.rs:15:13
+   |
+LL |     require(only_static);
+   |     ------- ^^^^^^^^^^^ the trait `for<'a> FnOnce(Local<'a>)` is not implemented for `fn(Local<'static>) {only_static}`
+   |     |
+   |     required by a bound introduced by this call
+   |
+   = note: the trait bound `for<'a> fn(Local<'static>) {only_static}: FnOnce(Local<'a>)` is not satisfied
+note: required by a bound in `require`
+  --> $DIR/wf-adt-higher-ranked.rs:10:15
+   |
+LL | fn require<F: for<'a> FnOnce(Local<'a>)>(_: F) {}
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `require`
+help: consider borrowing here
+   |
+LL |     require(&only_static);
+   |             +
+LL |     require(&mut only_static);
+   |             ++++
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0277`.
