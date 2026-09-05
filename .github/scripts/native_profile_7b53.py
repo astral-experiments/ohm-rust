@@ -215,8 +215,8 @@ def main():
     parser.add_argument('--timeout', type=float, default=120.0)
     parser.add_argument('--expected-commit', default='7d2c9ee7651076a9930b109f3738a1c6cb4dbb29')
     args = parser.parse_args()
-    if not (250 <= args.period_us <= 1000 and 1 <= args.timeout <= 120):
-        parser.error('Require 250 <= period-us <= 1000 and 1 <= timeout <= 120')
+    if not (250 <= args.period_us <= 1000 and 1 <= args.timeout <= 180):
+        parser.error('Require 250 <= period-us <= 1000 and 1 <= timeout <= 180')
     args.output = args.output.resolve()
     if args.output.parent != Path('/tmp') or not args.output.name.startswith('ohm-native-7b53-'):
         parser.error('Output must be an immediate /tmp/ohm-native-7b53-* directory')

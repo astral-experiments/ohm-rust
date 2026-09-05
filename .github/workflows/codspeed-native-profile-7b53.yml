@@ -1,8 +1,8 @@
-name: Temporary native Ruff and uv compiler profiles
+name: Native baseline profiles on CodSpeed runner
 
 on:
   push:
-    branches: [charlie/codex-codspeed-native-profile-7b53]
+    branches: [charlie/codex-codspeed-native-host-7b53]
   workflow_dispatch:
 
 permissions:
@@ -16,16 +16,17 @@ concurrency:
 jobs:
   profile:
     name: Sample native baseline compiler (${{ matrix.shard }})
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 35
+    runs-on: codspeed-macro
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
         shard: [ruff-ty_python_semantic, uv-resolver]
     env:
       PROFILE_SHARD: ${{ matrix.shard }}
-      PROFILE_OUTPUT: /tmp/ohm-native-7b53-${{ matrix.shard }}
+      PROFILE_OUTPUT: /tmp/ohm-native-7b53-host-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
       BASELINE_SHA: 7d2c9ee7651076a9930b109f3738a1c6cb4dbb29
+      BASELINE_DRIVER_BUILD_ID: c95b30625d8d5c4a8bd0e6734ad81aba676c2b67
     steps:
       - name: Checkout exact baseline compiler source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -47,9 +48,11 @@ jobs:
       - name: Download existing baseline compiler
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: codspeed-toolchain
+          artifact-ids: 9968907906
           run-id: 33963601483
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          merge-multiple: true
+          digest-mismatch: error
           path: build
 
       - name: Unpack benchmark compiler
@@ -84,21 +87,93 @@ jobs:
           uv pip sync --python src/tools/codspeed/.venv/bin/python --require-hashes \
             src/tools/codspeed/requirements.txt
 
+      - name: Record benchmark runner CPU attribution
+        shell: bash
+        run: |
+          src/tools/codspeed/.venv/bin/python - <<'PY_HOST'
+          import json
+          import os
+          import platform
+          import subprocess
+          from pathlib import Path
+
+          output = Path('build/profile')
+          output.mkdir(parents=True, exist_ok=True)
+          host = {
+              'runner_label': 'codspeed-macro',
+              'runner_name': os.environ.get('RUNNER_NAME'),
+              'runner_arch': os.environ.get('RUNNER_ARCH'),
+              'architecture': platform.machine(),
+              'kernel': platform.release(),
+              'logical_cpu_count': os.cpu_count(),
+              'allowed_cpus': sorted(os.sched_getaffinity(0)),
+          }
+          try:
+              cpuinfo = Path('/proc/cpuinfo').read_text()
+          except OSError as error:
+              cpuinfo = ''
+              host['cpuinfo_error'] = str(error)
+          (output / 'cpuinfo.txt').write_text(cpuinfo)
+          model_fields = {}
+          for line in cpuinfo.splitlines():
+              key, separator, value = line.partition(':')
+              key, value = key.strip(), value.strip()
+              if separator and key in ('model name', 'Hardware', 'Processor', 'CPU implementer',
+                                       'CPU architecture', 'CPU variant', 'CPU part', 'CPU revision'):
+                  model_fields.setdefault(key, set()).add(value)
+          host['cpu_models'] = {key: sorted(values) for key, values in model_fields.items()}
+          try:
+              result = subprocess.run(['lscpu'], capture_output=True, text=True, timeout=10,
+                                      env=os.environ | {'LC_ALL': 'C'})
+              (output / 'lscpu.txt').write_text(result.stdout + result.stderr)
+              host['lscpu_returncode'] = result.returncode
+              fields = dict(line.split(':', 1) for line in result.stdout.splitlines() if ':' in line)
+              host['lscpu_summary'] = {
+                  key.strip(): value.strip() for key, value in fields.items()
+                  if key.strip() in ('Architecture', 'CPU(s)', 'On-line CPU(s) list', 'Vendor ID',
+                                     'Model name', 'Thread(s) per core', 'Core(s) per socket',
+                                     'Socket(s)', 'Hypervisor vendor', 'Virtualization type')
+              }
+          except (OSError, subprocess.TimeoutExpired) as error:
+              host['lscpu_error'] = str(error)
+              (output / 'lscpu.txt').write_text(str(error) + '\n')
+          (output / 'host.json').write_text(json.dumps(host, indent=2) + '\n')
+          print(json.dumps(host, indent=2))
+          PY_HOST
+
       - name: Verify compiler revision and prepare ordinary benchmark invocation
         shell: bash
         run: |
           set -euo pipefail
           src/tools/codspeed/.venv/bin/python - <<'PY_VERIFY'
+          import importlib.util
+          import json
           import os
           import platform
           import subprocess
+          from pathlib import Path
 
           assert platform.machine() == "aarch64", platform.machine()
+          source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          assert source == os.environ['BASELINE_SHA'], source
           version = subprocess.check_output(
               ['build/codspeed-toolchain/stage1/bin/rustc', '-vV'], text=True
           )
           assert f'commit-hash: {os.environ["BASELINE_SHA"]}' in version.splitlines(), version
           assert "host: aarch64-unknown-linux-gnu" in version.splitlines(), version
+          spec = importlib.util.spec_from_file_location(
+              'native', 'diagnostic-tools/.github/scripts/native_profile_7b53.py'
+          )
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          driver, = Path('build/codspeed-toolchain/stage1/lib').glob('librustc_driver-*.so')
+          identity = module.identity(driver.resolve())
+          assert identity['build_id'] == os.environ['BASELINE_DRIVER_BUILD_ID'], identity
+          Path('build/profile/compiler-identity.json').write_text(json.dumps({
+              'source_sha': source, 'rustc_version': version, 'driver': identity,
+              'artifact_id': 9968907906, 'artifact_run_id': 33963601483,
+              'artifact_digest': 'sha256:d00c119a00376cbf43524bea83c69a905421c3339f8b125710163135b6b765c0',
+          }, indent=2) + '\n')
           print(version)
           PY_VERIFY
           src/tools/codspeed/.venv/bin/python src/tools/codspeed/prepare.py \
@@ -122,23 +197,70 @@ jobs:
 
           manifest = json.loads(Path('build/codspeed/manifest.json').read_text())
           (fixture,) = [f for f in manifest['fixtures'] if f['name'] == os.environ['PROFILE_SHARD']]
+          expected_sources = {
+              'ruff-ty_python_semantic': 'efcffd2178ce62e9951a53d4c50cadc225a0cfec',
+              'uv-resolver': '3392e29bdc4f09bb4f6d92f7aca8d450b835ce4f',
+          }
+          assert fixture['source_revision'] == expected_sources[fixture['name']], fixture
+          assert fixture['profile'] == 'check', fixture
           (command,), _ = prepare_invocation(fixture, 'Full')
           assert '-Zthreads=1' in command
           assert not any('incremental=' in argument for argument in command)
           PY_PREPARE
           src/tools/codspeed/.venv/bin/python diagnostic-tools/.github/scripts/native_profile_7b53.py \
-            --fixture "$PROFILE_SHARD" --output "$PROFILE_OUTPUT" --period-us 1000 --timeout 120 \
+            --fixture "$PROFILE_SHARD" --output "$PROFILE_OUTPUT" --period-us 1000 --timeout 180 \
             > build/profile/native-plan.json
 
-      - name: Sample only owned compiler workers for at most 120 seconds
-        timeout-minutes: 3
+      - name: Sample only owned compiler workers for at most 180 seconds
+        timeout-minutes: 4
         shell: bash
         run: |
           set -euo pipefail
-          timeout --signal=TERM --kill-after=5s 125s \
+          timeout --signal=TERM --kill-after=5s 190s \
             src/tools/codspeed/.venv/bin/python diagnostic-tools/.github/scripts/native_profile_7b53.py \
-              --fixture "$PROFILE_SHARD" --output "$PROFILE_OUTPUT" --period-us 1000 --timeout 120 --run \
+              --fixture "$PROFILE_SHARD" --output "$PROFILE_OUTPUT" --period-us 1000 --timeout 180 --run \
               | tee build/profile/sampler-status.json
+
+      - name: Record native sampling availability
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY_AVAILABILITY'
+          import json
+          import os
+          from pathlib import Path
+
+          output = Path('build/profile')
+          output.mkdir(parents=True, exist_ok=True)
+          path = Path(os.environ['PROFILE_OUTPUT']) / 'samples.json'
+          if path.exists():
+              samples = json.loads(path.read_text())
+              error = samples.get('error')
+              complete = samples.get('cleanup_complete', False)
+              valid = (error is None and complete and samples.get('returncode') == 0
+                       and samples.get('sample_count', 0) >= 100
+                       and samples.get('driver_sample_count', 0) > 0
+                       and samples['driver']['build_id'] == os.environ['BASELINE_DRIVER_BUILD_ID'])
+              denied = error is not None and ('[Errno 1]' in error or '[Errno 13]' in error)
+              status = 'available' if valid else ('unavailable' if denied else 'failed')
+              record = {'status': status, 'error': error, 'cleanup_complete': complete,
+                        'cleanup_error': samples.get('cleanup_error'),
+                        'samples': samples.get('sample_count', 0),
+                        'driver_samples': samples.get('driver_sample_count', 0),
+                        'compiler_returncode': samples.get('returncode')}
+          else:
+              record = {'status': 'unavailable',
+                        'error': 'No samples.json was produced; inspect preparation and sampler logs.'}
+          (output / 'availability.json').write_text(json.dumps(record, indent=2) + '\n')
+          print(json.dumps(record, indent=2))
+          with Path(os.environ['GITHUB_STEP_SUMMARY']).open('a') as summary:
+              summary.write(f"### Native sampling: {os.environ['PROFILE_SHARD']}\n\n")
+              summary.write(f"Status: **{record['status']}**.\n\n")
+              if record.get('error'):
+                  summary.write(f"Reason: `{record['error']}`.\n\n")
+              summary.write('These interrupted-worker samples are bottleneck evidence; '
+                            'elapsed time is not a benchmark measurement.\n')
+          PY_AVAILABILITY
 
       - name: Summarize native instruction-pointer samples
         if: always()
@@ -158,13 +280,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: compiler-native-profile-7b53-${{ matrix.shard }}
+          name: compiler-native-host-profile-7b53-${{ matrix.shard }}
           path: |
             build/codspeed/manifest.json
             build/profile/*.txt
             build/profile/*.json
-            /tmp/ohm-native-7b53-${{ matrix.shard }}/*.json
-            /tmp/ohm-native-7b53-${{ matrix.shard }}/*.txt
-            /tmp/ohm-native-7b53-${{ matrix.shard }}/*.log
+            /tmp/ohm-native-7b53-host-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}/*.json
+            /tmp/ohm-native-7b53-host-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}/*.txt
+            /tmp/ohm-native-7b53-host-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}/*.log
           if-no-files-found: warn
           retention-days: 2
