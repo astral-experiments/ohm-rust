@@ -35,7 +35,7 @@ features = ['override_allocator_on_supported_platforms']
 [dependencies.libmimalloc-sys]
 version = "=0.1.49"
 optional = true
-features = ['override']
+features = ['override', 'v2']
 
 [features]
 # tidy-alphabetical-start
