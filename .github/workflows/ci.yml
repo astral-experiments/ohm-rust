@@ -236,13 +236,13 @@ jobs:
       - name: Checkout exact fixed regression case
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: dbcaccde347b13a91fa3be3b0aa34c2be0616b5c
+          ref: 2a69a50f92b0ed3b1d38ef9b2fabd133423d3e77
           persist-credentials: false
       - name: Download exact optimized compiler
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: codspeed-toolchain
-          run-id: 33962789362
+          run-id: 33964394072
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: build
       - name: Download uncorrected compiler for negative control
@@ -276,7 +276,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          expected=dbcaccde347b13a91fa3be3b0aa34c2be0616b5c
+          expected=2a69a50f92b0ed3b1d38ef9b2fabd133423d3e77
           test "$(git rev-parse HEAD)" = "$expected"
           mkdir -p build/codspeed-toolchain
           tar -xzf build/codspeed-toolchain.tar.gz -C build/codspeed-toolchain
