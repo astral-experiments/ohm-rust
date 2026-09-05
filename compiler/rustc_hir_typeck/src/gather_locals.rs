@@ -91,12 +91,27 @@ impl<'a, 'tcx> GatherLocalsVisitor<'a, 'tcx> {
         visitor.visit_pat(let_expr.pat);
     }
 
-    pub(crate) fn gather_from_param(fcx: &'a FnCtxt<'a, 'tcx>, param: &'tcx hir::Param<'tcx>) {
+    pub(crate) fn gather_from_param(
+        fcx: &'a FnCtxt<'a, 'tcx>,
+        param: &'tcx hir::Param<'tcx>,
+        known_ty: Option<Ty<'tcx>>,
+    ) {
         let mut visitor = GatherLocalsVisitor {
             fcx,
             outermost_fn_param_pat: Some((param.ty_span, param.hir_id)),
         };
-        visitor.visit_pat(param.pat);
+        if let Some(known_ty) = known_ty
+            && let PatKind::Binding(hir::BindingMode(hir::ByRef::No, _), var_id, _, None) =
+                param.pat.kind
+            && var_id == param.pat.hir_id
+        {
+            // check_fn checks the parameter type is Sized. This binding has
+            // that exact type, so it needs neither a fresh type variable nor a
+            // separate Sized obligation.
+            visitor.assign(param.pat.span, param.pat.hir_id, Some(known_ty));
+        } else {
+            visitor.visit_pat(param.pat);
+        }
     }
 
     pub(crate) fn gather_from_arm(fcx: &'a FnCtxt<'a, 'tcx>, local: &'tcx hir::Arm<'tcx>) {

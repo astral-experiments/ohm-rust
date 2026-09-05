@@ -341,6 +341,7 @@ impl<'tcx> RegionInferenceContext<'tcx> {
 
         let LoweredConstraints {
             constraint_sccs,
+            constraint_graph,
             definitions,
             outlives_constraints,
             scc_annotations,
@@ -354,8 +355,6 @@ impl<'tcx> RegionInferenceContext<'tcx> {
         debug!("outlives constraints: {:#?}", outlives_constraints);
         debug!("placeholder_indices: {:#?}", placeholder_indices);
         debug!("type tests: {:#?}", type_tests);
-
-        let constraint_graph = Frozen::freeze(outlives_constraints.graph(definitions.len()));
 
         if cfg!(debug_assertions) {
             sccs_info(infcx, &constraint_sccs);

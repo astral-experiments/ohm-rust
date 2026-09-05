@@ -11,6 +11,7 @@ use rustc_middle::mir::ConstraintCategory;
 use rustc_middle::ty::{RegionVid, UniverseIndex};
 use tracing::{debug, trace};
 
+use crate::constraints::graph::NormalConstraintGraph;
 use crate::constraints::{ConstraintSccIndex, OutlivesConstraintSet};
 use crate::consumers::OutlivesConstraint;
 use crate::diagnostics::UniverseInfo;
@@ -26,6 +27,7 @@ use crate::{BorrowckInferCtxt, NllRegionVariableOrigin};
 /// higher-kinded constraints.
 pub(crate) struct LoweredConstraints<'tcx> {
     pub(crate) constraint_sccs: Sccs<RegionVid, ConstraintSccIndex>,
+    pub(crate) constraint_graph: Frozen<NormalConstraintGraph>,
     pub(crate) definitions: Frozen<IndexVec<RegionVid, RegionDefinition<'tcx>>>,
     pub(crate) scc_annotations: IndexVec<ConstraintSccIndex, RegionTracker>,
     pub(crate) outlives_constraints: Frozen<OutlivesConstraintSet<'tcx>>,
@@ -303,16 +305,16 @@ pub(crate) fn compute_sccs_applying_placeholder_outlives_constraints<'tcx>(
         debug!("No placeholder regions found; skipping rewriting logic!");
 
         let mut scc_annotations = NoPlaceholderSccAnnotations(SccAnnotations::init(&definitions));
+        let constraint_graph = outlives_constraints.graph(definitions.len());
         let constraint_sccs = ConstraintSccs::new_with_annotation(
-            &outlives_constraints
-                .graph(definitions.len())
-                .region_graph(&outlives_constraints, fr_static),
+            &constraint_graph.region_graph(&outlives_constraints, fr_static),
             &mut scc_annotations,
         );
 
         return LoweredConstraints {
             type_tests,
             constraint_sccs,
+            constraint_graph: Frozen::freeze(constraint_graph),
             scc_annotations: scc_annotations.0.scc_to_annotation,
             definitions,
             outlives_constraints: Frozen::freeze(outlives_constraints),
@@ -325,14 +327,17 @@ pub(crate) fn compute_sccs_applying_placeholder_outlives_constraints<'tcx>(
     let compute_sccs =
         |constraints: &OutlivesConstraintSet<'tcx>,
          annotations: &mut SccAnnotations<'_, 'tcx, RegionTracker>| {
-            ConstraintSccs::new_with_annotation(
-                &constraints.graph(definitions.len()).region_graph(constraints, fr_static),
+            let constraint_graph = constraints.graph(definitions.len());
+            let constraint_sccs = ConstraintSccs::new_with_annotation(
+                &constraint_graph.region_graph(constraints, fr_static),
                 annotations,
-            )
+            );
+            (constraint_sccs, constraint_graph)
         };
 
     let mut scc_annotations = SccAnnotations::init(&definitions);
-    let constraint_sccs = compute_sccs(&outlives_constraints, &mut scc_annotations);
+    let (constraint_sccs, constraint_graph) =
+        compute_sccs(&outlives_constraints, &mut scc_annotations);
 
     debug!("Placeholders present; activating placeholder handling logic!");
 
@@ -343,22 +348,25 @@ pub(crate) fn compute_sccs_applying_placeholder_outlives_constraints<'tcx>(
         &mut outlives_constraints,
     );
 
-    let (constraint_sccs, scc_annotations) = if added_constraints {
+    let (constraint_sccs, constraint_graph, scc_annotations) = if added_constraints {
         let mut annotations = SccAnnotations::init(&definitions);
 
         // We changed the constraint set and so must recompute SCCs.
         // Optimisation opportunity: if we can add them incrementally (and that's
         // possible because edges to 'static always only merge SCCs into 'static),
         // we would potentially save a lot of work here.
-        (compute_sccs(&outlives_constraints, &mut annotations), annotations.scc_to_annotation)
+        let (constraint_sccs, constraint_graph) =
+            compute_sccs(&outlives_constraints, &mut annotations);
+        (constraint_sccs, constraint_graph, annotations.scc_to_annotation)
     } else {
         // If we didn't add any back-edges; no more work needs doing
         debug!("No constraints rewritten!");
-        (constraint_sccs, scc_annotations.scc_to_annotation)
+        (constraint_sccs, constraint_graph, scc_annotations.scc_to_annotation)
     };
 
     LoweredConstraints {
         constraint_sccs,
+        constraint_graph: Frozen::freeze(constraint_graph),
         definitions,
         scc_annotations,
         outlives_constraints: Frozen::freeze(outlives_constraints),
