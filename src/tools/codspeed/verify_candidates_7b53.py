@@ -50,6 +50,9 @@ CANDIDATES = {
     "lazy_engine": ("2ccd07c4470a64f6462191805aef3e6e8a72057b", 33980939158),
     "hashbrown_neon16": ("17a5026d761d5a42572466298ce9732fad9ceb96", 33980542884),
     "canonical_input_cache": ("0250cb57508464a20d2a06c8750883dc9d5739ec", 33981167471),
+    "forest_small_storage": ("3670ed7dd0f50ab97916df559b04e95926894d35", 33982186599),
+    "resolved_fold_cache": ("f1266b5556879e70ecb33af080c0668108736e8e", 33982201018),
+    "stage1_thin_lto": ("198269f763718786fcfbd22b82555d9c6d656ab9", 33982576401),
 }
 
 
@@ -395,8 +398,8 @@ def main():
                         next_solver=next_solver, threads=threads,
                         errors=(("E0597", "`s` does not live long enough"),),
                     )
-        if kind in ("query_cache", "interner_tables", "packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "dense_lazy", "hashbrown_neon16", "veccache_mode", "nested_argfolder", "interner_cache", "mimalloc_v2"):
-            thread_counts = (4,) if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "dense_lazy", "hashbrown_neon16", "veccache_mode", "nested_argfolder", "interner_cache", "mimalloc_v2") else (1, 4)
+        if kind in ("query_cache", "interner_tables", "packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "dense_lazy", "hashbrown_neon16", "forest_small_storage", "stage1_thin_lto", "veccache_mode", "nested_argfolder", "interner_cache", "mimalloc_v2"):
+            thread_counts = (4,) if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "dense_lazy", "hashbrown_neon16", "forest_small_storage", "stage1_thin_lto", "veccache_mode", "nested_argfolder", "interner_cache", "mimalloc_v2") else (1, 4)
             for threads in thread_counts:
                 rlib = output / "bin" / f"liba_threads_{threads}.rlib"
                 auxiliary_cache = output / "incremental" / f"query-cache-aux-{threads}"
@@ -417,7 +420,7 @@ def main():
                         require_loaded=revision != "rpass1",
                         extra_flags=("-Zquery-dep-graph", "--extern", f"a={rlib}"),
                     )
-        if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "dense_lazy", "hashbrown_neon16", "veccache_mode", "nested_argfolder", "interner_cache", "mimalloc_v2"):
+        if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "dense_lazy", "hashbrown_neon16", "forest_small_storage", "stage1_thin_lto", "veccache_mode", "nested_argfolder", "interner_cache", "mimalloc_v2"):
             for solver in ("current", "next"):
                 next_solver = solver == "next"
                 check(
@@ -1071,7 +1074,7 @@ def main():
                     f"tests/ui/traits/next-solver/{directory}/{fixture}.rs",
                     next_solver=True, execute=False, extra_flags=("-Aunused", "--emit=metadata"),
                 )
-        if kind in ("resolved_relations", "root_probe"):
+        if kind in ("resolved_relations", "root_probe", "resolved_fold_cache"):
             cases = (
                 ('tests/ui/inference/lub-glb-with-unbound-infer-var.rs', 'current', True,
                  (), ()),
@@ -1129,7 +1132,7 @@ def main():
                  (), ()),
             )
             for fixture, solver, execute, errors, spans in cases:
-                if kind == "root_probe" and fixture == "tests/ui/ohm/resolved-relation-equality.rs":
+                if kind in ("root_probe", "resolved_fold_cache") and fixture == "tests/ui/ohm/resolved-relation-equality.rs":
                     fixture = str(Path(__file__).resolve().parent / "cases/root_probe/resolved-relation-equality.rs")
                 check(
                     f"resolved-relations-{Path(fixture).stem}-{solver}", fixture,
@@ -1140,7 +1143,7 @@ def main():
                                  if fixture.endswith("/infinite-type-occurs-check.rs") and solver == "next"
                                  else ()) + (() if execute else ("--emit=metadata",)),
                 )
-        if kind == "root_probe":
+        if kind in ("root_probe", "resolved_fold_cache"):
             cases = (
                 ('tests/ui/inference/bitwise-integer-inference-68951.rs', 'current', False,
                  (), ()),
@@ -1182,6 +1185,50 @@ def main():
                     extra_flags=("-Zui-testing", "-Aunused")
                     + (() if execute else ("--emit=metadata",)),
                 )
+        if kind == "resolved_fold_cache":
+            fixture = "tests/ui/ohm/resolved-fold-probes.rs"
+            fixture_hash = hashlib.sha256((source / fixture).read_bytes()).hexdigest()
+            assert fixture_hash == "852568d558179ea74e1fd49e00fc3b391a3ee272a3f33a7b3270e5d18b1c634f"
+            report["fixture_sha256"] = {fixture: fixture_hash}
+            for mode in ("current", "slow", "next", "parallel"):
+                check(
+                    f"resolved-fold-probes-{mode}", fixture, revision=mode,
+                    crate_name="resolved_fold_probes", next_solver=mode == "next",
+                    disable_fast_paths=mode == "slow", threads=4 if mode == "parallel" else 1,
+                )
+            primary_spans = {}
+            for case in report["cases"]:
+                name = case["name"]
+                diagnostics = [
+                    json.loads(line)
+                    for line in (output / f"{name}.jsonl").read_text().splitlines()
+                ]
+                if name.startswith("resolved-fold-probes-"):
+                    assert not any(d.get("level") == "warning" for d in diagnostics), name
+                stem, mode = name.rsplit("-", 1)
+                if mode not in ("current", "slow"):
+                    continue
+                primary_spans[stem, mode] = [
+                    (
+                        diagnostic["code"]["code"] if diagnostic.get("code") else None,
+                        diagnostic["message"],
+                        [
+                            (
+                                span["line_start"], span["column_start"],
+                                span["line_end"], span["column_end"], span["label"],
+                            )
+                            for span in diagnostic["spans"] if span["is_primary"]
+                        ],
+                    )
+                    for diagnostic in diagnostics
+                    if diagnostic.get("level") == "error"
+                    and not diagnostic["message"].startswith("aborting due to ")
+                ]
+            pairs = sorted(stem for stem, mode in primary_spans if mode == "current")
+            assert len(pairs) == 15
+            for stem in pairs:
+                assert primary_spans[stem, "current"] == primary_spans[stem, "slow"], stem
+            report["current_slow_primary_spans_verified"] = pairs
         if kind == "canonical_input_cache":
             case_directory = Path(__file__).resolve().parent / "cases/canonical_input_cache"
             expected_files = json.loads((case_directory / "manifest.json").read_text())
