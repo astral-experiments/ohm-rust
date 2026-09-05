@@ -1,3 +1,4 @@
+use rustc_data_structures::fx::FxHashMap;
 use rustc_middle::bug;
 use rustc_middle::ty::{
     self, Const, DelayedMap, FallibleTypeFolder, InferConst, Ty, TyCtxt, TypeFoldable, TypeFolder,
@@ -10,6 +11,13 @@ use crate::infer::TyOrConstInferVar;
 ///////////////////////////////////////////////////////////////////////////
 // OPPORTUNISTIC VAR RESOLVER
 
+/// Results with no remaining type or const variables, scoped to one inference context.
+#[derive(Default)]
+pub(super) struct ResolvedCache<'tcx> {
+    types: FxHashMap<Ty<'tcx>, Ty<'tcx>>,
+    predicates: FxHashMap<ty::Predicate<'tcx>, ty::Predicate<'tcx>>,
+}
+
 /// The opportunistic resolver can be used at any time. It simply replaces
 /// type/const variables that have been unified with the things they have
 /// been unified with (similar to `shallow_resolve`, but deep). This is
@@ -20,12 +28,21 @@ pub struct OpportunisticVarResolver<'a, 'tcx> {
     /// We're able to use a cache here as the folder does
     /// not have any mutable state.
     cache: DelayedMap<Ty<'tcx>, Ty<'tcx>>,
+    use_resolved_cache: bool,
 }
 
 impl<'a, 'tcx> OpportunisticVarResolver<'a, 'tcx> {
     #[inline]
     pub fn new(infcx: &'a InferCtxt<'tcx>) -> Self {
-        OpportunisticVarResolver { infcx, cache: Default::default() }
+        OpportunisticVarResolver {
+            infcx,
+            cache: Default::default(),
+            // A resolution observed inside a snapshot could be rolled back. This folder
+            // never changes inference state, so its snapshot status stays fixed.
+            use_resolved_cache: !cfg!(debug_assertions)
+                && !infcx.disable_trait_solver_fast_paths()
+                && !infcx.in_snapshot(),
+        }
     }
 }
 
@@ -37,29 +54,41 @@ impl<'a, 'tcx> TypeFolder<TyCtxt<'tcx>> for OpportunisticVarResolver<'a, 'tcx> {
     #[inline]
     fn fold_ty(&mut self, t: Ty<'tcx>) -> Ty<'tcx> {
         if !t.has_non_region_infer() {
-            t // micro-optimize -- if there is nothing in this type that this fold affects...
-        } else if let Some(&ty) = self.cache.get(&t) {
-            ty
-        } else {
-            let shallow = self.infcx.shallow_resolve(t);
-            // Shallow resolution is idempotent. Reuse the resolved type's flags and
-            // cache entry in this frame, retaining the original debug traversal.
-            let res = if !cfg!(debug_assertions) && shallow != t {
-                if !shallow.has_non_region_infer() {
-                    shallow
-                } else if let Some(&ty) = self.cache.get(&shallow) {
-                    ty
-                } else {
-                    let res = shallow.super_fold_with(self);
-                    assert!(self.cache.insert(shallow, res));
-                    res
-                }
-            } else {
-                shallow.super_fold_with(self)
-            };
-            assert!(self.cache.insert(t, res));
-            res
+            return t;
         }
+        if let Some(&ty) = self.cache.get(&t) {
+            return ty;
+        }
+        // A single variable already has an inexpensive unification-table lookup.
+        let cacheable = self.use_resolved_cache && !matches!(t.kind(), ty::Infer(_));
+        if cacheable {
+            let cached = self.infcx.resolved_cache.borrow().types.get(&t).copied();
+            if let Some(resolved) = cached {
+                assert!(self.cache.insert(t, resolved));
+                return resolved;
+            }
+        }
+        let shallow = self.infcx.shallow_resolve(t);
+        // Shallow resolution is idempotent. Reuse the resolved type's flags and
+        // cache entry in this frame, retaining the original debug traversal.
+        let res = if !cfg!(debug_assertions) && shallow != t {
+            if !shallow.has_non_region_infer() {
+                shallow
+            } else if let Some(&ty) = self.cache.get(&shallow) {
+                ty
+            } else {
+                let res = shallow.super_fold_with(self);
+                assert!(self.cache.insert(shallow, res));
+                res
+            }
+        } else {
+            shallow.super_fold_with(self)
+        };
+        assert!(self.cache.insert(t, res));
+        if cacheable && !res.has_non_region_infer() && !res.references_error() {
+            self.infcx.resolved_cache.borrow_mut().types.insert(t, res);
+        }
+        res
     }
 
     fn fold_const(&mut self, ct: Const<'tcx>) -> Const<'tcx> {
@@ -72,7 +101,20 @@ impl<'a, 'tcx> TypeFolder<TyCtxt<'tcx>> for OpportunisticVarResolver<'a, 'tcx> {
     }
 
     fn fold_predicate(&mut self, p: ty::Predicate<'tcx>) -> ty::Predicate<'tcx> {
-        if !p.has_non_region_infer() { p } else { p.super_fold_with(self) }
+        if !p.has_non_region_infer() {
+            return p;
+        }
+        if self.use_resolved_cache {
+            let cached = self.infcx.resolved_cache.borrow().predicates.get(&p).copied();
+            if let Some(resolved) = cached {
+                return resolved;
+            }
+        }
+        let res = p.super_fold_with(self);
+        if self.use_resolved_cache && !res.has_non_region_infer() && !res.references_error() {
+            self.infcx.resolved_cache.borrow_mut().predicates.insert(p, res);
+        }
+        res
     }
 
     fn fold_clauses(&mut self, c: ty::Clauses<'tcx>) -> ty::Clauses<'tcx> {

@@ -296,6 +296,9 @@ pub struct InferCtxt<'tcx> {
     /// for things that depends on inference variables or placeholders.
     pub evaluation_cache: select::EvaluationCache<'tcx, ty::ParamEnv<'tcx>>,
 
+    /// Fully resolved folds computed outside snapshots remain valid as inference progresses.
+    resolved_cache: RefCell<resolve::ResolvedCache<'tcx>>,
+
     /// The set of predicates on which errors have been reported, to
     /// avoid reporting the same error twice.
     pub reported_trait_errors:
@@ -659,6 +662,7 @@ impl<'tcx> InferCtxtBuilder<'tcx> {
             lexical_region_resolutions: RefCell::new(None),
             selection_cache: Default::default(),
             evaluation_cache: Default::default(),
+            resolved_cache: Default::default(),
             reported_trait_errors: Default::default(),
             reported_signature_mismatch: Default::default(),
             tainted_by_errors: Cell::new(None),
