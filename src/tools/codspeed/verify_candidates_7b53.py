@@ -43,6 +43,7 @@ CANDIDATES = {
     "lazy_obligation": ("e78a9f448a18ff0fc37df9d520dadbb50260673c", 33977285310),
     "mimalloc_v2": ("c64f2819b0b7982ad5f7f75b5de19374d6de18c1", 33977300225),
     "resolved_relations": ("fab2b5e8e23f874e40e727ec1cacea533e25a527", 33977945889),
+    "root_probe": ("94cabfecfc6fc201868a44007257c8c984644830", 33978363752),
 }
 
 
@@ -1057,7 +1058,7 @@ def main():
                     f"tests/ui/traits/next-solver/{directory}/{fixture}.rs",
                     next_solver=True, execute=False, extra_flags=("-Aunused", "--emit=metadata"),
                 )
-        if kind == "resolved_relations":
+        if kind in ("resolved_relations", "root_probe"):
             cases = (
                 ('tests/ui/inference/lub-glb-with-unbound-infer-var.rs', 'current', True,
                  (), ()),
@@ -1115,6 +1116,8 @@ def main():
                  (), ()),
             )
             for fixture, solver, execute, errors, spans in cases:
+                if kind == "root_probe" and fixture == "tests/ui/ohm/resolved-relation-equality.rs":
+                    fixture = str(Path(__file__).resolve().parent / "cases/root_probe/resolved-relation-equality.rs")
                 check(
                     f"resolved-relations-{Path(fixture).stem}-{solver}", fixture,
                     revision=solver, next_solver=solver == "next",
@@ -1123,6 +1126,48 @@ def main():
                     extra_flags=(("-Zwrite-long-types-to-disk=no",)
                                  if fixture.endswith("/infinite-type-occurs-check.rs") and solver == "next"
                                  else ()) + (() if execute else ("--emit=metadata",)),
+                )
+        if kind == "root_probe":
+            cases = (
+                ('tests/ui/inference/bitwise-integer-inference-68951.rs', 'current', False,
+                 (), ()),
+                ('tests/ui/inference/bitwise-integer-inference-68951.rs', 'next', False,
+                 (), ()),
+                ('tests/ui/inference/bitwise-integer-inference-68951.rs', 'slow', False,
+                 (), ()),
+                ('tests/ui/inference/ambiguous-numeric-in-closure-ref.rs', 'current', False,
+                 (('E0689', "can't call method `pow` on ambiguous numeric type `{integer}`"), ('E0689', "can't call method `pow` on ambiguous numeric type `{integer}`")), ((6, 35, 38, True, None), (11, 37, 40, True, None))),
+                ('tests/ui/inference/ambiguous-numeric-in-closure-ref.rs', 'next', False,
+                 (('E0689', "can't call method `pow` on ambiguous numeric type `{integer}`"), ('E0689', "can't call method `pow` on ambiguous numeric type `{integer}`")), ((6, 35, 38, True, None), (11, 37, 40, True, None))),
+                ('tests/ui/inference/ambiguous-numeric-in-closure-ref.rs', 'slow', False,
+                 (('E0689', "can't call method `pow` on ambiguous numeric type `{integer}`"), ('E0689', "can't call method `pow` on ambiguous numeric type `{integer}`")), ((6, 35, 38, True, None), (11, 37, 40, True, None))),
+                ('tests/ui/inference/ice-ifer-var-leaked-out-of-rollback-122098.rs', 'current', False,
+                 (('E0261', "use of undeclared lifetime name `'a`"), ('E0262', "invalid lifetime parameter name: `'static`"), ('E0261', "use of undeclared lifetime name `'q`"), ('E0392', "lifetime parameter `'q` is never used"), ('E0277', 'the size for values of type `Self` cannot be known at compilation time'), ('E0061', 'this function takes 0 arguments but 1 argument was supplied')), ((4, 20, 22, True, 'undeclared lifetime'), (14, 6, 13, True, "'static is a reserved lifetime name"), (14, 21, 23, True, 'undeclared lifetime'), (11, 14, 16, True, 'unused lifetime parameter'), (7, 21, 25, True, "doesn't have a size known at compile-time"), (21, 31, 41, True, None))),
+                ('tests/ui/inference/ice-ifer-var-leaked-out-of-rollback-122098.rs', 'next', False,
+                 (('E0261', "use of undeclared lifetime name `'a`"), ('E0262', "invalid lifetime parameter name: `'static`"), ('E0261', "use of undeclared lifetime name `'q`"), ('E0392', "lifetime parameter `'q` is never used"), ('E0277', 'the size for values of type `Self` cannot be known at compilation time'), ('E0061', 'this function takes 0 arguments but 1 argument was supplied')), ((4, 20, 22, True, 'undeclared lifetime'), (14, 6, 13, True, "'static is a reserved lifetime name"), (14, 21, 23, True, 'undeclared lifetime'), (11, 14, 16, True, 'unused lifetime parameter'), (7, 21, 25, True, "doesn't have a size known at compile-time"), (21, 31, 41, True, None))),
+                ('tests/ui/inference/ice-ifer-var-leaked-out-of-rollback-122098.rs', 'slow', False,
+                 (('E0261', "use of undeclared lifetime name `'a`"), ('E0262', "invalid lifetime parameter name: `'static`"), ('E0261', "use of undeclared lifetime name `'q`"), ('E0392', "lifetime parameter `'q` is never used"), ('E0277', 'the size for values of type `Self` cannot be known at compilation time'), ('E0061', 'this function takes 0 arguments but 1 argument was supplied')), ((4, 20, 22, True, 'undeclared lifetime'), (14, 6, 13, True, "'static is a reserved lifetime name"), (14, 21, 23, True, 'undeclared lifetime'), (11, 14, 16, True, 'unused lifetime parameter'), (7, 21, 25, True, "doesn't have a size known at compile-time"), (21, 31, 41, True, None))),
+                ('tests/ui/inference/iter-ufcs-coercion-type-unification.rs', 'current', False,
+                 (), ()),
+                ('tests/ui/inference/iter-ufcs-coercion-type-unification.rs', 'next', False,
+                 (), ()),
+                ('tests/ui/inference/iter-ufcs-coercion-type-unification.rs', 'slow', False,
+                 (), ()),
+                ('tests/ui/type-inference/float-type-inference-unification-14382.rs', 'current', True,
+                 (), ()),
+                ('tests/ui/type-inference/float-type-inference-unification-14382.rs', 'next', True,
+                 (), ()),
+                ('tests/ui/type-inference/float-type-inference-unification-14382.rs', 'slow', True,
+                 (), ()),
+            )
+            for fixture, solver, execute, errors, spans in cases:
+                check(
+                    f"root-probe-{Path(fixture).stem}-{solver}", fixture,
+                    revision=solver, next_solver=solver == "next",
+                    disable_fast_paths=solver == "slow", errors=errors,
+                    required_spans=spans, execute=execute,
+                    extra_flags=("-Zui-testing", "-Aunused")
+                    + (() if execute else ("--emit=metadata",)),
                 )
         if kind == "early_sized":
             for solver in ("current", "next", "slow"):

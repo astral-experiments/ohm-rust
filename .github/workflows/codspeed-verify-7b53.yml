@@ -19,15 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - kind: generalizer
-            sha: 3c7b97083e3a18bb624ce88348c0a4ab5670200f
-            run: 33977269210
-          - kind: lazy_obligation
-            sha: e78a9f448a18ff0fc37df9d520dadbb50260673c
-            run: 33977285310
-          - kind: mimalloc_v2
-            sha: c64f2819b0b7982ad5f7f75b5de19374d6de18c1
-            run: 33977300225
+          - kind: resolved_relations
+            sha: fab2b5e8e23f874e40e727ec1cacea533e25a527
+            run: 33977945889
     steps:
       - name: Checkout validation script
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
