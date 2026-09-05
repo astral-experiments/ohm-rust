@@ -19,9 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - kind: copy_adt
-            sha: 284f7a09c013ce6fac94e023861309f4f3798ea1
-            run: 33972891567
+          - kind: wf_adt
+            sha: a62dbad7aa17c1f4239e081218090a12f0c33291
+            run: 33973221790
     steps:
       - name: Checkout validation script
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
