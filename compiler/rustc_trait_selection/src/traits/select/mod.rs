@@ -2859,6 +2859,27 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
         let predicates = predicates.instantiate_own(tcx, args);
         let mut obligations = PredicateObligations::with_capacity(predicates.len());
         for (index, (predicate, span)) in predicates.into_iter().enumerate() {
+            let predicate = predicate.skip_norm_wip();
+            if !cfg!(debug_assertions)
+                && !self.infcx.disable_trait_solver_fast_paths()
+                && let ty::ClauseKind::Trait(trait_predicate) = predicate.kind().skip_binder()
+                && trait_predicate.polarity == ty::PredicatePolarity::Positive
+                && (tcx.is_lang_item(trait_predicate.def_id(), LangItem::Sized)
+                    || tcx.is_lang_item(trait_predicate.def_id(), LangItem::MetaSized))
+            {
+                // Fulfillment already discards these children. Resolve variables as the
+                // normalizer would, then avoid allocating a derived cause for a predicate
+                // that cannot produce normalization obligations or inference effects.
+                let resolved = self.infcx.resolve_vars_if_possible(predicate);
+                if !resolved.has_aliases()
+                    && !resolved.references_error()
+                    && !resolved.has_escaping_bound_vars()
+                    && sizedness_fast_path(tcx, resolved.as_predicate(), param_env)
+                {
+                    continue;
+                }
+            }
+
             let cause = if tcx.is_lang_item(parent_trait_pred.def_id(), LangItem::CoerceUnsized) {
                 cause.clone()
             } else {
@@ -2876,7 +2897,7 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                 param_env,
                 cause.clone(),
                 recursion_depth,
-                predicate.skip_norm_wip(),
+                predicate,
                 &mut obligations,
             );
             obligations.push(Obligation {
