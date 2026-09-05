@@ -34,6 +34,7 @@ CANDIDATES = {
     "wf_adt": ("a62dbad7aa17c1f4239e081218090a12f0c33291", 33973221790),
     "trait_impl_schema": ("f4655021ef46126bed6893d0a5de8aa87bbfc9fe", 33973544227),
     "interner_cache": ("c320a2b6ad359b0e8a36d694780a25415b7a0360", 33973762897),
+    "wf_nominal": ("33036e29a96f566733bc26bc3ba12ed0c13400f8", 33973833734),
 }
 
 
@@ -649,7 +650,7 @@ def main():
                         extra_flags=("--crate-type=rlib", "--emit=metadata", "--extern", f"proof_traits={rlib}"),
                         errors=errors, **controls,
                     )
-        if kind == "wf_adt":
+        if kind in ("wf_adt", "wf_nominal"):
             for solver in ("current", "next", "slow"):
                 controls = {
                     "revision": solver,
@@ -683,6 +684,43 @@ def main():
                     errors=(("E0072", "recursive type `Invalid` has infinite size"),),
                     **controls,
                 )
+        if kind == "wf_nominal":
+            for solver in ("current", "next", "slow"):
+                controls = {
+                    "next_solver": solver == "next",
+                    "disable_fast_paths": solver == "slow",
+                }
+                check(
+                    f"wf-nominal-{solver}", "tests/ui/ohm/wf-nominal.rs",
+                    revision=solver, **controls,
+                )
+                check(
+                    f"wf-nominal-lifetimes-{solver}", "tests/ui/ohm/wf-nominal-lifetimes.rs",
+                    revision=solver,
+                    errors=(
+                        ("E0309", "the parameter type `T` may not live long enough"),
+                        (None, "lifetime may not live long enough"),
+                    ), **controls,
+                )
+                check(
+                    f"wf-nominal-restrictions-{solver}", "tests/ui/ohm/wf-nominal-restrictions.rs",
+                    revision=solver,
+                    errors=(
+                        ("E0277", "the trait bound `NotClone: Clone` is not satisfied"),
+                        (None, "the constant `N` is not of type `usize`"),
+                        ("E0277", "the trait bound `<T as Associated>::Output: Clone` is not satisfied"),
+                    ) * (2 if solver == "next" else 1), **controls,
+                )
+                cache = output / "incremental" / f"wf-nominal-plan-{solver}"
+                for revision in ("bpass1", "bfail2"):
+                    check(
+                        f"wf-nominal-plan-{solver}-{revision}",
+                        "tests/incremental/wf-nominal-plan.rs", revision=revision,
+                        incremental=cache, require_loaded=revision == "bfail2",
+                        execute=False, extra_flags=("--emit=metadata",),
+                        errors=((None, "lifetime may not live long enough"),) * 2
+                        if revision == "bfail2" else (), **controls,
+                    )
         if kind == "early_sized":
             for solver in ("current", "next", "slow"):
                 options = {
