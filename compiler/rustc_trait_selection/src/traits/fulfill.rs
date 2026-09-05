@@ -17,7 +17,7 @@ use rustc_middle::ty::{
     self, Binder, Const, DelayedSet, GenericArgsRef, Ty, TyCtxt, TypeSuperVisitable, TypeVisitable,
     TypeVisitableExt, TypeVisitor, TypingMode, may_use_unstable_feature,
 };
-use thin_vec::thin_vec;
+use thin_vec::{ThinVec, thin_vec};
 use tracing::{debug, debug_span, instrument};
 
 use super::effects::{self, HostEffectObligation};
@@ -72,16 +72,13 @@ pub struct FulfillmentContext<'tcx, E: 'tcx> {
 #[derive(Clone, Debug)]
 pub struct PendingPredicateObligation<'tcx> {
     pub obligation: PredicateObligation<'tcx>,
-    // This is far more often read than modified, meaning that we
-    // should mostly optimize for reading speed, while modifying is not as relevant.
-    //
-    // For whatever reason using a boxed slice is slower than using a `Vec` here.
-    pub stalled_on: Vec<TyOrConstInferVar>,
+    // Keep the list header small because the forest stores these obligations in a dense vector.
+    pub stalled_on: ThinVec<TyOrConstInferVar>,
 }
 
 // `PendingPredicateObligation` is used a lot. Make sure it doesn't unintentionally get bigger.
 #[cfg(target_pointer_width = "64")]
-rustc_data_structures::static_assert_size!(PendingPredicateObligation<'_>, 72);
+rustc_data_structures::static_assert_size!(PendingPredicateObligation<'_>, 56);
 
 impl<'tcx, E> FulfillmentContext<'tcx, E>
 where
@@ -154,8 +151,10 @@ where
             return;
         }
 
-        self.predicates
-            .register_obligation(PendingPredicateObligation { obligation, stalled_on: vec![] });
+        self.predicates.register_obligation(PendingPredicateObligation {
+            obligation,
+            stalled_on: thin_vec![],
+        });
     }
 
     fn collect_remaining_errors(&mut self, infcx: &InferCtxt<'tcx>) -> Vec<E> {
@@ -318,7 +317,7 @@ impl<'a, 'tcx> ObligationProcessor for FulfillProcessor<'a, 'tcx> {
             return None;
         }
         child.set_depth_from_parent(parent.obligation.recursion_depth);
-        Some(PendingPredicateObligation { obligation: child, stalled_on: vec![] })
+        Some(PendingPredicateObligation { obligation: child, stalled_on: thin_vec![] })
     }
 
     /// Compared to `needs_process_obligation` this and its callees
@@ -636,7 +635,7 @@ impl<'a, 'tcx> ObligationProcessor for FulfillProcessor<'a, 'tcx> {
                     ) {
                         None => {
                             pending_obligation.stalled_on =
-                                vec![TyOrConstInferVar::maybe_from_term(term).unwrap()];
+                                thin_vec![TyOrConstInferVar::maybe_from_term(term).unwrap()];
                             ProcessResult::Unchanged
                         }
                         Some(os) => ProcessResult::Changed(os),
@@ -652,7 +651,7 @@ impl<'a, 'tcx> ObligationProcessor for FulfillProcessor<'a, 'tcx> {
                         Err((a, b)) => {
                             // None means that both are unresolved.
                             pending_obligation.stalled_on =
-                                vec![TyOrConstInferVar::Ty(a), TyOrConstInferVar::Ty(b)];
+                                thin_vec![TyOrConstInferVar::Ty(a), TyOrConstInferVar::Ty(b)];
                             ProcessResult::Unchanged
                         }
                         Ok(Ok(ok)) => ProcessResult::Changed(ok.obligations),
@@ -676,7 +675,7 @@ impl<'a, 'tcx> ObligationProcessor for FulfillProcessor<'a, 'tcx> {
                         Err((a, b)) => {
                             // None means that both are unresolved.
                             pending_obligation.stalled_on =
-                                vec![TyOrConstInferVar::Ty(a), TyOrConstInferVar::Ty(b)];
+                                thin_vec![TyOrConstInferVar::Ty(a), TyOrConstInferVar::Ty(b)];
                             ProcessResult::Unchanged
                         }
                         Ok(Ok(ok)) => ProcessResult::Changed(ok.obligations),
@@ -878,7 +877,7 @@ impl<'a, 'tcx> FulfillProcessor<'a, 'tcx> {
         &mut self,
         obligation: &PredicateObligation<'tcx>,
         trait_obligation: PolyTraitObligation<'tcx>,
-        stalled_on: &mut Vec<TyOrConstInferVar>,
+        stalled_on: &mut ThinVec<TyOrConstInferVar>,
     ) -> ProcessResult<PredicateObligation<'tcx>, FulfillmentErrorCode<'tcx>> {
         let infcx = self.selcx.infcx;
         if obligation.predicate.is_global() && !self.selcx.typing_mode().is_coherence() {
@@ -931,7 +930,7 @@ impl<'a, 'tcx> FulfillProcessor<'a, 'tcx> {
         &mut self,
         obligation: &PredicateObligation<'tcx>,
         project_obligation: PolyProjectionObligation<'tcx>,
-        stalled_on: &mut Vec<TyOrConstInferVar>,
+        stalled_on: &mut ThinVec<TyOrConstInferVar>,
     ) -> ProcessResult<PredicateObligation<'tcx>, FulfillmentErrorCode<'tcx>> {
         let tcx = self.selcx.tcx();
         let infcx = self.selcx.infcx;
@@ -984,7 +983,7 @@ impl<'a, 'tcx> FulfillProcessor<'a, 'tcx> {
     fn process_host_obligation(
         &mut self,
         host_obligation: HostEffectObligation<'tcx>,
-        stalled_on: &mut Vec<TyOrConstInferVar>,
+        stalled_on: &mut ThinVec<TyOrConstInferVar>,
     ) -> ProcessResult<PredicateObligation<'tcx>, FulfillmentErrorCode<'tcx>> {
         match effects::evaluate_host_effect_obligation(&mut self.selcx, &host_obligation) {
             Ok(nested) => ProcessResult::Changed(nested),
