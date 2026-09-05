@@ -100,7 +100,8 @@ impl<'tcx> LateLintPass<'tcx> for OpaqueHiddenInferredBound {
                 };
                 // Only check types, since those are the only things that may
                 // have opaques in them anyways.
-                let Some(proj_term) = proj.term.as_type() else { return };
+                let term = proj.term;
+                let Some(proj_term) = term.as_type() else { return };
 
                 // HACK: `impl Trait<Assoc = impl Trait2>` from an RPIT is "ok"...
                 if let ty::Alias(_, ty::AliasTy { kind: ty::Opaque { def_id: opaque_def_id }, .. }) =

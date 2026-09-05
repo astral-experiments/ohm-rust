@@ -2909,8 +2909,8 @@ fn param_env_with_gat_bounds<'tcx>(
         let bound_vars = tcx.mk_bound_variable_kinds(&bound_vars);
 
         match normalize_impl_ty.kind() {
-            &ty::Alias(_, ty::AliasTy { kind: ty::Projection { def_id }, args, .. })
-                if def_id == trait_ty.def_id && args == rebased_args =>
+            &ty::Alias(_, alias @ ty::AliasTy { kind: ty::Projection { def_id }, .. })
+                if def_id == trait_ty.def_id && { alias.args } == rebased_args =>
             {
                 // Don't include this predicate if the projected type is
                 // exactly the same as the projection. This can occur in
@@ -2965,7 +2965,7 @@ fn try_report_async_mismatch<'tcx>(
             && let Some(proj) = proj.no_bound_vars()
             && infcx.can_eq(
                 error.root_obligation.param_env,
-                proj.term.expect_type(),
+                { proj.term }.expect_type(),
                 impl_sig.output(),
             )
         {

@@ -531,7 +531,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         };
 
         // Since this is a return parameter type it is safe to unwrap.
-        let ret_param_ty = projection.skip_binder().term.expect_type();
+        let term = projection.skip_binder().term;
+        let ret_param_ty = term.expect_type();
         debug!(?ret_param_ty);
 
         let sig = projection.rebind(self.tcx.mk_fn_sig_safe_rust_abi(input_tys, ret_param_ty));
@@ -580,8 +581,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         // but none of them would be useful, since async closures return
         // concrete anonymous future types, and their futures are not coerced
         // into any other type within the body of the async closure.
-        let ty::Infer(ty::TyVar(return_vid)) = *projection.skip_binder().term.expect_type().kind()
-        else {
+        let term = projection.skip_binder().term;
+        let ty::Infer(ty::TyVar(return_vid)) = *term.expect_type().kind() else {
             return None;
         };
 
@@ -592,7 +593,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 && let Some(ret_projection) = ret_projection.no_bound_vars()
                 && self.tcx.is_lang_item(ret_projection.def_id(), LangItem::FutureOutput)
             {
-                return_ty = Some(ret_projection.term.expect_type());
+                let term = ret_projection.term;
+                return_ty = Some(term.expect_type());
                 break;
             }
         }

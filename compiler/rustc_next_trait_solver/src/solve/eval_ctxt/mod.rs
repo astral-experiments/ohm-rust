@@ -1214,7 +1214,8 @@ where
             term: goal.predicate.term,
             cache: Default::default(),
         };
-        goal.predicate.alias.visit_with(&mut visitor).is_continue()
+        let alias = goal.predicate.alias;
+        alias.visit_with(&mut visitor).is_continue()
             && goal.param_env.visit_with(&mut visitor).is_continue()
     }
 

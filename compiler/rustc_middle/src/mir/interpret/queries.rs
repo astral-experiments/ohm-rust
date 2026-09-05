@@ -99,7 +99,8 @@ impl<'tcx> TyCtxt<'tcx> {
         //
         // When trying to evaluate constants containing inference variables,
         // use `Infcx::const_eval_resolve` instead.
-        if ct.args.has_non_region_infer() {
+        let args = ct.args;
+        if args.has_non_region_infer() {
             bug!("did not expect inference variables here");
         }
 
@@ -110,7 +111,7 @@ impl<'tcx> TyCtxt<'tcx> {
             | ty::AliasConstKind::Anon { def_id } => def_id,
         };
 
-        let cid = match ty::Instance::try_resolve(self, typing_env, def_id, ct.args) {
+        let cid = match ty::Instance::try_resolve(self, typing_env, def_id, args) {
             Ok(Some(instance)) => GlobalId { instance, promoted: None },
             // For errors during resolution, we deliberately do not point at the usage site of the constant,
             // since for these errors the place the constant is used shouldn't matter.
@@ -133,7 +134,7 @@ impl<'tcx> TyCtxt<'tcx> {
             // here does feel somewhat sensible.
             let def_id = cid.instance.def_id();
             if !self.features().generic_const_exprs()
-                && ct.args.has_non_region_param()
+                && args.has_non_region_param()
                 // We only FCW for anon consts as repeat expr counts with anon consts are the only place
                 // that we have a back compat hack for. We don't need to check this is a const argument
                 // as only anon consts as const args should get evaluated "for the type system".

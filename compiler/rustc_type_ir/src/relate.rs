@@ -235,7 +235,8 @@ impl<I: Interner> Relate<I> for ty::AliasTy<I> {
         a: ty::AliasTy<I>,
         b: ty::AliasTy<I>,
     ) -> RelateResult<I, ty::AliasTy<I>> {
-        if a.kind != b.kind {
+        let (a_kind, b_kind) = (a.kind, b.kind);
+        if a_kind != b_kind {
             Err(TypeError::ProjectionMismatched(ExpectedFound::new(a.kind.into(), b.kind.into())))
         } else {
             let cx = relation.cx();
@@ -256,7 +257,8 @@ impl<I: Interner> Relate<I> for ty::AliasConst<I> {
         b: ty::AliasConst<I>,
     ) -> RelateResult<I, ty::AliasConst<I>> {
         let cx = relation.cx();
-        if a.kind != b.kind {
+        let (a_kind, b_kind) = (a.kind, b.kind);
+        if a_kind != b_kind {
             Err(TypeError::ConstMismatch(ExpectedFound::new(
                 Const::new_alias(cx, ty::IsRigid::yes_if_next_solver(cx), a),
                 Const::new_alias(cx, ty::IsRigid::yes_if_next_solver(cx), b),
@@ -278,7 +280,8 @@ impl<I: Interner> Relate<I> for ty::AliasTerm<I> {
         a: ty::AliasTerm<I>,
         b: ty::AliasTerm<I>,
     ) -> RelateResult<I, ty::AliasTerm<I>> {
-        if a.kind != b.kind {
+        let (a_kind, b_kind) = (a.kind, b.kind);
+        if a_kind != b_kind {
             Err(TypeError::ProjectionMismatched(ExpectedFound::new(a.kind, b.kind)))
         } else {
             let args = match a.kind {

@@ -422,9 +422,9 @@ impl<'tcx> HirTyLowerer<'tcx> for FnCtxt<'_, 'tcx> {
             if let ty::Alias(
                 _,
                 ty::AliasTy { kind: ty::Projection { def_id } | ty::Free { def_id }, args, .. },
-            ) = ty.kind()
+            ) = *ty.kind()
             {
-                self.add_required_obligations_for_hir(span, *def_id, args, hir_id);
+                self.add_required_obligations_for_hir(span, def_id, args, hir_id);
             }
 
             self.normalize(span, Unnormalized::new_wip(ty))

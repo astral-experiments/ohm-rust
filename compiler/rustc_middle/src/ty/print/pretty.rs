@@ -3301,7 +3301,8 @@ define_print! {
         self.projection_term.print(p)?;
         write!(p, " == ")?;
         p.reset_type_limit();
-        self.term.print(p)?;
+        let term = self.term;
+        term.print(p)?;
     }
 
     ty::SubtypePredicate<'tcx> {
@@ -3322,7 +3323,8 @@ define_print! {
         self.alias.print(p)?;
         write!(p, " normalizes-to ")?;
         p.reset_type_limit();
-        self.term.print(p)?;
+        let term = self.term;
+        term.print(p)?;
     }
 
     ty::PlaceholderType<'tcx> {

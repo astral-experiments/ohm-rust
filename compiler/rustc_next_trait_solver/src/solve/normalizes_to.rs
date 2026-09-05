@@ -32,8 +32,9 @@ where
         goal: Goal<I, NormalizesTo<I>>,
     ) -> QueryResultOrRerunNonErased<I> {
         debug_assert!(self.term_is_fully_unconstrained(goal));
+        let kind = goal.predicate.alias.kind;
         debug_assert_matches!(
-            goal.predicate.alias.kind,
+            kind,
             ty::AliasTermKind::ProjectionTy { .. } | ty::AliasTermKind::ProjectionConst { .. }
         );
 
@@ -643,6 +644,7 @@ where
         ecx: &mut EvalCtxt<'_, D>,
         goal: Goal<I, Self>,
     ) -> Result<Candidate<I>, NoSolutionOrRerunNonErased> {
+        let args = goal.predicate.alias.args;
         let [
             closure_fn_kind_ty,
             goal_kind_ty,
@@ -650,7 +652,7 @@ where
             tupled_inputs_ty,
             tupled_upvars_ty,
             coroutine_captures_by_ref_ty,
-        ] = *goal.predicate.alias.args.as_slice()
+        ] = *args.as_slice()
         else {
             panic!();
         };
@@ -699,10 +701,8 @@ where
     ) -> Result<Candidate<I>, NoSolutionOrRerunNonErased> {
         let cx = ecx.cx();
         let metadata_def_id = cx.require_projection_lang_item(SolverProjectionLangItem::Metadata);
-        assert_eq!(
-            ty::AliasTermKind::ProjectionTy { def_id: metadata_def_id },
-            goal.predicate.alias.kind
-        );
+        let kind = goal.predicate.alias.kind;
+        assert_eq!(ty::AliasTermKind::ProjectionTy { def_id: metadata_def_id }, kind);
         let metadata_ty = match goal.predicate.self_ty().kind() {
             ty::Bool
             | ty::Char

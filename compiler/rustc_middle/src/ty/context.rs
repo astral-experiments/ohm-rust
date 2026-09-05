@@ -2995,10 +2995,10 @@ impl<'tcx> TyCtxt<'tcx> {
     pub fn get_impl_future_output_ty(self, ty: Ty<'tcx>) -> Option<Ty<'tcx>> {
         let (def_id, args) = match *ty.kind() {
             ty::Alias(_, ty::AliasTy { kind: ty::Opaque { def_id }, args, .. }) => (def_id, args),
-            ty::Alias(_, ty::AliasTy { kind: ty::Projection { def_id }, args, .. })
+            ty::Alias(_, alias @ ty::AliasTy { kind: ty::Projection { def_id }, .. })
                 if self.is_impl_trait_in_trait(def_id) =>
             {
-                (def_id, args)
+                (def_id, alias.args)
             }
             _ => return None,
         };
@@ -3016,7 +3016,8 @@ impl<'tcx> TyCtxt<'tcx> {
                         ty::ClauseKind::Projection(projection_predicate)
                             if projection_predicate.def_id() == item_def_id =>
                         {
-                            projection_predicate.term.as_type()
+                            let term = projection_predicate.term;
+                            term.as_type()
                         }
                         _ => None,
                     })

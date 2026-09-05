@@ -25,7 +25,9 @@ pub type AliasConst<'tcx> = ir::AliasConst<TyCtxt<'tcx>>;
 pub type AliasConstKind<'tcx> = ir::AliasConstKind<TyCtxt<'tcx>>;
 
 #[cfg(target_pointer_width = "64")]
-rustc_data_structures::static_assert_size!(ConstKind<'_>, 32);
+rustc_data_structures::static_assert_size!(ConstKind<'_>, 24);
+#[cfg(target_pointer_width = "64")]
+rustc_data_structures::static_assert_size!(WithCachedTypeInfo<ConstKind<'_>>, 32);
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, StableHash)]
 #[rustc_pass_by_value]

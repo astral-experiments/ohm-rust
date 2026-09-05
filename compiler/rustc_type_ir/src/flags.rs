@@ -475,7 +475,8 @@ impl<I: Interner> FlagComputation<I> {
         match *c {
             ty::ConstKind::Alias(is_rigid, alias_const) => {
                 self.add_is_rigid(is_rigid);
-                self.add_args(alias_const.args.as_slice());
+                let args = alias_const.args;
+                self.add_args(args.as_slice());
                 self.add_flags(TypeFlags::HAS_CT_PROJECTION);
             }
             ty::ConstKind::Infer(infer) => match infer {
@@ -521,11 +522,13 @@ impl<I: Interner> FlagComputation<I> {
     }
 
     fn add_alias_ty(&mut self, alias_ty: ty::AliasTy<I>) {
-        self.add_args(alias_ty.args.as_slice());
+        let args = alias_ty.args;
+        self.add_args(args.as_slice());
     }
 
     fn add_alias_term(&mut self, alias_term: ty::AliasTerm<I>) {
-        self.add_args(alias_term.args.as_slice());
+        let args = alias_term.args;
+        self.add_args(args.as_slice());
     }
 
     fn add_args(&mut self, args: &[I::GenericArg]) {

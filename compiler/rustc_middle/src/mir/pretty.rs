@@ -1498,7 +1498,8 @@ impl<'tcx> Visitor<'tcx> for ExtraComments<'tcx> {
                             | ty::AliasConstKind::Free { def_id }
                             | ty::AliasConstKind::Anon { def_id } => self.tcx.def_path_str(def_id),
                         };
-                        format!("ty::AliasConst({}, {:?})", kind, alias_const.args)
+                        let args = alias_const.args;
+                        format!("ty::AliasConst({}, {:?})", kind, args)
                     }
                     ty::ConstKind::Value(cv) => {
                         format!("ty::Valtree({})", fmt_valtree(&cv))

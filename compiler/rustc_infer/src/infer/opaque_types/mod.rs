@@ -85,9 +85,10 @@ impl<'tcx> InferCtxt<'tcx> {
     ) -> Result<Vec<Goal<'tcx, ty::Predicate<'tcx>>>, TypeError<'tcx>> {
         debug_assert!(!self.next_trait_solver());
         let process = |a: Ty<'tcx>, b: Ty<'tcx>| match *a.kind() {
-            ty::Alias(_, ty::AliasTy { kind: ty::Opaque { def_id }, args, .. })
+            ty::Alias(_, alias @ ty::AliasTy { kind: ty::Opaque { def_id }, .. })
                 if def_id.is_local() =>
             {
+                let args = alias.args;
                 let def_id = def_id.expect_local();
                 if self.typing_mode_raw().is_coherence() {
                     // See comment on `insert_hidden_type` for why this is sufficient in coherence
@@ -345,8 +346,8 @@ impl<'tcx> InferCtxt<'tcx> {
                     // as the bounds must hold on the hidden type after all.
                     ty::Alias(
                         _,
-                        ty::AliasTy { kind: ty::Opaque { def_id: def_id2 }, args: args2, .. },
-                    ) if def_id == def_id2 && args == args2 => hidden_ty,
+                        alias @ ty::AliasTy { kind: ty::Opaque { def_id: def_id2 }, .. },
+                    ) if def_id == def_id2 && args == { alias.args } => hidden_ty,
                     _ => ty,
                 },
                 lt_op: |lt| lt,

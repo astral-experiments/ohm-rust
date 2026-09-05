@@ -53,7 +53,8 @@ where
                 .map(|pred| goal.with(cx, pred)),
         )?;
 
-        let normalized: I::Term = match inherent.kind {
+        let kind = inherent.kind;
+        let normalized: I::Term = match kind {
             ty::AliasTermKind::InherentTy { def_id } => {
                 let inherent = cx.type_of(def_id.into()).instantiate(cx, inherent_args);
                 let inherent = self.normalize(GoalSource::Misc, goal.param_env, inherent)?;

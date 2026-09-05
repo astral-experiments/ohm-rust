@@ -657,7 +657,12 @@ mod size_asserts {
 
     use super::*;
     // tidy-alphabetical-start
-    static_assert_size!(PredicateKind<'_>, 40);
-    static_assert_size!(WithCachedTypeInfo<PredicateKind<'_>>, 48);
+    static_assert_size!(ClauseKind<'_>, 32);
+    static_assert_size!(PredicateKind<'_>, 32);
+    static_assert_size!(WithCachedTypeInfo<PredicateKind<'_>>, 40);
+    static_assert_size!(WithCachedTypeInfo<ty::Binder<'_, PredicateKind<'_>>>, 48);
+    static_assert_size!(ty::AliasTerm<'_>, 20);
+    static_assert_size!(ty::NormalizesTo<'_>, 28);
+    static_assert_size!(ty::ProjectionPredicate<'_>, 28);
     // tidy-alphabetical-end
 }

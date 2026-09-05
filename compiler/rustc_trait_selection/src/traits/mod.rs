@@ -706,9 +706,10 @@ pub fn try_evaluate_const<'tcx>(
                     // logic does not go through type system normalization. If it did this would
                     // be a backwards compatibility problem as we do not enforce "syntactic" non-
                     // usage of generic parameters like we do here.
-                    if alias_const.args.has_non_region_param()
-                        || alias_const.args.has_non_region_infer()
-                        || alias_const.args.has_non_region_placeholders()
+                    let args = alias_const.args;
+                    if args.has_non_region_param()
+                        || args.has_non_region_infer()
+                        || args.has_non_region_placeholders()
                     {
                         return Err(EvaluateConstErr::HasGenericsOrInfers);
                     }
@@ -717,7 +718,7 @@ pub fn try_evaluate_const<'tcx>(
                     // to prevent query cycle.
                     let typing_env = ty::TypingEnv::fully_monomorphized();
 
-                    (alias_const.args, typing_env)
+                    (args, typing_env)
                 }
             };
 

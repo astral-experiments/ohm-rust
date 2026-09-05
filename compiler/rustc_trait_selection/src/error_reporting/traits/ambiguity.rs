@@ -660,13 +660,11 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                     true,
                 ),
 
-            ty::PredicateKind::NormalizesTo(ty::NormalizesTo { alias, term })
-                if term.is_infer() =>
-            {
+            ty::PredicateKind::NormalizesTo(data) if { data.term }.is_infer() => {
                 if let Some(e) = self.tainted_by_errors() {
                     return e;
                 }
-                let alias = self.tcx.short_string(alias, &mut long_ty_path);
+                let alias = self.tcx.short_string(data.alias, &mut long_ty_path);
                 struct_span_code_err!(
                     self.dcx(),
                     span,
