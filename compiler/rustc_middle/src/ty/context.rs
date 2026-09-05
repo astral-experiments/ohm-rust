@@ -133,7 +133,7 @@ impl<'tcx> rustc_type_ir::inherent::Span<TyCtxt<'tcx>> for Span {
 type InternedSet<'tcx, T> = ShardedHashMap<InternedInSet<'tcx, T>, ()>;
 
 // A power of two so the hash selects a bounded direct-mapped cache slot.
-const INTERNER_CACHE_LEN: usize = 16384;
+const INTERNER_CACHE_LEN: usize = 65536;
 const SUPERTRAIT_CACHE_LEN: usize = 16384;
 const CLAUSE_INSTANTIATION_CACHE_LEN: usize = 16384;
 const FN_SIG_INSTANTIATION_CACHE_LEN: usize = 16384;
