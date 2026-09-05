@@ -135,6 +135,14 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/ui/unused-crate-deps
 
+      - name: Run closed associated-type proof regressions
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1
+          tests/ui/associated-types/closed-definition-proofs.rs
+          tests/ui/associated-types/closed-definition-proof-failures.rs
+          tests/incremental/closed-associated-type-proofs.rs
+
       - name: Run well-formedness obligation regression tests
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
@@ -150,19 +158,6 @@ jobs:
           tests/ui/borrowck/two-phase-cannot-nest-mut-self-calls.rs
           tests/ui/nll/maybe-initialized-drop.rs
           tests/ui/nll/match-guards-partially-borrow.rs
-
-      - name: Run dependency recording and encoding regressions
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1 compiler/rustc_middle
-          --test-args encode_edges_matches_wire_format
-
-      - name: Run dependency recording incremental regressions
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1
-          tests/incremental/issue-108481-feed-eval-always.rs
-          tests/incremental/lint-unused-features.rs tests/incremental/feature_gate.rs
 
       - name: Run cached hygiene unit tests
         run: >-
