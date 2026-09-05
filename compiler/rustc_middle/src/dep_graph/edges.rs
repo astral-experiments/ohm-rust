@@ -11,8 +11,11 @@ pub(crate) const SMALL_READS_MAX: usize = 16;
 /// The reads recorded by one task so far, deduplicated and in first-read order.
 #[derive(Debug)]
 pub(crate) enum TaskReads {
-    /// The first few reads, with a shortcut for consecutive duplicates.
-    Small { len: u8, buf: [DepNodeIndex; SMALL_READS_MAX], last: DepNodeIndex },
+    /// The first few reads, with a shortcut for consecutive duplicates and a filter
+    /// that skips the exact scan when an index has not been seen before.
+    ///
+    /// The filter adds 8 bytes to `TaskReads` on 64-bit hosts (72 to 80 bytes).
+    Small { len: u8, buf: [DepNodeIndex; SMALL_READS_MAX], last: DepNodeIndex, seen: u64 },
 
     /// The reads of a task that outgrew the inline buffer.
     Recorded(ReadsRecorder),
@@ -25,6 +28,7 @@ impl TaskReads {
             len: 0,
             buf: [DepNodeIndex::ZERO; SMALL_READS_MAX],
             last: DepNodeIndex::ZERO,
+            seen: 0,
         }
     }
 
@@ -34,17 +38,23 @@ impl TaskReads {
     pub(crate) fn insert(&mut self, index: DepNodeIndex, pool: &Lock<Vec<ReadsRecorder>>) -> bool {
         match self {
             TaskReads::Recorded(recorder) => recorder.insert(index),
-            TaskReads::Small { len, buf, last } => {
+            TaskReads::Small { len, buf, last, seen } => {
                 let n = usize::from(*len);
                 if n > 0 && *last == index {
-                    false
-                } else if buf[..n].contains(&index) {
+                    return false;
+                }
+
+                // A clear bit proves absence; a set bit may be a hash collision, so
+                // those reads still need an exact lookup in the inline buffer.
+                let bit = 1u64 << (index.as_u32() & 63);
+                if (*seen & bit != 0) && buf[..n].contains(&index) {
                     *last = index;
                     false
                 } else if n < SMALL_READS_MAX {
                     buf[n] = index;
                     *len += 1;
                     *last = index;
+                    *seen |= bit;
                     true
                 } else {
                     // The inline buffer is full: move the reads into a pooled recorder.
