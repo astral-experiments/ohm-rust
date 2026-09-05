@@ -54,6 +54,9 @@ frontend thread, without release PGO or BOLT. Dependencies are prepared separate
 for each crate and profile. Ohm's development-session replays cover full parallel
 builds and Cargo cache reuse.
 
+The benchmark compiler uses one codegen unit, matching distribution builds;
+that setting favors compiler runtime speed at the cost of a longer compiler build.
+
 ## Run locally
 
 From the repository root, build the candidate compiler and matching sysroot:
