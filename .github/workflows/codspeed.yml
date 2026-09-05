@@ -177,6 +177,7 @@ jobs:
           import os
           import platform
           import subprocess
+          import tomllib
           from pathlib import Path
 
           revision = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
@@ -196,8 +197,33 @@ jobs:
               raise SystemExit(f"Unexpected runner architecture: {platform.machine()}")
           subprocess.run(
               ["git", "diff", "--exit-code", os.environ["BASELINE_SHA"], revision,
-               "--", "src/tools/codspeed", "src/tools/rustc-perf"], check=True
+               "--", "src/tools/codspeed", "src/tools/rustc-perf",
+               ":(exclude,literal)src/tools/codspeed/bootstrap.toml"], check=True
           )
+          config_path = "src/tools/codspeed/bootstrap.toml"
+          baseline_config_bytes, candidate_config_bytes = (
+              subprocess.check_output(["git", "show", f"{sha}:{config_path}"])
+              for sha in (os.environ["BASELINE_SHA"], revision)
+          )
+          baseline_config = tomllib.loads(baseline_config_bytes.decode("utf-8"))
+          candidate_config = tomllib.loads(candidate_config_bytes.decode("utf-8"))
+          baseline_lto = baseline_config["rust"]["lto"]
+          candidate_lto = candidate_config["rust"]["lto"]
+
+          def config_signature(config):
+              # Preserve TOML value types: false must differ from 0, for example.
+              return json.dumps(config, sort_keys=True, allow_nan=False)
+
+          config_variant = "unchanged"
+          candidate_signature = config_signature(candidate_config)
+          if candidate_signature != config_signature(baseline_config):
+              allowed_config = baseline_config | {
+                  "rust": baseline_config["rust"] | {"lto": "thin"},
+              }
+              if (baseline_lto != "thin-local" or candidate_lto != "thin"
+                      or candidate_signature != config_signature(allowed_config)):
+                  raise SystemExit("Only rust.lto thin-local -> thin may change in the build config")
+              config_variant = "thin-lto"
 
           evidence = Path("build/codspeed-repeat")
           evidence.mkdir(parents=True, exist_ok=True)
@@ -211,6 +237,14 @@ jobs:
               "runner_architecture": platform.machine(),
               "toolchain_archive_sha256": archive_hash,
               "harness_baseline_sha": os.environ["BASELINE_SHA"],
+              "compiler_build_config": {
+                  "path": config_path,
+                  "baseline_sha256": hashlib.sha256(baseline_config_bytes).hexdigest(),
+                  "candidate_sha256": hashlib.sha256(candidate_config_bytes).hexdigest(),
+                  "baseline_lto": baseline_lto,
+                  "candidate_lto": candidate_lto,
+                  "variant": config_variant,
+              },
               "repeat_run_id": os.environ["GITHUB_RUN_ID"],
               "repeat_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
               "compiler_variant": os.environ["COMPILER_VARIANT"],
