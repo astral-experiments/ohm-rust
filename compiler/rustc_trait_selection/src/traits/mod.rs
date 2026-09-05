@@ -70,6 +70,7 @@ pub use self::util::{
     sizedness_fast_path, supertrait_def_ids, supertraits, transitive_bounds_that_define_assoc_item,
     upcast_choices, with_replaced_escaping_bound_vars,
 };
+pub(crate) use self::util::{hir_unconditional_trait_fast_path, unconditional_trait_fast_path};
 use crate::error_reporting::InferCtxtErrorExt;
 use crate::infer::outlives::env::OutlivesEnvironment;
 use crate::infer::{InferCtxt, TyCtxtInferExt};

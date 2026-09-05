@@ -32,7 +32,7 @@ use crate::infer::{InferCtxt, TyOrConstInferVar};
 use crate::traits::normalize::normalize_with_depth_to;
 use crate::traits::project::{PolyProjectionObligation, ProjectionCacheKeyExt as _};
 use crate::traits::query::evaluate_obligation::InferCtxtExt;
-use crate::traits::{EvaluateConstErr, sizedness_fast_path};
+use crate::traits::{EvaluateConstErr, hir_unconditional_trait_fast_path, sizedness_fast_path};
 
 impl<'tcx> ForestObligation for PendingPredicateObligation<'tcx> {
     /// Note that we include both the `ParamEnv` and the `Predicate`,
@@ -151,6 +151,10 @@ where
         if !infcx.disable_trait_solver_fast_paths()
             && sizedness_fast_path(infcx.tcx, obligation.predicate, obligation.param_env)
         {
+            return;
+        }
+
+        if hir_unconditional_trait_fast_path(infcx, &obligation) {
             return;
         }
 
@@ -318,6 +322,9 @@ impl<'a, 'tcx> ObligationProcessor for FulfillProcessor<'a, 'tcx> {
             return None;
         }
         child.set_depth_from_parent(parent.obligation.recursion_depth);
+        if hir_unconditional_trait_fast_path(infcx, &child) {
+            return None;
+        }
         Some(PendingPredicateObligation { obligation: child, stalled_on: vec![] })
     }
 
@@ -421,6 +428,10 @@ impl<'a, 'tcx> ObligationProcessor for FulfillProcessor<'a, 'tcx> {
         if !infcx.disable_trait_solver_fast_paths()
             && sizedness_fast_path(infcx.tcx, obligation.predicate, obligation.param_env)
         {
+            return ProcessResult::Changed(thin_vec![]);
+        }
+
+        if hir_unconditional_trait_fast_path(infcx, obligation) {
             return ProcessResult::Changed(thin_vec![]);
         }
 

@@ -18,7 +18,7 @@ use tracing::instrument;
 use self::derive_errors::*;
 use super::Certainty;
 use super::delegate::SolverDelegate;
-use crate::traits::{FulfillmentError, ScrubbedTraitError};
+use crate::traits::{FulfillmentError, ScrubbedTraitError, hir_unconditional_trait_fast_path};
 
 mod derive_errors;
 
@@ -213,6 +213,10 @@ where
                     self.obligations.on_fulfillment_overflow(infcx);
                     // Only return true errors that we have accumulated while processing.
                     return errors;
+                }
+
+                if hir_unconditional_trait_fast_path(infcx, &obligation) {
+                    continue;
                 }
 
                 let goal = obligation.as_goal();

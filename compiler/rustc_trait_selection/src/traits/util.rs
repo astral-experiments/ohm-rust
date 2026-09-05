@@ -2,11 +2,12 @@ use std::collections::VecDeque;
 
 use rustc_data_structures::fx::FxHashSet;
 use rustc_hir::LangItem;
+use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
 use rustc_infer::infer::InferCtxt;
-use rustc_infer::traits::PolyTraitObligation;
 pub use rustc_infer::traits::util::*;
-use rustc_middle::ty::fast_reject::DeepRejectCtxt;
+use rustc_infer::traits::{PolyTraitObligation, PredicateObligation};
+use rustc_middle::ty::fast_reject::{DeepRejectCtxt, SimplifiedType};
 use rustc_middle::ty::{
     self, PolyTraitPredicate, PredicatePolarity, SizedTraitKind, TraitPredicate, TraitRef, Ty,
     TyCtxt, TypeFoldable, TypeVisitableExt, Unnormalized,
@@ -260,6 +261,78 @@ pub fn sizedness_fast_path<'tcx>(
     }
 
     false
+}
+
+/// Proves a trait predicate whose sole impl cannot constrain the goal or add obligations.
+pub(crate) fn unconditional_trait_fast_path<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    predicate: ty::Predicate<'tcx>,
+    param_env: ty::ParamEnv<'tcx>,
+) -> bool {
+    if cfg!(debug_assertions) || !predicate.kind().bound_vars().is_empty() {
+        return false;
+    }
+    let ty::PredicateKind::Clause(ty::ClauseKind::Trait(trait_pred)) =
+        predicate.kind().skip_binder()
+    else {
+        return false;
+    };
+    if trait_pred.polarity != ty::PredicatePolarity::Positive
+        || trait_pred.trait_ref.args.len() != 1
+    {
+        return false;
+    }
+    let self_ty = trait_pred.self_ty();
+    if self_ty.has_non_region_infer()
+        || self_ty.has_aliases()
+        || self_ty.has_escaping_bound_vars()
+        || self_ty.references_error()
+    {
+        return false;
+    }
+    let is_copy = Some(trait_pred.def_id()) == tcx.lang_items().copy_trait();
+    let kind = match *self_ty.kind() {
+        ty::Ref(_, _, ty::Mutability::Not) if is_copy => SimplifiedType::Ref(ty::Mutability::Not),
+        ty::RawPtr(_, mutability) if is_copy => SimplifiedType::Ptr(mutability),
+        ty::Adt(def, _) => SimplifiedType::Adt(def.did()),
+        _ => return false,
+    };
+    // Both solvers prefer applicable caller bounds over impls. Preserve the
+    // region constraints and ambiguity checks produced by those bounds.
+    if param_env.caller_bounds().iter().any(|clause| {
+        matches!(
+            clause.kind().skip_binder(),
+            ty::ClauseKind::Trait(bound)
+                if bound.polarity == ty::PredicatePolarity::Positive
+                    && bound.def_id() == trait_pred.def_id()
+        )
+    }) {
+        return false;
+    }
+    tcx.unconditional_trait_impl((trait_pred.def_id(), kind))
+}
+
+/// Restricts early fulfillment proofs to the original HIR context for a function body.
+/// Impl validity and other item checks must keep using ordinary fulfillment.
+pub(crate) fn hir_unconditional_trait_fast_path<'tcx>(
+    infcx: &InferCtxt<'tcx>,
+    obligation: &PredicateObligation<'tcx>,
+) -> bool {
+    if cfg!(debug_assertions)
+        || !infcx.in_hir_typeck
+        || infcx.disable_trait_solver_fast_paths()
+        || infcx.tcx.assumptions_on_binders()
+        || !matches!(
+            obligation.predicate.kind().skip_binder(),
+            ty::PredicateKind::Clause(ty::ClauseKind::Trait(_))
+        )
+        || !infcx.tcx.recursion_limit().value_within_limit(obligation.recursion_depth)
+    {
+        return false;
+    }
+    let root = infcx.tcx.typeck_root_def_id_local(obligation.cause.body_id);
+    matches!(infcx.tcx.def_kind(root), DefKind::Fn | DefKind::AssocFn)
+        && unconditional_trait_fast_path(infcx.tcx, obligation.predicate, obligation.param_env)
 }
 
 /// To improve performance, sizedness traits are not elaborated and so special-casing is required
