@@ -8,12 +8,16 @@ use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::DUMMY_SP;
 use rustc_trait_selection::traits;
 
-/// Recognizes an imported, unconditional `Copy` impl for an arbitrary pointer pointee.
+/// Recognizes an unconditional `Copy` impl for a pointer or an ADT with only lifetime parameters.
 ///
-/// Inspecting the impl keeps this optimization valid for custom core libraries. Matching an
-/// arbitrary type parameter also avoids depending on the normalization of the actual pointee.
+/// Matching every impl parameter to a distinct self-type argument ensures that confirmation
+/// cannot constrain the goal. Copy validity is checked separately by coherence, so local ADT
+/// impls do not require inspecting their fields or proving their well-formedness here.
 fn unconditional_copy_impl(tcx: TyCtxt<'_>, kind: SimplifiedType) -> bool {
-    if !matches!(kind, SimplifiedType::Ref(ty::Mutability::Not) | SimplifiedType::Ptr(_)) {
+    if !matches!(
+        kind,
+        SimplifiedType::Ref(ty::Mutability::Not) | SimplifiedType::Ptr(_) | SimplifiedType::Adt(_)
+    ) {
         return false;
     }
     let Some(copy_trait) = tcx.lang_items().copy_trait() else { return false };
@@ -25,9 +29,8 @@ fn unconditional_copy_impl(tcx: TyCtxt<'_>, kind: SimplifiedType) -> bool {
         return false;
     };
     let impl_id = *impl_id;
-    // Imported impls have already been checked. In particular, do not make the first proof in
-    // a custom core library depend on the well-formedness of its own still-unchecked impl.
-    if impl_id.is_local()
+    // Preserve the imported-only restriction for pointer impls in custom core libraries.
+    if (impl_id.is_local() && !matches!(kind, SimplifiedType::Adt(_)))
         || tcx.impl_polarity(impl_id) != ty::ImplPolarity::Positive
         || !tcx.defaultness(impl_id).is_final()
     {
@@ -67,6 +70,14 @@ fn unconditional_copy_impl(tcx: TyCtxt<'_>, kind: SimplifiedType) -> bool {
                     },]
                 )
                 && matches!(pointee.kind(), ty::Param(param) if param.index == 0)
+        }
+        (SimplifiedType::Adt(expected_def_id), ty::Adt(def, args)) => {
+            def.did() == expected_def_id
+                && generics.own_params.iter().enumerate().all(|(index, param)| {
+                    param.index as usize == index
+                        && matches!(param.kind, ty::GenericParamDefKind::Lifetime)
+                })
+                && args == ty::GenericArgs::identity_for_item(tcx, impl_id)
         }
         _ => false,
     };

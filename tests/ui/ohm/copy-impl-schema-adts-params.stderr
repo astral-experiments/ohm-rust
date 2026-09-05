@@ -1,0 +1,39 @@
+error[E0507]: cannot move out of `*value` which is behind a shared reference
+  --> $DIR/copy-impl-schema-adts-params.rs:15:5
+   |
+LL |     *value
+   |     ^^^^^^ move occurs because `*value` has type `Conditional<NotCopy>`, which does not implement the `Copy` trait
+   |
+help: consider cloning the value if the performance cost is acceptable
+   |
+LL -     *value
+LL +     value.clone()
+   |
+
+error[E0507]: cannot move out of `*value` which is behind a shared reference
+  --> $DIR/copy-impl-schema-adts-params.rs:24:5
+   |
+LL |     *value
+   |     ^^^^^^ move occurs because `*value` has type `FixedType<u64>`, which does not implement the `Copy` trait
+   |
+help: consider cloning the value if the performance cost is acceptable
+   |
+LL -     *value
+LL +     value.clone()
+   |
+
+error[E0507]: cannot move out of `*value` which is behind a shared reference
+  --> $DIR/copy-impl-schema-adts-params.rs:33:5
+   |
+LL |     *value
+   |     ^^^^^^ move occurs because `*value` has type `FixedConst<3>`, which does not implement the `Copy` trait
+   |
+help: consider cloning the value if the performance cost is acceptable
+   |
+LL -     *value
+LL +     value.clone()
+   |
+
+error: aborting due to 3 previous errors
+
+For more information about this error, try `rustc --explain E0507`.

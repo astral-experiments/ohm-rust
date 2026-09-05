@@ -1672,8 +1672,8 @@ rustc_queries! {
         desc { "computing revealed normalized predicates of `{}`", tcx.def_path_str(def_id) }
     }
 
-    /// Whether the sole `Copy` impl for this pointer shape applies to every pointee and lifetime
-    /// without predicates or inherited outlives obligations.
+    /// Whether the sole `Copy` impl for this pointer or lifetime-only ADT shape applies without
+    /// predicates or inherited outlives obligations.
     query unconditional_copy_impl(kind: SimplifiedType) -> bool {
         desc { "checking whether the Copy impl for {kind:?} is unconditional" }
     }

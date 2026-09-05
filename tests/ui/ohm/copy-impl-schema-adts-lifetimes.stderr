@@ -1,0 +1,69 @@
+error: lifetime may not live long enough
+  --> $DIR/copy-impl-schema-adts-lifetimes.rs:13:5
+   |
+LL | fn fixed<'a>(value: &Fixed<'a>) -> Fixed<'a> {
+   |          -- lifetime `'a` defined here
+LL |     *value
+   |     ^^^^^^ copying this value requires that `'a` must outlive `'static`
+
+error: lifetime may not live long enough
+  --> $DIR/copy-impl-schema-adts-lifetimes.rs:22:5
+   |
+LL | fn duplicated<'a, 'b>(value: &Duplicated<'a, 'b>) -> Duplicated<'a, 'b> {
+   |               --  -- lifetime `'b` defined here
+   |               |
+   |               lifetime `'a` defined here
+LL |     *value
+   |     ^^^^^^ copying this value requires that `'a` must outlive `'b`
+   |
+   = help: consider adding the following bound: `'a: 'b`
+
+error: lifetime may not live long enough
+  --> $DIR/copy-impl-schema-adts-lifetimes.rs:22:5
+   |
+LL | fn duplicated<'a, 'b>(value: &Duplicated<'a, 'b>) -> Duplicated<'a, 'b> {
+   |               --  -- lifetime `'b` defined here
+   |               |
+   |               lifetime `'a` defined here
+LL |     *value
+   |     ^^^^^^ copying this value requires that `'b` must outlive `'a`
+   |
+   = help: consider adding the following bound: `'b: 'a`
+
+help: `'a` and `'b` must be the same: replace one with the other
+
+error: lifetime may not live long enough
+  --> $DIR/copy-impl-schema-adts-lifetimes.rs:32:5
+   |
+LL | fn restricted<'a>(value: &Restricted<'a>) -> Restricted<'a> {
+   |               -- lifetime `'a` defined here
+LL |     *value
+   |     ^^^^^^ copying this value requires that `'a` must outlive `'static`
+
+error: lifetime may not live long enough
+  --> $DIR/copy-impl-schema-adts-lifetimes.rs:44:5
+   |
+LL | fn caller_bound<'a, 'b>(value: &Unconditional<'b>) -> Unconditional<'b>
+   |                 --  -- lifetime `'b` defined here
+   |                 |
+   |                 lifetime `'a` defined here
+...
+LL |     *value
+   |     ^^^^^^ copying this value requires that `'a` must outlive `'b`
+   |
+   = help: consider adding the following bound: `'a: 'b`
+
+error: lifetime may not live long enough
+  --> $DIR/copy-impl-schema-adts-lifetimes.rs:44:5
+   |
+LL | fn caller_bound<'a, 'b>(value: &Unconditional<'b>) -> Unconditional<'b>
+   |                 --  -- lifetime `'b` defined here
+   |                 |
+   |                 lifetime `'a` defined here
+...
+LL |     *value
+   |     ^^^^^^ copying this value requires that `'b` must outlive `'a`
+   |
+   = help: consider adding the following bound: `'b: 'a`
+
+error: aborting due to 6 previous errors

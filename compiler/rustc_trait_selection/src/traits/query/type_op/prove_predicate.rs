@@ -38,6 +38,7 @@ impl<'tcx> super::QueryTypeOp<'tcx> for ProvePredicate<'tcx> {
                         Some(SimplifiedType::Ref(ty::Mutability::Not))
                     }
                     ty::RawPtr(_, mutability) => Some(SimplifiedType::Ptr(mutability)),
+                    ty::Adt(def, _) => Some(SimplifiedType::Adt(def.did())),
                     _ => None,
                 };
                 if kind.is_some_and(|kind| tcx.unconditional_copy_impl(kind))
