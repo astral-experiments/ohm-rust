@@ -271,12 +271,12 @@ jobs:
           grep -Fq 'error[E0277]: the trait bound `str: Clone` is not satisfied' "$RUNNER_TEMP/specialization-ui.txt"
           test "$(grep -c '^error\[E' "$RUNNER_TEMP/specialization-ui.txt")" -eq 1
           ! grep -Fq 'internal compiler error' "$RUNNER_TEMP/specialization-ui.txt"
-          if ! "$rustc" --crate-name coherence_pass --edition=2021 --cfg pass --emit=metadata -o /dev/null tests/ui/const-generics/coherence-indexed-impls.rs > "$RUNNER_TEMP/coherence-pass.txt" 2>&1; then
+          if ! "$rustc" --crate-name coherence_pass --edition=2021 --cfg pass --emit=metadata -o "$RUNNER_TEMP/coherence-pass.rmeta" tests/ui/const-generics/coherence-indexed-impls.rs > "$RUNNER_TEMP/coherence-pass.txt" 2>&1; then
             cat "$RUNNER_TEMP/coherence-pass.txt"; exit 1
           fi
           for variant in equal generic named; do
             output="$RUNNER_TEMP/coherence-$variant.txt"
-            if "$rustc" --crate-name "coherence_$variant" --edition=2021 --cfg "$variant" --emit=metadata -o /dev/null tests/ui/const-generics/coherence-indexed-impls.rs > "$output" 2>&1; then
+            if "$rustc" --crate-name "coherence_$variant" --edition=2021 --cfg "$variant" --emit=metadata -o "$RUNNER_TEMP/coherence-$variant.rmeta" tests/ui/const-generics/coherence-indexed-impls.rs > "$output" 2>&1; then
               echo "Expected conflicting const impl for $variant"; exit 1
             fi
             cat "$output"
