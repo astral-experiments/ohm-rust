@@ -1,0 +1,48 @@
+error[E0277]: the trait bound `NotClone: Clone` is not satisfied
+  --> $DIR/wf-nominal-restrictions.rs:18:15
+   |
+LL |     require::<Option<NeedsClone<NotClone>>>();
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `Clone` is not implemented for `NotClone`
+   |
+note: required by a bound in `NeedsClone`
+  --> $DIR/wf-nominal-restrictions.rs:9:22
+   |
+LL | struct NeedsClone<T: Clone>(T);
+   |                      ^^^^^ required by this bound in `NeedsClone`
+help: consider annotating `NotClone` with `#[derive(Clone)]`
+   |
+LL + #[derive(Clone)]
+LL | struct NotClone;
+   |
+
+error: the constant `N` is not of type `usize`
+  --> $DIR/wf-nominal-restrictions.rs:24:15
+   |
+LL |     require::<Option<ConstType<N>>>();
+   |               ^^^^^^^^^^^^^^^^^^^^ expected `usize`, found `u32`
+   |
+note: required by a const generic parameter in `ConstType`
+  --> $DIR/wf-nominal-restrictions.rs:10:18
+   |
+LL | struct ConstType<const N: usize>;
+   |                  ^^^^^^^^^^^^^^ required by this const generic parameter in `ConstType`
+
+error[E0277]: the trait bound `<T as Associated>::Output: Clone` is not satisfied
+  --> $DIR/wf-nominal-restrictions.rs:30:15
+   |
+LL |     require::<Option<NeedsClone<T::Output>>>();
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `Clone` is not implemented for `<T as Associated>::Output`
+   |
+note: required by a bound in `NeedsClone`
+  --> $DIR/wf-nominal-restrictions.rs:9:22
+   |
+LL | struct NeedsClone<T: Clone>(T);
+   |                      ^^^^^ required by this bound in `NeedsClone`
+help: consider further restricting the associated type
+   |
+LL | fn alias<T: Associated>() where <T as Associated>::Output: Clone {
+   |                           ++++++++++++++++++++++++++++++++++++++
+
+error: aborting due to 3 previous errors
+
+For more information about this error, try `rustc --explain E0277`.

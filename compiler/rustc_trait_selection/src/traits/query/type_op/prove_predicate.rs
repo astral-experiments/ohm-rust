@@ -2,7 +2,7 @@ use rustc_infer::traits::Obligation;
 use rustc_middle::traits::ObligationCause;
 use rustc_middle::traits::query::NoSolution;
 pub use rustc_middle::traits::query::type_op::ProvePredicate;
-use rustc_middle::ty::{self, ParamEnvAnd, TyCtxt, TypeVisitableExt};
+use rustc_middle::ty::{self, ParamEnvAnd, SizedTraitKind, Ty, TyCtxt, TypeVisitableExt};
 use rustc_span::Span;
 
 use crate::infer::canonical::{CanonicalQueryInput, CanonicalQueryResponse};
@@ -33,15 +33,10 @@ impl<'tcx> super::QueryTypeOp<'tcx> for ProvePredicate<'tcx> {
                 && !ty.has_aliases()
                 && !ty.has_escaping_bound_vars()
                 && !ty.references_error()
-                && let ty::Adt(def, args) = *ty.kind()
-                && args.iter().all(|arg| matches!(arg.kind(), ty::GenericArgKind::Lifetime(_)))
+                && matches!(ty.kind(), ty::Adt(..))
+                && nominal_wf_fast_path(tcx, ty, &mut 64)
             {
-                // ADT well-formedness checks its predicates and generic arguments, not its
-                // fields. Lifetime arguments need no further well-formedness obligations.
-                let predicates = tcx.predicates_of(def.did());
-                if predicates.parent.is_none() && predicates.predicates.is_empty() {
-                    return Some(());
-                }
+                return Some(());
             }
         }
 
@@ -68,4 +63,45 @@ impl<'tcx> super::QueryTypeOp<'tcx> for ProvePredicate<'tcx> {
         ));
         Ok(())
     }
+}
+
+/// Checks a bounded number of nominal types and arguments without creating obligations.
+fn nominal_wf_fast_path<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, budget: &mut u8) -> bool {
+    if *budget == 0 {
+        return false;
+    }
+    *budget -= 1;
+    if ty.is_trivially_wf(tcx) {
+        return true;
+    }
+    let ty::Adt(def, args) = *ty.kind() else { return false };
+    let Some((arity, requirements)) = tcx.adt_wf_requirements(def.did()) else { return false };
+    if args.len() != usize::from(arity) {
+        return false;
+    }
+    for (index, arg) in args.iter().enumerate() {
+        match arg.kind() {
+            ty::GenericArgKind::Lifetime(_) => {
+                if *budget == 0 {
+                    return false;
+                }
+                *budget -= 1;
+            }
+            ty::GenericArgKind::Type(ty) => {
+                let bits = (requirements >> (index * 2)) & 0b11;
+                let sizedness = match bits {
+                    0 => None,
+                    0b01 => Some(SizedTraitKind::MetaSized),
+                    _ => Some(SizedTraitKind::Sized),
+                };
+                if sizedness.is_some_and(|sizedness| !ty.has_trivial_sizedness(tcx, sizedness))
+                    || !nominal_wf_fast_path(tcx, ty, budget)
+                {
+                    return false;
+                }
+            }
+            ty::GenericArgKind::Const(_) => return false,
+        }
+    }
+    true
 }

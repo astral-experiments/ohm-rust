@@ -1672,6 +1672,12 @@ rustc_queries! {
         desc { "computing revealed normalized predicates of `{}`", tcx.def_path_str(def_id) }
     }
 
+    /// The arity and per-argument sizedness requirements of an ADT with no other WF predicates.
+    /// Each argument uses two bits: the low bit requires `MetaSized`, the high bit `Sized`.
+    query adt_wf_requirements(def_id: DefId) -> Option<(u8, u64)> {
+        desc { "computing trivial well-formedness requirements of `{}`", tcx.def_path_str(def_id) }
+    }
+
     /// Trait selection queries. These are best used by invoking `ty.is_copy_modulo_regions()`,
     /// `ty.is_copy()`, etc, since that will prune the environment where possible.
     query is_copy_raw(env: ty::PseudoCanonicalInput<'tcx, Ty<'tcx>>) -> bool {

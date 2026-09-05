@@ -1,0 +1,28 @@
+error[E0309]: the parameter type `T` may not live long enough
+  --> $DIR/wf-nominal-lifetimes.rs:14:5
+   |
+LL | fn inferred<'a, T>() {
+   |             -- the parameter type `T` must be valid for the lifetime `'a` as defined here...
+LL |     require::<Option<Borrowed<'a, T>>>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ...so that the type `T` will meet its required lifetime bounds
+   |
+help: consider adding an explicit lifetime bound
+   |
+LL | fn inferred<'a, T: 'a>() {
+   |                  ++++
+
+error: lifetime may not live long enough
+  --> $DIR/wf-nominal-lifetimes.rs:19:5
+   |
+LL | fn explicit<'a, 'b>() {
+   |             --  -- lifetime `'b` defined here
+   |             |
+   |             lifetime `'a` defined here
+LL |     require::<Result<Explicit<'a, 'b>, ()>>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ requires that `'b` must outlive `'a`
+   |
+   = help: consider adding the following bound: `'b: 'a`
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0309`.
