@@ -65,6 +65,7 @@ use crate::mir::{Body, Local, Place, PlaceElem, ProjectionKind, Promoted};
 use crate::query::{IntoQueryKey, LocalCrate, Providers, QuerySystem, TyCtxtAt};
 use crate::thir::Thir;
 use crate::traits;
+use crate::traits::query::CanonicalTypeOpProvePredicateGoal;
 use crate::traits::solve::{ExternalConstraints, ExternalConstraintsData, PredefinedOpaques};
 use crate::ty::predicate::ExistentialPredicateStableCmpExt as _;
 use crate::ty::{
@@ -137,12 +138,15 @@ const INTERNER_CACHE_LEN: usize = 16384;
 const SUPERTRAIT_CACHE_LEN: usize = 16384;
 const CLAUSE_INSTANTIATION_CACHE_LEN: usize = 16384;
 const FN_SIG_INSTANTIATION_CACHE_LEN: usize = 16384;
+const MIR_TYPECK_TRAIT_PROOF_CACHE_LEN: usize = 4096;
 
 type SupertraitCacheEntry<'tcx> = (Clause<'tcx>, ty::PolyTraitRef<'tcx>, Clause<'tcx>);
 type ClauseInstantiationCacheEntry<'tcx> =
     (Clause<'tcx>, GenericArgsRef<'tcx>, ty::Unnormalized<'tcx, Clause<'tcx>>);
 type FnSigInstantiationCacheEntry<'tcx> =
     (PolyFnSig<'tcx>, GenericArgsRef<'tcx>, ty::Unnormalized<'tcx, PolyFnSig<'tcx>>);
+type MirTypeckTraitProofCacheEntry<'tcx> =
+    (ty::ParamEnvAnd<'tcx, Predicate<'tcx>>, CanonicalTypeOpProvePredicateGoal<'tcx>);
 
 pub struct CtxtInterners<'tcx> {
     /// The arena that types, regions, etc. are allocated from.
@@ -187,6 +191,9 @@ pub struct CtxtInterners<'tcx> {
     >,
     fn_sig_instantiation_cache: WorkerLocal<
         [Cell<Option<FnSigInstantiationCacheEntry<'tcx>>>; FN_SIG_INSTANTIATION_CACHE_LEN],
+    >,
+    mir_typeck_trait_proof_cache: WorkerLocal<
+        [Cell<Option<MirTypeckTraitProofCacheEntry<'tcx>>>; MIR_TYPECK_TRAIT_PROOF_CACHE_LEN],
     >,
 }
 
@@ -238,6 +245,9 @@ impl<'tcx> CtxtInterners<'tcx> {
             }),
             fn_sig_instantiation_cache: WorkerLocal::new(|_| {
                 [const { Cell::new(None) }; FN_SIG_INSTANTIATION_CACHE_LEN]
+            }),
+            mir_typeck_trait_proof_cache: WorkerLocal::new(|_| {
+                [const { Cell::new(None) }; MIR_TYPECK_TRAIT_PROOF_CACHE_LEN]
             }),
         }
     }
@@ -2382,6 +2392,39 @@ impl<'tcx> TyCtxt<'tcx> {
             cache.set(Some((clause, trait_ref, result)));
         }
         result
+    }
+
+    /// Looks up a trait proof with an identity region response, retaining the complete raw key.
+    ///
+    /// The caller must still query the returned goal to record its query dependencies.
+    pub fn mir_typeck_trait_proof(
+        self,
+        key: ty::ParamEnvAnd<'tcx, Predicate<'tcx>>,
+        typing_mode: ty::TypingMode<'tcx>,
+    ) -> Option<CanonicalTypeOpProvePredicateGoal<'tcx>> {
+        let typing_mode = ty::TypingModeEqWrapper(typing_mode);
+        let cache = self.interners.mir_typeck_trait_proof_cache.get_if_registered()?;
+        let slot = &cache
+            [make_hash(&(key, typing_mode)) as usize & (MIR_TYPECK_TRAIT_PROOF_CACHE_LEN - 1)];
+        let (cached_key, goal) = slot.get()?;
+        (cached_key == key && goal.typing_mode == typing_mode).then_some(goal)
+    }
+
+    /// Retains a successful MIR type-checking proof without allocating an entry in the arena.
+    ///
+    /// The caller must ensure that the input contains no type or const inference variables,
+    /// the proof had no inference effects, and its canonical response only maps each input
+    /// region to itself, with no new variables, constraints, assumptions, or opaque types.
+    pub fn cache_mir_typeck_trait_proof(
+        self,
+        key: ty::ParamEnvAnd<'tcx, Predicate<'tcx>>,
+        goal: CanonicalTypeOpProvePredicateGoal<'tcx>,
+    ) {
+        if let Some(cache) = self.interners.mir_typeck_trait_proof_cache.get_if_registered() {
+            let slot = &cache[make_hash(&(key, goal.typing_mode)) as usize
+                & (MIR_TYPECK_TRAIT_PROOF_CACHE_LEN - 1)];
+            slot.set(Some((key, goal)));
+        }
     }
 
     pub fn check_args_compatible(self, def_id: DefId, args: &'tcx [ty::GenericArg<'tcx>]) -> bool {

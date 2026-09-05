@@ -1,7 +1,7 @@
 use std::fmt;
 
 use rustc_errors::ErrorGuaranteed;
-use rustc_infer::infer::canonical::Canonical;
+use rustc_infer::infer::canonical::{Canonical, CanonicalVarKind};
 use rustc_infer::infer::outlives::env::RegionBoundPairs;
 use rustc_middle::bug;
 use rustc_middle::mir::{Body, ConstraintCategory};
@@ -177,8 +177,9 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
         locations: Locations,
         category: ConstraintCategory<'tcx>,
     ) {
+        let tcx = self.tcx();
         let param_env = self.infcx.param_env;
-        let predicate = predicate.upcast(self.tcx());
+        let predicate = predicate.upcast(tcx);
         let cacheable = !cfg!(debug_assertions)
             && !self.infcx.next_trait_solver()
             && !self.infcx.disable_trait_solver_fast_paths()
@@ -208,8 +209,19 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
                     && inner.opaque_types().is_empty()
                     && inner.unwrap_region_constraints().data().is_empty()
             };
-        if cacheable && self.proven_trait_predicates.contains(&predicate) {
-            return;
+        if cacheable {
+            if self.proven_trait_predicates.contains(&predicate) {
+                return;
+            }
+            if let Some(goal) =
+                tcx.mir_typeck_trait_proof(param_env.and(predicate), self.infcx.typing_mode_raw())
+                // The proof may have been cached while checking a different body. Replay its
+                // query so this body records the dependencies that established the proof.
+                && tcx.type_op_prove_predicate(goal).is_ok()
+            {
+                self.proven_trait_predicates.insert(predicate);
+                return;
+            }
         }
 
         let result = fully_perform_op_raw(
@@ -230,9 +242,30 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
         if cacheable
             && let Ok(((), true, Some(goal))) = result
             && !self.infcx.has_opaque_types_in_storage()
-            && self.tcx().type_op_prove_predicate(goal).is_ok_and(|r| r.value.is_proven())
+            && let Ok(response) = tcx.type_op_prove_predicate(goal)
+            && response.value.is_proven()
         {
             self.proven_trait_predicates.insert(predicate);
+
+            // Region variable indices can name different regions in different bodies. Reuse
+            // only proofs whose canonical response leaves every input region unchanged and
+            // introduces no new variables or effects. No inference state then needs replaying.
+            if goal.canonical.max_universe == ty::UniverseIndex::ROOT
+                && response.max_universe == ty::UniverseIndex::ROOT
+                && response.var_kinds.len() == goal.canonical.var_kinds.len()
+                && response.value.var_values.len() == goal.canonical.var_kinds.len()
+                && goal
+                    .canonical
+                    .var_kinds
+                    .iter()
+                    .chain(response.var_kinds.iter())
+                    .all(|kind| matches!(kind, CanonicalVarKind::Region(ty::UniverseIndex::ROOT)))
+                && response.value.var_values.is_identity()
+                && response.value.region_constraints.is_empty()
+                && response.value.opaque_types.is_empty()
+            {
+                tcx.cache_mir_typeck_trait_proof(param_env.and(predicate), goal);
+            }
         }
     }
 

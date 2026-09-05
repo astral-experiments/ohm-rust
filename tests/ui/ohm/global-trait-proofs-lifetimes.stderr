@@ -1,0 +1,29 @@
+error[E0521]: borrowed data escapes outside of function
+  --> $DIR/global-trait-proofs-lifetimes.rs:17:5
+   |
+LL | fn shorter(value: &u32) {
+   |            -----  - let's call the lifetime of this reference `'1`
+   |            |
+   |            `value` is a reference that is only valid in the function body
+LL |     require(value);
+   |     ^^^^^^^^^^^^^^
+   |     |
+   |     `value` escapes the function body here
+   |     argument requires that `'1` must outlive `'static`
+
+error[E0521]: borrowed data escapes outside of function
+  --> $DIR/global-trait-proofs-lifetimes.rs:24:5
+   |
+LL | fn unbounded<'a>(value: &'a u32) {
+   |              --  ----- `value` is a reference that is only valid in the function body
+   |              |
+   |              lifetime `'a` defined here
+LL |     require(value);
+   |     ^^^^^^^^^^^^^^
+   |     |
+   |     `value` escapes the function body here
+   |     argument requires that `'a` must outlive `'static`
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0521`.
