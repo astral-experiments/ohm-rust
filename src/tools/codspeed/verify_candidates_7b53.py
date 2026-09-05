@@ -24,6 +24,7 @@ CANDIDATES = {
     "early_sized": ("7edf3a10d157b8aec91b643b4ba9153cb3487039", 33968214867),
     "packed_aliases": ("778457af4760eb79cd2b047d5a67a2729411ee4f", 33969983049),
     "interned_arenas": ("00b45135ef5d7be659351ce89c8b63595736380c", 33970652704),
+    "copy_impl_schema": ("db029ae942064533f669fd3d78caff31d5aa1443", 33970806995),
 }
 
 
@@ -391,9 +392,7 @@ def main():
                     f"packed-projection-fail-{solver}",
                     "tests/ui/associated-types/assoc-type-element-mismatch-in-hrtb.rs",
                     next_solver=next_solver,
-                    errors=(("E0271", "type mismatch resolving `&() == ()`"
-                             if next_solver else
-                             "type mismatch resolving `<() as Array<'a>>::Element == ()`"),),
+                    errors=(("E0271", "type mismatch resolving `<() as Array<'a>>::Element == ()`"),),
                 )
                 check(
                     f"packed-lifetimes-{solver}",
@@ -415,9 +414,7 @@ def main():
                     f"packed-const-fail-{solver}",
                     "tests/ui/const-generics/associated-const-bindings/const-projection-err.rs",
                     next_solver=next_solver,
-                    errors=(("E0271", "type mismatch resolving `0 == 1`"
-                             if next_solver else
-                             "type mismatch resolving `<T as TraitWAssocConst>::A == 1`"),),
+                    errors=(("E0271", "type mismatch resolving `<T as TraitWAssocConst>::A == 1`"),),
                 )
                 check(
                     f"packed-lazy-alias-{solver}",
@@ -445,6 +442,38 @@ def main():
                     "next_solver": solver == "next",
                     "disable_fast_paths": solver == "slow",
                 }
+                check(
+                    f"schema-pointers-{solver}",
+                    "tests/ui/ohm/copy-impl-schema-pointers.rs", revision=solver, **controls,
+                )
+                check(
+                    f"schema-param-env-{solver}",
+                    "tests/ui/ohm/copy-impl-schema-param-env.rs", revision=solver,
+                    errors=((None, "lifetime may not live long enough"),) * 2, **controls,
+                )
+                custom_errors = {
+                    "lifetime": (None, "lifetime may not live long enough"),
+                    "pointee": ("E0277", "the trait bound `NoGate: Gate` is not satisfied"
+                                if solver == "next" else
+                                "the trait bound `&NoGate: Copy` is not satisfied"),
+                    "specialized": ("E0277", "the trait bound `&u16: Copy` is not satisfied"),
+                    "missing": ("E0277", "the trait bound `&u8: Copy` is not satisfied"),
+                }
+                for case, error in custom_errors.items():
+                    crate = f"copy_impl_schema_{case}_core"
+                    rlib = output / "bin" / f"lib{crate}_{solver}.rmeta"
+                    check(
+                        f"schema-custom-{case}-aux-{solver}",
+                        f"tests/ui/ohm/auxiliary/{crate}.rs",
+                        revision=solver, crate_name=crate, artifact=rlib, execute=False,
+                        extra_flags=("--crate-type=rlib", "--emit=metadata"), **controls,
+                    )
+                    check(
+                        f"schema-custom-{case}-{solver}",
+                        f"tests/ui/ohm/copy-impl-schema-custom-{case}.rs",
+                        revision=solver, errors=(error,),
+                        extra_flags=("--extern", f"{crate}={rlib}"), **controls,
+                    )
                 for suffix in ("", "-proj"):
                     check(
                         f"schema-copy-lifetime{suffix}-{solver}",
