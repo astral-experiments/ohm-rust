@@ -22,6 +22,8 @@ CANDIDATES = {
     "interner_tables": ("bff200000e19c2f7f7d9727aceff4b49805217c5", 33968145281),
     "inline_constructors": ("af4c4ee447316d08ed42da16d708286438701f71", 33968335687),
     "early_sized": ("7edf3a10d157b8aec91b643b4ba9153cb3487039", 33968214867),
+    "packed_aliases": ("778457af4760eb79cd2b047d5a67a2729411ee4f", 33969983049),
+    "interned_arenas": ("00b45135ef5d7be659351ce89c8b63595736380c", 33970652704),
 }
 
 
@@ -43,6 +45,7 @@ def main():
         name, fixture, *, revision=None, next_solver=False, disable_fast_paths=False,
         errors=(), incremental=None, require_loaded=False, threads=None,
         crate_name=None, artifact=None, execute=True, extra_flags=(), required_spans=(),
+        expected_stdout=None,
     ):
         """Compile one fixture and execute successful binary fixtures."""
         default_name = incremental.name if incremental is not None else name
@@ -139,6 +142,9 @@ def main():
                 record["program_exit"] = run.returncode
                 record["executed"] = True
                 assert run.returncode == 0, run.stderr
+                if expected_stdout is not None:
+                    record["expected_stdout"] = expected_stdout
+                    assert run.stdout == expected_stdout, (run.stdout, expected_stdout)
             record["status"] = "passed"
         except Exception as error:
             record["status"] = "failed"
@@ -346,8 +352,9 @@ def main():
                         next_solver=next_solver, threads=threads,
                         errors=(("E0597", "`s` does not live long enough"),),
                     )
-        if kind in ("query_cache", "interner_tables"):
-            for threads in (1, 4):
+        if kind in ("query_cache", "interner_tables", "packed_aliases", "interned_arenas"):
+            thread_counts = (4,) if kind in ("packed_aliases", "interned_arenas") else (1, 4)
+            for threads in thread_counts:
                 rlib = output / "bin" / f"liba_threads_{threads}.rlib"
                 auxiliary_cache = output / "incremental" / f"query-cache-aux-{threads}"
                 main_cache = output / "incremental" / f"query-cache-main-{threads}"
@@ -366,6 +373,104 @@ def main():
                         revision=revision, threads=threads, incremental=main_cache,
                         require_loaded=revision != "rpass1",
                         extra_flags=("-Zquery-dep-graph", "--extern", f"a={rlib}"),
+                    )
+        if kind in ("packed_aliases", "interned_arenas"):
+            for solver in ("current", "next"):
+                next_solver = solver == "next"
+                check(
+                    f"packed-projection-{solver}",
+                    "tests/ui/associated-types/projection-as-type-alias.rs",
+                    next_solver=next_solver,
+                )
+                check(
+                    f"packed-hrtb-{solver}",
+                    "tests/ui/generic-associated-types/rigid-hr-projection-issue-93340.rs",
+                    next_solver=next_solver, extra_flags=("--emit=metadata",), execute=False,
+                )
+                check(
+                    f"packed-projection-fail-{solver}",
+                    "tests/ui/associated-types/assoc-type-element-mismatch-in-hrtb.rs",
+                    next_solver=next_solver,
+                    errors=(("E0271", "type mismatch resolving `&() == ()`"
+                             if next_solver else
+                             "type mismatch resolving `<() as Array<'a>>::Element == ()`"),),
+                )
+                check(
+                    f"packed-lifetimes-{solver}",
+                    "tests/ui/generic-associated-types/projection-type-lifetime-mismatch.rs",
+                    next_solver=next_solver,
+                    errors=((None, "lifetime may not live long enough"),) * 3,
+                )
+                check(
+                    f"packed-opaque-{solver}",
+                    "tests/ui/impl-trait/normalize-opaque-with-bound-vars.rs",
+                    next_solver=next_solver, extra_flags=("-Cdebuginfo=2",),
+                )
+                check(
+                    f"packed-const-{solver}",
+                    "tests/ui/const-generics/mgca/assoc-const-projection-in-bound.rs",
+                    next_solver=next_solver,
+                )
+                check(
+                    f"packed-const-fail-{solver}",
+                    "tests/ui/const-generics/associated-const-bindings/const-projection-err.rs",
+                    next_solver=next_solver,
+                    errors=(("E0271", "type mismatch resolving `0 == 1`"
+                             if next_solver else
+                             "type mismatch resolving `<T as TraitWAssocConst>::A == 1`"),),
+                )
+                check(
+                    f"packed-lazy-alias-{solver}",
+                    "tests/ui/const-generics/adt_const_params/alias_const_param_ty-1.rs",
+                    next_solver=next_solver, extra_flags=("--emit=metadata",), execute=False,
+                )
+                rlib = output / "bin" / f"libassociated_types_cc_lib_{solver}.rlib"
+                check(
+                    f"packed-metadata-aux-{solver}",
+                    "tests/ui/associated-types/auxiliary/associated-types-cc-lib.rs",
+                    next_solver=next_solver, threads=4, crate_name="associated_types_cc_lib",
+                    artifact=rlib, extra_flags=("--crate-type=rlib",), execute=False,
+                )
+                check(
+                    f"packed-metadata-main-{solver}",
+                    "tests/ui/associated-types/associated-types-cc.rs",
+                    next_solver=next_solver, threads=4,
+                    extra_flags=("--extern", f"associated_types_cc_lib={rlib}"),
+                    expected_stdout="22\n",
+                )
+        if kind == "copy_impl_schema":
+            fixtures = Path(__file__).resolve().parent / "cases" / "copy_impl_schema"
+            for solver in ("current", "next", "slow"):
+                controls = {
+                    "next_solver": solver == "next",
+                    "disable_fast_paths": solver == "slow",
+                }
+                for suffix in ("", "-proj"):
+                    check(
+                        f"schema-copy-lifetime{suffix}-{solver}",
+                        f"tests/ui/nll/do-not-ignore-lifetime-bounds-in-copy{suffix}.rs",
+                        errors=(("E0597", "`s` does not live long enough"),), **controls,
+                    )
+                rlib = output / "bin" / f"libschema_core_{solver}.rmeta"
+                auxiliary_cache = output / "incremental" / f"schema-aux-{solver}"
+                consumer_cache = output / "incremental" / f"schema-consumer-{solver}"
+                for revision in ("unconditional", "restricted", "restored"):
+                    check(
+                        f"schema-incremental-aux-{solver}-{revision}",
+                        str(fixtures / "custom_core.rs"),
+                        revision="restricted" if revision == "restricted" else None,
+                        crate_name="custom_core", artifact=rlib, execute=False,
+                        incremental=auxiliary_cache, require_loaded=revision != "unconditional",
+                        extra_flags=("--crate-type=rlib", "--emit=metadata"), **controls,
+                    )
+                    check(
+                        f"schema-incremental-consumer-{solver}-{revision}",
+                        str(fixtures / "consumer.rs"),
+                        crate_name="schema_consumer", execute=False,
+                        incremental=consumer_cache, require_loaded=revision != "unconditional",
+                        extra_flags=("--crate-type=rlib", "--emit=metadata", "--extern", f"custom_core={rlib}"),
+                        errors=((None, "lifetime may not live long enough"),)
+                        if revision == "restricted" else (), **controls,
                     )
         if kind == "early_sized":
             for solver in ("current", "next", "slow"):

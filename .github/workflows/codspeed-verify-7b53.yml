@@ -19,9 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - kind: inline_constructors
-            sha: af4c4ee447316d08ed42da16d708286438701f71
-            run: 33968335687
+          - kind: packed_aliases
+            sha: 778457af4760eb79cd2b047d5a67a2729411ee4f
+            run: 33969983049
     steps:
       - name: Checkout validation script
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
