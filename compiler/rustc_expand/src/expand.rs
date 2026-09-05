@@ -577,12 +577,19 @@ impl<'a, 'b> MacroExpander<'a, 'b> {
                     // invocation *before* any macro invocations collected from the output
                     // fragment.
                     derive_invocations.extend(collected_invocations);
+                    // Every pending invocation has a placeholder in this fragment, including
+                    // the derive invocations added by `collect_invocations`.
+                    let has_child_placeholders = !derive_invocations.is_empty();
 
                     progress = true;
                     if expanded_fragments.len() < depth {
                         expanded_fragments.push(Vec::new());
                     }
-                    expanded_fragments[depth - 1].push((expn_id, expanded_fragment));
+                    expanded_fragments[depth - 1].push((
+                        expn_id,
+                        expanded_fragment,
+                        has_child_placeholders,
+                    ));
                     expanded_fragments_len += 1;
                     invocations.extend(derive_invocations.into_iter().rev());
                 }
@@ -606,9 +613,14 @@ impl<'a, 'b> MacroExpander<'a, 'b> {
         // Finally incorporate all the expanded macros into the input AST fragment.
         let mut placeholder_expander = PlaceholderExpander::with_capacity(expanded_fragments_len);
         while let Some(expanded_fragments) = expanded_fragments.pop() {
-            for (expn_id, expanded_fragment) in expanded_fragments.into_iter().rev() {
-                placeholder_expander
-                    .add(NodeId::placeholder_from_expn_id(expn_id), expanded_fragment);
+            for (expn_id, expanded_fragment, has_child_placeholders) in
+                expanded_fragments.into_iter().rev()
+            {
+                placeholder_expander.add(
+                    NodeId::placeholder_from_expn_id(expn_id),
+                    expanded_fragment,
+                    has_child_placeholders,
+                );
             }
         }
         fragment_with_placeholders.mut_visit_with(&mut placeholder_expander);
