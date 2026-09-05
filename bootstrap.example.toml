@@ -858,8 +858,8 @@
 # [target.<tuple>] section.
 #rust.jemalloc = false
 
-# Link the compiler and LLVM against mimalloc. Currently supported on Linux GNU hosts.
-# This requires rust.jemalloc = false, including any per-target override.
+# Link rustc and its LLVM library against mimalloc on Linux GNU hosts.
+# Takes precedence over jemalloc for rustc only; other tools still use rust.jemalloc.
 #rust.mimalloc = false
 
 # Run tests in various test suites with the "nll compare mode" in addition to
