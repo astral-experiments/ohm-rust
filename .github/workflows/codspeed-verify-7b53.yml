@@ -19,9 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - kind: interner_cache
-            sha: c320a2b6ad359b0e8a36d694780a25415b7a0360
-            run: 33973762897
+          - kind: wf_nominal
+            sha: 33036e29a96f566733bc26bc3ba12ed0c13400f8
+            run: 33973833734
     steps:
       - name: Checkout validation script
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
