@@ -1,92 +1,131 @@
-name: Compiler performance
+name: Compiler performance artifact repeat
 
+# Temporary experiment on the registered workflow path; no compiler build or push/PR trigger.
+# Dispatch twice with the same candidate coordinates, selecting baseline then candidate.
+# One compiler per run keeps duplicate benchmark names out of the same CodSpeed run.
 on:
-  push:
-    branches: [ohm-1.98.0]
-  pull_request:
   workflow_dispatch:
+    inputs:
+      compiler:
+        description: Compiler artifact to repeat
+        type: choice
+        options: [baseline, candidate]
+        required: true
+        default: candidate
+      candidate_sha:
+        description: Full source SHA of the selected candidate (fill after selecting a winner)
+        type: string
+        required: true
+      candidate_run_id:
+        description: Compiler performance run containing the selected candidate artifact
+        type: string
+        required: true
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.compiler }}
+  cancel-in-progress: false
 
 jobs:
-  compiler:
-    name: Build benchmark compiler
-    runs-on: codspeed-macro
-    timeout-minutes: 50
-    outputs:
-      shards: ${{ steps.shards.outputs.value }}
-    steps:
-      - name: Checkout candidate compiler
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 128
-          persist-credentials: false
-
-      - name: Checkout pinned compiler dependencies
-        run: git submodule update --init --depth 1 library/backtrace
-
-      - name: Select benchmark shards
-        id: shards
-        working-directory: src/tools/codspeed
-        run: >-
-          python3 -c 'import json; from benchmarks import SHARDS; print("value=" + json.dumps(SHARDS))'
-          >> "$GITHUB_OUTPUT"
-
-      - name: Build candidate compiler and matching standard library
-        run: >-
-          python3 x.py --ci false --config src/tools/codspeed/bootstrap.toml
-          build --stage 1 library
-
-      - name: Package compiler and pinned Cargo
-        # Bootstrap links these source directories back to the checkout, including build/.
-        run: >-
-          tar --dereference -czf build/codspeed-toolchain.tar.gz
-          --exclude=stage1/lib/rustlib/src
-          --exclude=stage1/lib/rustlib/rustc-src
-          -C build/host stage1 stage0/bin/cargo
-
-      - name: Retain benchmark compiler
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: codspeed-toolchain
-          path: build/codspeed-toolchain.tar.gz
-          compression-level: 0
-          retention-days: 1
-          if-no-files-found: error
-
   codspeed:
-    name: Compiler Walltime benchmarks (${{ matrix.shard }})
-    needs: compiler
+    name: Compiler Walltime repeat (${{ inputs.compiler }}, ${{ matrix.shard }})
     runs-on: codspeed-macro
     timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
-        shard: ${{ fromJSON(needs.compiler.outputs.shards) }}
+        shard: [ruff-ty_python_semantic, uv-resolver]
     permissions:
       contents: read
+      actions: read
       id-token: write
+    env:
+      BASELINE_SHA: 7d2c9ee7651076a9930b109f3738a1c6cb4dbb29
+      COMPILER_VARIANT: ${{ inputs.compiler }}
+      COMPILER_SHA: ${{ inputs.compiler == 'baseline' && '7d2c9ee7651076a9930b109f3738a1c6cb4dbb29' || inputs.candidate_sha }}
+      COMPILER_RUN_ID: ${{ inputs.compiler == 'baseline' && '33963601483' || inputs.candidate_run_id }}
+      BENCHMARK_SHARD: ${{ matrix.shard }}
     steps:
-      - name: Checkout candidate compiler
+      - name: Resolve exact compiler artifact from the selected run
+        id: artifact
+        shell: bash
+        env:
+          ARTIFACT_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import urllib.request
+          from pathlib import Path
+
+          revision = os.environ["COMPILER_SHA"]
+          run_id = os.environ["COMPILER_RUN_ID"]
+          if not re.fullmatch(r"[0-9a-f]{40}", revision):
+              raise SystemExit("The compiler revision must be a full lowercase 40-digit SHA")
+          if not re.fullmatch(r"[1-9][0-9]*", run_id):
+              raise SystemExit("The compiler workflow run ID must be a positive integer")
+          repository = os.environ["GITHUB_REPOSITORY"]
+          endpoint = f"{os.environ['GITHUB_API_URL']}/repos/{repository}/actions/runs/{run_id}"
+          def read_json(url):
+              request = urllib.request.Request(url, headers={
+                  "Authorization": f"Bearer {os.environ['ARTIFACT_TOKEN']}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              })
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+
+          run = read_json(endpoint)
+          if run["head_sha"] != revision:
+              raise SystemExit(f"Run {run_id} was built from {run['head_sha']}, not {revision}")
+          artifacts = read_json(endpoint + "/artifacts?per_page=100")
+          matches = [a for a in artifacts["artifacts"] if a["name"] == "codspeed-toolchain"]
+          if len(matches) != 1 or matches[0]["expired"]:
+              raise SystemExit(f"Run {run_id} must have one unexpired codspeed-toolchain artifact")
+          artifact = matches[0]
+          if os.environ["COMPILER_VARIANT"] == "baseline":
+              if artifact["id"] != 9968907906 or artifact["digest"] != (
+                  "sha256:d00c119a00376cbf43524bea83c69a905421c3339f8b125710163135b6b765c0"
+              ):
+                  raise SystemExit("The fixed baseline artifact identity changed")
+          metadata = {
+              "source_sha": revision,
+              "compiler_run_id": int(run_id),
+              "compiler_run_url": run["html_url"],
+              "artifact_id": artifact["id"],
+              "artifact_digest": artifact["digest"],
+              "artifact_size_bytes": artifact["size_in_bytes"],
+              "artifact_expires_at": artifact["expires_at"],
+          }
+          record = Path(os.environ["RUNNER_TEMP"]) / "codspeed-repeat-artifact.json"
+          record.write_text(json.dumps(metadata, indent=2) + "\n")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+              output.write(f"id={artifact['id']}\n")
+          print(json.dumps(metadata, indent=2))
+          PY
+
+      - name: Checkout matching compiler source and benchmark harness
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ env.COMPILER_SHA }}
           fetch-depth: 128
           persist-credentials: false
 
       - name: Checkout pinned benchmark dependencies
         run: git submodule update --init --depth 1 src/tools/rustc-perf
 
-      - name: Download benchmark compiler
+      - name: Download exact benchmark compiler artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: codspeed-toolchain
+          artifact-ids: ${{ steps.artifact.outputs.id }}
+          run-id: ${{ env.COMPILER_RUN_ID }}
+          github-token: ${{ github.token }}
+          merge-multiple: true
+          digest-mismatch: error
           path: build
 
       - name: Unpack benchmark compiler
@@ -129,16 +168,57 @@ jobs:
           src/tools/codspeed/test_harness.py
           src/tools/codspeed/test_walltime_results.py
 
-      - name: Verify compiler revision
+      - name: Verify compiler revision, host, and unchanged harness
         shell: bash
         run: |
-          version="$(build/codspeed-toolchain/stage1/bin/rustc -vV)"
-          printf '%s\n' "$version"
-          revision="$(git rev-parse HEAD)"
-          if ! grep -Fxq "commit-hash: $revision" <<< "$version"; then
-            echo "The benchmark compiler does not match the checked-out revision" >&2
-            exit 1
-          fi
+          src/tools/codspeed/.venv/bin/python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import platform
+          import subprocess
+          from pathlib import Path
+
+          revision = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          expected = os.environ["COMPILER_SHA"]
+          if revision != expected:
+              raise SystemExit(f"Source revision mismatch: {revision} != {expected}")
+          version = subprocess.check_output(
+              ["build/codspeed-toolchain/stage1/bin/rustc", "-vV"], text=True
+          )
+          print(version, end="")
+          fields = dict(line.split(": ", 1) for line in version.splitlines() if ": " in line)
+          if fields.get("commit-hash") != expected:
+              raise SystemExit("Compiler full commit hash does not match the selected source")
+          if fields.get("host") != "aarch64-unknown-linux-gnu":
+              raise SystemExit(f"Unexpected compiler host: {fields.get('host')}")
+          if platform.machine() not in ("aarch64", "arm64"):
+              raise SystemExit(f"Unexpected runner architecture: {platform.machine()}")
+          subprocess.run(
+              ["git", "diff", "--exit-code", os.environ["BASELINE_SHA"], revision,
+               "--", "src/tools/codspeed", "src/tools/rustc-perf"], check=True
+          )
+
+          evidence = Path("build/codspeed-repeat")
+          evidence.mkdir(parents=True, exist_ok=True)
+          record = Path(os.environ["RUNNER_TEMP"]) / "codspeed-repeat-artifact.json"
+          metadata = json.loads(record.read_text())
+          with Path("build/codspeed-toolchain.tar.gz").open("rb") as archive:
+              archive_hash = hashlib.file_digest(archive, "sha256").hexdigest()
+          metadata.update({
+              "checked_out_sha": revision,
+              "rustc_version": version,
+              "runner_architecture": platform.machine(),
+              "toolchain_archive_sha256": archive_hash,
+              "harness_baseline_sha": os.environ["BASELINE_SHA"],
+              "repeat_run_id": os.environ["GITHUB_RUN_ID"],
+              "repeat_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "compiler_variant": os.environ["COMPILER_VARIANT"],
+              "shard": os.environ["BENCHMARK_SHARD"],
+          })
+          (evidence / "compiler.json").write_text(json.dumps(metadata, indent=2) + "\n")
+          (evidence / "rustc-version.txt").write_text(version)
+          PY
 
       - name: Prepare dependencies and capture compiler invocations
         run: >-
@@ -168,8 +248,9 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: codspeed-walltime-evidence-${{ matrix.shard }}
+          name: codspeed-repeat-${{ inputs.compiler }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
           path: |
+            build/codspeed-repeat/
             build/codspeed/manifest.json
             build/codspeed/results/
           if-no-files-found: ignore
