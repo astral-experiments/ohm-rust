@@ -114,7 +114,7 @@ def main():
             name,
             workspaces / spec["directory"],
             spec["package"].replace("-", "_"),
-            "check",
+            spec.get("profile", "check"),
             spec,
         )
         for name, spec in WORKSPACES.items()
@@ -126,7 +126,11 @@ def main():
         cwd = output / "fixtures" / name
         shutil.copytree(source, cwd, ignore=shutil.ignore_patterns(".git"))
         # Force Cargo to invoke the leaf even if an external target directory was reused.
-        leaf = cwd / "crates" / workspace["package"] if workspace else cwd
+        leaf = (
+            cwd / workspace.get("package_dir", f"crates/{workspace['package']}")
+            if workspace
+            else cwd
+        )
         (leaf / "src/lib.rs").touch()
         patch = cwd / "0-println.patch" if workspace is None else None
 

@@ -19,6 +19,18 @@ WORKSPACES = {
         "features": ["clap"],
     },
 }
+WORKSPACES["uv-release-resolver"] = {
+    **WORKSPACES["uv-resolver"],
+    "profile": "release",
+}
+WORKSPACES["codex-release-protocol"] = {
+    "directory": "codex/codex-rs",
+    "revision": "74004b5397b24662a87a5264a6ae80664168c7f3",
+    "package": "codex-protocol",
+    "package_dir": "protocol",
+    "features": [],
+    "profile": "release",
+}
 FIXTURE_SCENARIOS = {
     **{name: SCENARIOS for name in RUSTC_PERF_FIXTURES},
     **{f"{name}-Debug": ("Full",) for name in RUSTC_PERF_FIXTURES},
