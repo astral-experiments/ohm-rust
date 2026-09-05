@@ -35,4 +35,17 @@ impl NeedsAddition for bool {
     //~^ ERROR cannot add
 }
 
+trait Bound {}
+
+trait NeedsBound {
+    type Store: Copy
+    where
+        Self: Bound;
+}
+
+impl NeedsBound for () {
+    type Store = u8;
+    //~^ ERROR the trait bound `(): Bound` is not satisfied
+}
+
 fn main() {}

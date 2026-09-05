@@ -14,9 +14,9 @@ use rustc_infer::infer::{self, BoundRegionConversionTime, InferCtxt, TyCtxtInfer
 use rustc_infer::traits::{TraitErrors, util};
 use rustc_middle::ty::error::{ExpectedFound, TypeError};
 use rustc_middle::ty::{
-    self, BottomUpFolder, GenericArgs, GenericParamDefKind, Generics, Ty, TyCtxt, TypeFlags,
-    TypeFoldable, TypeFolder, TypeSuperFoldable, TypeVisitable, TypeVisitableExt, TypeVisitor,
-    TypingMode, Unnormalized, Upcast,
+    self, BottomUpFolder, GenericArgs, GenericParamDefKind, Generics, Ty, TyCtxt, TypeFoldable,
+    TypeFlags, TypeFolder, TypeSuperFoldable, TypeVisitable, TypeVisitableExt,
+    TypeVisitor, TypingMode, Unnormalized, Upcast,
 };
 use rustc_span::{BytePos, DUMMY_SP, Span, bug, span_bug};
 use rustc_trait_selection::error_reporting::InferCtxtErrorExt;
@@ -2571,12 +2571,13 @@ pub(super) fn check_type_bounds<'tcx>(
 
     // A final, nongeneric associated type with a primitive value or array cannot be overridden.
     // Directly replace its projection when every bound is a trait predicate whose arguments
-    // are only that projection. Other bounds, particularly well-formedness predicates, must
-    // keep the original normalization path.
+    // are only that projection. Associated-type where clauses can add obligations during
+    // normalization, so they and other complex bounds keep the original path.
     let simple_value = if !obligations.is_empty()
         && traits::impl_item_is_final(tcx, &impl_ty)
         && tcx.generics_of(impl_ty.def_id).count() == 0
-        && param_env.caller_bounds().is_empty()
+        && param_env.caller_bounds().next().is_none()
+        && tcx.clauses_of(trait_ty.def_id).clauses.is_empty()
         && !rebased_args.has_aliases()
         && !rebased_args.has_infer()
         && !rebased_args.references_error()
