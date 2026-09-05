@@ -16,6 +16,10 @@ CANDIDATES = {
     "copy_proofs": ("23ebc5cf12881b1cb27984d06e78a8eb6cea8c39", 33965794444),
     "query_response": ("d8cd3b4fc6298ef1e1cb9091c88fb10fdc09e8e7", 33965881981),
     "trait_proofs": ("9df07251e44f9fba1f4fbfabe04f545bea7138f2", 33966299348),
+    "inline_interners": ("d431f7e2d7c2cee45cea4dde567e37846b075969", 33967115972),
+    "global_trait_proofs": ("b57fb8b21cfa45a10f51fc4a90f6495518f40458", 33967204643),
+    "query_cache": ("c1c0df5ea61aa9567b08597983c3bc66d74f4e3c", 33967420811),
+    "interner_tables": ("fee565ff358fa73dc55dfe7927538d3592abfc43", 33967646842),
 }
 
 
@@ -34,10 +38,16 @@ def main():
     }
 
     def check(
-        name, fixture, *, revision=None, next_solver=False, disable_fast_paths=False, errors=()
+        name, fixture, *, revision=None, next_solver=False, disable_fast_paths=False,
+        errors=(), incremental=None, require_loaded=False, threads=None,
+        crate_name=None, artifact=None, execute=True, extra_flags=(),
     ):
-        """Compile one explicit fixture; successful fixtures must also execute."""
-        binary = output / "bin" / name
+        """Compile one fixture and execute successful binary fixtures."""
+        default_name = incremental.name if incremental is not None else name
+        crate_name = crate_name or default_name.replace("-", "_")
+        binary = artifact or output / "bin" / default_name
+        if incremental is not None:
+            incremental.mkdir(parents=True, exist_ok=True)
         command = [
             str(rustc),
             "--edition=2021",
@@ -45,7 +55,7 @@ def main():
             "-Zvalidate-mir",
             "-Zdeduplicate-diagnostics=no",
             "--crate-name",
-            name.replace("-", "_"),
+            crate_name,
             fixture,
             "-o",
             str(binary),
@@ -56,7 +66,14 @@ def main():
             command.append("-Znext-solver=globally")
         if disable_fast_paths:
             command.append("-Zdisable-fast-paths")
-        if errors:
+        if incremental is not None:
+            command.extend([f"-Cincremental={incremental}", "-Zincremental-verify-ich"])
+        if require_loaded:
+            command.append("-Zassert-incr-state=loaded")
+        if threads is not None:
+            command.append(f"-Zthreads={threads}")
+        command.extend(extra_flags)
+        if errors and incremental is None:
             command.append("--emit=metadata")
         record = {
             "name": name,
@@ -92,7 +109,7 @@ def main():
             ]
             record["actual_errors"] = actual
             assert Counter(actual) == Counter(errors), (actual, errors)
-            if not errors:
+            if not errors and execute:
                 run = subprocess.run(
                     [str(binary)], cwd=source, env=env, capture_output=True,
                     text=True, timeout=60,
@@ -198,7 +215,7 @@ def main():
                     revision=solver, next_solver=solver == "next",
                     errors=((None, "lifetime may not live long enough"),),
                 )
-        if kind in ("copy_proofs", "trait_proofs"):
+        if kind in ("copy_proofs", "trait_proofs", "global_trait_proofs"):
             for solver in ("current", "next", "slow"):
                 options = {
                     "revision": solver,
@@ -223,7 +240,7 @@ def main():
                         f"tests/ui/nll/do-not-ignore-lifetime-bounds-in-copy{suffix}.rs",
                         errors=(("E0597", "`s` does not live long enough"),), **options,
                     )
-        if kind == "trait_proofs":
+        if kind in ("trait_proofs", "global_trait_proofs"):
             for solver in ("current", "next", "slow"):
                 options = {
                     "revision": solver,
@@ -257,6 +274,79 @@ def main():
                         (None, "lifetime may not live long enough"),
                     ), **options,
                 )
+        if kind == "global_trait_proofs":
+            for solver in ("current", "next", "slow"):
+                controls = {
+                    "next_solver": solver == "next",
+                    "disable_fast_paths": solver == "slow",
+                }
+                check(
+                    f"global-trait-proofs-{solver}", "tests/ui/ohm/global-trait-proofs.rs",
+                    revision=solver, **controls,
+                )
+                lifetime_errors = (("E0521", "borrowed data escapes outside of function"),) * 2
+                check(
+                    f"global-trait-lifetimes-{solver}",
+                    "tests/ui/ohm/global-trait-proofs-lifetimes.rs",
+                    revision=solver, errors=lifetime_errors, **controls,
+                )
+                incremental = output / "incremental" / f"global-proof-cache-{solver}"
+                check(
+                    f"global-incremental-{solver}-bpass1",
+                    "tests/incremental/mir-typeck-trait-proofs.rs",
+                    revision="bpass1", incremental=incremental, **controls,
+                )
+                check(
+                    f"global-incremental-{solver}-bfail2",
+                    "tests/incremental/mir-typeck-trait-proofs.rs",
+                    revision="bfail2", incremental=incremental, require_loaded=True,
+                    errors=lifetime_errors, **controls,
+                )
+        if kind in ("inline_interners", "query_cache", "interner_tables"):
+            for solver in ("current", "next"):
+                next_solver = solver == "next"
+                threads = None if kind == "inline_interners" else 4
+                check(
+                    f"nominal-obligations-{solver}",
+                    "tests/ui/wf/nominal-inherited-obligations.rs",
+                    revision=solver, next_solver=next_solver, threads=threads,
+                )
+                check(
+                    f"nominal-obligations-fail-{solver}",
+                    "tests/ui/wf/nominal-inherited-obligations-fail.rs",
+                    revision=solver, next_solver=next_solver, threads=threads,
+                    errors=(("E0277", "the trait bound `T: Copy` is not satisfied"),)
+                    * (3 if next_solver else 2)
+                    + (("E0277", "the trait bound `U: Clone` is not satisfied"),),
+                )
+                for suffix in ("", "-proj"):
+                    check(
+                        f"copy-lifetime{suffix}-{solver}",
+                        f"tests/ui/nll/do-not-ignore-lifetime-bounds-in-copy{suffix}.rs",
+                        next_solver=next_solver, threads=threads,
+                        errors=(("E0597", "`s` does not live long enough"),),
+                    )
+        if kind in ("query_cache", "interner_tables"):
+            for threads in (1, 4):
+                rlib = output / "bin" / f"liba_threads_{threads}.rlib"
+                auxiliary_cache = output / "incremental" / f"query-cache-aux-{threads}"
+                main_cache = output / "incremental" / f"query-cache-main-{threads}"
+                for revision in ("rpass1", "rpass2", "rpass3"):
+                    check(
+                        f"query-cache-aux-{threads}-{revision}",
+                        "tests/incremental/rlib_cross_crate/auxiliary/a.rs",
+                        revision=revision, threads=threads, crate_name="a", artifact=rlib,
+                        execute=False, incremental=auxiliary_cache,
+                        require_loaded=revision != "rpass1",
+                        extra_flags=("-Zquery-dep-graph", "--crate-type=rlib"),
+                    )
+                    check(
+                        f"query-cache-main-{threads}-{revision}",
+                        "tests/incremental/rlib_cross_crate/b.rs",
+                        revision=revision, threads=threads, incremental=main_cache,
+                        require_loaded=revision != "rpass1",
+                        extra_flags=("-Zquery-dep-graph", "--extern", f"a={rlib}"),
+                    )
         failed = [case["name"] for case in report["cases"] if case["status"] != "passed"]
         assert not failed, f"Failed cases: {', '.join(failed)}"
         report["status"] = "passed"
