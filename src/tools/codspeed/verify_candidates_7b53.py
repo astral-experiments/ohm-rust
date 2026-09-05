@@ -15,6 +15,7 @@ CANDIDATES = {
     "combined": ("b9bcf51550f7be847c41d9e76547c253c368539b", 33965430528),
     "copy_proofs": ("23ebc5cf12881b1cb27984d06e78a8eb6cea8c39", 33965794444),
     "query_response": ("d8cd3b4fc6298ef1e1cb9091c88fb10fdc09e8e7", 33965881981),
+    "trait_proofs": ("9df07251e44f9fba1f4fbfabe04f545bea7138f2", 33966299348),
 }
 
 
@@ -197,7 +198,7 @@ def main():
                     revision=solver, next_solver=solver == "next",
                     errors=((None, "lifetime may not live long enough"),),
                 )
-        if kind == "copy_proofs":
+        if kind in ("copy_proofs", "trait_proofs"):
             for solver in ("current", "next", "slow"):
                 options = {
                     "revision": solver,
@@ -222,6 +223,21 @@ def main():
                         f"tests/ui/nll/do-not-ignore-lifetime-bounds-in-copy{suffix}.rs",
                         errors=(("E0597", "`s` does not live long enough"),), **options,
                     )
+        if kind == "trait_proofs":
+            for solver in ("current", "next", "slow"):
+                options = {
+                    "revision": solver,
+                    "next_solver": solver == "next",
+                    "disable_fast_paths": solver == "slow",
+                }
+                check(
+                    f"trait-proofs-{solver}", "tests/ui/ohm/trait-proofs-repeated.rs",
+                    **options,
+                )
+                check(
+                    f"trait-region-bound-{solver}", "tests/ui/ohm/trait-proofs-region-bound.rs",
+                    errors=(("E0597", "`value` does not live long enough"),), **options,
+                )
         if kind == "query_response":
             for solver in ("current", "next", "slow"):
                 options = {
