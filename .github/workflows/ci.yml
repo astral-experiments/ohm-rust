@@ -150,6 +150,16 @@ jobs:
           tests/ui/nll/maybe-initialized-drop.rs
           tests/ui/nll/match-guards-partially-borrow.rs
 
+      - name: Run primitive associated-constant regression tests
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1
+          tests/ui/associated-consts/primitive-const-entailment.rs
+          tests/ui/associated-consts/associated-const-impl-wrong-type.rs
+          tests/ui/associated-consts/associated-const-generic-obligations.rs
+          tests/ui/generic-const-items/compare-impl-item.rs
+          tests/ui/generic-const-items/unsatisfied-bounds.rs
+
       - name: Run cached hygiene unit tests
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
