@@ -80,7 +80,15 @@ def main():
     samples = json.loads((profile / 'samples.json').read_text())
     offsets = Counter(sample[3] for sample in samples['samples'] if sample[3] is not None)
     counts, unknown = symbolize(offsets, Path(samples['driver']['path']), profile / 'nm-status.txt')
-    names = list(counts)
+    caller_offsets = Counter(offset for sample in samples['samples'] if len(sample) > 7
+                             for offset in set(sample[7]))
+    caller_counts, caller_unknown = symbolize(
+        caller_offsets, Path(samples['driver']['path']), profile / 'nm-callers-status.txt')
+    link_offsets = Counter(sample[8] for sample in samples['samples']
+                           if len(sample) > 8 and sample[8] is not None)
+    link_counts, link_unknown = symbolize(
+        link_offsets, Path(samples['driver']['path']), profile / 'nm-links-status.txt')
+    names = list(counts.keys() | caller_counts.keys() | link_counts.keys())
     if names:
         process = subprocess.run(
             ['c++filt', '--format=rust'], input='\n'.join(names) + '\n',
@@ -114,6 +122,14 @@ def main():
         'samples': len(samples['samples']), 'driver_samples': driver_count,
         'outside_driver_samples': len(samples['samples']) - driver_count,
         'unsymbolized_driver_samples': unknown, 'symbols': symbols,
+        'caller_samples': sum(caller_offsets.values()),
+        'unsymbolized_caller_samples': caller_unknown,
+        'unsymbolized_link_register_samples': link_unknown,
+        'callers': [{'samples': count, 'symbol': decoded[name]}
+                    for name, count in caller_counts.most_common()],
+        'link_registers': [{'samples': count, 'symbol': decoded[name]}
+                           for name, count in link_counts.most_common()],
+        'stack_note': 'Frame-pointer chains only; may be incomplete. ARM link register is reported separately and may point within the current function.',
         'compiler_crates': crates.most_common(), 'symbol_families': families.most_common(),
         'family_grouping_note': 'Disjoint leaf-symbol name groups; generic hashing and allocation cannot be assigned to callers without stacks',
     }
@@ -127,6 +143,10 @@ def main():
                  for entry in symbols[:100])
     lines.extend(['', 'Leaf symbol family sample counts (no caller attribution):'])
     lines.extend(f'{count:6d}  {name}' for name, count in families.most_common())
+    lines.extend(['', 'Frame-pointer caller records (incomplete chains; counts overlap):'])
+    lines.extend(f'{count:6d}  {decoded[name]}' for name, count in caller_counts.most_common(50))
+    lines.extend(['', 'ARM link register targets (may be within the current function):'])
+    lines.extend(f'{count:6d}  {decoded[name]}' for name, count in link_counts.most_common(30))
     lines.extend(['', 'Compiler crate sample counts:'])
     lines.extend(f'{count:6d}  {name}' for name, count in crates.most_common())
     report = '\n'.join(lines) + '\n'

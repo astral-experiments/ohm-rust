@@ -20,6 +20,7 @@ import sys
 import time
 
 
+PTRACE_PEEKDATA = 2
 PTRACE_CONT = 7
 PTRACE_GETREGS = 12
 PTRACE_GETREGSET = 0x4204
@@ -79,6 +80,40 @@ def read_program_counter(tid, regs):
         return regs.pc
     ptrace(PTRACE_GETREGS, tid, data=ctypes.addressof(regs))
     return regs.rip
+
+
+def read_caller_offsets(tid, regs, mappings, driver_base, driver_segments):
+    """Read at most 16 frame records from the stopped owned worker's stack."""
+    if isinstance(regs, Arm64Regs):
+        frame, stack = regs.regs[29], regs.sp
+        # A leaf assembly helper may omit its frame record. Retain LR separately.
+        link = regs.regs[30]
+    else:
+        frame, stack, link = regs.rbp, regs.rsp, None
+    callers = []
+    for _ in range(16):
+        if not (stack <= frame < stack + 64 * 1024 * 1024) or frame % 8:
+            break
+        if not any(m['start'] <= frame and frame + 16 <= m['end']
+                   and 'r' in m['permissions'] and 'w' in m['permissions']
+                   for m in mappings):
+            break
+        try:
+            previous = ptrace(PTRACE_PEEKDATA, tid, address=frame) & ((1 << 64) - 1)
+            address = ptrace(PTRACE_PEEKDATA, tid, address=frame + 8) & ((1 << 64) - 1)
+        except OSError as exc:
+            if exc.errno in (errno.EFAULT, errno.EIO, errno.ESRCH):
+                break
+            raise
+        callsite = address - 1
+        if any(start <= callsite < end for start, end in driver_segments):
+            callers.append(callsite - driver_base)
+        if previous <= frame:
+            break
+        frame = previous
+    link_offset = (link - 1 - driver_base if link is not None
+                   and any(start <= link - 1 < end for start, end in driver_segments) else None)
+    return callers, link_offset
 
 
 def owned_worker(pid, tid):
@@ -234,13 +269,15 @@ def main():
     result = dict(plan, samples=[], map_snapshots=[], attached_threads=[],
                   signal_stops=[], returncode=None, error=None, threads={}, idle_polls=0)
     result['sample_columns'] = ['elapsed_ns', 'tid', 'pc', 'driver_offset',
-                                'interrupt_latency_ns', 'observed_stopped_ns', 'runnable_workers']
+                                'interrupt_latency_ns', 'observed_stopped_ns', 'runnable_workers',
+                                'caller_driver_offsets', 'link_register_driver_offset']
     child = None
     launch_ns = time.perf_counter_ns()
     active_tid = None
     traced = set()
     driver_base = None
     driver_segments = []
+    process_mappings = []
     sample_regs = Arm64Regs() if machine == 'aarch64' else X86Regs()
     random_period = random.Random(94601)
     previous_usage = resource.getrusage(resource.RUSAGE_CHILDREN)
@@ -252,7 +289,7 @@ def main():
         raise InterruptedError(f'Profile interrupted by signal {signum}')
 
     def snapshot_maps():
-        nonlocal driver_base, driver_segments
+        nonlocal driver_base, driver_segments, process_mappings
         try:
             mappings = read_maps(child.pid)
         except FileNotFoundError:
@@ -265,6 +302,7 @@ def main():
             raise RuntimeError('Frozen driver load base changed during replay')
         driver_base = base
         driver_segments = [(m['start'], m['end']) for m in segments if 'x' in m['permissions']]
+        process_mappings = mappings
         result['map_snapshots'].append({'elapsed_ns': time.perf_counter_ns() - launch_ns,
                                          'mappings': mappings})
         return bool(driver_segments)
@@ -362,10 +400,12 @@ def main():
 
                 pc = read_program_counter(active_tid, sample_regs)
                 offset = pc - driver_base if any(start <= pc < end for start, end in driver_segments) else None
+                callers, link = read_caller_offsets(
+                    active_tid, sample_regs, process_mappings, driver_base, driver_segments)
                 resume_ns = time.perf_counter_ns()
                 ptrace(PTRACE_CONT, active_tid)
                 result['samples'].append([stopped_ns - launch_ns, active_tid, pc, offset,
-                                           stopped_ns - request_ns, resume_ns - stopped_ns, len(active)])
+                                           stopped_ns - request_ns, resume_ns - stopped_ns, len(active), callers, link])
                 result['threads'][str(active_tid)]['samples'] += 1
                 time.sleep(args.period_us * 1e-6 * random_period.uniform(0.8, 1.2))
 
