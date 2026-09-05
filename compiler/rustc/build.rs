@@ -3,6 +3,9 @@ use std::{env, path};
 use rustc_windows_rc::{VersionInfoFileType, compile_windows_resource_file};
 
 fn main() {
+    #[cfg(feature = "mimalloc")]
+    mimalloc();
+
     let target_os = env::var("CARGO_CFG_TARGET_OS");
     let target_env = env::var("CARGO_CFG_TARGET_ENV");
     if Ok("windows") == target_os.as_deref() && Ok("msvc") == target_env.as_deref() {
@@ -11,6 +14,29 @@ fn main() {
         // Avoid rerunning the build script every time.
         println!("cargo:rerun-if-changed=build.rs");
     }
+}
+
+#[cfg(feature = "mimalloc")]
+fn mimalloc() {
+    assert_eq!(env::var("CARGO_CFG_TARGET_OS").as_deref(), Ok("linux"));
+    assert_eq!(env::var("CARGO_CFG_TARGET_ENV").as_deref(), Ok("gnu"));
+    println!("cargo:rerun-if-changed=mimalloc");
+    let destination = cmake::Config::new("mimalloc")
+        .profile("Release")
+        .define("MI_BUILD_SHARED", "OFF")
+        .define("MI_BUILD_OBJECT", "OFF")
+        .define("MI_BUILD_TESTS", "OFF")
+        .define("MI_OVERRIDE", "ON")
+        .build_target("mimalloc-static")
+        .build();
+    let archive = destination.join("build/libmimalloc.a");
+
+    // Keep the native malloc override in the executable so it also covers LLVM.
+    println!("cargo:rustc-link-arg-bin=rustc-main=-Wl,--whole-archive");
+    println!("cargo:rustc-link-arg-bin=rustc-main={}", archive.display());
+    println!("cargo:rustc-link-arg-bin=rustc-main=-Wl,--no-whole-archive");
+    println!("cargo:rustc-link-arg-bin=rustc-main=-lpthread");
+    println!("cargo:rustc-link-arg-bin=rustc-main=-ldl");
 }
 
 // Add a manifest file to rustc.exe.
