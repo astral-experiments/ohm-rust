@@ -68,7 +68,7 @@ try:
         }
         try:
             entry["kind_debug_value"] = str(frame.read_var("kind"))
-        except gdb.error as error:
+        except (gdb.error, ValueError) as error:
             entry["kind_debug_unavailable"] = str(error)
         breakpoint.enabled = False
         gdb.execute("finish")
