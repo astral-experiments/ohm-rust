@@ -44,6 +44,9 @@ CANDIDATES = {
     "mimalloc_v2": ("c64f2819b0b7982ad5f7f75b5de19374d6de18c1", 33977300225),
     "resolved_relations": ("fab2b5e8e23f874e40e727ec1cacea533e25a527", 33977945889),
     "root_probe": ("94cabfecfc6fc201868a44007257c8c984644830", 33978363752),
+    "dense_lazy": ("696fd87252a253aaa2b34b9bf092804dcbde3585", 33979491861),
+    "veccache_mode": ("64c31b0b3c22ada448cfab90be3e9c7fc0339fc3", 33979934693),
+    "lazy_engine": ("7954d3b8abde5a3a11239a19602c7878b0b41e67", 33979990020),
 }
 
 
@@ -389,8 +392,8 @@ def main():
                         next_solver=next_solver, threads=threads,
                         errors=(("E0597", "`s` does not live long enough"),),
                     )
-        if kind in ("query_cache", "interner_tables", "packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "nested_argfolder", "interner_cache", "mimalloc_v2"):
-            thread_counts = (4,) if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "nested_argfolder", "interner_cache", "mimalloc_v2") else (1, 4)
+        if kind in ("query_cache", "interner_tables", "packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "dense_lazy", "veccache_mode", "nested_argfolder", "interner_cache", "mimalloc_v2"):
+            thread_counts = (4,) if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "dense_lazy", "veccache_mode", "nested_argfolder", "interner_cache", "mimalloc_v2") else (1, 4)
             for threads in thread_counts:
                 rlib = output / "bin" / f"liba_threads_{threads}.rlib"
                 auxiliary_cache = output / "incremental" / f"query-cache-aux-{threads}"
@@ -411,7 +414,7 @@ def main():
                         require_loaded=revision != "rpass1",
                         extra_flags=("-Zquery-dep-graph", "--extern", f"a={rlib}"),
                     )
-        if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "nested_argfolder", "interner_cache", "mimalloc_v2"):
+        if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "dense_lazy", "veccache_mode", "nested_argfolder", "interner_cache", "mimalloc_v2"):
             for solver in ("current", "next"):
                 next_solver = solver == "next"
                 check(
@@ -470,6 +473,13 @@ def main():
                     next_solver=next_solver, threads=4,
                     extra_flags=("--extern", f"associated_types_cc_lib={rlib}"),
                     expected_stdout="22\n",
+                )
+        if kind == "veccache_mode":
+            for threads in ("sync", 4):
+                check(
+                    f"veccache-mode-threads-{threads}",
+                    "tests/ui/associated-types/projection-as-type-alias.rs",
+                    threads=threads,
                 )
         if kind == "thin_stalled":
             fixtures = (
@@ -1020,7 +1030,7 @@ def main():
                 env.pop("RUSTC_LOG")
             else:
                 env["RUSTC_LOG"] = previous_log
-        if kind == "lazy_obligation":
+        if kind in ("lazy_obligation", "dense_lazy", "lazy_engine"):
             for solver in ("current", "next", "slow"):
                 controls = {
                     "revision": solver, "next_solver": solver == "next",
