@@ -1,0 +1,134 @@
+name: Temporary C31 local WF coverage (7b53)
+
+on:
+  push:
+    branches: [charlie/codex-codspeed-local-wf-coverage-7b53]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  compiler:
+    if: ${{ github.ref == 'refs/heads/charlie/codex-codspeed-local-wf-coverage-7b53' }}
+    name: Build instrumented C31 compiler
+    runs-on: codspeed-macro
+    timeout-minutes: 50
+    steps:
+      - name: Checkout the reviewed diagnostic source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 128
+          persist-credentials: false
+      - name: Checkout pinned compiler dependency
+        run: git submodule update --init --depth 1 library/backtrace
+      - name: Build compiler and matching standard library with coverage unset
+        run: >-
+          env -u OHM_LOCAL_WF_COVERAGE_DIR python3 x.py --ci false
+          --config src/tools/codspeed/bootstrap.toml build --stage 1 library
+      - name: Calibrate actual acceptance and rejection on the unchanged C31 fixture
+        timeout-minutes: 5
+        run: >-
+          env -u OHM_LOCAL_WF_COVERAGE_DIR python3 .github/scripts/local_wf_coverage_7b53.py
+          --calibrate --rustc build/host/stage1/bin/rustc --expected-commit '${{ github.sha }}'
+          --output build/local-wf-coverage-calibration
+      - name: Retain calibration evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: local-wf-coverage-calibration-7b53
+          path: |
+            build/local-wf-coverage-calibration/*.json
+            build/local-wf-coverage-calibration/*.txt
+            build/local-wf-coverage-calibration/counters/*
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Package instrumented compiler and pinned Cargo
+        run: >-
+          tar --dereference -czf build/local-wf-coverage-toolchain.tar.gz
+          --exclude=stage1/lib/rustlib/src --exclude=stage1/lib/rustlib/rustc-src
+          -C build/host stage1 stage0/bin/cargo
+      - name: Retain instrumented compiler
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: local-wf-coverage-toolchain
+          path: build/local-wf-coverage-toolchain.tar.gz
+          compression-level: 0
+          retention-days: 2
+          if-no-files-found: error
+
+  coverage:
+    name: Count actual local WF decisions (${{ matrix.shard }})
+    needs: compiler
+    runs-on: codspeed-macro
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [ruff-ty_python_semantic, uv-resolver]
+    steps:
+      - name: Checkout diagnostic source and unchanged benchmark harness
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 128
+          persist-credentials: false
+      - name: Checkout pinned benchmark dependency
+        run: git submodule update --init --depth 1 src/tools/rustc-perf
+      - name: Download instrumented compiler
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: local-wf-coverage-toolchain
+          path: build
+      - name: Unpack instrumented compiler
+        run: |
+          mkdir -p build/codspeed-toolchain
+          tar -xzf build/local-wf-coverage-toolchain.tar.gz -C build/codspeed-toolchain
+      - name: Checkout pinned Ruff
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: astral-sh/ruff
+          ref: efcffd2178ce62e9951a53d4c50cadc225a0cfec
+          path: build/codspeed-sources/ruff
+          persist-credentials: false
+      - name: Checkout pinned uv
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: astral-sh/uv
+          ref: 3392e29bdc4f09bb4f6d92f7aca8d450b835ce4f
+          path: build/codspeed-sources/uv
+          persist-credentials: false
+      - name: Install pinned benchmark tools
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: "0.12.7"
+      - name: Install pinned Python dependencies
+        run: |
+          uv venv --python 3.13.15 src/tools/codspeed/.venv
+          uv pip sync --python src/tools/codspeed/.venv/bin/python --require-hashes src/tools/codspeed/requirements.txt
+      - name: Prepare the ordinary workload with coverage unset
+        run: >-
+          env -u OHM_LOCAL_WF_COVERAGE_DIR src/tools/codspeed/.venv/bin/python src/tools/codspeed/prepare.py
+          --rustc build/codspeed-toolchain/stage1/bin/rustc
+          --cargo build/codspeed-toolchain/stage0/bin/cargo
+          --shard '${{ matrix.shard }}'
+      - name: Count one prepared Full leaf invocation
+        timeout-minutes: 5
+        run: >-
+          env -u OHM_LOCAL_WF_COVERAGE_DIR src/tools/codspeed/.venv/bin/python .github/scripts/local_wf_coverage_7b53.py
+          --fixture '${{ matrix.shard }}' --expected-commit '${{ github.sha }}'
+          --output build/local-wf-coverage
+      - name: Retain coverage evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: local-wf-coverage-${{ matrix.shard }}-7b53
+          path: |
+            build/codspeed/manifest.json
+            build/local-wf-coverage/*.json
+            build/local-wf-coverage/*.txt
+            build/local-wf-coverage/counters/*
+          retention-days: 7
+          if-no-files-found: warn

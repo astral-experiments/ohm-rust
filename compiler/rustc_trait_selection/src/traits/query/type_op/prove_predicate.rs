@@ -1,3 +1,5 @@
+mod local_wf_coverage;
+
 use std::ops::ControlFlow;
 
 use rustc_infer::traits::Obligation;
@@ -38,22 +40,39 @@ impl<'tcx> super::QueryTypeOp<'tcx> for ProvePredicate<'tcx> {
         infcx: &InferCtxt<'tcx>,
         key: &ParamEnvAnd<'tcx, Self>,
     ) -> Option<Self::QueryResponse> {
+        let mut coverage = local_wf_coverage::Coverage::start(infcx.tcx, key);
         let predicate = key.value.predicate.kind();
-        if cfg!(debug_assertions)
-            || !infcx.considering_regions
-            || infcx.tcx.assumptions_on_binders()
-            || !predicate.bound_vars().is_empty()
-            || key.param_env.references_error()
-        {
+        if cfg!(debug_assertions) {
+            coverage.reject("debug-assertions");
             return None;
         }
-        let ty::PredicateKind::Clause(clause) = predicate.skip_binder() else { return None };
+        if !infcx.considering_regions {
+            coverage.reject("regions-disabled");
+            return None;
+        }
+        if infcx.tcx.assumptions_on_binders() {
+            coverage.reject("assumptions-on-binders");
+            return None;
+        }
+        if !predicate.bound_vars().is_empty() {
+            coverage.reject("root-binder");
+            return None;
+        }
+        if key.param_env.references_error() {
+            coverage.reject("param-env-error");
+            return None;
+        }
+        let ty::PredicateKind::Clause(clause) = predicate.skip_binder() else {
+            coverage.reject("unsupported-predicate-kind");
+            return None;
+        };
         if !matches!(
             clause,
             ty::ClauseKind::RegionOutlives(_)
                 | ty::ClauseKind::TypeOutlives(_)
                 | ty::ClauseKind::WellFormed(_)
         ) {
+            coverage.reject("unsupported-clause-kind");
             return None;
         }
         let flags = ty::TypeFlags::HAS_ALIAS
@@ -65,6 +84,7 @@ impl<'tcx> super::QueryTypeOp<'tcx> for ProvePredicate<'tcx> {
             | ty::TypeFlags::HAS_CT_FRESH
             | (ty::TypeFlags::HAS_INFER - ty::TypeFlags::HAS_RE_INFER);
         if key.value.predicate.has_type_flags(flags) {
+            coverage.reject_predicate(infcx.tcx, "root-flags", key.value.predicate, flags);
             return None;
         }
 
@@ -81,18 +101,26 @@ impl<'tcx> super::QueryTypeOp<'tcx> for ProvePredicate<'tcx> {
                 infcx.register_type_outlives_constraint(ty, region, &cause);
             }
             ty::ClauseKind::WellFormed(term) => {
-                let ty = term.as_type()?;
-                if ty.visit_with(&mut WfInput { remaining: 64 }).is_break() {
+                let Some(ty) = term.as_type() else {
+                    coverage.reject("non-type-wf-term");
+                    return None;
+                };
+                if let ControlFlow::Break(failure) = ty.visit_with(&mut WfInput { remaining: 64 }) {
+                    coverage.reject_input(infcx.tcx, failure);
                     return None;
                 }
-                let obligations = wf::unnormalized_obligations(
+                let Some(obligations) = wf::unnormalized_obligations(
                     infcx,
                     key.param_env,
                     term,
                     cause.span,
                     cause.body_id,
-                )?;
+                ) else {
+                    coverage.reject("wf-generation-none");
+                    return None;
+                };
                 if obligations.len() > 64 {
+                    coverage.reject_count("generated-obligation-budget", obligations.len());
                     return None;
                 }
 
@@ -101,8 +129,12 @@ impl<'tcx> super::QueryTypeOp<'tcx> for ProvePredicate<'tcx> {
                 // These children are handled before fulfillment's general overflow check.
                 for obligation in &obligations {
                     let predicate = obligation.predicate;
-                    if !predicate.kind().bound_vars().is_empty() || predicate.has_type_flags(flags)
-                    {
+                    if !predicate.kind().bound_vars().is_empty() {
+                        coverage.reject_predicate(infcx.tcx, "generated-binder", predicate, flags);
+                        return None;
+                    }
+                    if predicate.has_type_flags(flags) {
+                        coverage.reject_predicate(infcx.tcx, "generated-flags", predicate, flags);
                         return None;
                     }
                     match predicate.kind().skip_binder() {
@@ -111,7 +143,15 @@ impl<'tcx> super::QueryTypeOp<'tcx> for ProvePredicate<'tcx> {
                         )
                         | ty::PredicateKind::DynCompatible(_) => {}
                         _ if sizedness_fast_path(infcx.tcx, predicate, obligation.param_env) => {}
-                        _ => return None,
+                        _ => {
+                            coverage.reject_predicate(
+                                infcx.tcx,
+                                "unsupported-generated-predicate",
+                                predicate,
+                                flags,
+                            );
+                            return None;
+                        }
                     }
                 }
 
@@ -121,6 +161,12 @@ impl<'tcx> super::QueryTypeOp<'tcx> for ProvePredicate<'tcx> {
                         obligation.predicate.kind().skip_binder()
                         && !infcx.tcx.is_dyn_compatible(def_id)
                     {
+                        coverage.reject_predicate(
+                            infcx.tcx,
+                            "dyn-incompatible",
+                            obligation.predicate,
+                            flags,
+                        );
                         return None;
                     }
                 }
@@ -144,6 +190,13 @@ impl<'tcx> super::QueryTypeOp<'tcx> for ProvePredicate<'tcx> {
             }
             _ => unreachable!(),
         }
+        // Mark success only after the existing constraint registration has completed.
+        coverage.accept(match clause {
+            ty::ClauseKind::WellFormed(_) => "local-wf",
+            ty::ClauseKind::TypeOutlives(_) => "direct-type-outlives",
+            ty::ClauseKind::RegionOutlives(_) => "direct-region-outlives",
+            _ => unreachable!(),
+        });
         Some(())
     }
 
@@ -175,10 +228,18 @@ struct WfInput {
     remaining: u8,
 }
 
+enum InputFailure<'tcx> {
+    NodeBudget,
+    DynPredicateBudget { count: usize, remaining: u8 },
+    AssociatedConst,
+    Type(Ty<'tcx>),
+    Constant(ty::Const<'tcx>),
+}
+
 impl WfInput {
-    fn visit_node(&mut self) -> ControlFlow<()> {
+    fn visit_node<'tcx>(&mut self) -> ControlFlow<InputFailure<'tcx>> {
         let Some(remaining) = self.remaining.checked_sub(1) else {
-            return ControlFlow::Break(());
+            return ControlFlow::Break(InputFailure::NodeBudget);
         };
         self.remaining = remaining;
         ControlFlow::Continue(())
@@ -186,7 +247,7 @@ impl WfInput {
 }
 
 impl<'tcx> TypeVisitor<TyCtxt<'tcx>> for WfInput {
-    type Result = ControlFlow<()>;
+    type Result = ControlFlow<InputFailure<'tcx>>;
 
     fn visit_ty(&mut self, ty: Ty<'tcx>) -> Self::Result {
         self.visit_node()?;
@@ -209,7 +270,10 @@ impl<'tcx> TypeVisitor<TyCtxt<'tcx>> for WfInput {
             | ty::FnPtr(..) => {}
             ty::Dynamic(predicates, _) => {
                 if predicates.len() > usize::from(self.remaining) {
-                    return ControlFlow::Break(());
+                    return ControlFlow::Break(InputFailure::DynPredicateBudget {
+                        count: predicates.len(),
+                        remaining: self.remaining,
+                    });
                 }
                 self.remaining -= predicates.len() as u8;
                 // Associated const bindings inspect their declared types during WF generation.
@@ -217,10 +281,10 @@ impl<'tcx> TypeVisitor<TyCtxt<'tcx>> for WfInput {
                     .projection_bounds()
                     .any(|predicate| predicate.skip_binder().term.as_const().is_some())
                 {
-                    return ControlFlow::Break(());
+                    return ControlFlow::Break(InputFailure::AssociatedConst);
                 }
             }
-            _ => return ControlFlow::Break(()),
+            _ => return ControlFlow::Break(InputFailure::Type(ty)),
         }
         ty.super_visit_with(self)
     }
@@ -242,7 +306,7 @@ impl<'tcx> TypeVisitor<TyCtxt<'tcx>> for WfInput {
             {
                 constant.super_visit_with(self)
             }
-            _ => ControlFlow::Break(()),
+            _ => ControlFlow::Break(InputFailure::Constant(constant)),
         }
     }
 }
