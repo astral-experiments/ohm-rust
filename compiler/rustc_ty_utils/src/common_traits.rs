@@ -1,6 +1,6 @@
 //! Queries for checking whether a type implements one of a few common traits.
 
-use rustc_hir::lang_items::LangItem;
+use rustc_hir::{def_id::DefId, lang_items::LangItem};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::query::Providers;
 use rustc_middle::ty::fast_reject::SimplifiedType;
@@ -8,20 +8,31 @@ use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::DUMMY_SP;
 use rustc_trait_selection::traits;
 
-/// Recognizes an unconditional `Copy` impl for a pointer or an ADT with only lifetime parameters.
+/// Recognizes an unconditional impl for a pointer or an ADT with only lifetime parameters.
 ///
 /// Matching every impl parameter to a distinct self-type argument ensures that confirmation
-/// cannot constrain the goal. Copy validity is checked separately by coherence, so local ADT
-/// impls do not require inspecting their fields or proving their well-formedness here.
-fn unconditional_copy_impl(tcx: TyCtxt<'_>, kind: SimplifiedType) -> bool {
+/// cannot constrain the goal. Impl validity is checked separately, so local ADT impls do not
+/// require inspecting their fields or proving their well-formedness here.
+fn unconditional_trait_impl(tcx: TyCtxt<'_>, key: (DefId, SimplifiedType)) -> bool {
+    let (trait_id, kind) = key;
     if !matches!(
         kind,
         SimplifiedType::Ref(ty::Mutability::Not) | SimplifiedType::Ptr(_) | SimplifiedType::Adt(_)
     ) {
         return false;
     }
-    let Some(copy_trait) = tcx.lang_items().copy_trait() else { return false };
-    let impls = tcx.trait_impls_of(copy_trait);
+    let is_copy = Some(trait_id) == tcx.lang_items().copy_trait();
+    // Pointer shapes are specific to Copy. Other compiler-provided traits can have special
+    // selection rules, so only consider ordinary traits on ADTs here.
+    if !is_copy
+        && (!matches!(kind, SimplifiedType::Adt(_))
+            || tcx.lang_items().from_def_id(trait_id).is_some()
+            || tcx.trait_is_auto(trait_id)
+            || tcx.is_trait_alias(trait_id))
+    {
+        return false;
+    }
+    let impls = tcx.trait_impls_of(trait_id);
     if !impls.blanket_impls().is_empty() {
         return false;
     }
@@ -140,7 +151,7 @@ fn is_trait_raw<'tcx>(
 pub(crate) fn provide(providers: &mut Providers) {
     *providers = Providers {
         is_copy_raw,
-        unconditional_copy_impl,
+        unconditional_trait_impl,
         is_use_cloned_raw,
         is_sized_raw,
         is_freeze_raw,

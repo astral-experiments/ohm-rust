@@ -1672,10 +1672,10 @@ rustc_queries! {
         desc { "computing revealed normalized predicates of `{}`", tcx.def_path_str(def_id) }
     }
 
-    /// Whether the sole `Copy` impl for this pointer or lifetime-only ADT shape applies without
-    /// predicates or inherited outlives obligations.
-    query unconditional_copy_impl(kind: SimplifiedType) -> bool {
-        desc { "checking whether the Copy impl for {kind:?} is unconditional" }
+    /// Whether the sole impl for this trait and self-type shape applies without predicates or
+    /// inherited outlives obligations.
+    query unconditional_trait_impl(key: (DefId, SimplifiedType)) -> bool {
+        desc { "checking whether the impl of `{}` for {:?} is unconditional", tcx.def_path_str(key.0), key.1 }
     }
 
     /// Trait selection queries. These are best used by invoking `ty.is_copy_modulo_regions()`,

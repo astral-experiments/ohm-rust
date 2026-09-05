@@ -1,0 +1,55 @@
+error[E0521]: borrowed data escapes outside of function
+  --> $DIR/trait-impl-schema-lifetimes.rs:13:5
+   |
+LL | fn fixed<'a>(value: Fixed<'a>) {
+   |          --  ----- `value` is a reference that is only valid in the function body
+   |          |
+   |          lifetime `'a` defined here
+LL |     require(value);
+   |     ^^^^^^^^^^^^^^
+   |     |
+   |     `value` escapes the function body here
+   |     argument requires that `'a` must outlive `'static`
+
+error[E0521]: borrowed data escapes outside of function
+  --> $DIR/trait-impl-schema-lifetimes.rs:20:5
+   |
+LL | fn restricted<'a>(value: Restricted<'a>) {
+   |               --  ----- `value` is a reference that is only valid in the function body
+   |               |
+   |               lifetime `'a` defined here
+LL |     require(value);
+   |     ^^^^^^^^^^^^^^
+   |     |
+   |     `value` escapes the function body here
+   |     argument requires that `'a` must outlive `'static`
+
+error: lifetime may not live long enough
+  --> $DIR/trait-impl-schema-lifetimes.rs:27:5
+   |
+LL | fn repeated<'a, 'b>(value: Repeated<'a, 'b>) {
+   |             --  -- lifetime `'b` defined here
+   |             |
+   |             lifetime `'a` defined here
+LL |     require::<Repeated<'a, 'b>>(value);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ requires that `'a` must outlive `'b`
+   |
+   = help: consider adding the following bound: `'a: 'b`
+
+error: lifetime may not live long enough
+  --> $DIR/trait-impl-schema-lifetimes.rs:27:5
+   |
+LL | fn repeated<'a, 'b>(value: Repeated<'a, 'b>) {
+   |             --  -- lifetime `'b` defined here
+   |             |
+   |             lifetime `'a` defined here
+LL |     require::<Repeated<'a, 'b>>(value);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ requires that `'b` must outlive `'a`
+   |
+   = help: consider adding the following bound: `'b: 'a`
+
+help: `'a` and `'b` must be the same: replace one with the other
+
+error: aborting due to 4 previous errors
+
+For more information about this error, try `rustc --explain E0521`.

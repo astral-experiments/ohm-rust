@@ -242,6 +242,12 @@ impl QueryKey for (CrateNum, SimplifiedType) {
     }
 }
 
+impl QueryKey for (DefId, SimplifiedType) {
+    fn default_span(&self, tcx: TyCtxt<'_>) -> Span {
+        self.0.default_span(tcx)
+    }
+}
+
 impl QueryKey for (DefId, ty::SizedTraitKind) {
     fn default_span(&self, tcx: TyCtxt<'_>) -> Span {
         self.0.default_span(tcx)

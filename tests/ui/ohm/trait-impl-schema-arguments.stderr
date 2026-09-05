@@ -1,0 +1,37 @@
+error[E0277]: the trait bound `Unit: ConstArg<2>` is not satisfied
+  --> $DIR/trait-impl-schema-arguments.rs:28:21
+   |
+LL |     require_const::<Unit, 2>();
+   |                     ^^^^ unsatisfied trait bound
+   |
+help: the trait `ConstArg<2>` is not implemented for `Unit`
+      but trait `ConstArg<1>` is implemented for it
+  --> $DIR/trait-impl-schema-arguments.rs:25:1
+   |
+LL | impl ConstArg<1> for Unit {}
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required by a bound in `require_const`
+  --> $DIR/trait-impl-schema-arguments.rs:26:21
+   |
+LL | fn require_const<T: ConstArg<N>, const N: usize>() {}
+   |                     ^^^^^^^^^^^ required by this bound in `require_const`
+
+error: lifetime may not live long enough
+  --> $DIR/trait-impl-schema-arguments.rs:12:5
+   |
+LL | fn lifetime_arg<'a>(_: &'a u8) {
+   |                 -- lifetime `'a` defined here
+LL |     require_lifetime::<'a, Unit>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ requires that `'a` must outlive `'static`
+
+error: lifetime may not live long enough
+  --> $DIR/trait-impl-schema-arguments.rs:20:5
+   |
+LL | fn type_arg<'a>(_: &'a u8) {
+   |             -- lifetime `'a` defined here
+LL |     require_type::<Unit, &'a u8>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ requires that `'a` must outlive `'static`
+
+error: aborting due to 3 previous errors
+
+For more information about this error, try `rustc --explain E0277`.
