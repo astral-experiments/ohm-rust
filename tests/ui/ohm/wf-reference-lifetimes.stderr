@@ -1,0 +1,84 @@
+error: lifetime may not live long enough
+  --> $DIR/wf-reference-lifetimes.rs:10:5
+   |
+LL | fn nested<'a, 'b>() {
+   |           --  -- lifetime `'b` defined here
+   |           |
+   |           lifetime `'a` defined here
+LL |     require::<&'a &'b str>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^ requires that `'b` must outlive `'a`
+   |
+   = help: consider adding the following bound: `'b: 'a`
+
+error[E0309]: the parameter type `T` may not live long enough
+  --> $DIR/wf-reference-lifetimes.rs:15:5
+   |
+LL | fn generic<'a, T>() {
+   |            -- the parameter type `T` must be valid for the lifetime `'a` as defined here...
+LL |     require::<&'a T>();
+   |     ^^^^^^^^^^^^^^^^ ...so that the type `T` will meet its required lifetime bounds
+   |
+help: consider adding an explicit lifetime bound
+   |
+LL | fn generic<'a, T: 'a>() {
+   |                 ++++
+
+error[E0309]: the parameter type `T` may not live long enough
+  --> $DIR/wf-reference-lifetimes.rs:20:5
+   |
+LL | fn nominal<'a, T>() {
+   |            -- the parameter type `T` must be valid for the lifetime `'a` as defined here...
+LL |     require::<Option<&'a T>>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^ ...so that the type `T` will meet its required lifetime bounds
+   |
+help: consider adding an explicit lifetime bound
+   |
+LL | fn nominal<'a, T: 'a>() {
+   |                 ++++
+
+error[E0309]: the parameter type `T` may not live long enough
+  --> $DIR/wf-reference-lifetimes.rs:25:5
+   |
+LL | fn pointer<'a, T>() {
+   |            -- the parameter type `T` must be valid for the lifetime `'a` as defined here...
+LL |     require::<*const &'a T>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^ ...so that the type `T` will meet its required lifetime bounds
+   |
+help: consider adding an explicit lifetime bound
+   |
+LL | fn pointer<'a, T: 'a>() {
+   |                 ++++
+
+error[E0309]: the parameter type `T` may not live long enough
+  --> $DIR/wf-reference-lifetimes.rs:30:5
+   |
+LL | fn repeated<'a, T>() {
+   |             -- the parameter type `T` must be valid for the lifetime `'a` as defined here...
+LL |     require::<Result<&'a T, &'a T>>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ...so that the type `T` will meet its required lifetime bounds
+   |
+help: consider adding an explicit lifetime bound
+   |
+LL | fn repeated<'a, T: 'a>() {
+   |                  ++++
+
+error[E0597]: `value` does not live long enough
+  --> $DIR/wf-reference-lifetimes.rs:36:20
+   |
+LL | fn escape<'a>(target: &mut Option<&'a String>) {
+   |           -- lifetime `'a` defined here
+LL |     let value = String::from("local");
+   |         ----- binding `value` declared here
+LL |     *target = Some(&value);
+   |     ---------------^^^^^^-
+   |     |              |
+   |     |              borrowed value does not live long enough
+   |     assignment requires that `value` is borrowed for `'a`
+LL |     //~^ ERROR `value` does not live long enough
+LL | }
+   | - `value` dropped here while still borrowed
+
+error: aborting due to 6 previous errors
+
+Some errors have detailed explanations: E0309, E0597.
+For more information about an error, try `rustc --explain E0309`.

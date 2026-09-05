@@ -1,0 +1,83 @@
+error[E0277]: the trait bound `NotClone: Clone` is not satisfied
+  --> $DIR/wf-reference-fallback.rs:12:15
+   |
+LL |     require::<&'a NeedsClone<NotClone>>();
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^ the trait `Clone` is not implemented for `NotClone`
+   |
+note: required by a bound in `NeedsClone`
+  --> $DIR/wf-reference-fallback.rs:8:22
+   |
+LL | struct NeedsClone<T: Clone>(T);
+   |                      ^^^^^ required by this bound in `NeedsClone`
+help: consider annotating `NotClone` with `#[derive(Clone)]`
+   |
+LL + #[derive(Clone)]
+LL | struct NotClone;
+   |
+
+error[E0277]: the trait bound `NotClone: Clone` is not satisfied
+  --> $DIR/wf-reference-fallback.rs:12:5
+   |
+LL |     require::<&'a NeedsClone<NotClone>>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `Clone` is not implemented for `NotClone`
+   |
+note: required by a bound in `NeedsClone`
+  --> $DIR/wf-reference-fallback.rs:8:22
+   |
+LL | struct NeedsClone<T: Clone>(T);
+   |                      ^^^^^ required by this bound in `NeedsClone`
+help: consider annotating `NotClone` with `#[derive(Clone)]`
+   |
+LL + #[derive(Clone)]
+LL | struct NotClone;
+   |
+
+error[E0309]: the associated type `<T as Project>::Output` may not live long enough
+  --> $DIR/wf-reference-fallback.rs:19:5
+   |
+LL | fn projection<'a, T: Project>() {
+   |               -- the associated type `<T as Project>::Output` must be valid for the lifetime `'a` as defined here...
+LL |     require::<&'a T::Output>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^ ...so that the type `<T as Project>::Output` will meet its required lifetime bounds
+   |
+help: consider adding an explicit lifetime bound
+   |
+LL | fn projection<'a, T: Project>() where <T as Project>::Output: 'a {
+   |                                 ++++++++++++++++++++++++++++++++
+
+error: lifetime may not live long enough
+  --> $DIR/wf-reference-fallback.rs:25:5
+   |
+LL | fn unsupported<'a, 'b>() {
+   |                --  -- lifetime `'b` defined here
+   |                |
+   |                lifetime `'a` defined here
+LL |     // The outer reference is collected before the unsupported tuple forces fallback.
+LL |     require::<&'a (&'b str,)>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^ requires that `'b` must outlive `'a`
+   |
+   = help: consider adding the following bound: `'b: 'a`
+
+error[E0521]: borrowed data escapes outside of function
+  --> $DIR/wf-reference-fallback.rs:31:5
+   |
+LL | fn higher_ranked<'a>(value: &'a str) {
+   |                  --  ----- `value` is a reference that is only valid in the function body
+   |                  |
+   |                  lifetime `'a` defined here
+LL |     require_forall(value);
+   |     ^^^^^^^^^^^^^^^^^^^^^
+   |     |
+   |     `value` escapes the function body here
+   |     argument requires that `'a` must outlive `'static`
+   |
+note: due to a current limitation of the type system, this implies a `'static` lifetime
+  --> $DIR/wf-reference-fallback.rs:29:34
+   |
+LL | fn require_forall<T>(_: T) where for<'a> T: 'a {}
+   |                                  ^^^^^^^^^^^^^
+
+error: aborting due to 5 previous errors
+
+Some errors have detailed explanations: E0277, E0309, E0521.
+For more information about an error, try `rustc --explain E0277`.
