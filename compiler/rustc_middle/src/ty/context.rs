@@ -1764,6 +1764,9 @@ impl<'tcx> TyCtxt<'tcx> {
 
 macro_rules! nop_lift {
     ($set:ident; $ty:ty => $lifted:ty) => {
+        nop_lift! { $set: InternedSet; $ty => $lifted }
+    };
+    ($set:ident: $set_ty:ident; $ty:ty => $lifted:ty) => {
         impl<'a, 'tcx> Lift<TyCtxt<'tcx>> for $ty {
             type Lifted = $lifted;
             #[track_caller]
@@ -1774,7 +1777,7 @@ macro_rules! nop_lift {
                 // just doing this to compute said type!
                 fn _intern_set_ty_from_interned_ty<'tcx, Inner>(
                     _x: Interned<'tcx, Inner>,
-                ) -> InternedSet<'tcx, Inner> {
+                ) -> $set_ty<'tcx, Inner> {
                     unreachable!()
                 }
                 fn _type_eq<T>(_x: &T, _y: &T) {}
@@ -1802,12 +1805,15 @@ macro_rules! nop_list_lift {
     };
     // Allows defining own list type
     ($set:ident: $list:ident; $ty:ty => $lifted:ty) => {
+        nop_list_lift! { $set: $list, InternedSet; $ty => $lifted }
+    };
+    ($set:ident: $list:ident, $set_ty:ident; $ty:ty => $lifted:ty) => {
         impl<'a, 'tcx> Lift<TyCtxt<'tcx>> for &'a $list<$ty> {
             type Lifted = &'tcx $list<$lifted>;
             fn lift_to_interner(self, tcx: TyCtxt<'tcx>) -> Self::Lifted {
                 // Assert that the set has the right type.
                 if false {
-                    let _x: &InternedSet<'tcx, $list<$lifted>> = &tcx.interners.$set;
+                    let _x: &$set_ty<'tcx, $list<$lifted>> = &tcx.interners.$set;
                 }
 
                 if self.is_empty() {
@@ -1822,17 +1828,17 @@ macro_rules! nop_list_lift {
     };
 }
 
-nop_lift! { type_; Ty<'a> => Ty<'tcx> }
+nop_lift! { type_: HashedInternedSet; Ty<'a> => Ty<'tcx> }
 nop_lift! { region; Region<'a> => Region<'tcx> }
 nop_lift! { const_; Const<'a> => Const<'tcx> }
 nop_lift! { pat; Pattern<'a> => Pattern<'tcx> }
 nop_lift! { const_allocation; ConstAllocation<'a> => ConstAllocation<'tcx> }
-nop_lift! { predicate; Predicate<'a> => Predicate<'tcx> }
-nop_lift! { predicate; Clause<'a> => Clause<'tcx> }
+nop_lift! { predicate: HashedInternedSet; Predicate<'a> => Predicate<'tcx> }
+nop_lift! { predicate: HashedInternedSet; Clause<'a> => Clause<'tcx> }
 nop_lift! { layout; Layout<'a> => Layout<'tcx> }
 nop_lift! { valtree; ValTree<'a> => ValTree<'tcx> }
 
-nop_list_lift! { type_lists; Ty<'a> => Ty<'tcx> }
+nop_list_lift! { type_lists: List, HashedInternedSet; Ty<'a> => Ty<'tcx> }
 nop_list_lift! { clauses: ListWithCachedTypeInfo; Clause<'a> => Clause<'tcx> }
 nop_list_lift! {
     poly_existential_predicates; PolyExistentialPredicate<'a> => PolyExistentialPredicate<'tcx>
@@ -1844,7 +1850,7 @@ nop_list_lift! {
 }
 
 // This is the impl for `&'a GenericArgs<'a>`.
-nop_list_lift! { args; GenericArg<'a> => GenericArg<'tcx> }
+nop_list_lift! { args: List, HashedInternedSet; GenericArg<'a> => GenericArg<'tcx> }
 
 macro_rules! sty_debug_print {
     ($fmt: expr, $ctxt: expr, $($variant: ident),*) => {{
