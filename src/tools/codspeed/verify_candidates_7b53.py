@@ -39,6 +39,10 @@ CANDIDATES = {
     "wf_reference": ("928d323cc522b25aa52ed0cb9a23466df18c9f87", 33975415242),
     "local_wf": ("5bcf3b8256639ecfb531de1dc3873721e197a7eb", 33976115645),
     "trivial_wf_batch": ("4354e5759a1b3202ded63c71eff9788675dc10e3", 33976263001),
+    "generalizer": ("3c7b97083e3a18bb624ce88348c0a4ab5670200f", 33977269210),
+    "lazy_obligation": ("e78a9f448a18ff0fc37df9d520dadbb50260673c", 33977285310),
+    "mimalloc_v2": ("c64f2819b0b7982ad5f7f75b5de19374d6de18c1", 33977300225),
+    "resolved_relations": ("fab2b5e8e23f874e40e727ec1cacea533e25a527", 33977945889),
 }
 
 
@@ -184,6 +188,23 @@ def main():
         assert "host: aarch64-unknown-linux-gnu" in version.stdout.splitlines(), version.stdout
         assert f"commit-hash: {expected_sha}" in version.stdout.splitlines(), version.stdout
         report["compiler_sha_verified"] = True
+
+        if kind == "mimalloc_v2":
+            activation = subprocess.run(
+                [str(rustc), "-vV"], capture_output=True, text=True, timeout=30,
+                env={**env, "MIMALLOC_VERBOSE": "1"},
+            )
+            (output / "allocator.stdout.txt").write_text(activation.stdout)
+            (output / "allocator.stderr.txt").write_text(activation.stderr)
+            report["allocator_activation"] = {
+                "expected_version": "2.3.2", "compiler_exit": activation.returncode,
+                "environment_delta": {"MIMALLOC_VERBOSE": "1"},
+            }
+            assert activation.returncode == 0, activation.stderr
+            assert f"commit-hash: {expected_sha}" in activation.stdout.splitlines()
+            assert any(line.startswith("mimalloc: v2.3.2 (") for line in activation.stderr.splitlines()), activation.stderr
+            assert "mimalloc: process init:" in activation.stderr, activation.stderr
+            report["allocator_activation"]["status"] = "passed"
 
         if kind in ("folds", "combined"):
             for solver in ("current", "next"):
@@ -367,8 +388,8 @@ def main():
                         next_solver=next_solver, threads=threads,
                         errors=(("E0597", "`s` does not live long enough"),),
                     )
-        if kind in ("query_cache", "interner_tables", "packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "nested_argfolder", "interner_cache"):
-            thread_counts = (4,) if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "nested_argfolder", "interner_cache") else (1, 4)
+        if kind in ("query_cache", "interner_tables", "packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "nested_argfolder", "interner_cache", "mimalloc_v2"):
+            thread_counts = (4,) if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "nested_argfolder", "interner_cache", "mimalloc_v2") else (1, 4)
             for threads in thread_counts:
                 rlib = output / "bin" / f"liba_threads_{threads}.rlib"
                 auxiliary_cache = output / "incremental" / f"query-cache-aux-{threads}"
@@ -389,7 +410,7 @@ def main():
                         require_loaded=revision != "rpass1",
                         extra_flags=("-Zquery-dep-graph", "--extern", f"a={rlib}"),
                     )
-        if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "nested_argfolder", "interner_cache"):
+        if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "nested_argfolder", "interner_cache", "mimalloc_v2"):
             for solver in ("current", "next"):
                 next_solver = solver == "next"
                 check(
@@ -899,6 +920,209 @@ def main():
                     f"trivial-wf-normalized-signature-{solver}",
                     "tests/ui/wf/check-wf-of-normalized-signature.rs",
                     execute=False, extra_flags=("--emit=metadata",), **controls,
+                )
+        if kind == "generalizer":
+            # The unsupported next-solver modes are absent from this fixed suite.
+            previous_log = env.get("RUSTC_LOG")
+            env["RUSTC_LOG"] = "error"
+            cases = (
+                ('generalizer-pure-current', 'tests/ui/ohm/generalizer-pure.rs', 'current', 'current',
+                 (), (), True, False),
+                ('generalizer-pure-next', 'tests/ui/ohm/generalizer-pure.rs', 'next', 'next',
+                 (), (), True, False),
+                ('generalizer-pure-slow', 'tests/ui/ohm/generalizer-pure.rs', 'slow', 'slow',
+                 (), (), True, False),
+                ('generalizer-pure-fallback-current', 'tests/ui/ohm/generalizer-pure-fallback.rs', 'current', 'current',
+                 (('E0425', 'cannot find type `Missing` in this scope'), ('E0308', 'mismatched types'), ('E0277', 'the trait bound `T: Same<_>` is not satisfied')), ((17, 16, 23, True, 'not found in this scope'), (12, 5, 20, True, 'expected `u32`, found associated type'), (28, 15, 16, True, 'the trait `Same<_>` is not implemented for `T`')), False, True),
+                ('generalizer-pure-fallback-next', 'tests/ui/ohm/generalizer-pure-fallback.rs', 'next', 'next',
+                 (('E0425', 'cannot find type `Missing` in this scope'), ('E0308', 'mismatched types'), ('E0277', 'the trait bound `T: Same<_>` is not satisfied')), ((17, 16, 23, True, 'not found in this scope'), (12, 5, 20, True, 'expected `u32`, found associated type'), (28, 15, 16, True, 'the trait `Same<_>` is not implemented for `T`')), False, True),
+                ('generalizer-pure-fallback-slow', 'tests/ui/ohm/generalizer-pure-fallback.rs', 'slow', 'slow',
+                 (('E0425', 'cannot find type `Missing` in this scope'), ('E0308', 'mismatched types'), ('E0277', 'the trait bound `T: Same<_>` is not satisfied')), ((17, 16, 23, True, 'not found in this scope'), (12, 5, 20, True, 'expected `u32`, found associated type'), (28, 15, 16, True, 'the trait `Same<_>` is not implemented for `T`')), False, True),
+                ('generalizer-pure-lifetimes-current', 'tests/ui/ohm/generalizer-pure-lifetimes.rs', 'current', 'current',
+                 (('E0308', 'mismatched types'), ('E0308', 'mismatched types'), (None, 'lifetime may not live long enough'), (None, 'lifetime may not live long enough')), ((24, 5, 11, True, 'types differ in mutability'), (32, 27, 42, True, 'one type is more general than the other'), (10, 5, 28, True, "returning this value requires that `'a` must outlive `'static`"), (16, 19, 25, True, "this usage requires that `'a` must outlive `'static`")), False, True),
+                ('generalizer-pure-lifetimes-next', 'tests/ui/ohm/generalizer-pure-lifetimes.rs', 'next', 'next',
+                 (('E0308', 'mismatched types'), ('E0308', 'mismatched types'), (None, 'lifetime may not live long enough'), (None, 'lifetime may not live long enough')), ((24, 5, 11, True, 'types differ in mutability'), (32, 27, 42, True, 'one type is more general than the other'), (10, 5, 28, True, "returning this value requires that `'a` must outlive `'static`"), (16, 19, 25, True, "this usage requires that `'a` must outlive `'static`")), False, True),
+                ('generalizer-pure-lifetimes-slow', 'tests/ui/ohm/generalizer-pure-lifetimes.rs', 'slow', 'slow',
+                 (('E0308', 'mismatched types'), ('E0308', 'mismatched types'), (None, 'lifetime may not live long enough'), (None, 'lifetime may not live long enough')), ((24, 5, 11, True, 'types differ in mutability'), (32, 27, 42, True, 'one type is more general than the other'), (10, 5, 28, True, "returning this value requires that `'a` must outlive `'static`"), (16, 19, 25, True, "this usage requires that `'a` must outlive `'static`")), False, True),
+                ('generalizer-legacy-direct-self-reference-occurs-check-current', 'tests/ui/type-inference/direct-self-reference-occurs-check.rs', 'current', 'current',
+                 (('E0275', 'overflow assigning `Box<_>` to `_`'),), ((7, 18, 19, True, None),), False, True),
+                ('generalizer-legacy-direct-self-reference-occurs-check-slow', 'tests/ui/type-inference/direct-self-reference-occurs-check.rs', 'current', 'slow',
+                 (('E0275', 'overflow assigning `Box<_>` to `_`'),), ((7, 18, 19, True, None),), False, True),
+                ('generalizer-legacy-enum-self-reference-occurs-check-current', 'tests/ui/type-inference/enum-self-reference-occurs-check.rs', 'current', 'current',
+                 (('E0275', 'overflow assigning `Clam<_>` to `_`'),), ((11, 17, 18, True, None),), False, True),
+                ('generalizer-legacy-enum-self-reference-occurs-check-slow', 'tests/ui/type-inference/enum-self-reference-occurs-check.rs', 'current', 'slow',
+                 (('E0275', 'overflow assigning `Clam<_>` to `_`'),), ((11, 17, 18, True, None),), False, True),
+                ('generalizer-legacy-generalize-subtyped-variables-current', 'tests/ui/type-inference/generalize-subtyped-variables.rs', 'current', 'current',
+                 (), (), False, True),
+                ('generalizer-legacy-generalize-subtyped-variables-slow', 'tests/ui/type-inference/generalize-subtyped-variables.rs', 'current', 'slow',
+                 (), (), False, True),
+                ('generalizer-legacy-type-infer-generalize-ty-var-current', 'tests/ui/inference/type-infer-generalize-ty-var.rs', 'current', 'current',
+                 (), (), False, True),
+                ('generalizer-legacy-type-infer-generalize-ty-var-next', 'tests/ui/inference/type-infer-generalize-ty-var.rs', 'next', 'next',
+                 (), (), False, True),
+                ('generalizer-legacy-type-infer-generalize-ty-var-slow', 'tests/ui/inference/type-infer-generalize-ty-var.rs', 'current', 'slow',
+                 (), (), False, True),
+                ('generalizer-legacy-hr-alias-non-hr-alias-self-ty-1-current', 'tests/ui/traits/next-solver/generalize/hr-alias-non-hr-alias-self-ty-1.rs', 'old', 'current',
+                 (), (), False, True),
+                ('generalizer-legacy-hr-alias-non-hr-alias-self-ty-1-next', 'tests/ui/traits/next-solver/generalize/hr-alias-non-hr-alias-self-ty-1.rs', 'next', 'next',
+                 (), (), False, True),
+                ('generalizer-legacy-hr-alias-non-hr-alias-self-ty-1-slow', 'tests/ui/traits/next-solver/generalize/hr-alias-non-hr-alias-self-ty-1.rs', 'old', 'slow',
+                 (), (), False, True),
+                ('generalizer-legacy-alias-with-bound-vars-incomplete-generalization-current', 'tests/ui/traits/next-solver/generalize/alias-with-bound-vars-incomplete-generalization.rs', 'old', 'current',
+                 (), (), False, True),
+                ('generalizer-legacy-alias-with-bound-vars-incomplete-generalization-next', 'tests/ui/traits/next-solver/generalize/alias-with-bound-vars-incomplete-generalization.rs', 'next', 'next',
+                 (), (), False, True),
+                ('generalizer-legacy-alias-with-bound-vars-incomplete-generalization-slow', 'tests/ui/traits/next-solver/generalize/alias-with-bound-vars-incomplete-generalization.rs', 'old', 'slow',
+                 (), (), False, True),
+                ('generalizer-legacy-occurs-check-nested-alias-current', 'tests/ui/traits/next-solver/generalize/occurs-check-nested-alias.rs', 'old', 'current',
+                 (), (), False, True),
+                ('generalizer-legacy-occurs-check-nested-alias-next', 'tests/ui/traits/next-solver/generalize/occurs-check-nested-alias.rs', 'next', 'next',
+                 (), (), False, True),
+                ('generalizer-legacy-occurs-check-nested-alias-slow', 'tests/ui/traits/next-solver/generalize/occurs-check-nested-alias.rs', 'old', 'slow',
+                 (), (), False, True),
+                ('generalizer-legacy-generalize-proj-new-universe-index-1-next', 'tests/ui/traits/next-solver/generalize/generalize-proj-new-universe-index-1.rs', 'next', 'next',
+                 (), (), False, True),
+                ('generalizer-legacy-associated-type-current', 'tests/ui/coherence/occurs-check/associated-type.rs', 'old', 'current',
+                 (('E0119', "conflicting implementations of trait `Overlap<for<'a> fn(&'a (), ())>` for type `for<'a> fn(&'a (), ())`"),), (), False, True),
+                ('generalizer-legacy-associated-type-next', 'tests/ui/coherence/occurs-check/associated-type.rs', 'next', 'next',
+                 (('E0119', "conflicting implementations of trait `Overlap<for<'a> fn(&'a (), ())>` for type `for<'a> fn(&'a (), ())`"),), (), False, True),
+                ('generalizer-legacy-associated-type-slow', 'tests/ui/coherence/occurs-check/associated-type.rs', 'old', 'slow',
+                 (('E0119', "conflicting implementations of trait `Overlap<for<'a> fn(&'a (), ())>` for type `for<'a> fn(&'a (), ())`"),), (), False, True),
+                ('generalizer-legacy-opaques-current', 'tests/ui/coherence/occurs-check/opaques.rs', 'current', 'current',
+                 (('E0119', 'conflicting implementations of trait `Trait<_>`'),), ((27, 1, 30, True, 'conflicting implementation'),), False, True),
+                ('generalizer-legacy-opaques-next', 'tests/ui/coherence/occurs-check/opaques.rs', 'next', 'next',
+                 (('E0119', 'conflicting implementations of trait `Trait<_>`'), ('E0282', 'type annotations needed')), ((27, 1, 30, True, 'conflicting implementation'), (11, 19, 41, True, 'cannot infer type')), False, True),
+                ('generalizer-legacy-opaques-slow', 'tests/ui/coherence/occurs-check/opaques.rs', 'current', 'slow',
+                 (('E0119', 'conflicting implementations of trait `Trait<_>`'),), ((27, 1, 30, True, 'conflicting implementation'),), False, True),
+                ('generalizer-legacy-universe-error1-current', 'tests/ui/traits/non_lifetime_binders/universe-error1.rs', 'current', 'current',
+                 (('E0277', 'the trait bound `T: Other<_>` is not satisfied'),), ((16, 11, 12, True, 'the trait `Other<_>` is not implemented for `T`'),), False, True),
+                ('generalizer-legacy-universe-error1-slow', 'tests/ui/traits/non_lifetime_binders/universe-error1.rs', 'current', 'slow',
+                 (('E0277', 'the trait bound `T: Other<_>` is not satisfied'),), ((16, 11, 12, True, 'the trait `Other<_>` is not implemented for `T`'),), False, True),
+                ('generalizer-legacy-bind-param-current', 'tests/ui/const-generics/occurs-check/bind-param.rs', 'current', 'current',
+                 (), (), False, False),
+                ('generalizer-legacy-bind-param-slow', 'tests/ui/const-generics/occurs-check/bind-param.rs', 'current', 'slow',
+                 (), (), False, False),
+                ('generalizer-legacy-unify-n-nplusone-current', 'tests/ui/const-generics/occurs-check/unify-n-nplusone.rs', 'current', 'current',
+                 (('E0308', 'mismatched types'),), ((14, 11, 20, True, 'encountered a self-referencing constant'),), False, True),
+                ('generalizer-legacy-unify-n-nplusone-slow', 'tests/ui/const-generics/occurs-check/unify-n-nplusone.rs', 'current', 'slow',
+                 (('E0308', 'mismatched types'),), ((14, 11, 20, True, 'encountered a self-referencing constant'),), False, True),
+            )
+            for name, fixture, revision, solver, errors, spans, execute, metadata in cases:
+                check(
+                    name, fixture, revision=revision, next_solver=solver == "next",
+                    disable_fast_paths=solver == "slow", errors=errors,
+                    required_spans=spans, execute=execute,
+                    extra_flags=("-Aunused", "-Aincomplete_features", "-Zui-testing")
+                    + (("--emit=metadata",) if metadata else ()),
+                )
+            if previous_log is None:
+                env.pop("RUSTC_LOG")
+            else:
+                env["RUSTC_LOG"] = previous_log
+        if kind == "lazy_obligation":
+            for solver in ("current", "next", "slow"):
+                controls = {
+                    "revision": solver, "next_solver": solver == "next",
+                    "disable_fast_paths": solver == "slow",
+                }
+                for fixture in ("lazy-obligation-context", "lazy-obligation-rpitit"):
+                    check(f"{fixture}-{solver}", f"tests/ui/ohm/{fixture}.rs", **controls)
+                check(
+                    f"lazy-obligation-errors-{solver}", "tests/ui/ohm/lazy-obligation-errors.rs",
+                    errors=(('E0276', 'impl has stricter requirements than trait'), ('E0271', 'expected `Once<()>` to be an iterator that yields `T`, but it yields `()`'), ('E0597', '`first` does not live long enough'), ('E0597', '`second` does not live long enough')), required_spans=((13, 28, 32, True, 'impl has extra requirement `T: Copy`'), (22, 34, 65, True, 'expected type parameter `T`, found `()`'), (47, 26, 32, True, 'borrowed value does not live long enough'), (49, 32, 39, True, 'borrowed value does not live long enough')),
+                    extra_flags=("-Zui-testing",), **controls,
+                )
+                for fixture in ("method-normalize-bounds-issue-20604", "method-probe-no-guessing-dyn-trait"):
+                    check(
+                        f"lazy-obligation-{fixture}-{solver}", f"tests/ui/methods/{fixture}.rs",
+                        **controls,
+                    )
+                check(
+                    f"lazy-obligation-normalized-signature-{solver}",
+                    "tests/ui/wf/check-wf-of-normalized-signature.rs",
+                    execute=False, extra_flags=("--emit=metadata",), **controls,
+                )
+                check(
+                    f"lazy-obligation-normalized-sig-lifetimes-{solver}",
+                    "tests/ui/nll/check-normalized-sig-for-wf.rs",
+                    errors=(("E0597", "`s` does not live long enough"),)
+                    + (("E0521", "borrowed data escapes outside of function"),) * 2, **controls,
+                )
+            for directory, fixture in (
+                ("normalize", "deeply-normalize-env-in-compare-impl-item"),
+                ("method", "param-method-from-unnormalized-param-env"),
+            ):
+                check(
+                    f"lazy-obligation-{fixture}-next",
+                    f"tests/ui/traits/next-solver/{directory}/{fixture}.rs",
+                    next_solver=True, execute=False, extra_flags=("-Aunused", "--emit=metadata"),
+                )
+        if kind == "resolved_relations":
+            cases = (
+                ('tests/ui/inference/lub-glb-with-unbound-infer-var.rs', 'current', True,
+                 (), ()),
+                ('tests/ui/inference/lub-glb-with-unbound-infer-var.rs', 'next', True,
+                 (), ()),
+                ('tests/ui/inference/lub-glb-with-unbound-infer-var.rs', 'slow', True,
+                 (), ()),
+                ('tests/ui/issues/issue-41677.rs', 'current', True,
+                 (), ()),
+                ('tests/ui/issues/issue-41677.rs', 'next', True,
+                 (), ()),
+                ('tests/ui/issues/issue-41677.rs', 'slow', True,
+                 (), ()),
+                ('tests/ui/regions/regions-lub-ref-ref-rc.rs', 'current', True,
+                 (), ()),
+                ('tests/ui/regions/regions-lub-ref-ref-rc.rs', 'next', True,
+                 (), ()),
+                ('tests/ui/regions/regions-lub-ref-ref-rc.rs', 'slow', True,
+                 (), ()),
+                ('tests/ui/inference/type-infer-generalize-ty-var.rs', 'current', False,
+                 (), ()),
+                ('tests/ui/inference/type-infer-generalize-ty-var.rs', 'next', False,
+                 (), ()),
+                ('tests/ui/inference/type-infer-generalize-ty-var.rs', 'slow', False,
+                 (), ()),
+                ('tests/ui/impl-trait/lazy_subtyping_of_opaques.rs', 'current', False,
+                 (), ()),
+                ('tests/ui/impl-trait/lazy_subtyping_of_opaques.rs', 'next', False,
+                 (), ()),
+                ('tests/ui/impl-trait/lazy_subtyping_of_opaques.rs', 'slow', False,
+                 (), ()),
+                ('tests/ui/coherence/occurs-check/opaques.rs', 'current', False,
+                 (('E0119', 'conflicting implementations of trait `Trait<_>`'),), ((27, 1, 30, True, 'conflicting implementation'),)),
+                ('tests/ui/coherence/occurs-check/opaques.rs', 'next', False,
+                 (('E0119', 'conflicting implementations of trait `Trait<_>`'), ('E0282', 'type annotations needed')), ((27, 1, 30, True, 'conflicting implementation'), (11, 19, 41, True, 'cannot infer type'))),
+                ('tests/ui/coherence/occurs-check/opaques.rs', 'slow', False,
+                 (('E0119', 'conflicting implementations of trait `Trait<_>`'),), ((27, 1, 30, True, 'conflicting implementation'),)),
+                ('tests/ui/type-inference/infinite-type-occurs-check.rs', 'current', False,
+                 (('E0275', 'overflow assigning `Box<_>` to `_`'),), ((9, 9, 10, True, None),)),
+                ('tests/ui/type-inference/infinite-type-occurs-check.rs', 'next', False,
+                 (('E0282', 'type annotations needed for `Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<Box<_>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>`'),), ((6, 9, 10, True, None),)),
+                ('tests/ui/type-inference/infinite-type-occurs-check.rs', 'slow', False,
+                 (('E0275', 'overflow assigning `Box<_>` to `_`'),), ((9, 9, 10, True, None),)),
+                ('tests/ui/regions/regions-glb-free-free.rs', 'current', False,
+                 (('E0621', 'explicit lifetime required in the type of `s`'),), ()),
+                ('tests/ui/regions/regions-glb-free-free.rs', 'next', False,
+                 (('E0621', 'explicit lifetime required in the type of `s`'),), ()),
+                ('tests/ui/regions/regions-glb-free-free.rs', 'slow', False,
+                 (('E0621', 'explicit lifetime required in the type of `s`'),), ()),
+                ('tests/ui/ohm/resolved-relation-equality.rs', 'current', True,
+                 (), ()),
+                ('tests/ui/ohm/resolved-relation-equality.rs', 'next', True,
+                 (), ()),
+                ('tests/ui/ohm/resolved-relation-equality.rs', 'slow', True,
+                 (), ()),
+            )
+            for fixture, solver, execute, errors, spans in cases:
+                check(
+                    f"resolved-relations-{Path(fixture).stem}-{solver}", fixture,
+                    revision=solver, next_solver=solver == "next",
+                    disable_fast_paths=solver == "slow", errors=errors,
+                    required_spans=spans, execute=execute,
+                    extra_flags=(("-Zwrite-long-types-to-disk=no",)
+                                 if fixture.endswith("/infinite-type-occurs-check.rs") and solver == "next"
+                                 else ()) + (() if execute else ("--emit=metadata",)),
                 )
         if kind == "early_sized":
             for solver in ("current", "next", "slow"):
