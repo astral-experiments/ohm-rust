@@ -47,6 +47,7 @@ CANDIDATES = {
     "dense_lazy": ("696fd87252a253aaa2b34b9bf092804dcbde3585", 33979491861),
     "veccache_mode": ("64c31b0b3c22ada448cfab90be3e9c7fc0339fc3", 33979934693),
     "lazy_engine": ("7954d3b8abde5a3a11239a19602c7878b0b41e67", 33979990020),
+    "hashbrown_neon16": ("17a5026d761d5a42572466298ce9732fad9ceb96", 33980542884),
 }
 
 
@@ -392,8 +393,8 @@ def main():
                         next_solver=next_solver, threads=threads,
                         errors=(("E0597", "`s` does not live long enough"),),
                     )
-        if kind in ("query_cache", "interner_tables", "packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "dense_lazy", "veccache_mode", "nested_argfolder", "interner_cache", "mimalloc_v2"):
-            thread_counts = (4,) if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "dense_lazy", "veccache_mode", "nested_argfolder", "interner_cache", "mimalloc_v2") else (1, 4)
+        if kind in ("query_cache", "interner_tables", "packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "dense_lazy", "hashbrown_neon16", "veccache_mode", "nested_argfolder", "interner_cache", "mimalloc_v2"):
+            thread_counts = (4,) if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "dense_lazy", "hashbrown_neon16", "veccache_mode", "nested_argfolder", "interner_cache", "mimalloc_v2") else (1, 4)
             for threads in thread_counts:
                 rlib = output / "bin" / f"liba_threads_{threads}.rlib"
                 auxiliary_cache = output / "incremental" / f"query-cache-aux-{threads}"
@@ -414,7 +415,7 @@ def main():
                         require_loaded=revision != "rpass1",
                         extra_flags=("-Zquery-dep-graph", "--extern", f"a={rlib}"),
                     )
-        if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "dense_lazy", "veccache_mode", "nested_argfolder", "interner_cache", "mimalloc_v2"):
+        if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "dense_lazy", "hashbrown_neon16", "veccache_mode", "nested_argfolder", "interner_cache", "mimalloc_v2"):
             for solver in ("current", "next"):
                 next_solver = solver == "next"
                 check(
