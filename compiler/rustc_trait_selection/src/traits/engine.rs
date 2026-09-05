@@ -45,13 +45,100 @@ where
     }
 }
 
+/// Defers allocation even when normalization or query responses borrow a trait engine.
+///
+/// This adapter is private to `ObligationCtxt`; all methods receive that context's `InferCtxt`.
+struct LazyTraitEngine<'tcx, E: 'tcx> {
+    inner: Option<Box<dyn TraitEngine<'tcx, E>>>,
+    usable_in_snapshot: usize,
+}
+
+impl<'tcx, E> LazyTraitEngine<'tcx, E>
+where
+    E: FromSolverError<'tcx, NextSolverError<'tcx>> + FromSolverError<'tcx, OldSolverError<'tcx>>,
+{
+    fn new(infcx: &InferCtxt<'tcx>) -> Self {
+        if !infcx.next_trait_solver() {
+            assert!(
+                !infcx.tcx.next_trait_solver_globally(),
+                "using old solver even though new solver is enabled globally"
+            );
+        }
+        Self { inner: None, usable_in_snapshot: infcx.num_open_snapshots() }
+    }
+
+    fn get_or_init(&mut self, infcx: &InferCtxt<'tcx>) -> &mut dyn TraitEngine<'tcx, E> {
+        &mut **self.inner.get_or_insert_with(|| {
+            if infcx.next_trait_solver() {
+                Box::new(NextFulfillmentCtxt::new_in_snapshot(infcx, self.usable_in_snapshot))
+            } else {
+                Box::new(FulfillmentContext::new_in_snapshot(infcx, self.usable_in_snapshot))
+            }
+        })
+    }
+}
+
+impl<'tcx, E> TraitEngine<'tcx, E> for LazyTraitEngine<'tcx, E>
+where
+    E: FromSolverError<'tcx, NextSolverError<'tcx>> + FromSolverError<'tcx, OldSolverError<'tcx>>,
+{
+    fn register_predicate_obligation(
+        &mut self,
+        infcx: &InferCtxt<'tcx>,
+        obligation: PredicateObligation<'tcx>,
+    ) {
+        self.get_or_init(infcx).register_predicate_obligation(infcx, obligation);
+    }
+
+    fn try_evaluate_obligations(&mut self, infcx: &InferCtxt<'tcx>) -> Vec<E> {
+        if let Some(engine) = &mut self.inner {
+            engine.try_evaluate_obligations(infcx)
+        } else {
+            // The next solver validates its snapshot even when there are no obligations.
+            if infcx.next_trait_solver() {
+                assert_eq!(self.usable_in_snapshot, infcx.num_open_snapshots());
+            }
+            Vec::new()
+        }
+    }
+
+    fn collect_remaining_errors(&mut self, infcx: &InferCtxt<'tcx>) -> Vec<E> {
+        self.inner.as_mut().map_or_else(Vec::new, |engine| engine.collect_remaining_errors(infcx))
+    }
+
+    fn has_pending_obligations(&self) -> bool {
+        self.inner.as_ref().is_some_and(|engine| engine.has_pending_obligations())
+    }
+
+    fn pending_obligations(&self) -> PredicateObligations<'tcx> {
+        self.inner
+            .as_ref()
+            .map_or_else(PredicateObligations::new, |engine| engine.pending_obligations())
+    }
+
+    fn pending_obligations_potentially_referencing_sub_root(
+        &self,
+        infcx: &InferCtxt<'tcx>,
+        sub_root: ty::TyVid,
+    ) -> PredicateObligations<'tcx> {
+        self.inner.as_ref().map_or_else(PredicateObligations::new, |engine| {
+            engine.pending_obligations_potentially_referencing_sub_root(infcx, sub_root)
+        })
+    }
+
+    fn drain_stalled_obligations_for_coroutines(
+        &mut self,
+        infcx: &InferCtxt<'tcx>,
+    ) -> PredicateObligations<'tcx> {
+        self.get_or_init(infcx).drain_stalled_obligations_for_coroutines(infcx)
+    }
+}
+
 /// Used if you want to have pleasant experience when dealing
 /// with obligations outside of hir or mir typeck.
 pub struct ObligationCtxt<'a, 'tcx, E = ScrubbedTraitError<'tcx>> {
     pub infcx: &'a InferCtxt<'tcx>,
-    // Many operations never register an obligation. Defer the allocation until needed.
-    engine: RefCell<Option<Box<dyn TraitEngine<'tcx, E>>>>,
-    usable_in_snapshot: usize,
+    engine: RefCell<LazyTraitEngine<'tcx, E>>,
 }
 
 impl<'a, 'tcx> ObligationCtxt<'a, 'tcx, FulfillmentError<'tcx>> {
@@ -71,36 +158,18 @@ where
     E: FromSolverError<'tcx, NextSolverError<'tcx>> + FromSolverError<'tcx, OldSolverError<'tcx>>,
 {
     fn new_lazy(infcx: &'a InferCtxt<'tcx>) -> Self {
-        if !infcx.next_trait_solver() {
-            assert!(
-                !infcx.tcx.next_trait_solver_globally(),
-                "using old solver even though new solver is enabled globally"
-            );
-        }
-        Self { infcx, engine: RefCell::new(None), usable_in_snapshot: infcx.num_open_snapshots() }
+        Self { infcx, engine: RefCell::new(LazyTraitEngine::new(infcx)) }
     }
 
-    /// Initializes the engine with the snapshot in which this context was created.
+    /// Borrows the existing engine, or the adapter that initializes it on first registration.
     fn engine(&self) -> RefMut<'_, dyn TraitEngine<'tcx, E>> {
         RefMut::map(self.engine.borrow_mut(), |engine| {
-            &mut **engine.get_or_insert_with(|| {
-                if self.infcx.next_trait_solver() {
-                    Box::new(NextFulfillmentCtxt::new_in_snapshot(
-                        self.infcx,
-                        self.usable_in_snapshot,
-                    ))
-                } else {
-                    Box::new(FulfillmentContext::new_in_snapshot(
-                        self.infcx,
-                        self.usable_in_snapshot,
-                    ))
-                }
-            })
+            if engine.inner.is_some() { &mut **engine.inner.as_mut().unwrap() } else { engine }
         })
     }
 
     pub fn register_obligation(&self, obligation: PredicateObligation<'tcx>) {
-        self.engine().register_predicate_obligation(self.infcx, obligation);
+        self.engine.borrow_mut().register_predicate_obligation(self.infcx, obligation);
     }
 
     pub fn register_obligations(
@@ -110,14 +179,14 @@ where
         // Can't use `register_predicate_obligations` because the iterator
         // may also use this `ObligationCtxt`.
         for obligation in obligations {
-            self.engine().register_predicate_obligation(self.infcx, obligation)
+            self.engine.borrow_mut().register_predicate_obligation(self.infcx, obligation)
         }
     }
 
     pub fn register_infer_ok_obligations<T>(&self, infer_ok: InferOk<'tcx, T>) -> T {
         let InferOk { value, obligations } = infer_ok;
         if !obligations.is_empty() {
-            self.engine().register_predicate_obligations(self.infcx, obligations);
+            self.engine.borrow_mut().register_predicate_obligations(self.infcx, obligations);
         }
         value
     }
@@ -245,14 +314,7 @@ where
     /// Returns a list of errors from obligations that evaluated to Err.
     #[must_use]
     pub fn try_evaluate_obligations(&self) -> Vec<E> {
-        if let Some(engine) = &mut *self.engine.borrow_mut() {
-            engine.try_evaluate_obligations(self.infcx)
-        } else {
-            if self.infcx.next_trait_solver() {
-                assert_eq!(self.usable_in_snapshot, self.infcx.num_open_snapshots());
-            }
-            Vec::new()
-        }
+        self.engine.borrow_mut().try_evaluate_obligations(self.infcx)
     }
 
     /// Evaluate all pending obligations, return error if they can't be evaluated.
@@ -265,14 +327,7 @@ where
     /// Returns a list of errors from obligations that evaluated to Ambiguous or Err.
     #[must_use]
     pub fn evaluate_obligations_error_on_ambiguity(&self) -> Vec<E> {
-        if let Some(engine) = &mut *self.engine.borrow_mut() {
-            engine.evaluate_obligations_error_on_ambiguity(self.infcx)
-        } else {
-            if self.infcx.next_trait_solver() {
-                assert_eq!(self.usable_in_snapshot, self.infcx.num_open_snapshots());
-            }
-            Vec::new()
-        }
+        self.engine.borrow_mut().evaluate_obligations_error_on_ambiguity(self.infcx)
     }
 
     /// Returns the not-yet-processed and stalled obligations from the
@@ -284,10 +339,7 @@ where
     /// needs to be done in a loop, for example.
     #[must_use]
     pub fn into_pending_obligations(self) -> PredicateObligations<'tcx> {
-        self.engine
-            .borrow()
-            .as_ref()
-            .map_or_else(PredicateObligations::new, |engine| engine.pending_obligations())
+        self.engine.borrow().pending_obligations()
     }
 
     /// Resolves regions and reports errors.
