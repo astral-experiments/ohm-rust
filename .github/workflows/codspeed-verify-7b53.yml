@@ -19,9 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - kind: global_trait_proofs
-            sha: b57fb8b21cfa45a10f51fc4a90f6495518f40458
-            run: 33967204643
+          - kind: query_cache
+            sha: c1c0df5ea61aa9567b08597983c3bc66d74f4e3c
+            run: 33967420811
     steps:
       - name: Checkout validation script
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
