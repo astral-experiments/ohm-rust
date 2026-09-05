@@ -39,9 +39,7 @@ use crate::core::build_steps::format::InternalRustfmt;
 use crate::core::build_steps::vendor::VENDOR_DIR;
 use crate::core::builder::{self, Kind};
 use crate::core::config::flags::{self, Subcommand};
-use crate::core::config::{
-    Allocator, BootstrapOverrideLld, Config, DryRun, LlvmLibunwind, TargetSelection,
-};
+use crate::core::config::{BootstrapOverrideLld, Config, DryRun, LlvmLibunwind, TargetSelection};
 use crate::utils::build_stamp::BuildStamp;
 use crate::utils::channel::GitInfo;
 use crate::utils::exec::{BootstrapCommand, ExecutionContext, command};
@@ -868,14 +866,8 @@ impl Build {
                 target.contains("linux") && target.contains("gnu"),
                 "rust.mimalloc currently supports Linux GNU hosts only"
             );
-            assert!(
-                self.config.allocator(target) != Allocator::Jemalloc,
-                "set build.allocator=system when enabling rust.mimalloc"
-            );
             features.push("mimalloc");
-        }
-
-        if let Some(allocator_feature_name) = self.config.allocator(target).feature_name()
+        } else if let Some(allocator_feature_name) = self.config.allocator(target).feature_name()
             && check(allocator_feature_name)
         {
             features.push(allocator_feature_name);
