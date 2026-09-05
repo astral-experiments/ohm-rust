@@ -612,36 +612,31 @@ fn get_flow_results<'a, 'tcx>(
     borrow_set: &'a BorrowSet<'tcx>,
     regioncx: &RegionInferenceContext<'tcx>,
 ) -> Results<'tcx, Borrowck<'a, 'tcx>> {
-    // We compute these three analyses individually, but them combine them into
-    // a single results so that `mbcx` can visit them all together.
+    let analysis = Borrowck {
+        borrows: Borrows::new(tcx, body, regioncx, borrow_set),
+        uninits: MaybeUninitializedPlaces::new(tcx, body, move_data),
+        ever_inits: EverInitializedPlaces::new(body, move_data),
+    };
+
+    // Share the CFG work queue between analyses. Preserve the individual
+    // graphviz files when dumping MIR dataflow.
+    if !tcx.sess.opts.unstable_opts.dump_mir_dataflow {
+        let _timer = tcx.prof.generic_activity("borrowck_dataflow");
+        return analysis.iterate_to_fixpoint(tcx, body, Some("borrowck"));
+    }
+
+    let Borrowck { borrows, uninits, ever_inits } = analysis;
     let borrows = {
         let _timer = tcx.prof.generic_activity("borrowck_dataflow_borrows");
-        let borrows = Borrows::new(tcx, body, regioncx, borrow_set);
-        if borrow_set.len() == 0 && !tcx.sess.opts.unstable_opts.dump_mir_dataflow {
-            // With no loans to generate, the borrow state is empty at every block entry.
-            // Avoid traversing the MIR just to compute this fixed point.
-            Results {
-                entry_states: EntryStates::from_elem_n(
-                    borrows.bottom_value(body),
-                    body.basic_blocks.len(),
-                ),
-                analysis: borrows,
-            }
-        } else {
-            borrows.iterate_to_fixpoint(tcx, body, Some("borrowck"))
-        }
+        borrows.iterate_to_fixpoint(tcx, body, Some("borrowck"))
     };
     let uninits = {
         let _timer = tcx.prof.generic_activity("borrowck_dataflow_maybe_uninits");
-        MaybeUninitializedPlaces::new(tcx, body, move_data).iterate_to_fixpoint(
-            tcx,
-            body,
-            Some("borrowck"),
-        )
+        uninits.iterate_to_fixpoint(tcx, body, Some("borrowck"))
     };
     let ever_inits = {
         let _timer = tcx.prof.generic_activity("borrowck_dataflow_ever_inits");
-        EverInitializedPlaces::new(body, move_data).iterate_to_fixpoint(tcx, body, Some("borrowck"))
+        ever_inits.iterate_to_fixpoint(tcx, body, Some("borrowck"))
     };
 
     let analysis = Borrowck {
