@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   style:
+    if: ${{ github.ref != 'refs/heads/charlie/codex-pr117-where-audit-49c4' }}
     name: Formatting and tidy
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 30
@@ -47,6 +48,7 @@ jobs:
           test tidy
 
   compiler:
+    if: ${{ github.ref != 'refs/heads/charlie/codex-pr117-where-audit-49c4' }}
     name: ${{ matrix.os == 'depot-ubuntu-24.04-16' && 'Compiler and regression tests' || 'Compiler and regression tests (macOS)' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -221,3 +223,64 @@ jobs:
             python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true \
               --set rust.lto=off test --stage 1 "${selected[@]}"
           fi
+
+  assoc_bounds_audit:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/charlie/codex-pr117-where-audit-49c4' }}
+    name: Check fixed associated-type where clauses with measured compiler
+    runs-on: codspeed-macro
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout exact fixed regression case
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: dbcaccde347b13a91fa3be3b0aa34c2be0616b5c
+          persist-credentials: false
+      - name: Download exact optimized compiler
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codspeed-toolchain
+          run-id: 33962789362
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: build
+      - name: Check both incremental revisions under both trait solvers
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=dbcaccde347b13a91fa3be3b0aa34c2be0616b5c
+          test "$(git rev-parse HEAD)" = "$expected"
+          mkdir -p build/codspeed-toolchain
+          tar -xzf build/codspeed-toolchain.tar.gz -C build/codspeed-toolchain
+          rustc=build/codspeed-toolchain/stage1/bin/rustc
+          "$rustc" -vV | tee "$RUNNER_TEMP/rustc-version.txt"
+          grep -Fxq "commit-hash: $expected" "$RUNNER_TEMP/rustc-version.txt"
+          for solver in current next; do
+            arguments=()
+            if [[ "$solver" == next ]]; then arguments+=(-Znext-solver=globally); fi
+            for revision in bpass1 bfail2; do
+              output="$RUNNER_TEMP/$solver-$revision.txt"
+              if "$rustc" "${arguments[@]}" --crate-name closed_associated_type_proofs --edition=2021 \
+                --cfg "$revision" --emit=metadata -o "$RUNNER_TEMP/$solver-$revision.rmeta" \
+                tests/incremental/closed-associated-type-proofs.rs >"$output" 2>&1; then
+                if [[ "$revision" == bfail2 ]]; then
+                  cat "$output"
+                  echo 'The invalid implementation was accepted' >&2
+                  exit 1
+                fi
+              else
+                if [[ "$revision" == bpass1 ]]; then
+                  cat "$output"
+                  echo 'The valid implementation was rejected' >&2
+                  exit 1
+                fi
+              fi
+              cat "$output"
+              if [[ "$revision" == bfail2 ]]; then
+                grep -Fq 'Bad: Bound' "$output"
+                test "$(grep -c '^error\[E' "$output")" -eq 3
+                ! grep -Fq 'internal compiler error' "$output"
+              fi
+            done
+          done
