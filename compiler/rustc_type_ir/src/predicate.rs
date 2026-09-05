@@ -9,6 +9,7 @@ use rustc_type_ir_macros::{
 };
 
 use crate::inherent::*;
+use crate::lift::Lift;
 use crate::upcast::{Upcast, UpcastFrom};
 use crate::visit::TypeVisitableExt as _;
 use crate::{self as ty, Alias, Interner};
@@ -521,9 +522,10 @@ impl<I: Interner> ExistentialProjection<I> {
         // Assert there is a Self.
         projection_predicate.projection_term.args.type_at(0);
 
+        let args = projection_predicate.projection_term.args;
         Self {
             def_id: projection_predicate.def_id(),
-            args: interner.mk_args(&projection_predicate.projection_term.args.as_slice()[1..]),
+            args: interner.mk_args(&args.as_slice()[1..]),
             term: projection_predicate.term,
             use_existential_projection_new_instead: (),
         }
@@ -552,18 +554,13 @@ impl<I: Interner> ty::Binder<I, ExistentialProjection<I>> {
 /// equality between arbitrary types. Processing an instance of
 /// Form #2 eventually yields one of these `ProjectionPredicate`
 /// instances to normalize the LHS.
-#[derive_where(Clone, Copy, Hash, PartialEq; I: Interner)]
-#[derive(TypeVisitable_Generic, GenericTypeVisitable, TypeFoldable_Generic, Lift_Generic)]
-#[cfg_attr(
-    feature = "nightly",
-    derive(Decodable_NoContext, Encodable_NoContext, StableHash_NoContext)
-)]
+#[repr(packed(4))]
+#[derive(TypeFoldable_Generic, Lift_Generic)]
+#[cfg_attr(feature = "nightly", derive(Decodable_NoContext))]
 pub struct ProjectionPredicate<I: Interner> {
     pub projection_term: ty::AliasTerm<I>,
     pub term: I::Term,
 }
-
-impl<I: Interner> Eq for ProjectionPredicate<I> {}
 
 impl<I: Interner> ProjectionPredicate<I> {
     pub fn self_ty(self) -> I::Ty {
@@ -607,21 +604,87 @@ impl<I: Interner> ty::Binder<I, ProjectionPredicate<I>> {
     }
 }
 
+impl<I: Interner> Copy for ProjectionPredicate<I> {}
+impl<I: Interner> Clone for ProjectionPredicate<I> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<I: Interner> std::hash::Hash for ProjectionPredicate<I> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (self.projection_term, self.term).hash(state);
+    }
+}
+
+impl<I: Interner> PartialEq for ProjectionPredicate<I> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        (self.projection_term, self.term) == (other.projection_term, other.term)
+    }
+}
+
+impl<I: Interner> Eq for ProjectionPredicate<I> {}
+
 impl<I: Interner> fmt::Debug for ProjectionPredicate<I> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ProjectionPredicate({:?}, {:?})", self.projection_term, self.term)
+        let Self { projection_term, term } = *self;
+        write!(f, "ProjectionPredicate({:?}, {:?})", projection_term, term)
+    }
+}
+
+impl<I: Interner> crate::TypeVisitable<I> for ProjectionPredicate<I> {
+    fn visit_with<V: crate::TypeVisitor<I>>(&self, visitor: &mut V) -> V::Result {
+        (self.projection_term, self.term).visit_with(visitor)
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<I: Interner, E: rustc_serialize::Encoder> rustc_serialize::Encodable<E>
+    for ProjectionPredicate<I>
+where
+    ty::AliasTerm<I>: rustc_serialize::Encodable<E>,
+    I::Term: rustc_serialize::Encodable<E>,
+{
+    fn encode(&self, encoder: &mut E) {
+        (self.projection_term, self.term).encode(encoder);
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<I: Interner> rustc_data_structures::stable_hash::StableHash for ProjectionPredicate<I>
+where
+    ty::AliasTerm<I>: rustc_data_structures::stable_hash::StableHash,
+    I::Term: rustc_data_structures::stable_hash::StableHash,
+{
+    #[inline]
+    fn stable_hash<H: rustc_data_structures::stable_hash::StableHashCtxt>(
+        &self,
+        hcx: &mut H,
+        hasher: &mut rustc_data_structures::stable_hash::StableHasher,
+    ) {
+        (self.projection_term, self.term).stable_hash(hcx, hasher);
+    }
+}
+
+#[cfg(not(feature = "nightly"))]
+impl<I: Interner, V> crate::GenericTypeVisitable<V> for ProjectionPredicate<I>
+where
+    ty::AliasTerm<I>: crate::GenericTypeVisitable<V>,
+    I::Term: crate::GenericTypeVisitable<V>,
+{
+    fn generic_visit_with(&self, visitor: &mut V) {
+        (self.projection_term, self.term).generic_visit_with(visitor);
     }
 }
 
 /// Used by the new solver to normalize an alias. This always expects the `term` to
 /// be an unconstrained inference variable which is used as the output.
-#[derive_where(Clone, Copy, Hash, Eq, PartialEq; I: Interner, K)]
-#[derive(TypeVisitable_Generic, GenericTypeVisitable, TypeFoldable_Generic, Lift_Generic)]
-#[cfg_attr(
-    feature = "nightly",
-    derive(Decodable_NoContext, Encodable_NoContext, StableHash_NoContext)
-)]
-pub struct NormalizesTo<I: Interner, K = ty::AliasTermKind<I>> {
+#[repr(packed(4))]
+#[derive(TypeFoldable_Generic)]
+#[cfg_attr(feature = "nightly", derive(Decodable_NoContext))]
+pub struct NormalizesTo<I: Interner, K: Copy = ty::AliasTermKind<I>> {
     pub alias: Alias<I, K>,
     pub term: I::Term,
 }
@@ -640,15 +703,106 @@ impl<I: Interner> NormalizesTo<I> {
     }
 }
 
-impl<I: Interner, K> fmt::Debug for NormalizesTo<I, K>
+impl<I: Interner, K: Copy> Copy for NormalizesTo<I, K> {}
+impl<I: Interner, K: Copy> Clone for NormalizesTo<I, K> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<I: Interner, K: Copy> std::hash::Hash for NormalizesTo<I, K>
 where
-    // `TypeVisitable_Generic` derived on `NormalizesTo` creates a field-level
-    // `Alias<I, K>: TypeVisitable<I>` bound. Since `TypeVisitable<I>: fmt::Debug`,
-    // that proves `Alias<I, K>: fmt::Debug`, but not `K: fmt::Debug`.
+    Alias<I, K>: std::hash::Hash,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (self.alias, self.term).hash(state);
+    }
+}
+
+impl<I: Interner, K: Copy> PartialEq for NormalizesTo<I, K>
+where
+    Alias<I, K>: PartialEq,
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        (self.alias, self.term) == (other.alias, other.term)
+    }
+}
+
+impl<I: Interner, K: Copy + Eq> Eq for NormalizesTo<I, K> where Alias<I, K>: Eq {}
+
+impl<I: Interner, K: Copy> fmt::Debug for NormalizesTo<I, K>
+where
     Alias<I, K>: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "NormalizesTo({:?}, {:?})", self.alias, self.term)
+        let Self { alias, term } = *self;
+        write!(f, "NormalizesTo({:?}, {:?})", alias, term)
+    }
+}
+
+impl<I: Interner, K: Copy> crate::TypeVisitable<I> for NormalizesTo<I, K>
+where
+    Alias<I, K>: crate::TypeVisitable<I>,
+{
+    fn visit_with<V: crate::TypeVisitor<I>>(&self, visitor: &mut V) -> V::Result {
+        (self.alias, self.term).visit_with(visitor)
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<I: Interner, K: Copy, E: rustc_serialize::Encoder> rustc_serialize::Encodable<E>
+    for NormalizesTo<I, K>
+where
+    Alias<I, K>: rustc_serialize::Encodable<E>,
+    I::Term: rustc_serialize::Encodable<E>,
+{
+    fn encode(&self, encoder: &mut E) {
+        (self.alias, self.term).encode(encoder);
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<I: Interner, K: Copy> rustc_data_structures::stable_hash::StableHash for NormalizesTo<I, K>
+where
+    Alias<I, K>: rustc_data_structures::stable_hash::StableHash,
+    I::Term: rustc_data_structures::stable_hash::StableHash,
+{
+    #[inline]
+    fn stable_hash<H: rustc_data_structures::stable_hash::StableHashCtxt>(
+        &self,
+        hcx: &mut H,
+        hasher: &mut rustc_data_structures::stable_hash::StableHasher,
+    ) {
+        (self.alias, self.term).stable_hash(hcx, hasher);
+    }
+}
+
+#[cfg(not(feature = "nightly"))]
+impl<I: Interner, K: Copy, V> crate::GenericTypeVisitable<V> for NormalizesTo<I, K>
+where
+    Alias<I, K>: crate::GenericTypeVisitable<V>,
+    I::Term: crate::GenericTypeVisitable<V>,
+{
+    fn generic_visit_with(&self, visitor: &mut V) {
+        (self.alias, self.term).generic_visit_with(visitor);
+    }
+}
+
+impl<I, J, K> Lift<J> for NormalizesTo<I, K>
+where
+    I: crate::LiftInto<J>,
+    J: Interner,
+    K: Copy + Lift<J>,
+    K::Lifted: Copy,
+{
+    type Lifted = NormalizesTo<J, K::Lifted>;
+    fn lift_to_interner(self, interner: J) -> Self::Lifted {
+        NormalizesTo {
+            alias: self.alias.lift_to_interner(interner),
+            term: self.term.lift_to_interner(interner),
+        }
     }
 }
 

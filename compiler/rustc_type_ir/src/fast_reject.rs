@@ -374,7 +374,8 @@ impl<I: Interner, const INSTANTIATE_LHS_WITH_INFER: bool, const INSTANTIATE_RHS_
                 INSTANTIATE_LHS_WITH_INFER
                     || match rhs.kind() {
                         ty::Alias(ty::IsRigid::Yes, rhs_alias) => {
-                            lhs_alias.kind == rhs_alias.kind
+                            let (lhs_kind, rhs_kind) = (lhs_alias.kind, rhs_alias.kind);
+                            lhs_kind == rhs_kind
                                 && self.args_may_unify_inner(lhs_alias.args, rhs_alias.args, depth)
                         }
                         _ => false,

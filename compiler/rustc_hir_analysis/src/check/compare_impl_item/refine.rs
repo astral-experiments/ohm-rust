@@ -333,7 +333,10 @@ fn report_mismatched_rpitit_signature<'tcx>(
             .iter_instantiated_copied(tcx, args)
             .map(Unnormalized::skip_norm_wip)
             .find_map(|(clause, _)| match clause.kind().no_bound_vars()? {
-                ty::ClauseKind::Projection(proj) => proj.term.as_type(),
+                ty::ClauseKind::Projection(proj) => {
+                    let term = proj.term;
+                    term.as_type()
+                }
                 _ => None,
             })
         else {

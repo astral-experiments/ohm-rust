@@ -176,9 +176,10 @@ impl<'tcx> TypeVisitor<TyCtxt<'tcx>> for CollectMemberConstraintsVisitor<'_, '_,
             | ty::CoroutineClosure(def_id, args)
             | ty::Coroutine(def_id, args) => self.visit_closure_args(def_id, args),
 
-            ty::Alias(_, ty::AliasTy { kind, args, .. })
+            ty::Alias(_, alias @ ty::AliasTy { kind, .. })
                 if let Some(variances) = self.cx().opt_alias_variances(kind) =>
             {
+                let args = alias.args;
                 // Skip lifetime parameters that are not captured, since they do
                 // not need member constraints registered for them; we'll erase
                 // them (and hopefully in the future replace them with placeholders).

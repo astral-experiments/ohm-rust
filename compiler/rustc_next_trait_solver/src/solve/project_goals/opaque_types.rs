@@ -20,7 +20,8 @@ where
     ) -> QueryResultOrRerunNonErased<I> {
         let cx = self.cx();
         let opaque_ty = goal.predicate.projection_term;
-        let expected = goal.predicate.term.as_type().expect("no such thing as an opaque const");
+        let term = goal.predicate.term;
+        let expected = term.as_type().expect("no such thing as an opaque const");
         let def_id = opaque_ty.expect_opaque_ty_def_id();
 
         match self.typing_mode() {

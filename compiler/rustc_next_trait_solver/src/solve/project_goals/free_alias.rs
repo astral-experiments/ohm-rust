@@ -31,7 +31,8 @@ where
                 .map(|pred| goal.with(cx, pred)),
         )?;
 
-        let actual = match free_alias.kind {
+        let kind = free_alias.kind;
+        let actual = match kind {
             ty::AliasTermKind::FreeTy { def_id } => {
                 let free = cx.type_of(def_id.into()).instantiate(cx, free_alias.args);
                 let free = self.normalize(GoalSource::Misc, goal.param_env, free)?;

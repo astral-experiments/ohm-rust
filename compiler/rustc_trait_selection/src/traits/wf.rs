@@ -301,7 +301,8 @@ fn extend_cause_with_original_assoc_item_obligation<'tcx>(
             // implemented, but rather from a "second order" obligation, where an associated
             // type has a projection coming from another associated type.
             // See `tests/ui/traits/assoc-type-in-superbad.rs` for an example.
-            if let Some(term_ty) = proj.term.as_type()
+            let term = proj.term;
+            if let Some(term_ty) = term.as_type()
                 && let Some(impl_item_span) = ty_to_impl_span(term_ty)
             {
                 cause.span = impl_item_span;
@@ -521,7 +522,8 @@ impl<'a, 'tcx> WfPredicates<'a, 'tcx> {
             self.out.extend(obligations);
         }
 
-        data.args.visit_with(self);
+        let args = data.args;
+        args.visit_with(self);
     }
 
     fn add_wf_preds_for_projection_args(&mut self, args: GenericArgsRef<'tcx>) {
@@ -1031,7 +1033,8 @@ impl<'a, 'tcx> TypeVisitor<TyCtxt<'tcx>> for WfPredicates<'a, 'tcx> {
                         let pred_binder = projection
                             .with_self_ty(tcx, t)
                             .map_bound(|p| {
-                                p.term.as_const().map(|ct| {
+                                let term = p.term;
+                                term.as_const().map(|ct| {
                                     let assoc_const_ty = tcx
                                         .type_of(p.def_id())
                                         .instantiate(tcx, p.projection_term.args)

@@ -31,9 +31,9 @@ impl<'tcx> Stable<'tcx> for ty::AliasTy<'tcx> {
         tables: &mut Tables<'cx, BridgeTys>,
         cx: &CompilerCtxt<'cx, BridgeTys>,
     ) -> Self::T {
-        let ty::AliasTy { args, kind, .. } = self;
+        let ty::AliasTy { args, kind, .. } = *self;
         // rustc_public must change its API once we introduce a variant without a def_id.
-        let def_id = match *kind {
+        let def_id = match kind {
             ty::AliasTyKind::Projection { def_id }
             | ty::AliasTyKind::Inherent { def_id }
             | ty::AliasTyKind::Opaque { def_id }
@@ -50,9 +50,9 @@ impl<'tcx> Stable<'tcx> for ty::AliasTerm<'tcx> {
         tables: &mut Tables<'cx, BridgeTys>,
         cx: &CompilerCtxt<'cx, BridgeTys>,
     ) -> Self::T {
-        let ty::AliasTerm { args, kind, .. } = self;
+        let ty::AliasTerm { args, kind, .. } = *self;
         // rustc_public must change its API once we introduce a variant without a def_id.
-        let def_id = match *kind {
+        let def_id = match kind {
             ty::AliasTermKind::ProjectionTy { def_id }
             | ty::AliasTermKind::InherentTy { def_id }
             | ty::AliasTermKind::OpaqueTy { def_id }
@@ -878,7 +878,7 @@ impl<'tcx> Stable<'tcx> for ty::ProjectionPredicate<'tcx> {
         tables: &mut Tables<'cx, BridgeTys>,
         cx: &CompilerCtxt<'cx, BridgeTys>,
     ) -> Self::T {
-        let ty::ProjectionPredicate { projection_term, term } = self;
+        let ty::ProjectionPredicate { projection_term, term } = *self;
         crate::ty::ProjectionPredicate {
             projection_term: projection_term.stable(tables, cx),
             term: term.kind().stable(tables, cx),

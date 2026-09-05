@@ -783,9 +783,10 @@ impl<'tcx> GATArgsCollector<'tcx> {
 impl<'tcx> TypeVisitor<TyCtxt<'tcx>> for GATArgsCollector<'tcx> {
     fn visit_ty(&mut self, t: Ty<'tcx>) {
         match t.kind() {
-            &ty::Alias(_, ty::AliasTy { kind: ty::Projection { def_id }, args, .. })
+            &ty::Alias(_, alias @ ty::AliasTy { kind: ty::Projection { def_id }, .. })
                 if def_id == self.gat =>
             {
+                let args = alias.args;
                 for (idx, arg) in args.iter().enumerate() {
                     match arg.kind() {
                         GenericArgKind::Lifetime(lt) if !lt.is_bound() => {
@@ -1656,7 +1657,8 @@ pub(super) fn check_where_clauses<'tcx>(wfcx: &WfCheckingCtxt<'_, 'tcx>, def_id:
             let proj = clause.as_projection_clause()?;
             let pred_binder = proj
                 .map_bound(|pred| {
-                    pred.term.as_const().map(|ct| {
+                    let term = pred.term;
+                    term.as_const().map(|ct| {
                         let assoc_const_ty =
                             pred.projection_term.expect_ct().type_of(tcx).skip_norm_wip();
                         ty::ClauseKind::ConstArgHasType(ct, assoc_const_ty)

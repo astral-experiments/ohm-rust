@@ -1500,9 +1500,10 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                             // args tuple will always be args[1]
                             && let ty::Tuple(args) = proj.projection_term.args.type_at(1).kind()
                             {
+                                let term = proj.term;
                                 Some((
                                     DefIdOrName::DefId(def_id),
-                                    pred.kind().rebind(proj.term.expect_type()),
+                                    pred.kind().rebind(term.expect_type()),
                                     pred.kind().rebind(args.as_slice()),
                                 ))
                             } else {
@@ -1545,9 +1546,10 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                             // args tuple will always be args[1]
                             && let ty::Tuple(args) = proj.projection_term.args.type_at(1).kind()
                         {
+                            let term = proj.term;
                             Some((
                                 name,
-                                pred.kind().rebind(proj.term.expect_type()),
+                                pred.kind().rebind(term.expect_type()),
                                 pred.kind().rebind(args.as_slice()),
                             ))
                         } else {
@@ -4884,7 +4886,7 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                     })
                 } else if let Some(where_pred) = where_pred.as_projection_clause()
                     && let Some(failed_pred) = failed_pred.as_projection_clause()
-                    && let Some(found) = failed_pred.skip_binder().term.as_type()
+                    && let Some(found) = { failed_pred.skip_binder().term }.as_type()
                 {
                     type_diffs = vec![TypeError::Sorts(ty::error::ExpectedFound {
                         expected: where_pred

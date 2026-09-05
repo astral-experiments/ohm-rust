@@ -374,7 +374,8 @@ fn bounds_from_generic_predicates<'tcx>(
                             && p.projection_term.self_ty() == ty
                         {
                             let name = tcx.item_name(p.projection_term.expect_projection_def_id());
-                            projections_str.push(format!("{} = {}", name, p.term));
+                            let term = p.term;
+                            projections_str.push(format!("{} = {}", name, term));
                         }
                     }
                     let bound_def_path = if tcx.is_lang_item(bound, LangItem::MetaSized) {
