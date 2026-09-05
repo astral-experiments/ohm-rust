@@ -42,6 +42,14 @@ impl<'sm> CachingSourceMapView<'sm> {
 
     #[inline]
     fn pos_to_line(&self, pos: BytePos) -> (Range<BytePos>, usize) {
+        // The cached line number is 1-based, so it indexes the following line.
+        if self.line_bounds.end <= pos && self.line_number < self.file.lines().len() {
+            let next_bounds = self.file.line_bounds(self.line_number);
+            if next_bounds.contains(&pos) {
+                return (next_bounds, self.line_number + 1);
+            }
+        }
+
         let pos = self.file.relative_position(pos);
         let line_index = self.file.lookup_line(pos).unwrap();
         let line_bounds = self.file.line_bounds(line_index);
@@ -167,4 +175,47 @@ fn file_contains(file: &SourceFile, pos: BytePos) -> bool {
     // line and column number if the file is empty, because an empty file doesn't contain any
     // lines. So for our purposes, we don't consider empty files to contain any byte position.
     file.contains(pos) && !file.is_empty()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::FileName;
+    use crate::source_map::FilePathMapping;
+
+    #[test]
+    fn line_cache_handles_next_line_eof_and_file_switches() {
+        let source_map = SourceMap::new(FilePathMapping::empty());
+        let first = source_map.new_source_file(FileName::Custom("first".into()), "a\nβ\nc".into());
+        let second = source_map.new_source_file(FileName::Custom("second".into()), "x\ny".into());
+        let mut view = CachingSourceMapView::new(&source_map);
+
+        for (file, offset, line, col) in [
+            (&first, 0, 1, 0),
+            (&first, 2, 2, 0),
+            (&first, 5, 3, 0),
+            (&first, 0, 1, 0),
+            (&first, 6, 3, 1),
+            (&second, 0, 1, 0),
+            (&second, 2, 2, 0),
+            (&second, 3, 2, 1),
+        ] {
+            let pos = file.absolute_position(RelativeBytePos(offset));
+            let (actual_file, actual_line, actual_col) = view.byte_pos_to_line_and_col(pos).unwrap();
+            assert!(Arc::ptr_eq(&actual_file, file));
+            assert_eq!(actual_line, line);
+            assert_eq!(actual_col, RelativeBytePos(col));
+        }
+
+        let span = SpanData {
+            lo: first.absolute_position(RelativeBytePos(0)),
+            hi: first.absolute_position(RelativeBytePos(4)),
+            ctxt: crate::SyntaxContext::root(),
+            parent: None,
+        };
+        let (file, lo_line, lo_col, hi_line, hi_col) =
+            view.span_data_to_lines_and_cols(&span).unwrap();
+        assert_eq!(file.start_pos, first.start_pos);
+        assert_eq!((lo_line, lo_col, hi_line, hi_col), (1, BytePos(0), 2, BytePos(2)));
+    }
 }
