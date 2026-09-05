@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   style:
+    if: ${{ github.ref != 'refs/heads/charlie/codex-codspeed-lean-ui-verify' }}
     name: Formatting and tidy
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 30
@@ -47,6 +48,7 @@ jobs:
           test tidy
 
   compiler:
+    if: ${{ github.ref != 'refs/heads/charlie/codex-codspeed-lean-ui-verify' }}
     name: ${{ matrix.os == 'depot-ubuntu-24.04-16' && 'Compiler and regression tests' || 'Compiler and regression tests (macOS)' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -213,3 +215,49 @@ jobs:
             python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true \
               --set rust.lto=off test --stage 1 "${selected[@]}"
           fi
+
+  assoc_bounds_ui:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/charlie/codex-codspeed-lean-ui-verify' }}
+    name: Associated-type bounds with measured compiler
+    runs-on: codspeed-macro
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: eb56c3641467cd9c6de859b8f5765280faa866b9
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codspeed-toolchain
+          run-id: 33948949970
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: build
+      - name: Run focused UI checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=eb56c3641467cd9c6de859b8f5765280faa866b9
+          test "$(git rev-parse HEAD)" = "$expected"
+          mkdir -p build/codspeed-toolchain
+          tar -xzf build/codspeed-toolchain.tar.gz -C build/codspeed-toolchain
+          rustc=build/codspeed-toolchain/stage1/bin/rustc
+          "$rustc" -vV | tee "$RUNNER_TEMP/rustc-version.txt"
+          grep -Fxq "commit-hash: $expected" "$RUNNER_TEMP/rustc-version.txt"
+          if "$rustc" --crate-name assoc_ui --edition=2021 --emit=metadata -o /dev/null tests/ui/associated-types/concrete-impl-bound-normalization.rs > "$RUNNER_TEMP/assoc-ui.txt" 2>&1; then
+            echo 'Expected associated-type bounds diagnostics'; exit 1
+          fi
+          cat "$RUNNER_TEMP/assoc-ui.txt"
+          grep -Fq 'error[E0277]: `u16` is not an iterator' "$RUNNER_TEMP/assoc-ui.txt"
+          grep -Fq 'error[E0277]: cannot add `bool` to `u8`' "$RUNNER_TEMP/assoc-ui.txt"
+          test "$(grep -c '^error\[E' "$RUNNER_TEMP/assoc-ui.txt")" -eq 2
+          ! grep -Fq 'internal compiler error' "$RUNNER_TEMP/assoc-ui.txt"
+          if "$rustc" --crate-name specialization_ui --edition=2021 --emit=metadata -o /dev/null tests/ui/specialization/default-associated-type-bound-1.rs > "$RUNNER_TEMP/specialization-ui.txt" 2>&1; then
+            echo 'Expected specialization bounds diagnostic'; exit 1
+          fi
+          cat "$RUNNER_TEMP/specialization-ui.txt"
+          grep -Fq 'error[E0277]: the trait bound `str: Clone` is not satisfied' "$RUNNER_TEMP/specialization-ui.txt"
+          test "$(grep -c '^error\[E' "$RUNNER_TEMP/specialization-ui.txt")" -eq 1
+          ! grep -Fq 'internal compiler error' "$RUNNER_TEMP/specialization-ui.txt"
