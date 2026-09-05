@@ -1,0 +1,10 @@
+error: lifetime may not live long enough
+  --> $DIR/type-instantiation-cache-lifetimes.rs:9:5
+   |
+LL | fn different_arguments<'a>(permanent: Wrapped<'static>, temporary: Wrapped<'a>) -> &'static [u8; 4] {
+   |                        -- lifetime `'a` defined here
+...
+LL |     temporary.0
+   |     ^^^^^^^^^^^ returning this value requires that `'a` must outlive `'static`
+
+error: aborting due to 1 previous error
