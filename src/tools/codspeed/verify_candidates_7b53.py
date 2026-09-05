@@ -1,6 +1,7 @@
 """Validate the fixed measured compilers without rebuilding either compiler."""
 
 from collections import Counter
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -46,8 +47,9 @@ CANDIDATES = {
     "root_probe": ("94cabfecfc6fc201868a44007257c8c984644830", 33978363752),
     "dense_lazy": ("696fd87252a253aaa2b34b9bf092804dcbde3585", 33979491861),
     "veccache_mode": ("64c31b0b3c22ada448cfab90be3e9c7fc0339fc3", 33979934693),
-    "lazy_engine": ("7954d3b8abde5a3a11239a19602c7878b0b41e67", 33979990020),
+    "lazy_engine": ("2ccd07c4470a64f6462191805aef3e6e8a72057b", 33980939158),
     "hashbrown_neon16": ("17a5026d761d5a42572466298ce9732fad9ceb96", 33980542884),
+    "canonical_input_cache": ("0250cb57508464a20d2a06c8750883dc9d5739ec", 33981167471),
 }
 
 
@@ -1180,6 +1182,112 @@ def main():
                     extra_flags=("-Zui-testing", "-Aunused")
                     + (() if execute else ("--emit=metadata",)),
                 )
+        if kind == "canonical_input_cache":
+            case_directory = Path(__file__).resolve().parent / "cases/canonical_input_cache"
+            expected_files = json.loads((case_directory / "manifest.json").read_text())
+            actual_files = {
+                path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in case_directory.glob("*.rs")
+            }
+            assert len(actual_files) == 13 and actual_files == expected_files
+            report["fixture_sha256"] = actual_files
+            errors = {
+                'canonical-proof-region-errors': (
+                    (None, 'lifetime may not live long enough'),
+                    (None, 'lifetime may not live long enough'),
+                ),
+                'check-normalized-sig-for-wf': (
+                    ('E0597', '`s` does not live long enough'),
+                    ('E0521', 'borrowed data escapes outside of function'),
+                    ('E0521', 'borrowed data escapes outside of function'),
+                ),
+                'lazy-obligation-errors': (
+                    ('E0276', 'impl has stricter requirements than trait'),
+                    ('E0271', 'expected `Once<()>` to be an iterator that yields `T`, but it yields `()`'),
+                    ('E0597', '`first` does not live long enough'),
+                    ('E0597', '`second` does not live long enough'),
+                ),
+                'repeated-wf-bounds': (
+                    ('E0277', 'the trait bound `T: Copy` is not satisfied'),
+                    (None, 'lifetime may not live long enough'),
+                ),
+            }
+            spans = {
+                'canonical-proof-region-errors': (
+                    (28, 5, 19, True, "function was supposed to return data with lifetime `'a` but it is returning data with lifetime `'b`"),
+                    (33, 5, 19, True, "function was supposed to return data with lifetime `'b` but it is returning data with lifetime `'a`"),
+                ),
+                'check-normalized-sig-for-wf': (
+                    (11, 7, 9, True, 'borrowed value does not live long enough'),
+                    (19, 5, 13, True, '`input` escapes the function body here'),
+                    (19, 5, 13, True, "argument requires that `'1` must outlive `'static`"),
+                    (27, 5, 13, True, '`input` escapes the function body here'),
+                    (27, 5, 13, True, "argument requires that `'a` must outlive `'static`"),
+                ),
+                'lazy-obligation-errors': (
+                    (13, 28, 32, True, 'impl has extra requirement `T: Copy`'),
+                    (22, 34, 65, True, 'expected type parameter `T`, found `()`'),
+                    (47, 26, 32, True, 'borrowed value does not live long enough'),
+                    (49, 32, 39, True, 'borrowed value does not live long enough'),
+                ),
+                'repeated-wf-bounds': (
+                    (12, 33, 43, True, 'the trait `Copy` is not implemented for `T`'),
+                    (17, 5, 24, True, "function was supposed to return data with lifetime `'b` but it is returning data with lifetime `'a`"),
+                ),
+            }
+            metadata_only = {
+                "check-wf-of-normalized-signature",
+                "deeply-normalize-env-in-compare-impl-item",
+                "param-method-from-unnormalized-param-env",
+            }
+            next_only = {
+                "deeply-normalize-env-in-compare-impl-item",
+                "param-method-from-unnormalized-param-env",
+            }
+            allow_unused = {
+                "method-normalize-bounds-issue-20604", "method-probe-no-guessing-dyn-trait",
+                "check-wf-of-normalized-signature", "check-normalized-sig-for-wf",
+            } | next_only
+            primary_spans = {}
+            for filename in sorted(expected_files):
+                stem = Path(filename).stem
+                modes = ("next",) if stem in next_only else ("current", "slow", "next")
+                if stem == "canonical-proof-inputs":
+                    modes += ("parallel",)
+                for mode in modes:
+                    name = f"{stem}-{mode}"
+                    check(
+                        name, str(case_directory / filename), revision=mode,
+                        crate_name=stem.replace("-", "_"), next_solver=mode == "next",
+                        disable_fast_paths=mode == "slow", threads=4 if mode == "parallel" else 1,
+                        errors=errors.get(stem, ()), required_spans=spans.get(stem, ()),
+                        execute=stem not in metadata_only,
+                        extra_flags=(("--emit=metadata",) if stem in metadata_only else ())
+                        + (("-Aunused",) if stem in allow_unused else ()),
+                    )
+                    diagnostics = [
+                        json.loads(line)
+                        for line in (output / f"{name}.jsonl").read_text().splitlines()
+                    ]
+                    assert not any(d.get("level") == "warning" for d in diagnostics), name
+                    primary_spans[name] = [
+                        (
+                            diagnostic["message"],
+                            [
+                                (
+                                    span["line_start"], span["column_start"],
+                                    span["line_end"], span["column_end"], span["label"],
+                                )
+                                for span in diagnostic["spans"] if span["is_primary"]
+                            ],
+                        )
+                        for diagnostic in diagnostics
+                        if diagnostic.get("level") == "error"
+                        and not diagnostic["message"].startswith("aborting due to ")
+                    ]
+            for stem in errors:
+                assert primary_spans[f"{stem}-current"] == primary_spans[f"{stem}-slow"], stem
+            report["current_slow_primary_spans_verified"] = sorted(errors)
         if kind == "early_sized":
             for solver in ("current", "next", "slow"):
                 options = {

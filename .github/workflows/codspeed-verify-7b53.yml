@@ -19,9 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - kind: veccache_mode
-            sha: 64c31b0b3c22ada448cfab90be3e9c7fc0339fc3
-            run: 33979934693
+          - kind: hashbrown_neon16
+            sha: 17a5026d761d5a42572466298ce9732fad9ceb96
+            run: 33980542884
     steps:
       - name: Checkout validation script
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
