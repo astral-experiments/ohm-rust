@@ -488,6 +488,15 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
     ) {
         if !ty.references_error() {
             let lang_item = self.tcx.require_lang_item(LangItem::Sized, span);
+            // Fulfillment skips this obligation for types known to be Sized.
+            if !self.infcx.disable_trait_solver_fast_paths()
+                && self.infcx.obligation_inspector.get().is_none()
+                && !ty.has_non_region_infer()
+                && !ty.has_escaping_bound_vars()
+                && ty.has_trivial_sizedness(self.tcx, SizedTraitKind::Sized)
+            {
+                return;
+            }
             self.require_type_meets(ty, span, code, lang_item);
         }
     }
@@ -653,6 +662,17 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         span: Span,
         code: traits::ObligationCauseCode<'tcx>,
     ) {
+        // Fulfillment immediately discards trivially well-formed terms. Avoid
+        // putting these obligations into the forest in the first place.
+        if !self.infcx.disable_trait_solver_fast_paths()
+            && self.infcx.obligation_inspector.get().is_none()
+            && !term.has_non_region_infer()
+            && !term.has_escaping_bound_vars()
+            && term.is_trivially_wf(self.tcx)
+        {
+            return;
+        }
+
         // WF obligations never themselves fail, so no real need to give a detailed cause:
         let cause = self.cause(span, code);
         self.register_predicate(traits::Obligation::new(
