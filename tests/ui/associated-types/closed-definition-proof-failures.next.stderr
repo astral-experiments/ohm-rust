@@ -1,0 +1,118 @@
+error[E0277]: the trait bound `u8: Required` is not satisfied
+  --> $DIR/closed-definition-proof-failures.rs:12:18
+   |
+LL |     type Value = u8;
+   |                  ^^ the trait `Required` is not implemented for `u8`
+   |
+help: this trait has no implementations, consider adding one
+  --> $DIR/closed-definition-proof-failures.rs:7:1
+   |
+LL | trait Required {}
+   | ^^^^^^^^^^^^^^
+note: required by a bound in `RequiredStorage::Value`
+  --> $DIR/closed-definition-proof-failures.rs:8:37
+   |
+LL | trait RequiredStorage { type Value: Required; }
+   |                                     ^^^^^^^^ required by this bound in `RequiredStorage::Value`
+
+error[E0277]: the trait bound `u8: Required` is not satisfied
+  --> $DIR/closed-definition-proof-failures.rs:16:18
+   |
+LL |     type Value = u8;
+   |                  ^^ the trait `Required` is not implemented for `u8`
+   |
+help: this trait has no implementations, consider adding one
+  --> $DIR/closed-definition-proof-failures.rs:7:1
+   |
+LL | trait Required {}
+   | ^^^^^^^^^^^^^^
+note: required by a bound in `RequiredStorage::Value`
+  --> $DIR/closed-definition-proof-failures.rs:8:37
+   |
+LL | trait RequiredStorage { type Value: Required; }
+   |                                     ^^^^^^^^ required by this bound in `RequiredStorage::Value`
+
+error[E0277]: the trait bound `u8: For<SelfB>` is not satisfied
+  --> $DIR/closed-definition-proof-failures.rs:43:18
+   |
+LL |     type Value = u8;
+   |                  ^^ the trait `For<SelfB>` is not implemented for `u8`
+   |
+help: the trait `For<SelfB>` is not implemented for `u8`
+      but trait `For<SelfA>` is implemented for it
+  --> $DIR/closed-definition-proof-failures.rs:40:1
+   |
+LL | impl For<SelfA> for u8 {}
+   | ^^^^^^^^^^^^^^^^^^^^^^
+   = help: for that trait implementation, expected `SelfA`, found `SelfB`
+note: required by a bound in `SelfDependent::Value`
+  --> $DIR/closed-definition-proof-failures.rs:37:42
+   |
+LL | trait SelfDependent: Sized { type Value: For<Self>; }
+   |                                          ^^^^^^^^^ required by this bound in `SelfDependent::Value`
+
+error[E0277]: the trait bound `Value: For<Bad>` is not satisfied
+  --> $DIR/closed-definition-proof-failures.rs:64:18
+   |
+LL |     type Value = Value;
+   |                  ^^^^^ unsatisfied trait bound
+   |
+help: the trait `For<Bad>` is not implemented for `Value`
+      but trait `For<Good>` is implemented for it
+  --> $DIR/closed-definition-proof-failures.rs:57:1
+   |
+LL | impl For<Good> for Value {}
+   | ^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: for that trait implementation, expected `Good`, found `Bad`
+note: required by a bound in `ProjectionDependent::Value`
+  --> $DIR/closed-definition-proof-failures.rs:50:17
+   |
+LL |     type Value: For<Self::Other>;
+   |                 ^^^^^^^^^^^^^^^^ required by this bound in `ProjectionDependent::Value`
+
+error[E0277]: the trait bound `NotCopy: Copy` is not satisfied
+  --> $DIR/closed-definition-proof-failures.rs:27:18
+   |
+LL |     type Value = NeedsCopy<NotCopy>;
+   |                  ^^^^^^^^^^^^^^^^^^ the trait `Copy` is not implemented for `NotCopy`
+   |
+note: required by a bound in `NeedsCopy`
+  --> $DIR/closed-definition-proof-failures.rs:22:21
+   |
+LL | struct NeedsCopy<T: Copy>(T);
+   |                     ^^^^ required by this bound in `NeedsCopy`
+help: consider annotating `NotCopy` with `#[derive(Copy)]`
+   |
+LL + #[derive(Copy)]
+LL | struct NotCopy;
+   |
+
+error[E0277]: the trait bound `NotCopy: Copy` is not satisfied
+  --> $DIR/closed-definition-proof-failures.rs:31:18
+   |
+LL |     type Value = NeedsCopy<NotCopy>;
+   |                  ^^^^^^^^^^^^^^^^^^ the trait `Copy` is not implemented for `NotCopy`
+   |
+note: required by a bound in `NeedsCopy`
+  --> $DIR/closed-definition-proof-failures.rs:22:21
+   |
+LL | struct NeedsCopy<T: Copy>(T);
+   |                     ^^^^ required by this bound in `NeedsCopy`
+help: consider annotating `NotCopy` with `#[derive(Copy)]`
+   |
+LL + #[derive(Copy)]
+LL | struct NotCopy;
+   |
+
+error[E0477]: the type `&'a ()` does not fulfill the required lifetime
+  --> $DIR/closed-definition-proof-failures.rs:72:5
+   |
+LL |     type Value = NeedsStatic<()>;
+   |     ^^^^^^^^^^
+   |
+   = note: type must satisfy the static lifetime
+
+error: aborting due to 7 previous errors
+
+Some errors have detailed explanations: E0277, E0477.
+For more information about an error, try `rustc --explain E0277`.

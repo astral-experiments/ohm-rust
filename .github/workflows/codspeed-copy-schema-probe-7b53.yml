@@ -1,0 +1,54 @@
+name: Probe measured Copy schema activation (7b53)
+
+on:
+  push:
+    branches: [charlie/codex-codspeed-copy-schema-probe-7b53]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    if: ${{ github.ref == 'refs/heads/charlie/codex-codspeed-copy-schema-probe-7b53' }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - name: Checkout diagnostic scripts
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          sparse-checkout: src/tools/codspeed
+          persist-credentials: false
+      - name: Download exact measured compiler
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: codspeed-toolchain
+          run-id: 33970806995
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: build
+      - name: Prepare debugger and archived sysroot
+        run: |
+          set -euo pipefail
+          if ! command -v gdb >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends gdb
+          fi
+          gdb --version
+          mkdir -p build/codspeed-toolchain
+          tar -xzf build/codspeed-toolchain.tar.gz -C build/codspeed-toolchain
+      - name: Observe query return values in compiler child processes
+        run: |
+          python3 src/tools/codspeed/probe_copy_schema.py \
+            build/codspeed-toolchain/stage1/bin/rustc build/copy-schema-probe
+      - name: Retain diagnostic evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: codspeed-copy-schema-activation-7b53
+          path: |
+            build/copy-schema-probe/*.json
+            build/copy-schema-probe/*.txt
+            build/copy-schema-probe/*.rs
+          if-no-files-found: warn
+          retention-days: 7
