@@ -1,0 +1,31 @@
+error[E0277]: the trait bound `T: Copy` is not satisfied
+  --> $DIR/repeated-wf-bounds.rs:12:33
+   |
+LL | fn missing_bound<T>(_: Repeated<Bounded<T>>) {}
+   |                                 ^^^^^^^^^^ the trait `Copy` is not implemented for `T`
+   |
+note: required by a bound in `Bounded`
+  --> $DIR/repeated-wf-bounds.rs:9:19
+   |
+LL | struct Bounded<T: Copy>(T);
+   |                   ^^^^ required by this bound in `Bounded`
+help: consider restricting type parameter `T` with trait `Copy`
+   |
+LL | fn missing_bound<T: std::marker::Copy>(_: Repeated<Bounded<T>>) {}
+   |                   +++++++++++++++++++
+
+error: lifetime may not live long enough
+  --> $DIR/repeated-wf-bounds.rs:17:5
+   |
+LL | fn distinct_lifetimes<'a, 'b>(value: Repeated<(&'a u8, &'b u8)>) -> &'b u8 {
+   |                       --  -- lifetime `'b` defined here
+   |                       |
+   |                       lifetime `'a` defined here
+LL |     value.0.0.0.0.0.0.0
+   |     ^^^^^^^^^^^^^^^^^^^ function was supposed to return data with lifetime `'b` but it is returning data with lifetime `'a`
+   |
+   = help: consider adding the following bound: `'a: 'b`
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0277`.

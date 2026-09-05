@@ -10,8 +10,8 @@ use rustc_data_structures::sso::SsoHashMap;
 use rustc_index::Idx;
 use rustc_middle::bug;
 use rustc_middle::ty::{
-    self, BoundVar, Flags, GenericArg, InferConst, List, Ty, TyCtxt, TypeFlags, TypeFoldable,
-    TypeFolder, TypeSuperFoldable, TypeVisitableExt, TypingModeEqWrapper,
+    self, BoundVar, DelayedMap, Flags, GenericArg, InferConst, List, Ty, TyCtxt, TypeFlags,
+    TypeFoldable, TypeFolder, TypeSuperFoldable, TypeVisitableExt, TypingModeEqWrapper,
 };
 use smallvec::SmallVec;
 use tracing::debug;
@@ -301,6 +301,9 @@ struct Canonicalizer<'cx, 'tcx> {
     /// we set the `sub_root` of the second variable to the position of the first.
     /// Otherwise the `sub_root` of each type variable is just its own position.
     sub_root_lookup_table: SsoHashMap<ty::TyVid, usize>,
+    /// Canonical variables use a separate index kind, so cached types are independent of
+    /// binder depth. Inference state does not change during this canonicalization.
+    cache: DelayedMap<Ty<'tcx>, Ty<'tcx>>,
     canonicalize_mode: &'cx dyn CanonicalizeMode,
     needs_canonical_flags: TypeFlags,
 }
@@ -421,10 +424,14 @@ impl<'cx, 'tcx> TypeFolder<TyCtxt<'tcx>> for Canonicalizer<'cx, 'tcx> {
             | ty::Foreign(..)
             | ty::Pat(..)
             | ty::Param(..) => {
-                if t.flags().intersects(self.needs_canonical_flags) {
-                    t.super_fold_with(self)
-                } else {
+                if !t.flags().intersects(self.needs_canonical_flags) {
                     t
+                } else if let Some(&canonical) = self.cache.get(&t) {
+                    canonical
+                } else {
+                    let canonical = t.super_fold_with(self);
+                    assert!(self.cache.insert(t, canonical));
+                    canonical
                 }
             }
         }
@@ -552,6 +559,7 @@ impl<'cx, 'tcx> Canonicalizer<'cx, 'tcx> {
             query_state,
             indices: FxHashMap::default(),
             sub_root_lookup_table: Default::default(),
+            cache: Default::default(),
         };
         if canonicalizer.query_state.var_values.spilled() {
             canonicalizer.indices = canonicalizer

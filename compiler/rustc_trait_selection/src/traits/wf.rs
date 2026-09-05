@@ -8,8 +8,8 @@ use rustc_hir::lang_items::LangItem;
 use rustc_infer::traits::{ObligationCauseCode, PredicateObligations};
 use rustc_middle::bug;
 use rustc_middle::ty::{
-    self, GenericArgsRef, Term, TermKind, Ty, TyCtxt, TypeSuperVisitable, TypeVisitable,
-    TypeVisitableExt, TypeVisitor,
+    self, DelayedSet, GenericArgsRef, Term, TermKind, Ty, TyCtxt, TypeSuperVisitable,
+    TypeVisitable, TypeVisitableExt, TypeVisitor,
 };
 use rustc_session::errors::feature_err;
 use rustc_span::def_id::{DefId, LocalDefId};
@@ -76,6 +76,7 @@ pub fn obligations<'tcx>(
         out: PredicateObligations::new(),
         recursion_depth,
         item: None,
+        visited: Default::default(),
     };
     wf.add_wf_preds_for_term(term);
     debug!("wf::obligations({:?}, body_id={:?}) = {:?}", term, body_id, wf.out);
@@ -113,6 +114,7 @@ pub fn unnormalized_obligations<'tcx>(
         out: PredicateObligations::new(),
         recursion_depth: 0,
         item: None,
+        visited: Default::default(),
     };
     wf.add_wf_preds_for_term(term);
     Some(wf.out)
@@ -138,6 +140,7 @@ pub fn trait_obligations<'tcx>(
         out: PredicateObligations::new(),
         recursion_depth: 0,
         item: Some(item),
+        visited: Default::default(),
     };
     wf.add_wf_preds_for_trait_pred(trait_pred, Elaborate::All);
     debug!(obligations = ?wf.out);
@@ -165,6 +168,7 @@ pub fn clause_obligations<'tcx>(
         out: PredicateObligations::new(),
         recursion_depth: 0,
         item: None,
+        visited: Default::default(),
     };
 
     // It's ok to skip the binder here because wf code is prepared for it
@@ -209,6 +213,9 @@ struct WfPredicates<'a, 'tcx> {
     out: PredicateObligations<'tcx>,
     recursion_depth: usize,
     item: Option<&'tcx hir::Item<'tcx>>,
+    /// Each traversal has one cause, parameter environment, and recursion depth. Repeated
+    /// inference-independent types therefore contribute the same well-formedness obligations.
+    visited: DelayedSet<Ty<'tcx>>,
 }
 
 /// Controls whether we "elaborate" supertraits and so forth on the WF
@@ -746,6 +753,25 @@ impl<'a, 'tcx> WfPredicates<'a, 'tcx> {
 impl<'a, 'tcx> TypeVisitor<TyCtxt<'tcx>> for WfPredicates<'a, 'tcx> {
     fn visit_ty(&mut self, t: Ty<'tcx>) -> Self::Result {
         debug!("wf bounds for t={:?} t.kind={:#?}", t, t.kind());
+
+        // Only cache recursive type constructors; scalar and parameter leaves have no work
+        // to deduplicate. Inherent projections can perform inference while visiting their
+        // arguments, so keep aliases and inference-dependent types on the uncached path.
+        if matches!(
+            t.kind(),
+            ty::Adt(..)
+                | ty::Tuple(..)
+                | ty::Array(..)
+                | ty::Slice(..)
+                | ty::Ref(..)
+                | ty::RawPtr(..)
+                | ty::FnPtr(..)
+        ) && !t.has_non_region_infer()
+            && !t.has_aliases()
+            && !self.visited.insert(t)
+        {
+            return;
+        }
 
         let tcx = self.tcx();
 
