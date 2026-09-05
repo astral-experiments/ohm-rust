@@ -835,6 +835,22 @@ impl<'cx, 'tcx> WritebackCx<'cx, 'tcx> {
     {
         let value = self.fcx.resolve_vars_if_possible(value);
 
+        // With no inference variables, regions, or aliases, resolution and
+        // normalization cannot change this value. Generic const expressions
+        // may still require normalization, so keep their existing path.
+        if !self.tcx().features().generic_const_exprs()
+            && !value.has_type_flags(
+                ty::TypeFlags::HAS_INFER | ty::TypeFlags::HAS_REGIONS | ty::TypeFlags::HAS_ALIAS,
+            )
+        {
+            // Preserve writeback's error-taint update for values containing
+            // an already reported error.
+            if let Err(guar) = value.error_reported() {
+                self.typeck_results.tainted_by_errors = Some(guar);
+            }
+            return value;
+        }
+
         let mut goals = vec![];
         let value =
             value.fold_with(&mut Resolver::new(self.fcx, span, self.body, true, &mut goals));
