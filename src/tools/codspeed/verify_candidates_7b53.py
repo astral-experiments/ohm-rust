@@ -38,6 +38,7 @@ CANDIDATES = {
     "hir_trait_proofs": ("7442c4ca9ea86b089bc36616bfbb873908c34f9c", 33974598690),
     "wf_reference": ("928d323cc522b25aa52ed0cb9a23466df18c9f87", 33975415242),
     "local_wf": ("5bcf3b8256639ecfb531de1dc3873721e197a7eb", 33976115645),
+    "trivial_wf_batch": ("4354e5759a1b3202ded63c71eff9788675dc10e3", 33976263001),
 }
 
 
@@ -826,7 +827,15 @@ def main():
                     check(
                         f"local-wf-lifetimes-{solver}", "tests/ui/ohm/local-wf-lifetimes.rs",
                         errors=(("E0309", "the parameter type `T` may not live long enough"),)
-                        + ((None, "lifetime may not live long enough"),) * 5, **controls,
+                        + ((None, "lifetime may not live long enough"),) * 5,
+                        required_spans=(
+                            (13, 13, 36, True, "...so that the type `T` will meet its required lifetime bounds"),
+                            (18, 13, 36, True, "requires that `'b` must outlive `'a`"),
+                            (26, 13, 47, True, "requires that `'b` must outlive `'a`"),
+                            (38, 13, 34, True, "requires that `'a` must outlive `'static`"),
+                            (45, 13, 35, True, "requires that `'a` must outlive `'static`"),
+                            (52, 13, 47, True, "requires that `'a` must outlive `'static`"),
+                        ), **controls,
                     )
                     check(
                         f"local-wf-bounds-{solver}", "tests/ui/ohm/local-wf-bounds.rs",
@@ -836,6 +845,61 @@ def main():
                         ) * (2 if solver == "next" else 1)
                         + (("E0038", "the trait `NotDyn` is not dyn compatible"),), **controls,
                     )
+        if kind == "local_wf":
+            fixture = Path(__file__).resolve().parent / "cases" / "local_wf" / "nominal-plan.rs"
+            for solver in ("current", "next", "slow"):
+                cache = output / "incremental" / f"local-wf-plan-{solver}"
+                for revision in ("bpass1", "bfail2"):
+                    check(
+                        f"local-wf-plan-{solver}-{revision}", str(fixture), revision=revision,
+                        next_solver=solver == "next", disable_fast_paths=solver == "slow",
+                        incremental=cache, require_loaded=revision == "bfail2",
+                        execute=False, extra_flags=("--emit=metadata",),
+                        errors=((None, "lifetime may not live long enough"),) * 2
+                        if revision == "bfail2" else (),
+                    )
+        if kind == "trivial_wf_batch":
+            borrowed_move = ("E0505", "cannot move out of `x` because it is borrowed")
+            for solver in ("current", "next", "slow"):
+                controls = {
+                    "revision": solver,
+                    "next_solver": solver == "next",
+                    "disable_fast_paths": solver == "slow",
+                }
+                check(f"trivial-wf-batch-{solver}", "tests/ui/ohm/trivial-wf-batch.rs", **controls)
+                check(
+                    f"trivial-wf-batch-no-core-{solver}", "tests/ui/ohm/trivial-wf-batch-no-core.rs",
+                    execute=False, extra_flags=("--emit=metadata",), **controls,
+                )
+                check(
+                    f"trivial-wf-batch-lifetimes-{solver}", "tests/ui/ohm/trivial-wf-batch-lifetimes.rs",
+                    errors=(("E0521", "borrowed data escapes outside of function"),)
+                    + ((None, "lifetime may not live long enough"),) * 4, **controls,
+                )
+                for suffix, errors in (
+                    ("", (borrowed_move,)),
+                    ("-2", ((None, "lifetime may not live long enough"),)),
+                    ("-3", ()),
+                    ("-4", (borrowed_move,)),
+                    ("-5", (("E0309", "the parameter type `T` may not live long enough"),) * 2
+                     + (borrowed_move,)),
+                ):
+                    check(
+                        f"trivial-wf-implied-bounds{suffix}-{solver}",
+                        f"tests/ui/fn/implied-bounds-unnorm-associated-type{suffix}.rs",
+                        errors=errors, execute=False, extra_flags=("--emit=metadata",), **controls,
+                    )
+                check(
+                    f"trivial-wf-normalized-sig-lifetimes-{solver}",
+                    "tests/ui/nll/check-normalized-sig-for-wf.rs",
+                    errors=(("E0597", "`s` does not live long enough"),)
+                    + (("E0521", "borrowed data escapes outside of function"),) * 2, **controls,
+                )
+                check(
+                    f"trivial-wf-normalized-signature-{solver}",
+                    "tests/ui/wf/check-wf-of-normalized-signature.rs",
+                    execute=False, extra_flags=("--emit=metadata",), **controls,
+                )
         if kind == "early_sized":
             for solver in ("current", "next", "slow"):
                 options = {
