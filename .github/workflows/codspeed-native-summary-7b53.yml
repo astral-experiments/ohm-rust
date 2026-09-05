@@ -1,0 +1,82 @@
+name: Resummarize bounded native compiler profiles
+
+on:
+  push:
+    branches: [charlie/codex-codspeed-native-summary-7b53]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  summarize:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [ruff-ty_python_semantic, uv-resolver]
+    env:
+      PROFILE_SHARD: ${{ matrix.shard }}
+    steps:
+      - name: Checkout diagnostic summarizer
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: Download exact profiled compiler
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codspeed-toolchain
+          run-id: 33963601483
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: build
+
+      - name: Download existing native samples
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: compiler-native-profile-7b53-${{ matrix.shard }}
+          run-id: 33967327218
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: build/previous-profile
+
+      - name: Unpack compiler
+        run: |
+          mkdir -p build/codspeed-toolchain
+          tar -xzf build/codspeed-toolchain.tar.gz -C build/codspeed-toolchain
+
+      - name: Verify binary identity and summarize recorded stacks
+        run: |
+          python3 - <<'PY'
+          import importlib.util
+          import json
+          from pathlib import Path
+          import platform
+          import subprocess
+
+          assert platform.machine() == 'aarch64'
+          profile, = Path('build/previous-profile').rglob('samples.json')
+          samples = json.loads(profile.read_text())
+          assert samples['error'] is None and samples['cleanup_complete']
+          required = 'commit-hash: 7d2c9ee7651076a9930b109f3738a1c6cb4dbb29'
+          version = subprocess.check_output(['build/codspeed-toolchain/stage1/bin/rustc', '-vV'], text=True)
+          assert required in version.splitlines() and required in samples['rustc_version'].splitlines()
+          spec = importlib.util.spec_from_file_location('native', '.github/scripts/native_profile_7b53.py')
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          driver = Path(samples['driver']['path'])
+          assert module.identity(driver)['build_id'] == samples['driver']['build_id']
+          subprocess.run(['python3', '.github/scripts/native_profile_symbols_7b53.py', str(profile.parent)], check=True)
+          Path('build/summary').mkdir()
+          for name in ('symbol-summary.json', 'symbol-summary.txt'):
+              (Path('build/summary') / name).write_bytes((profile.parent / name).read_bytes())
+          PY
+
+      - name: Retain corrected summaries
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: compiler-native-summary-7b53-${{ matrix.shard }}
+          path: build/summary
+          retention-days: 2

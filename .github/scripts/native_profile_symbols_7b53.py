@@ -15,6 +15,7 @@ def symbolize(offsets, driver, diagnostics):
     previous = None
     counts = Counter()
     unknown = 0
+    resolved = {}
 
     def finish_before(address):
         nonlocal position, unknown
@@ -22,6 +23,7 @@ def symbolize(offsets, driver, diagnostics):
             offset = pending[position]
             if previous is not None and previous[0] <= offset < previous[0] + previous[1]:
                 counts[previous[2]] += offsets[offset]
+                resolved[offset] = previous[2]
             else:
                 unknown += offsets[offset]
             position += 1
@@ -49,7 +51,7 @@ def symbolize(offsets, driver, diagnostics):
             if process.poll() is None:
                 process.kill()
             process.wait(timeout=5)
-    return counts, unknown
+    return counts, unknown, resolved
 
 
 def symbol_family(name):
@@ -79,14 +81,14 @@ def main():
     profile = args.profile.resolve()
     samples = json.loads((profile / 'samples.json').read_text())
     offsets = Counter(sample[3] for sample in samples['samples'] if sample[3] is not None)
-    counts, unknown = symbolize(offsets, Path(samples['driver']['path']), profile / 'nm-status.txt')
+    counts, unknown, leaf_names = symbolize(offsets, Path(samples['driver']['path']), profile / 'nm-status.txt')
     caller_offsets = Counter(offset for sample in samples['samples'] if len(sample) > 7
                              for offset in set(sample[7]))
-    caller_counts, caller_unknown = symbolize(
+    caller_counts, caller_unknown, caller_names = symbolize(
         caller_offsets, Path(samples['driver']['path']), profile / 'nm-callers-status.txt')
     link_offsets = Counter(sample[8] for sample in samples['samples']
                            if len(sample) > 8 and sample[8] is not None)
-    link_counts, link_unknown = symbolize(
+    link_counts, link_unknown, link_names = symbolize(
         link_offsets, Path(samples['driver']['path']), profile / 'nm-links-status.txt')
     names = list(counts.keys() | caller_counts.keys() | link_counts.keys())
     if names:
@@ -100,6 +102,23 @@ def main():
         decoded = dict(zip(names, demangled))
     else:
         decoded = {}
+    # Count each caller function only once per sample, including recursive stacks.
+    caller_counts = Counter(name for sample in samples['samples'] if len(sample) > 7
+                            for name in {caller_names[offset] for offset in sample[7]
+                                         if offset in caller_names})
+    atomic_callers = Counter()
+    outside_callers = Counter()
+    for sample in samples['samples']:
+        if len(sample) <= 8:
+            continue
+        leaf = decoded.get(leaf_names.get(sample[3]), '')
+        if leaf.startswith('__aarch64_') and sample[8] in link_names:
+            atomic_callers[link_names[sample[8]]] += 1
+        if sample[3] is None:
+            caller = next((caller_names[offset] for offset in sample[7]
+                           if offset in caller_names), None)
+            if caller is not None:
+                outside_callers[caller] += 1
     driver_count = sum(offsets.values())
     symbols = [
         {'samples': count, 'share_of_driver_samples': count / driver_count,
@@ -123,13 +142,17 @@ def main():
         'outside_driver_samples': len(samples['samples']) - driver_count,
         'unsymbolized_driver_samples': unknown, 'symbols': symbols,
         'caller_samples': sum(caller_offsets.values()),
+        'atomic_callers': [{'samples': count, 'symbol': decoded[name]}
+                           for name, count in atomic_callers.most_common()],
+        'outside_driver_callers': [{'samples': count, 'symbol': decoded[name]}
+                                   for name, count in outside_callers.most_common()],
         'unsymbolized_caller_samples': caller_unknown,
         'unsymbolized_link_register_samples': link_unknown,
         'callers': [{'samples': count, 'symbol': decoded[name]}
                     for name, count in caller_counts.most_common()],
         'link_registers': [{'samples': count, 'symbol': decoded[name]}
                            for name, count in link_counts.most_common()],
-        'stack_note': 'Frame-pointer chains only; may be incomplete. ARM link register is reported separately and may point within the current function.',
+        'stack_note': 'Frame-pointer chains only; may be incomplete. Each caller function counts once per sample. ARM link register may point within the current function, except when sampled in a leaf atomic helper.',
         'compiler_crates': crates.most_common(), 'symbol_families': families.most_common(),
         'family_grouping_note': 'Disjoint leaf-symbol name groups; generic hashing and allocation cannot be assigned to callers without stacks',
     }
@@ -145,6 +168,10 @@ def main():
     lines.extend(f'{count:6d}  {name}' for name, count in families.most_common())
     lines.extend(['', 'Frame-pointer caller records (incomplete chains; counts overlap):'])
     lines.extend(f'{count:6d}  {decoded[name]}' for name, count in caller_counts.most_common(50))
+    lines.extend(['', 'Callers of leaf atomic helpers:'])
+    lines.extend(f'{count:6d}  {decoded[name]}' for name, count in atomic_callers.most_common(20))
+    lines.extend(['', 'Nearest driver caller when sampled outside the driver:'])
+    lines.extend(f'{count:6d}  {decoded[name]}' for name, count in outside_callers.most_common(20))
     lines.extend(['', 'ARM link register targets (may be within the current function):'])
     lines.extend(f'{count:6d}  {decoded[name]}' for name, count in link_counts.most_common(30))
     lines.extend(['', 'Compiler crate sample counts:'])
