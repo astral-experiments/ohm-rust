@@ -24,6 +24,8 @@ fn interner_get() {
     assert_eq!(i.get_str(Symbol::new(1)), "cow");
     assert_eq!(i.get_str(cat_idx), "cat");
     assert_eq!(i.get_str(dog_idx), "dog");
+    assert_eq!(i.get_byte_str(ByteSymbol::new(0)), b"chicken");
+    assert_eq!(i.get_byte_str(ByteSymbol::new(cat_idx.as_u32())), b"cat");
 }
 
 #[test]

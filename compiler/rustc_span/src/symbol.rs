@@ -9,7 +9,7 @@ use rustc_arena::DroplessArena;
 use rustc_data_structures::fx::FxBuildHasher;
 use rustc_data_structures::hash_table::{Entry, HashTable};
 use rustc_data_structures::stable_hash::{StableCompare, StableHash, StableHashCtxt, StableHasher};
-use rustc_data_structures::sync::Lock;
+use rustc_data_structures::sync::{AppendOnlyIndexVec, Lock};
 use rustc_macros::{Decodable, Encodable, StableHash, symbols};
 
 use crate::edit_distance::find_best_match_for_name;
@@ -2477,8 +2477,7 @@ impl Ident {
         Ident::new(self.name, self.span.normalize_to_macro_rules())
     }
 
-    /// Access the underlying string. This is a slowish operation because it
-    /// requires locking the symbol interner.
+    /// Access the underlying string.
     ///
     /// Note that the lifetime of the return value is a lie. See
     /// `Symbol::as_str()` for details.
@@ -2660,8 +2659,7 @@ impl Symbol {
         with_session_globals(|session_globals| session_globals.symbol_interner.intern_str(str))
     }
 
-    /// Access the underlying string. This is a slowish operation because it
-    /// requires locking the symbol interner.
+    /// Access the underlying string.
     ///
     /// Note that the lifetime of the return value is a lie. It's not the same
     /// as `&self`, but actually tied to the lifetime of the underlying
@@ -2788,7 +2786,10 @@ impl StableHash for ByteSymbol {
 // string with identical contents (e.g. "foo" and b"foo") are both interned,
 // only one copy will be stored and the resulting `Symbol` and `ByteSymbol`
 // will have the same index.
-pub(crate) struct Interner(Lock<InternerInner>);
+pub(crate) struct Interner {
+    inner: Lock<InternerInner>,
+    byte_strs: AppendOnlyIndexVec<SymbolIndex, &'static [u8]>,
+}
 
 // The `&'static [u8]`s in this type actually point into the arena.
 //
@@ -2798,7 +2799,6 @@ pub(crate) struct Interner(Lock<InternerInner>);
 struct InternerInner {
     arena: DroplessArena,
     indices: HashTable<(&'static [u8], u32)>,
-    byte_strs: Vec<&'static [u8]>,
 }
 
 impl Interner {
@@ -2813,15 +2813,15 @@ impl Interner {
         let mut indices: HashTable<(&'static [u8], u32)> = HashTable::with_capacity(size_hint);
         let hasher = FxBuildHasher::default();
 
-        let mut byte_strs: Vec<&'static [u8]> = Vec::with_capacity(size_hint);
+        let byte_strs: AppendOnlyIndexVec<SymbolIndex, &'static [u8]> = AppendOnlyIndexVec::new();
 
         for v in values {
             match indices.entry(hasher.hash_one(&v), |&(s, _)| s == v, |&(s, _)| hasher.hash_one(s))
             {
                 Entry::Occupied(v) => conflicting_values.push(v.get().0),
                 Entry::Vacant(view) => {
-                    view.insert((v, byte_strs.len() as u32));
-                    byte_strs.push(v);
+                    let idx = byte_strs.push(v);
+                    view.insert((v, idx.as_u32()));
                 }
             }
         }
@@ -2833,7 +2833,10 @@ impl Interner {
             )
         }
 
-        Interner(Lock::new(InternerInner { arena: Default::default(), indices, byte_strs }))
+        Interner {
+            inner: Lock::new(InternerInner { arena: Default::default(), indices }),
+            byte_strs,
+        }
     }
 
     fn intern_str(&self, str: &str) -> Symbol {
@@ -2849,7 +2852,7 @@ impl Interner {
         let hasher = FxBuildHasher::default();
         let hash_of_byte_str = hasher.hash_one(byte_str);
 
-        self.0.with_lock(|inner| {
+        self.inner.with_lock(|inner| {
             match inner.indices.entry(
                 hash_of_byte_str,
                 |&(s, _)| s == byte_str,
@@ -2862,9 +2865,10 @@ impl Interner {
                     // SAFETY: we can extend the arena allocation to `'static` because we
                     // only access these while the arena is still alive.
                     let byte_str: &'static [u8] = unsafe { &*(byte_str as *const [u8]) };
-                    let idx = inner.byte_strs.len() as u32;
+                    // Publish the bytes before the index becomes visible through `indices`.
+                    // Readers can then resolve symbols without taking the insertion lock.
+                    let idx = self.byte_strs.push(byte_str).as_u32();
                     view.insert((byte_str, idx));
-                    inner.byte_strs.push(byte_str);
                     idx
                 }
             }
@@ -2875,7 +2879,7 @@ impl Interner {
     ///
     /// [`Symbol::as_str()`] should be used in preference to this function.
     fn get_str(&self, symbol: Symbol) -> &str {
-        let byte_str = self.get_inner(symbol.0.as_usize());
+        let byte_str = self.get_inner(symbol.0);
         // SAFETY: known to be a UTF8 string because it's a `Symbol`.
         unsafe { str::from_utf8_unchecked(byte_str) }
     }
@@ -2884,11 +2888,11 @@ impl Interner {
     ///
     /// [`ByteSymbol::as_byte_str()`] should be used in preference to this function.
     fn get_byte_str(&self, symbol: ByteSymbol) -> &[u8] {
-        self.get_inner(symbol.0.as_usize())
+        self.get_inner(symbol.0)
     }
 
-    fn get_inner(&self, index: usize) -> &[u8] {
-        self.0.with_lock(|inner| inner.byte_strs[index])
+    fn get_inner(&self, index: SymbolIndex) -> &[u8] {
+        self.byte_strs.get(index).expect("symbol must have been interned")
     }
 }
 
