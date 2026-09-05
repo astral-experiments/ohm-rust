@@ -1255,7 +1255,9 @@ pub fn rustc_cargo(
         cargo.rustflag("-Zdefault-visibility=protected");
     }
 
-    if is_lto_stage(build_compiler) {
+    // Apply configured LTO to the requested stage 1 compiler, but skip it when
+    // stage 1 is an intermediate compiler in a build of a later stage.
+    if is_lto_stage(build_compiler) || builder.top_stage == 1 {
         match builder.config.rust_lto {
             RustcLto::Thin | RustcLto::Fat => {
                 // Since using LTO for optimizing dylibs is currently experimental,
