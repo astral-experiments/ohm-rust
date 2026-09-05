@@ -870,8 +870,8 @@
 # (`rust` or `target.[target]`)
 #rust.jemalloc = false
 
-# Link the compiler and LLVM against mimalloc. Currently supported on Linux GNU hosts.
-# This requires build.allocator = "system", including any per-target override.
+# Link rustc and its LLVM library against mimalloc on Linux GNU hosts.
+# Takes precedence over jemalloc for rustc only; other tools still use build.allocator.
 #rust.mimalloc = false
 
 # Run tests in various test suites with the "nll compare mode" in addition to
