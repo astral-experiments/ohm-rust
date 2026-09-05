@@ -48,7 +48,7 @@ where
 /// Defers allocation even when normalization or query responses borrow a trait engine.
 ///
 /// This adapter is private to `ObligationCtxt`; all methods receive that context's `InferCtxt`.
-struct LazyTraitEngine<'tcx, E: 'tcx> {
+struct LazyTraitEngine<'tcx, E> {
     inner: Option<Box<dyn TraitEngine<'tcx, E>>>,
     usable_in_snapshot: usize,
 }
