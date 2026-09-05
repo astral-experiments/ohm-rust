@@ -2624,6 +2624,7 @@ pub(super) fn closed_associated_type_bounds_hold<'tcx>(
         || !matches!(item.container, ty::AssocContainer::Trait)
         || item.is_impl_trait_in_trait()
         || tcx.generics_of(trait_item).count() != 1
+        || !tcx.predicates_of(trait_item).predicates.is_empty()
         || definition.has_type_flags(CLOSED_BOUND_DISALLOWED_FLAGS)
     {
         return false;
