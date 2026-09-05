@@ -11,8 +11,8 @@ pub(crate) const SMALL_READS_MAX: usize = 16;
 /// The reads recorded by one task so far, deduplicated and in first-read order.
 #[derive(Debug)]
 pub(crate) enum TaskReads {
-    /// The first few reads, deduplicated by a linear scan. Most tasks never outgrow this.
-    Small { len: u8, buf: [DepNodeIndex; SMALL_READS_MAX] },
+    /// The first few reads, with a shortcut for consecutive duplicates.
+    Small { len: u8, buf: [DepNodeIndex; SMALL_READS_MAX], last: DepNodeIndex },
 
     /// The reads of a task that outgrew the inline buffer.
     Recorded(ReadsRecorder),
@@ -21,7 +21,11 @@ pub(crate) enum TaskReads {
 impl TaskReads {
     #[inline]
     pub(crate) fn new() -> Self {
-        TaskReads::Small { len: 0, buf: [DepNodeIndex::ZERO; SMALL_READS_MAX] }
+        TaskReads::Small {
+            len: 0,
+            buf: [DepNodeIndex::ZERO; SMALL_READS_MAX],
+            last: DepNodeIndex::ZERO,
+        }
     }
 
     /// Records a read and returns whether it was new for the task. The pool provides a
@@ -30,13 +34,17 @@ impl TaskReads {
     pub(crate) fn insert(&mut self, index: DepNodeIndex, pool: &Lock<Vec<ReadsRecorder>>) -> bool {
         match self {
             TaskReads::Recorded(recorder) => recorder.insert(index),
-            TaskReads::Small { len, buf } => {
+            TaskReads::Small { len, buf, last } => {
                 let n = usize::from(*len);
-                if buf[..n].contains(&index) {
+                if n > 0 && *last == index {
+                    false
+                } else if buf[..n].contains(&index) {
+                    *last = index;
                     false
                 } else if n < SMALL_READS_MAX {
                     buf[n] = index;
                     *len += 1;
+                    *last = index;
                     true
                 } else {
                     // The inline buffer is full: move the reads into a pooled recorder.
@@ -56,7 +64,7 @@ impl TaskReads {
     #[inline]
     pub(crate) fn edges(&self) -> &[DepNodeIndex] {
         match self {
-            TaskReads::Small { len, buf } => &buf[..usize::from(*len)],
+            TaskReads::Small { len, buf, .. } => &buf[..usize::from(*len)],
             TaskReads::Recorded(recorder) => &recorder.reads,
         }
     }
