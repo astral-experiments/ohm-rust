@@ -1,0 +1,38 @@
+error[E0425]: cannot find type `Missing` in this scope
+  --> $DIR/generalizer-pure-fallback.rs:17:16
+   |
+LL |     let value: Missing = 0;
+   |                ^^^^^^^ not found in this scope
+
+error[E0308]: mismatched types
+  --> $DIR/generalizer-pure-fallback.rs:12:5
+   |
+LL | fn projection<T: Project>(value: T::Output) -> u32 {
+   |                                                --- expected `u32` because of return type
+...
+LL |     result.unwrap()
+   |     ^^^^^^^^^^^^^^^ expected `u32`, found associated type
+   |
+   = note:         expected type `u32`
+           found associated type `<T as Project>::Output`
+help: consider constraining the associated type `<T as Project>::Output` to `u32`
+   |
+LL | fn projection<T: Project<Output = u32>>(value: T::Output) -> u32 {
+   |                         ++++++++++++++
+
+error[E0277]: the trait bound `T: Same<_>` is not satisfied
+  --> $DIR/generalizer-pure-fallback.rs:28:15
+   |
+LL |     require::<_>();
+   |               ^ the trait `Same<_>` is not implemented for `T`
+   |
+note: required by a bound in `require`
+  --> $DIR/generalizer-pure-fallback.rs:26:33
+   |
+LL | fn require<U>() where for<T> T: Same<U> {}
+   |                                 ^^^^^^^ required by this bound in `require`
+
+error: aborting due to 3 previous errors
+
+Some errors have detailed explanations: E0277, E0308, E0425.
+For more information about an error, try `rustc --explain E0277`.

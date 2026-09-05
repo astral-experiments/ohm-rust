@@ -579,6 +579,25 @@ impl<'tcx> TypeRelation<TyCtxt<'tcx>> for Generalizer<'_, 'tcx> {
     fn tys(&mut self, t: Ty<'tcx>, t2: Ty<'tcx>) -> RelateResult<'tcx, Ty<'tcx>> {
         assert_eq!(t, t2); // we are misusing TypeRelation here; both LHS and RHS ought to be ==
 
+        // These subtrees cannot change or fail generalization. Avoid recursively
+        // relating them to themselves and populating the per-generalization cache.
+        if !cfg!(debug_assertions)
+            && !self.infcx.disable_trait_solver_fast_paths()
+            && !t.has_type_flags(
+                ty::TypeFlags::HAS_INFER
+                    | ty::TypeFlags::HAS_PLACEHOLDER
+                    | ty::TypeFlags::HAS_ALIAS
+                    | ty::TypeFlags::HAS_ERROR
+                    | ty::TypeFlags::HAS_FREE_REGIONS
+                    | ty::TypeFlags::HAS_BOUND_VARS
+                    | ty::TypeFlags::HAS_TY_FRESH
+                    | ty::TypeFlags::HAS_CT_FRESH,
+            )
+            && !self.cx().features().generic_const_exprs()
+        {
+            return Ok(t);
+        }
+
         if let Some(&result) = self.cache.get(&(t, self.ambient_variance, self.in_alias)) {
             return Ok(result);
         }
