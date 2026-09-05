@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   style:
+    if: ${{ github.ref != 'refs/heads/charlie/codex-codspeed-arm-self-profile' }}
     name: Formatting and tidy
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 30
@@ -47,6 +48,7 @@ jobs:
           test tidy
 
   compiler:
+    if: ${{ github.ref != 'refs/heads/charlie/codex-codspeed-arm-self-profile' }}
     name: ${{ matrix.os == 'depot-ubuntu-24.04-16' && 'Compiler and regression tests' || 'Compiler and regression tests (macOS)' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -213,3 +215,106 @@ jobs:
             python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true \
               --set rust.lto=off test --stage 1 "${selected[@]}"
           fi
+
+  arm_self_profile:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/charlie/codex-codspeed-arm-self-profile' }}
+    name: Profile exact bitmaps incremental compiler
+    runs-on: codspeed-macro
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout exact compiler source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: 5f201816f43d7b89b4a9a2ffac332f2196da9365
+          persist-credentials: false
+      - name: Checkout pinned benchmark dependencies
+        run: git submodule update --init --depth 1 src/tools/rustc-perf
+      - name: Download exact benchmark compiler
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codspeed-toolchain
+          run-id: 33950241981
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: build
+      - name: Unpack benchmark compiler
+        run: |
+          mkdir -p build/codspeed-toolchain
+          tar -xzf build/codspeed-toolchain.tar.gz -C build/codspeed-toolchain
+      - name: Checkout pinned Ruff benchmark source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: astral-sh/ruff
+          ref: efcffd2178ce62e9951a53d4c50cadc225a0cfec
+          path: build/codspeed-sources/ruff
+          persist-credentials: false
+      - name: Checkout pinned uv benchmark source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: astral-sh/uv
+          ref: 3392e29bdc4f09bb4f6d92f7aca8d450b835ce4f
+          path: build/codspeed-sources/uv
+          persist-credentials: false
+      - name: Install benchmark tools
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.7"
+      - name: Install pinned benchmark dependencies
+        run: |
+          uv venv --python 3.13.15 src/tools/codspeed/.venv
+          uv pip sync --python src/tools/codspeed/.venv/bin/python --require-hashes src/tools/codspeed/requirements.txt
+      - name: Capture one compiler self-profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          src/tools/codspeed/.venv/bin/python src/tools/codspeed/prepare.py \
+            --rustc build/codspeed-toolchain/stage1/bin/rustc \
+            --cargo build/codspeed-toolchain/stage0/bin/cargo \
+            --shard bitmaps-3.2.1
+          src/tools/codspeed/.venv/bin/python - <<'PY_PROFILE'
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, str(Path('src/tools/codspeed').resolve()))
+          from test_compiler_walltime import prepare_invocation
+
+          sha = '5f201816f43d7b89b4a9a2ffac332f2196da9365'
+          manifest = json.loads(Path('build/codspeed/manifest.json').read_text())
+          assert f'commit-hash: {sha}' in manifest['rustc_version'].splitlines()
+          assert manifest['suite_revision'] == 'c0301bc44d175b9b2c5442b25049475c39d7700c'
+          (fixture,) = [f for f in manifest['fixtures'] if f['name'] == 'bitmaps-3.2.1']
+          (command,), kwargs = prepare_invocation(fixture, 'IncrFull')
+          profile = Path('build/profile').resolve()
+          profile.mkdir(parents=True, exist_ok=True)
+          assert command[0] == str(Path('build/codspeed-toolchain/stage1/bin/rustc').resolve())
+          with (profile / 'rustc-stderr.txt').open('w') as stderr:
+              subprocess.run([*command, f'-Zself-profile={profile}'], stderr=stderr, **kwargs)
+          files = sorted(profile.glob('bitmaps-*.mm_profdata'))
+          assert len(files) == 1 and files[0].stat().st_size > 0, files
+          (profile / 'profile-path.txt').write_text(str(files[0]) + '\n')
+          PY_PROFILE
+          CARGO_TARGET_DIR="$RUNNER_TEMP/measureme-target" \
+            RUSTC="$PWD/build/codspeed-toolchain/stage1/bin/rustc" \
+            build/codspeed-toolchain/stage0/bin/cargo install \
+              --git https://github.com/rust-lang/measureme \
+              --rev 5ac839c602b59eee9c908b3b35b6d6c0cd1c42f7 \
+              --root "$RUNNER_TEMP/measureme" summarize
+          "$RUNNER_TEMP/measureme/bin/summarize" summarize \
+            "$(cat build/profile/profile-path.txt)" --percent-above 0.05 \
+            > build/profile/query-summary.txt
+          head -80 build/profile/query-summary.txt
+      - name: Retain compact query summary
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bitmaps-incrfull-query-profile
+          path: |
+            build/profile/query-summary.txt
+            build/profile/rustc-stderr.txt
+            build/codspeed/manifest.json
+          if-no-files-found: warn
+          retention-days: 2
