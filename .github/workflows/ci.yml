@@ -305,7 +305,11 @@ jobs:
               fi
               cat "$output"
               if [[ "$revision" == bfail2 ]]; then
-                grep -Fq 'Bad: Bound' "$output"
+                if [[ "$solver" == current ]]; then
+                  grep -Fq 'error[E0277]: the trait bound `Bad: Bound` is not satisfied' "$output"
+                else
+                  grep -Fq 'error[E0271]: type mismatch resolving `<Bad as ConditionalStorage>::Value == _`' "$output"
+                fi
                 test "$(grep -c '^error\[E' "$output")" -eq 3
                 ! grep -Fq 'internal compiler error' "$output"
               fi
