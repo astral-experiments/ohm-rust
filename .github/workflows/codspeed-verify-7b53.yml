@@ -19,9 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - kind: lazy_engine
-            sha: 2ccd07c4470a64f6462191805aef3e6e8a72057b
-            run: 33980939158
+          - kind: canonical_input_cache
+            sha: 0250cb57508464a20d2a06c8750883dc9d5739ec
+            run: 33981167471
     steps:
       - name: Checkout validation script
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
