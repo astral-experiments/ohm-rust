@@ -255,6 +255,15 @@ jobs:
           grep -Fq 'error[E0277]: the trait bound `(): Bound` is not satisfied' "$RUNNER_TEMP/assoc-ui.txt"
           test "$(grep -c '^error\[E' "$RUNNER_TEMP/assoc-ui.txt")" -eq 3
           ! grep -Fq 'internal compiler error' "$RUNNER_TEMP/assoc-ui.txt"
+          if "$rustc" -Znext-solver=globally --crate-name assoc_ui_next --edition=2021 --emit=metadata -o /dev/null tests/ui/associated-types/concrete-impl-bound-normalization.rs > "$RUNNER_TEMP/assoc-ui-next.txt" 2>&1; then
+            echo 'Expected next-solver associated-type bounds diagnostics'; exit 1
+          fi
+          cat "$RUNNER_TEMP/assoc-ui-next.txt"
+          grep -Fq 'error[E0277]: `u16` is not an iterator' "$RUNNER_TEMP/assoc-ui-next.txt"
+          grep -Fq 'error[E0277]: cannot add `bool` to `u8`' "$RUNNER_TEMP/assoc-ui-next.txt"
+          grep -Fq 'error[E0271]: type mismatch resolving `<() as NeedsBound>::Store == _`' "$RUNNER_TEMP/assoc-ui-next.txt"
+          test "$(grep -c '^error\[E' "$RUNNER_TEMP/assoc-ui-next.txt")" -eq 3
+          ! grep -Fq 'internal compiler error' "$RUNNER_TEMP/assoc-ui-next.txt"
           if "$rustc" --crate-name specialization_ui --edition=2021 --emit=metadata -o /dev/null tests/ui/specialization/default-associated-type-bound-1.rs > "$RUNNER_TEMP/specialization-ui.txt" 2>&1; then
             echo 'Expected specialization bounds diagnostic'; exit 1
           fi
