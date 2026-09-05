@@ -617,7 +617,7 @@ fn get_flow_results<'a, 'tcx>(
     let borrows = {
         let _timer = tcx.prof.generic_activity("borrowck_dataflow_borrows");
         let borrows = Borrows::new(tcx, body, regioncx, borrow_set);
-        if borrow_set.len() == 0 {
+        if borrow_set.len() == 0 && !tcx.sess.opts.unstable_opts.dump_mir_dataflow {
             // With no loans to generate, the borrow state is empty at every block entry.
             // Avoid traversing the MIR just to compute this fixed point.
             Results {
