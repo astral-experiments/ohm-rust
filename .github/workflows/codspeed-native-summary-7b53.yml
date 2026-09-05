@@ -70,7 +70,7 @@ jobs:
           assert module.identity(driver)['build_id'] == samples['driver']['build_id']
           subprocess.run(['python3', '.github/scripts/native_profile_symbols_7b53.py', str(profile.parent)], check=True)
           Path('build/summary').mkdir()
-          for name in ('symbol-summary.json', 'symbol-summary.txt'):
+          for name in ('symbol-summary.json', 'symbol-summary.txt', 'offset-symbols.json'):
               (Path('build/summary') / name).write_bytes((profile.parent / name).read_bytes())
           PY
 

@@ -74,6 +74,72 @@ def symbol_family(name):
     return 'other'
 
 
+FOLD_FAMILIES = {
+    'arg_folder': '::binder::ArgFolder',
+    'opportunistic_var_resolver': '::resolve::OpportunisticVarResolver',
+    'canonicalizer': '::canonicalizer::Canonicalizer',
+    'region_folder': '::fold::RegionFolder',
+    'type_freshener': '::freshen::TypeFreshener',
+}
+
+
+def fold_family_counts(samples, leaf_names, caller_names, decoded):
+    """Count each family once per sample, even through recursive/nested helpers."""
+    masks = {
+        name: sum(1 << index for index, needle in enumerate(FOLD_FAMILIES.values())
+                  if needle in display)
+        for name, display in decoded.items()
+    }
+    leaf_counts = [0] * len(FOLD_FAMILIES)
+    transitive_counts = [0] * len(FOLD_FAMILIES)
+    any_transitive = 0
+    for sample in samples:
+        leaf_mask = masks.get(leaf_names.get(sample[3]), 0)
+        transitive_mask = leaf_mask
+        if len(sample) > 7:
+            # OR is the per-sample union, including repeated frames of one function
+            # and different generic helpers from the same family.
+            for offset in sample[7]:
+                transitive_mask |= masks.get(caller_names.get(offset), 0)
+        any_transitive += bool(transitive_mask)
+        for index in range(len(FOLD_FAMILIES)):
+            leaf_counts[index] += bool(leaf_mask & (1 << index))
+            transitive_counts[index] += bool(transitive_mask & (1 << index))
+    total = len(samples)
+    return {
+        'note': 'Each family counts at most once per sample across the leaf and captured '
+                'stack. Families can overlap; missing frames can undercount. Shares use '
+                'all samples, including samples outside the driver.',
+        'families': [
+            {'family': family, 'leaf_samples': leaf_counts[index],
+             'transitive_samples': transitive_counts[index],
+             'leaf_share_of_all_samples': leaf_counts[index] / total if total else 0,
+             'transitive_share_of_all_samples': transitive_counts[index] / total if total else 0}
+            for index, family in enumerate(FOLD_FAMILIES)
+        ],
+        'any_family_transitive_samples': any_transitive,
+        'any_family_transitive_share_of_all_samples': any_transitive / total if total else 0,
+    }
+
+
+def compact_symbol_map(leaf_names, caller_names, link_names, decoded):
+    """Retain only observed offsets, sharing names across all three sample roles."""
+    resolved = {}
+    for role in (leaf_names, caller_names, link_names):
+        for offset, name in role.items():
+            previous = resolved.setdefault(offset, name)
+            if previous != name:
+                raise RuntimeError(f'Inconsistent symbols for driver offset {offset:#x}')
+    names = sorted(set(resolved.values()))
+    indices = {name: index for index, name in enumerate(names)}
+    return {
+        'symbol_columns': ['mangled', 'demangled'],
+        'symbols': [[name, decoded[name]] for name in names],
+        'offset_columns': ['driver_offset', 'symbol_index'],
+        'offsets': [[offset, indices[name]] for offset, name in sorted(resolved.items())],
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('profile', type=Path)
@@ -142,6 +208,8 @@ def main():
         'outside_driver_samples': len(samples['samples']) - driver_count,
         'unsymbolized_driver_samples': unknown, 'symbols': symbols,
         'caller_samples': sum(caller_offsets.values()),
+        'fold_family_counts': fold_family_counts(
+            samples['samples'], leaf_names, caller_names, decoded),
         'atomic_callers': [{'samples': count, 'symbol': decoded[name]}
                            for name, count in atomic_callers.most_common()],
         'outside_driver_callers': [{'samples': count, 'symbol': decoded[name]}
@@ -157,6 +225,15 @@ def main():
         'family_grouping_note': 'Disjoint leaf-symbol name groups; generic hashing and allocation cannot be assigned to callers without stacks',
     }
     (profile / 'symbol-summary.json').write_text(json.dumps(result, indent=2) + '\n')
+    offset_map = {
+        'schema_version': 1,
+        'fixture': samples['fixture'],
+        'source_revision': samples['source_revision'],
+        'driver': samples['driver'],
+        **compact_symbol_map(leaf_names, caller_names, link_names, decoded),
+    }
+    (profile / 'offset-symbols.json').write_text(
+        json.dumps(offset_map, separators=(',', ':')) + '\n')
     lines = [result['description'],
              f"Fixture: {result['fixture']}; architecture: {result['architecture']}",
              f"Samples: {result['samples']}; driver: {driver_count}; unsymbolized driver: {unknown}",
@@ -166,6 +243,15 @@ def main():
                  for entry in symbols[:100])
     lines.extend(['', 'Leaf symbol family sample counts (no caller attribution):'])
     lines.extend(f'{count:6d}  {name}' for name, count in families.most_common())
+    lines.extend(['', 'Fold family per-sample unions (leaf + captured stack; all-sample shares):'])
+    lines.extend(
+        f"{entry['transitive_samples']:6d}  {entry['transitive_share_of_all_samples']:8.2%}  "
+        f"{entry['family']} (leaf: {entry['leaf_samples']})"
+        for entry in result['fold_family_counts']['families'])
+    lines.append(
+        f"{result['fold_family_counts']['any_family_transitive_samples']:6d}  "
+        f"{result['fold_family_counts']['any_family_transitive_share_of_all_samples']:8.2%}  "
+        'any listed family (union)')
     lines.extend(['', 'Frame-pointer caller records (incomplete chains; counts overlap):'])
     lines.extend(f'{count:6d}  {decoded[name]}' for name, count in caller_counts.most_common(50))
     lines.extend(['', 'Callers of leaf atomic helpers:'])
