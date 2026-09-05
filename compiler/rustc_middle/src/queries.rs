@@ -1927,6 +1927,11 @@ rustc_queries! {
         separate_provide_extern
     }
 
+    /// Whether a closed associated-type definition is well-formed and satisfies its bounds.
+    query closed_associated_type_bounds_hold(key: (DefId, Ty<'tcx>)) -> bool {
+        desc { "checking closed bounds on `{}` for `{}`", tcx.def_path_str(key.0), key.1 }
+    }
+
     query check_well_formed(key: LocalDefId) -> Result<(), ErrorGuaranteed> {
         desc { "checking that `{}` is well-formed", tcx.def_path_str(key) }
     }
