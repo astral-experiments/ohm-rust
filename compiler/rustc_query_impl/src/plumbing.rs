@@ -167,19 +167,7 @@ pub(crate) fn promote_from_disk_inner<'tcx, C: QueryCache>(
         return;
     }
 
-    // Leave unused values serialized. If a later compilation needs the value,
-    // its ordinary loading path still decodes and verifies the fingerprint.
-    if tcx
-        .query_system
-        .on_disk_cache
-        .as_ref()
-        .unwrap()
-        .try_forward_query_value(prev_index, dep_node_index)
-    {
-        return;
-    }
-
-    // Load the disk-cached value into memory.
+    // Compaction loads the disk-cached value into memory.
     let dep_graph_data =
         tcx.dep_graph.data().expect("should always be present in incremental mode");
 

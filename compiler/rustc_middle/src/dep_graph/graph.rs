@@ -1093,14 +1093,15 @@ impl DepGraph {
     /// needed in this session. Promotion can retain their serialized bytes or
     /// load them into memory for re-encoding when compacting the cache.
     ///
-    /// This method will only load queries that will end up in the disk cache.
-    /// Other queries will not be executed.
+    /// When compacting the cache, this method only loads queries that will end
+    /// up on disk. Other queries will not be executed.
     pub fn exec_cache_promotions<'tcx>(&self, tcx: TyCtxt<'tcx>) {
         let _prof_timer = tcx.prof.generic_activity("incr_comp_query_cache_promotion");
 
         let data = self.data.as_ref().unwrap();
         let previous_node_count = data.colors.values.len();
         let on_disk_cache = tcx.query_system.on_disk_cache.as_ref().unwrap();
+        let forward_query_values = on_disk_cache.can_forward_query_values();
 
         // Only nodes with saved query values can need promotion. Avoid scanning the entire old
         // graph and recovering keys for queries that never had a disk-cached value.
@@ -1117,7 +1118,18 @@ impl DepGraph {
             };
             let dep_node = data.previous.index_to_node(prev_index);
             if let Some(promote_fn) = tcx.dep_kind_vtable(dep_node.kind).promote_from_disk_fn {
-                promote_fn(tcx, *dep_node, prev_index, dep_node_index)
+                if forward_query_values {
+                    // This index was saved only after the key passed disk-cache
+                    // eligibility. A green node keeps the crate identity used
+                    // by the local/extern eligibility check unchanged. Forward
+                    // without recovering the key: an unreachable green value
+                    // can remain until compaction checks key recovery again.
+                    // Serialization discards aliases for in-memory values.
+                    on_disk_cache.forward_query_value(prev_index, dep_node_index);
+                } else {
+                    // Periodically decode live values into a fresh cache file.
+                    promote_fn(tcx, *dep_node, prev_index, dep_node_index);
+                }
             }
         });
     }

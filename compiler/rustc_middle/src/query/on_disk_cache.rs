@@ -2,7 +2,7 @@ use std::collections::hash_map::Entry;
 use std::sync::Arc;
 use std::{fmt, mem};
 
-use rustc_data_structures::fx::{FxHashMap, FxIndexSet};
+use rustc_data_structures::fx::{FxHashMap, FxHashSet, FxIndexSet};
 use rustc_data_structures::memmap::Mmap;
 use rustc_data_structures::stable_hash::{StableHash, StableHasher};
 use rustc_data_structures::sync::{HashMapExt, Lock, RwLock};
@@ -295,21 +295,24 @@ impl OnDiskCache {
         }
     }
 
-    /// Retains an eligible, green query without decoding its unused value.
-    pub fn try_forward_query_value(
+    /// Whether another generation can be retained without compacting the cache.
+    pub fn can_forward_query_values(&self) -> bool {
+        self.generation_count < MAX_CACHE_GENERATIONS
+    }
+
+    /// Retains a green query whose previous index is in [`Self::cached_query_indices`].
+    /// The caller checks the index against the previous graph and checks that the
+    /// query kind supports disk cache promotion. A value already loaded into the
+    /// query cache will replace this alias when the current values are encoded.
+    pub fn forward_query_value(
         &self,
         previous_index: SerializedDepNodeIndex,
         current_index: DepNodeIndex,
-    ) -> bool {
-        // Periodically use normal promotion to discard obsolete generations.
-        if self.generation_count >= MAX_CACHE_GENERATIONS
-            || !self.loadable_from_disk(previous_index)
-        {
-            return false;
-        }
+    ) {
+        debug_assert!(self.can_forward_query_values());
+        debug_assert!(self.loadable_from_disk(previous_index));
         let current_index = SerializedDepNodeIndex::from_curr_for_serialization(current_index);
         self.pending_query_values.lock().push((current_index, previous_index));
-        true
     }
 
     /// Copies retained data before releasing every mmap and replacing the cache file.
@@ -348,7 +351,7 @@ impl OnDiskCache {
     ) -> FileEncodeResult {
         // Serializing the `DepGraph` should not modify it.
         tcx.dep_graph.with_ignore(|| {
-            let (previous_cache_len, forwarded_query_values, allocation_origins) =
+            let (previous_cache_len, mut forwarded_query_values, allocation_origins) =
                 if let Some(promotion) = promotion {
                     // Preserve every old byte position, including type and symbol shorthands.
                     // The already-written header belongs to the same compiler version.
@@ -402,6 +405,16 @@ impl OnDiskCache {
             tcx.sess.time("encode_query_values", || {
                 tcx.encode_query_values(&mut encoder);
             });
+
+            // Forwarding does not recover keys or probe the in-memory query cache.
+            // Queries that were already materialized (or materialized during
+            // encoding) are written above, so their current values take precedence.
+            if !forwarded_query_values.is_empty() && !encoder.query_values_index.is_empty() {
+                let encoded_indices: FxHashSet<_> =
+                    encoder.query_values_index.iter().map(|(index, _)| *index).collect();
+                forwarded_query_values
+                    .retain(|(current_index, _)| !encoded_indices.contains(current_index));
+            }
 
             // Encode side effects.
             for (&dep_node_index, side_effect) in tcx.query_system.side_effects.borrow().iter() {
