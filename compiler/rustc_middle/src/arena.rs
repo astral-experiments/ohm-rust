@@ -146,6 +146,7 @@ arena_types!(rustc_arena::declare_arena);
 /// Separate storage for the records behind interned types, constants, and predicates.
 #[derive(Default)]
 pub struct InternedTypeArenas<'tcx> {
+    #[allow(rustc::usage_of_ty_tykind)]
     pub(crate) types: TypedArena<WithCachedTypeInfo<ty::TyKind<'tcx>>>,
     pub(crate) consts: TypedArena<WithCachedTypeInfo<ty::ConstKind<'tcx>>>,
     pub(crate) predicates:
