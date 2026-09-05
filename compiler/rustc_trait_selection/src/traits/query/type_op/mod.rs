@@ -145,15 +145,7 @@ where
         if !infcx.disable_trait_solver_fast_paths()
             && let Some(output) = Q::try_fast_path(infcx.tcx, &self)
         {
-            if !infcx.next_trait_solver() {
-                assert!(
-                    !infcx.tcx.next_trait_solver_globally(),
-                    "using old solver even though new solver is enabled globally"
-                );
-            }
-            // A fast-path result has no obligations or inference changes. Still
-            // resolve its variables and collect/reset any region constraints.
-            return Ok(collect_region_constraints(infcx, || Ok(output))?.0);
+            return collect_fast_path_output(infcx, output);
         }
 
         // In the new trait solver, query type ops are performed locally. This
@@ -202,4 +194,24 @@ where
         };
         Ok(output)
     }
+}
+
+/// Collects the output of an effect-free type operation using the ordinary NLL invariants.
+fn collect_fast_path_output<'tcx, Op>(
+    infcx: &InferCtxt<'tcx>,
+    output: Op::Output,
+) -> Result<TypeOpOutput<'tcx, Op>, ErrorGuaranteed>
+where
+    Op: TypeOp<'tcx>,
+    Op::Output: TypeFoldable<TyCtxt<'tcx>>,
+{
+    if !infcx.next_trait_solver() {
+        assert!(
+            !infcx.tcx.next_trait_solver_globally(),
+            "using old solver even though new solver is enabled globally"
+        );
+    }
+    // A fast-path result has no obligations or inference changes. Still
+    // resolve its variables and collect/reset any region constraints.
+    Ok(collect_region_constraints(infcx, || Ok(output))?.0)
 }

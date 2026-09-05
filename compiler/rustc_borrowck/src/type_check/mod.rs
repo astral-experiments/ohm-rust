@@ -35,6 +35,7 @@ use rustc_span::def_id::CRATE_DEF_ID;
 use rustc_span::{Span, Spanned, sym};
 use rustc_trait_selection::infer::InferCtxtExt;
 use rustc_trait_selection::traits::query::type_op::custom::scrape_region_constraints;
+use rustc_trait_selection::traits::query::type_op::prove_predicate::ProveCopy;
 use rustc_trait_selection::traits::query::type_op::{TypeOp, TypeOpOutput};
 use tracing::{debug, instrument, trace};
 
@@ -1853,11 +1854,7 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
         let tcx = self.tcx();
         let place_ty = place.ty(self.body, tcx);
         if let PlaceContext::NonMutatingUse(NonMutatingUseContext::Copy) = context {
-            let trait_ref = ty::TraitRef::new(
-                tcx,
-                tcx.require_lang_item(LangItem::Copy, self.last_span),
-                [place_ty.ty],
-            );
+            let op = ProveCopy::new(tcx, place_ty.ty, self.last_span);
 
             // To have a `Copy` operand, the type `T` of the
             // value must be `Copy`. Note that we prove that `T: Copy`,
@@ -1870,7 +1867,11 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
             // whether the bounds fully apply: in effect, the rule is
             // that if a value of some type could implement `Copy`, then
             // it must.
-            self.prove_trait_ref(trait_ref, location.to_locations(), ConstraintCategory::CopyBound);
+            let _: Result<_, ErrorGuaranteed> = self.fully_perform_op(
+                location.to_locations(),
+                ConstraintCategory::CopyBound,
+                self.infcx.param_env.and(op),
+            );
         }
     }
 
