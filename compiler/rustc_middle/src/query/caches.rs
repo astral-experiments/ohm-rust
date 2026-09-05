@@ -1,6 +1,8 @@
+use std::cell::{Cell, OnceCell};
 use std::sync::OnceLock;
 
-use rustc_data_structures::sharded::ShardedHashMap;
+use rustc_data_structures::sharded::{ShardedHashMap, make_hash};
+use rustc_data_structures::sync::WorkerLocal;
 pub use rustc_data_structures::vec_cache::VecCache;
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_index::Idx;
@@ -121,6 +123,10 @@ where
     }
 }
 
+const FOREIGN_DEF_ID_CACHE_LEN: usize = 256;
+
+type ForeignDefIdCache<V> = [Cell<Option<(DefId, (V, DepNodeIndex))>>; FOREIGN_DEF_ID_CACHE_LEN];
+
 /// In-memory cache for queries whose key is a [`DefId`].
 ///
 /// Selects between one of two internal caches, depending on whether the key
@@ -130,11 +136,17 @@ pub struct DefIdCache<V> {
     /// a win over hashing query keys at marginal memory cost (~5% at most) compared to FxHashMap.
     local: VecCache<DefIndex, V, DepNodeIndex>,
     foreign: DefaultCache<DefId, V>,
+    // Allocate slots only after a worker finds a completed foreign query in this cache.
+    foreign_hot: WorkerLocal<OnceCell<Box<ForeignDefIdCache<V>>>>,
 }
 
 impl<V> Default for DefIdCache<V> {
     fn default() -> Self {
-        DefIdCache { local: Default::default(), foreign: Default::default() }
+        DefIdCache {
+            local: Default::default(),
+            foreign: Default::default(),
+            foreign_hot: WorkerLocal::new(|_| OnceCell::new()),
+        }
     }
 }
 
@@ -150,7 +162,24 @@ where
         if key.krate == LOCAL_CRATE {
             self.local.lookup(&key.index)
         } else {
-            self.foreign.lookup(key)
+            let Some(local) = self.foreign_hot.get_if_registered() else {
+                return self.foreign.lookup(key);
+            };
+            let slot = make_hash(key) as usize & (FOREIGN_DEF_ID_CACHE_LEN - 1);
+            if let Some(cache) = local.get()
+                && let Some((cached_key, value)) = cache[slot].get()
+                && cached_key == *key
+            {
+                return Some(value);
+            }
+
+            // Only completed queries are retained. Preserve the dependency index alongside
+            // the value so the caller still records the same dependency on every cache hit.
+            let value = self.foreign.lookup(key)?;
+            let cache = local
+                .get_or_init(|| Box::new([const { Cell::new(None) }; FOREIGN_DEF_ID_CACHE_LEN]));
+            cache[slot].set(Some((*key, value)));
+            Some(value)
         }
     }
 
