@@ -516,6 +516,14 @@ impl DepGraph {
                     data.current.total_read_count.fetch_add(1, Ordering::Relaxed);
                 }
 
+                let recent_slot = dep_node_index.as_usize() & (TaskDeps::RECENT_READS_LEN - 1);
+                if task_deps.recent_reads[recent_slot] == Some(dep_node_index) {
+                    if cfg!(debug_assertions) {
+                        data.current.total_duplicate_read_count.fetch_add(1, Ordering::Relaxed);
+                    }
+                    return;
+                }
+
                 // Has `dep_node_index` been seen before? Use either a linear scan or a hashset
                 // lookup to determine this. See `TaskDeps::read_set` for details.
                 let new_read = if task_deps.reads.len() <= TaskDeps::LINEAR_SCAN_MAX {
@@ -544,6 +552,8 @@ impl DepGraph {
                 } else if cfg!(debug_assertions) {
                     data.current.total_duplicate_read_count.fetch_add(1, Ordering::Relaxed);
                 }
+
+                task_deps.recent_reads[recent_slot] = Some(dep_node_index);
             })
         }
     }
@@ -1345,11 +1355,19 @@ pub struct TaskDeps {
     /// `reads` is always the canonical edges representation; this field is just to speed up the
     /// seen-before test.
     read_set: FxHashSet<DepNodeIndex>,
+
+    /// Recently recorded edges, indexed by their low bits. A full index match lets
+    /// repeated reads skip the linear scan or hash lookup. Entries are only added
+    /// after the edge is present in `reads`, which never removes an edge.
+    recent_reads: [Option<DepNodeIndex>; TaskDeps::RECENT_READS_LEN],
 }
 
 impl TaskDeps {
     /// See `TaskDeps::read_set` above.
     const LINEAR_SCAN_MAX: usize = 16;
+
+    // Must be a power of two, so the index can be masked into the array.
+    const RECENT_READS_LEN: usize = 64;
 
     #[inline]
     fn new(#[cfg(debug_assertions)] node: Option<DepNode>, read_set_capacity: usize) -> Self {
@@ -1358,6 +1376,7 @@ impl TaskDeps {
             node,
             reads: EdgesVec::new(),
             read_set: FxHashSet::with_capacity_and_hasher(read_set_capacity, Default::default()),
+            recent_reads: [None; Self::RECENT_READS_LEN],
         }
     }
 }
