@@ -111,6 +111,7 @@ pub trait QueryTypeOp<'tcx>: fmt::Debug + Copy + TypeFoldable<TyCtxt<'tcx>> + 't
         ),
         NoSolution,
     > {
+        let _timing = prove_predicate::proof_timing::start_other::<Self>();
         let mut canonical_var_values = OriginalQueryValues::default();
         let old_param_env = query_key.param_env;
         let canonical_self = infcx.canonicalize_query(query_key, &mut canonical_var_values);
