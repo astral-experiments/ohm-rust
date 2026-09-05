@@ -786,7 +786,9 @@ impl<'a, I: Interner> TypeFolder<I> for ArgFolder<'a, I> {
 
         match t.kind() {
             ty::Param(p) => self.ty_for_param(p, t),
-            _ => t.super_fold_with(self),
+            _ => self.cx.with_cached_ty_instantiation(t, self.args, self.binders_passed, || {
+                t.super_fold_with(self)
+            }),
         }
     }
 

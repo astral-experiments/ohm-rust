@@ -94,6 +94,18 @@ impl<'tcx> Interner for TyCtxt<'tcx> {
         self.dep_graph.with_anon_task(self, DepKind::TraitSelect, task)
     }
     type Ty = Ty<'tcx>;
+
+    #[inline]
+    fn with_cached_ty_instantiation(
+        self,
+        ty: Ty<'tcx>,
+        args: &[ty::GenericArg<'tcx>],
+        binders_passed: u32,
+        instantiate: impl FnOnce() -> Ty<'tcx>,
+    ) -> Ty<'tcx> {
+        self.with_cached_ty_instantiation(ty, args, binders_passed, instantiate)
+    }
+
     type Tys = &'tcx List<Ty<'tcx>>;
 
     type FnInputTys = &'tcx [Ty<'tcx>];

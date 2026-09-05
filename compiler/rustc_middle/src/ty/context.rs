@@ -137,12 +137,15 @@ const INTERNER_CACHE_LEN: usize = 16384;
 const SUPERTRAIT_CACHE_LEN: usize = 16384;
 const CLAUSE_INSTANTIATION_CACHE_LEN: usize = 16384;
 const FN_SIG_INSTANTIATION_CACHE_LEN: usize = 16384;
+const TY_INSTANTIATION_CACHE_LEN: usize = 4096;
 
 type SupertraitCacheEntry<'tcx> = (Clause<'tcx>, ty::PolyTraitRef<'tcx>, Clause<'tcx>);
 type ClauseInstantiationCacheEntry<'tcx> =
     (Clause<'tcx>, GenericArgsRef<'tcx>, ty::Unnormalized<'tcx, Clause<'tcx>>);
 type FnSigInstantiationCacheEntry<'tcx> =
     (PolyFnSig<'tcx>, GenericArgsRef<'tcx>, ty::Unnormalized<'tcx, PolyFnSig<'tcx>>);
+type TyInstantiationCacheKey<'tcx> = (Ty<'tcx>, GenericArg<'tcx>, Option<GenericArg<'tcx>>, u32);
+type TyInstantiationCacheEntry<'tcx> = (TyInstantiationCacheKey<'tcx>, Ty<'tcx>);
 
 pub struct CtxtInterners<'tcx> {
     /// The arena that types, regions, etc. are allocated from.
@@ -188,6 +191,8 @@ pub struct CtxtInterners<'tcx> {
     fn_sig_instantiation_cache: WorkerLocal<
         [Cell<Option<FnSigInstantiationCacheEntry<'tcx>>>; FN_SIG_INSTANTIATION_CACHE_LEN],
     >,
+    ty_instantiation_cache:
+        WorkerLocal<[Cell<Option<TyInstantiationCacheEntry<'tcx>>>; TY_INSTANTIATION_CACHE_LEN]>,
 }
 
 impl<'tcx> CtxtInterners<'tcx> {
@@ -238,6 +243,9 @@ impl<'tcx> CtxtInterners<'tcx> {
             }),
             fn_sig_instantiation_cache: WorkerLocal::new(|_| {
                 [const { Cell::new(None) }; FN_SIG_INSTANTIATION_CACHE_LEN]
+            }),
+            ty_instantiation_cache: WorkerLocal::new(|_| {
+                [const { Cell::new(None) }; TY_INSTANTIATION_CACHE_LEN]
             }),
         }
     }
@@ -2289,6 +2297,44 @@ impl<'tcx> TyCtxt<'tcx> {
         binder: Binder<'tcx, PredicateKind<'tcx>>,
     ) -> Predicate<'tcx> {
         if pred.kind() != binder { self.mk_predicate(binder) } else { pred }
+    }
+
+    /// Reuses nested substitutions for one or two arguments, including any bound-variable shifts.
+    /// Arguments are copied into the key because the caller may provide a temporary slice.
+    #[inline]
+    pub(crate) fn with_cached_ty_instantiation(
+        self,
+        ty: Ty<'tcx>,
+        args: &[GenericArg<'tcx>],
+        binders_passed: u32,
+        instantiate: impl FnOnce() -> Ty<'tcx>,
+    ) -> Ty<'tcx> {
+        if cfg!(debug_assertions) {
+            return instantiate();
+        }
+        let (first, second) = match args {
+            [first] => (*first, None),
+            [first, second] => (*first, Some(*second)),
+            _ => return instantiate(),
+        };
+        // The optional second argument distinguishes one argument from two, even if equal.
+        let key = (ty, first, second, binders_passed);
+        let cache = self
+            .interners
+            .ty_instantiation_cache
+            .get_if_registered()
+            .map(|cache| &cache[make_hash(&key) as usize & (TY_INSTANTIATION_CACHE_LEN - 1)]);
+        if let Some(cache) = cache
+            && let Some((cached_key, result)) = cache.get()
+            && cached_key == key
+        {
+            return result;
+        }
+        let result = instantiate();
+        if let Some(cache) = cache {
+            cache.set(Some((key, result)));
+        }
+        result
     }
 
     /// Reuses signature substitutions after the caller has queried the uninstantiated signature.

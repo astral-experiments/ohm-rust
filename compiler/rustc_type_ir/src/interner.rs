@@ -144,6 +144,21 @@ pub trait Interner:
 
     // Kinds of tys
     type Ty: Ty<Self>;
+
+    /// Optionally reuses a structural type substitution, without resolving inference variables
+    /// or normalizing aliases. `instantiate` must depend only on the supplied type, arguments,
+    /// and binder depth.
+    #[inline]
+    fn with_cached_ty_instantiation(
+        self,
+        _ty: Self::Ty,
+        _args: &[Self::GenericArg],
+        _binders_passed: u32,
+        instantiate: impl FnOnce() -> Self::Ty,
+    ) -> Self::Ty {
+        instantiate()
+    }
+
     type Tys: Tys<Self>;
     type FnInputTys: Copy + Debug + Hash + Eq + SliceLike<Item = Self::Ty> + TypeVisitable<Self>;
     type ParamTy: ParamLike;
