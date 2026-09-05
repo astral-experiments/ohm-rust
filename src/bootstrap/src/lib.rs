@@ -872,13 +872,8 @@ impl Build {
                 target.contains("linux") && target.contains("gnu"),
                 "rust.mimalloc currently supports Linux GNU hosts only"
             );
-            assert!(
-                !self.config.jemalloc(target),
-                "set rust.jemalloc=false when enabling rust.mimalloc"
-            );
             features.push("mimalloc");
-        }
-        if self.config.jemalloc(target) && check("jemalloc") {
+        } else if self.config.jemalloc(target) && check("jemalloc") {
             features.push("jemalloc");
         }
         if (self.config.llvm_enabled(target) || kind == Kind::Check) && check("llvm") {
