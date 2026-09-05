@@ -609,32 +609,22 @@ fn get_flow_results<'a, 'tcx>(
     borrow_set: &'a BorrowSet<'tcx>,
     regioncx: &RegionInferenceContext<'tcx>,
 ) -> Results<'tcx, Borrowck<'a, 'tcx>> {
-    // We compute these three analyses individually, but them combine them into
-    // a single results so that `mbcx` can visit them all together.
-    let borrows = Borrows::new(tcx, body, regioncx, borrow_set);
-    let borrows = if borrow_set.len() == 0 && !tcx.sess.opts.unstable_opts.dump_mir_dataflow {
-        // With no loans to generate, the borrow state is empty at every block entry.
-        // Avoid traversing the MIR just to compute this fixed point.
-        Results {
-            entry_states: EntryStates::from_elem_n(
-                borrows.bottom_value(body),
-                body.basic_blocks.len(),
-            ),
-            analysis: borrows,
-        }
-    } else {
-        borrows.iterate_to_fixpoint(tcx, body, Some("borrowck"))
+    let analysis = Borrowck {
+        borrows: Borrows::new(tcx, body, regioncx, borrow_set),
+        uninits: MaybeUninitializedPlaces::new(tcx, body, move_data),
+        ever_inits: EverInitializedPlaces::new(body, move_data),
     };
-    let uninits = MaybeUninitializedPlaces::new(tcx, body, move_data).iterate_to_fixpoint(
-        tcx,
-        body,
-        Some("borrowck"),
-    );
-    let ever_inits = EverInitializedPlaces::new(body, move_data).iterate_to_fixpoint(
-        tcx,
-        body,
-        Some("borrowck"),
-    );
+
+    // Share the CFG work queue between analyses. Preserve the individual
+    // graphviz files when dumping MIR dataflow.
+    if !tcx.sess.opts.unstable_opts.dump_mir_dataflow {
+        return analysis.iterate_to_fixpoint(tcx, body, Some("borrowck"));
+    }
+
+    let Borrowck { borrows, uninits, ever_inits } = analysis;
+    let borrows = borrows.iterate_to_fixpoint(tcx, body, Some("borrowck"));
+    let uninits = uninits.iterate_to_fixpoint(tcx, body, Some("borrowck"));
+    let ever_inits = ever_inits.iterate_to_fixpoint(tcx, body, Some("borrowck"));
 
     let analysis = Borrowck {
         borrows: borrows.analysis,
