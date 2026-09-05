@@ -1,4 +1,0 @@
-error: invalid character '$' in crate name: `need_crate_arg_ignore_tidy$x`
-
-error: aborting due to 1 previous error
-
