@@ -1,0 +1,197 @@
+name: Temporary Ruff and uv compiler profiles
+
+on:
+  push:
+    branches: [charlie/codex-codspeed-profile-7b53]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  profile:
+    name: Profile baseline compiler (${{ matrix.shard }})
+    runs-on: codspeed-macro
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [ruff-ty_python_semantic, uv-resolver]
+    env:
+      PROFILE_SHARD: ${{ matrix.shard }}
+      BASELINE_SHA: 7d2c9ee7651076a9930b109f3738a1c6cb4dbb29
+    steps:
+      - name: Checkout exact baseline compiler source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: 7d2c9ee7651076a9930b109f3738a1c6cb4dbb29
+          persist-credentials: false
+
+      - name: Checkout pinned benchmark dependencies
+        run: git submodule update --init --depth 1 src/tools/rustc-perf
+
+      - name: Download existing baseline compiler
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codspeed-toolchain
+          run-id: 33963601483
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: build
+
+      - name: Unpack benchmark compiler
+        run: |
+          mkdir -p build/codspeed-toolchain
+          tar -xzf build/codspeed-toolchain.tar.gz -C build/codspeed-toolchain
+
+      - name: Checkout pinned Ruff benchmark sources
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: astral-sh/ruff
+          ref: efcffd2178ce62e9951a53d4c50cadc225a0cfec
+          path: build/codspeed-sources/ruff
+          persist-credentials: false
+
+      - name: Checkout pinned uv benchmark sources
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: astral-sh/uv
+          ref: 3392e29bdc4f09bb4f6d92f7aca8d450b835ce4f
+          path: build/codspeed-sources/uv
+          persist-credentials: false
+
+      - name: Install benchmark tools
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.7"
+
+      - name: Install pinned benchmark dependencies
+        run: |
+          uv venv --python 3.13.15 src/tools/codspeed/.venv
+          uv pip sync --python src/tools/codspeed/.venv/bin/python --require-hashes \
+            src/tools/codspeed/requirements.txt
+
+      - name: Verify compiler revision and prepare ordinary benchmark invocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          src/tools/codspeed/.venv/bin/python - <<'PY_VERIFY'
+          import os
+          import subprocess
+
+          version = subprocess.check_output(
+              ['build/codspeed-toolchain/stage1/bin/rustc', '-vV'], text=True
+          )
+          assert f'commit-hash: {os.environ["BASELINE_SHA"]}' in version.splitlines(), version
+          print(version)
+          PY_VERIFY
+          src/tools/codspeed/.venv/bin/python src/tools/codspeed/prepare.py \
+            --rustc build/codspeed-toolchain/stage1/bin/rustc \
+            --cargo build/codspeed-toolchain/stage0/bin/cargo \
+            --shard "$PROFILE_SHARD"
+
+      - name: Capture query and generic activity profile and optional samples
+        shell: bash
+        run: |
+          set -euo pipefail
+          src/tools/codspeed/.venv/bin/python - <<'PY_PROFILE'
+          import json
+          import os
+          import shutil
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, str(Path('src/tools/codspeed').resolve()))
+          from test_compiler_walltime import prepare_invocation
+
+          manifest = json.loads(Path('build/codspeed/manifest.json').read_text())
+          assert f'commit-hash: {os.environ["BASELINE_SHA"]}' in manifest['rustc_version'].splitlines()
+          (fixture,) = [f for f in manifest['fixtures'] if f['name'] == os.environ['PROFILE_SHARD']]
+          profile = Path('build/profile').resolve()
+          profile.mkdir(parents=True)
+
+          def invocation():
+              (command,), kwargs = prepare_invocation(fixture, 'Full')
+              assert command[0] == str(Path('build/codspeed-toolchain/stage1/bin/rustc').resolve())
+              assert '-Zthreads=1' in command
+              return command, kwargs
+
+          command, kwargs = invocation()
+          # Default includes nested generic activities, queries, and cache-hit counts.
+          # Omit per-query keys and individual cache-hit events to bound trace size.
+          with (profile / 'rustc-stderr.txt').open('w') as stderr:
+              subprocess.run(
+                  [*command, f'-Zself-profile={profile}', '-Zself-profile-events=default', '-Ztime-passes'],
+                  stderr=stderr, **kwargs,
+              )
+          (trace,) = profile.glob('*.mm_profdata')
+          assert trace.stat().st_size > 0
+          (profile / 'profile-path.txt').write_text(str(trace) + '\n')
+
+          perf = shutil.which('perf')
+          if perf is None:
+              (profile / 'perf-status.txt').write_text('perf is not installed; no sampling attempted.\n')
+              sys.exit(0)
+          prefix = [perf, 'record', '-e', 'cpu-clock:u', '-F', '99', '--call-graph', 'dwarf,8192']
+          with (profile / 'perf-status.txt').open('w') as status:
+              probe = subprocess.run(
+                  [*prefix, '-o', str(profile / 'perf-probe.data'), '--', 'true'],
+                  stdout=status, stderr=status,
+              )
+              if probe.returncode:
+                  status.write(f'perf unavailable or restricted (exit {probe.returncode}); self-profile retained.\n')
+                  sys.exit(0)
+              command, kwargs = invocation()
+              kwargs.pop('check')
+              result = subprocess.run(
+                  [*prefix, '-o', str(profile / 'perf.data'), '--', *command],
+                  stdout=status, stderr=status, **kwargs,
+              )
+              if result.returncode:
+                  status.write(f'perf record failed (exit {result.returncode}); self-profile retained.\n')
+                  sys.exit(0)
+              for name, options in [
+                  ('perf-self.txt', ['--no-children']),
+                  ('perf-callers.txt', ['--children', '--call-graph', 'graph,0.5,caller']),
+              ]:
+                  with (profile / name).open('w') as report:
+                      result = subprocess.run(
+                          [perf, 'report', '--stdio', '--percent-limit', '0.25',
+                           '--sort', 'dso,symbol', '-i', str(profile / 'perf.data'), *options],
+                          stdout=report, stderr=status,
+                      )
+                  status.write(f'{name}: perf report exit {result.returncode}\n')
+          PY_PROFILE
+
+      - name: Build pinned profile summarizer and write compact results
+        shell: bash
+        run: |
+          set -euo pipefail
+          CARGO_TARGET_DIR="$RUNNER_TEMP/measureme-target" \
+            RUSTC="$PWD/build/codspeed-toolchain/stage1/bin/rustc" \
+            build/codspeed-toolchain/stage0/bin/cargo install \
+              --git https://github.com/rust-lang/measureme \
+              --rev 5ac839c602b59eee9c908b3b35b6d6c0cd1c42f7 \
+              --root "$RUNNER_TEMP/measureme" summarize
+          profile_path="$(cat build/profile/profile-path.txt)"
+          "$RUNNER_TEMP/measureme/bin/summarize" summarize "$profile_path" \
+            --percent-above 0.01 > build/profile/query-and-activity-summary.txt
+          "$RUNNER_TEMP/measureme/bin/summarize" summarize "$profile_path" --json
+          head -100 build/profile/query-and-activity-summary.txt
+
+      - name: Retain compact diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: compiler-profile-7b53-${{ matrix.shard }}
+          path: |
+            build/codspeed/manifest.json
+            build/profile/*.txt
+            build/profile/*.json
+          if-no-files-found: warn
+          retention-days: 2
