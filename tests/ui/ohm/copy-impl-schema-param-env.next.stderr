@@ -1,0 +1,29 @@
+error: lifetime may not live long enough
+  --> $DIR/copy-impl-schema-param-env.rs:13:6
+   |
+LL | pub fn distinct_lifetimes<'a, 'b, T: 'a + 'b>(value: &'b T) -> (&'b T, &'b T)
+   |                           --  -- lifetime `'b` defined here
+   |                           |
+   |                           lifetime `'a` defined here
+...
+LL |     (value, value)
+   |      ^^^^^ copying this value requires that `'a` must outlive `'b`
+   |
+   = help: consider adding the following bound: `'a: 'b`
+
+error: lifetime may not live long enough
+  --> $DIR/copy-impl-schema-param-env.rs:13:6
+   |
+LL | pub fn distinct_lifetimes<'a, 'b, T: 'a + 'b>(value: &'b T) -> (&'b T, &'b T)
+   |                           --  -- lifetime `'b` defined here
+   |                           |
+   |                           lifetime `'a` defined here
+...
+LL |     (value, value)
+   |      ^^^^^ copying this value requires that `'b` must outlive `'a`
+   |
+   = help: consider adding the following bound: `'b: 'a`
+
+help: `'a` and `'b` must be the same: replace one with the other
+
+error: aborting due to 2 previous errors

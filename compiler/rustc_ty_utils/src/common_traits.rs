@@ -3,9 +3,81 @@
 use rustc_hir::lang_items::LangItem;
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::query::Providers;
+use rustc_middle::ty::fast_reject::SimplifiedType;
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::DUMMY_SP;
 use rustc_trait_selection::traits;
+
+/// Recognizes an imported, unconditional `Copy` impl for an arbitrary pointer pointee.
+///
+/// Inspecting the impl keeps this optimization valid for custom core libraries. Matching an
+/// arbitrary type parameter also avoids depending on the normalization of the actual pointee.
+fn unconditional_copy_impl(tcx: TyCtxt<'_>, kind: SimplifiedType) -> bool {
+    if !matches!(kind, SimplifiedType::Ref(ty::Mutability::Not) | SimplifiedType::Ptr(_)) {
+        return false;
+    }
+    let Some(copy_trait) = tcx.lang_items().copy_trait() else { return false };
+    let impls = tcx.trait_impls_of(copy_trait);
+    if !impls.blanket_impls().is_empty() {
+        return false;
+    }
+    let Some([impl_id]) = impls.non_blanket_impls().get(&kind).map(|impls| impls.as_slice()) else {
+        return false;
+    };
+    let impl_id = *impl_id;
+    // Imported impls have already been checked. In particular, do not make the first proof in
+    // a custom core library depend on the well-formedness of its own still-unchecked impl.
+    if impl_id.is_local()
+        || tcx.impl_polarity(impl_id) != ty::ImplPolarity::Positive
+        || !tcx.defaultness(impl_id).is_final()
+    {
+        return false;
+    }
+    let generics = tcx.generics_of(impl_id);
+    if generics.parent.is_some() || generics.parent_count != 0 || generics.has_self {
+        return false;
+    }
+    let self_ty = tcx.type_of(impl_id).instantiate_identity().skip_norm_wip();
+    let shape_matches = match (kind, *self_ty.kind()) {
+        (
+            SimplifiedType::Ref(ty::Mutability::Not),
+            ty::Ref(region, pointee, ty::Mutability::Not),
+        ) => {
+            matches!(
+                generics.own_params.as_slice(),
+                [
+                    ty::GenericParamDef { index: 0, kind: ty::GenericParamDefKind::Lifetime, .. },
+                    ty::GenericParamDef {
+                        index: 1,
+                        kind: ty::GenericParamDefKind::Type { .. },
+                        ..
+                    },
+                ]
+            ) && matches!(region.kind(), ty::ReEarlyParam(region) if region.index == 0)
+                && matches!(pointee.kind(), ty::Param(param) if param.index == 1)
+        }
+        (SimplifiedType::Ptr(expected_mutability), ty::RawPtr(pointee, mutability)) => {
+            expected_mutability == mutability
+                && matches!(
+                    generics.own_params.as_slice(),
+                    [ty::GenericParamDef {
+                        index: 0,
+                        kind: ty::GenericParamDefKind::Type { .. },
+                        ..
+                    },]
+                )
+                && matches!(pointee.kind(), ty::Param(param) if param.index == 0)
+        }
+        _ => false,
+    };
+    if !shape_matches {
+        return false;
+    }
+    let predicates = tcx.predicates_of(impl_id);
+    predicates.parent.is_none()
+        && predicates.predicates.is_empty()
+        && tcx.impl_super_outlives(impl_id).skip_binder().is_empty()
+}
 
 fn is_copy_raw<'tcx>(tcx: TyCtxt<'tcx>, query: ty::PseudoCanonicalInput<'tcx, Ty<'tcx>>) -> bool {
     is_trait_raw(tcx, query, LangItem::Copy)
@@ -57,6 +129,7 @@ fn is_trait_raw<'tcx>(
 pub(crate) fn provide(providers: &mut Providers) {
     *providers = Providers {
         is_copy_raw,
+        unconditional_copy_impl,
         is_use_cloned_raw,
         is_sized_raw,
         is_freeze_raw,

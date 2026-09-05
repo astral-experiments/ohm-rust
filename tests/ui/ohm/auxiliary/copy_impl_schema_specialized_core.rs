@@ -1,0 +1,18 @@
+#![feature(specialization)]
+#![allow(incomplete_features)]
+#![feature(no_core, lang_items)]
+#![no_core]
+#![crate_type = "lib"]
+#![allow(internal_features)]
+
+#[lang = "pointee_sized"]
+pub trait PointeeSized {}
+#[lang = "meta_sized"]
+pub trait MetaSized: PointeeSized {}
+#[lang = "sized"]
+pub trait Sized: MetaSized {}
+#[lang = "copy"]
+pub trait Copy {}
+
+default impl<T: PointeeSized> Copy for &T {}
+impl Copy for &u8 {}

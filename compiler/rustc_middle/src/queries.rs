@@ -1672,6 +1672,12 @@ rustc_queries! {
         desc { "computing revealed normalized predicates of `{}`", tcx.def_path_str(def_id) }
     }
 
+    /// Whether the sole `Copy` impl for this pointer shape applies to every pointee and lifetime
+    /// without predicates or inherited outlives obligations.
+    query unconditional_copy_impl(kind: SimplifiedType) -> bool {
+        desc { "checking whether the Copy impl for {kind:?} is unconditional" }
+    }
+
     /// Trait selection queries. These are best used by invoking `ty.is_copy_modulo_regions()`,
     /// `ty.is_copy()`, etc, since that will prune the environment where possible.
     query is_copy_raw(env: ty::PseudoCanonicalInput<'tcx, Ty<'tcx>>) -> bool {
