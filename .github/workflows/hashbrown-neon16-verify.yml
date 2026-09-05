@@ -1,0 +1,42 @@
+name: Hashbrown NEON16 correctness
+
+on:
+  push:
+    branches: [charlie/codex-hashbrown-neon16-verify-7b53]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-arm:
+    name: Native ARM (${{ matrix.features }})
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [default, nightly, serde-rayon, nightly-serde-rayon]
+    steps:
+      - name: Check out exact candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Install pinned compiler bootstrap toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal
+      - name: Run native correctness checks
+        run: >-
+          python3 .github/scripts/hashbrown_neon16_7b53/verify.py
+          --features '${{ matrix.features }}'
+          --output '${{ runner.temp }}/hashbrown-neon16-evidence'
+      - name: Retain correctness evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hashbrown-neon16-${{ matrix.features }}
+          path: ${{ runner.temp }}/hashbrown-neon16-evidence
+          if-no-files-found: error
