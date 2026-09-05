@@ -611,11 +611,20 @@ fn get_flow_results<'a, 'tcx>(
 ) -> Results<'tcx, Borrowck<'a, 'tcx>> {
     // We compute these three analyses individually, but them combine them into
     // a single results so that `mbcx` can visit them all together.
-    let borrows = Borrows::new(tcx, body, regioncx, borrow_set).iterate_to_fixpoint(
-        tcx,
-        body,
-        Some("borrowck"),
-    );
+    let borrows = Borrows::new(tcx, body, regioncx, borrow_set);
+    let borrows = if borrow_set.len() == 0 {
+        // With no loans to generate, the borrow state is empty at every block entry.
+        // Avoid traversing the MIR just to compute this fixed point.
+        Results {
+            entry_states: EntryStates::from_elem_n(
+                borrows.bottom_value(body),
+                body.basic_blocks.len(),
+            ),
+            analysis: borrows,
+        }
+    } else {
+        borrows.iterate_to_fixpoint(tcx, body, Some("borrowck"))
+    };
     let uninits = MaybeUninitializedPlaces::new(tcx, body, move_data).iterate_to_fixpoint(
         tcx,
         body,
