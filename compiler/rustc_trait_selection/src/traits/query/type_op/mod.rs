@@ -73,6 +73,17 @@ pub trait QueryTypeOp<'tcx>: fmt::Debug + Copy + TypeFoldable<TyCtxt<'tcx>> + 't
         key: &ParamEnvAnd<'tcx, Self>,
     ) -> Option<Self::QueryResponse>;
 
+    /// Canonicalizes a query key with fresh state and returns the original variable mapping
+    /// needed to instantiate its response.
+    fn canonicalize_query(
+        query_key: ParamEnvAnd<'tcx, Self>,
+        infcx: &InferCtxt<'tcx>,
+    ) -> (CanonicalQueryInput<'tcx, ParamEnvAnd<'tcx, Self>>, OriginalQueryValues<'tcx>) {
+        let mut original_values = OriginalQueryValues::default();
+        let canonical = infcx.canonicalize_query(query_key, &mut original_values);
+        (canonical, original_values)
+    }
+
     /// Performs the actual query with the canonicalized key -- the
     /// real work happens here. This method is not given an `infcx`
     /// because it shouldn't need one -- and if it had access to one,
@@ -111,9 +122,8 @@ pub trait QueryTypeOp<'tcx>: fmt::Debug + Copy + TypeFoldable<TyCtxt<'tcx>> + 't
         ),
         NoSolution,
     > {
-        let mut canonical_var_values = OriginalQueryValues::default();
         let old_param_env = query_key.param_env;
-        let canonical_self = infcx.canonicalize_query(query_key, &mut canonical_var_values);
+        let (canonical_self, canonical_var_values) = Self::canonicalize_query(query_key, infcx);
         let canonical_result = Self::perform_query(infcx.tcx, canonical_self)?;
 
         let InferOk { value, obligations } = infcx

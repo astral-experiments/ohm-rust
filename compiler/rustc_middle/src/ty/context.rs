@@ -55,7 +55,9 @@ use crate::dep_graph::dep_node::make_metadata;
 use crate::dep_graph::{DepGraph, DepKindVTable, DepNodeIndex};
 use crate::hir::{ProjectedMaybeOwner, ProjectedOwnerInfo};
 use crate::ich::StableHashState;
-use crate::infer::canonical::{CanonicalParamEnvCache, CanonicalVarKind};
+use crate::infer::canonical::{
+    Canonical, CanonicalParamEnvCache, CanonicalVarKind, OriginalQueryValues,
+};
 use crate::lint::emit_lint_base;
 use crate::metadata::ModChild;
 use crate::middle::codegen_fn_attrs::{CodegenFnAttrs, TargetFeature};
@@ -65,6 +67,7 @@ use crate::mir::{Body, Local, Place, PlaceElem, ProjectionKind, Promoted};
 use crate::query::{IntoQueryKey, LocalCrate, Providers, QuerySystem, TyCtxtAt};
 use crate::thir::Thir;
 use crate::traits;
+use crate::traits::query::type_op::ProvePredicate;
 use crate::traits::solve::{ExternalConstraints, ExternalConstraintsData, PredefinedOpaques};
 use crate::ty::predicate::ExistentialPredicateStableCmpExt as _;
 use crate::ty::{
@@ -850,6 +853,17 @@ pub struct GlobalCtxt<'tcx> {
 
     pub canonical_param_env_cache: CanonicalParamEnvCache<'tcx>,
 
+    /// Caches canonical proof inputs that do not depend on an inference context.
+    pub canonical_prove_predicate_cache: Lock<
+        FxHashMap<
+            ty::ParamEnvAnd<'tcx, ProvePredicate<'tcx>>,
+            (
+                Canonical<'tcx, ty::ParamEnvAnd<'tcx, ProvePredicate<'tcx>>>,
+                OriginalQueryValues<'tcx>,
+            ),
+        >,
+    >,
+
     /// Caches the index of the highest bound var in clauses in a canonical binder.
     pub highest_var_in_clauses_cache: Lock<FxHashMap<ty::Clauses<'tcx>, usize>>,
     /// Caches the instantiation of a canonical binder given a set of args.
@@ -1076,6 +1090,7 @@ impl<'tcx> TyCtxt<'tcx> {
             new_solver_evaluation_cache: Default::default(),
             new_solver_canonical_param_env_cache: Default::default(),
             canonical_param_env_cache: Default::default(),
+            canonical_prove_predicate_cache: Default::default(),
             highest_var_in_clauses_cache: Default::default(),
             clauses_cache: Default::default(),
             data_layout,
