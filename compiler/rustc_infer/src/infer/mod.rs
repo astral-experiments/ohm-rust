@@ -1227,9 +1227,12 @@ impl<'tcx> InferCtxt<'tcx> {
                 // so this recursion should always be of very limited
                 // depth.
                 //
-                // Note: if these two lines are combined into one we get
-                // dynamic borrow errors on `self.inner`.
-                let known = self.inner.borrow_mut().type_variables().probe(v).known();
+                // Probe roots without constructing a mutable unification table.
+                // End the shared borrow before the fallback and recursive resolution.
+                let value = self.inner.borrow().try_type_variables_probe_ref(v).copied();
+                let known = value
+                    .unwrap_or_else(|| self.inner.borrow_mut().type_variables().probe(v))
+                    .known();
                 known.map_or(ty, |t| self.shallow_resolve(t))
             }
 
