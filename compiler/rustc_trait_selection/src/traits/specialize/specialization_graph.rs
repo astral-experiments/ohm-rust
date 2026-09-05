@@ -85,7 +85,13 @@ impl<'tcx> Children {
         let mut replace_children = Vec::new();
 
         let possible_siblings = match simplified_self {
-            Some(st) => PotentialSiblings::Filtered(filtered_children(tcx, self, st, trait_ref)),
+            Some(st) => PotentialSiblings::Filtered(filtered_children(
+                tcx,
+                self,
+                st,
+                trait_ref,
+                impl_def_id,
+            )),
             None => PotentialSiblings::Unfiltered(iter_children(self)),
         };
 
@@ -204,11 +210,23 @@ fn filtered_children<'a, 'tcx>(
     children: &'a mut Children,
     st: SimplifiedType,
     trait_ref: ty::TraitRef<'tcx>,
+    impl_def_id: DefId,
 ) -> impl Iterator<Item = DefId> + use<'a> {
     let bucket = children.non_blanket_impls.entry(st).or_default();
     let candidates = if bucket.len() >= 16 { const_arg_candidates(tcx, trait_ref) } else { None };
+    // The const-argument index also contains this impl, which is not yet a child. When it
+    // contains nothing else, no existing non-blanket child can match.
+    let num_siblings_to_scan = if candidates
+        .as_ref()
+        .is_some_and(|ids| ids.iter().all(|&candidate| candidate == impl_def_id))
+    {
+        0
+    } else {
+        bucket.len()
+    };
     let nonblanket = bucket
         .iter()
+        .take(num_siblings_to_scan)
         .filter(move |impl_def_id| candidates.as_ref().is_none_or(|ids| ids.contains(impl_def_id)));
     children.blanket_impls.iter().chain(nonblanket).cloned()
 }
