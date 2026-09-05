@@ -227,19 +227,19 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: eb56c3641467cd9c6de859b8f5765280faa866b9
+          ref: 8acd1a0ce9e0daa2a804bd6f0b70d352998a6177
           persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: codspeed-toolchain
-          run-id: 33948949970
+          run-id: 33949153382
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: build
       - name: Run focused UI checks
         shell: bash
         run: |
           set -euo pipefail
-          expected=eb56c3641467cd9c6de859b8f5765280faa866b9
+          expected=8acd1a0ce9e0daa2a804bd6f0b70d352998a6177
           test "$(git rev-parse HEAD)" = "$expected"
           mkdir -p build/codspeed-toolchain
           tar -xzf build/codspeed-toolchain.tar.gz -C build/codspeed-toolchain
