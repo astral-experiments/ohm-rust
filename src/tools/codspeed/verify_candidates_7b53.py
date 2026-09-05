@@ -199,6 +199,24 @@ def main():
         assert f"commit-hash: {expected_sha}" in version.stdout.splitlines(), version.stdout
         report["compiler_sha_verified"] = True
 
+        if kind == "stage1_thin_lto":
+            toolchain_root = Path(sys.argv[3]).absolute().parent.parent
+            drivers = sorted(toolchain_root.glob("lib/librustc_driver*.so"))
+            assert drivers
+            report["toolchain_root"] = str(toolchain_root)
+            report["toolchain_files"] = []
+            for path in (toolchain_root / "bin/rustc", *drivers):
+                with path.open("rb") as stream:
+                    digest = hashlib.file_digest(stream, "sha256").hexdigest()
+                report["toolchain_files"].append({
+                    "path": str(path.relative_to(toolchain_root)),
+                    "resolved_path": str(path.resolve()),
+                    "is_symlink": path.is_symlink(),
+                    "symlink_target": os.readlink(path) if path.is_symlink() else None,
+                    "size_bytes": path.stat().st_size,
+                    "sha256": digest,
+                })
+
         if kind == "mimalloc_v2":
             activation = subprocess.run(
                 [str(rustc), "-vV"], capture_output=True, text=True, timeout=30,

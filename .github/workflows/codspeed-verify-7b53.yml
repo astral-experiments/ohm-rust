@@ -19,9 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - kind: forest_small_storage
-            sha: 3670ed7dd0f50ab97916df559b04e95926894d35
-            run: 33982186599
+          - kind: stage1_thin_lto
+            sha: 198269f763718786fcfbd22b82555d9c6d656ab9
+            run: 33982576401
     steps:
       - name: Checkout validation script
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
