@@ -37,6 +37,8 @@ fn mimalloc() {
     println!("cargo:rustc-link-arg-bin=rustc-main=-Wl,--no-whole-archive");
     println!("cargo:rustc-link-arg-bin=rustc-main=-lpthread");
     println!("cargo:rustc-link-arg-bin=rustc-main=-ldl");
+    // Resolve mimalloc's libc references after the archive, including the ARM stack guard.
+    println!("cargo:rustc-link-arg-bin=rustc-main=-lc");
 }
 
 // Add a manifest file to rustc.exe.
