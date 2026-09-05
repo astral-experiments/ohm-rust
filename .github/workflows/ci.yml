@@ -157,15 +157,18 @@ jobs:
           tests/ui/nll/maybe-initialized-drop.rs
           tests/ui/nll/match-guards-partially-borrow.rs
 
-      - name: Run primitive associated-constant regression tests
+      - name: Run dependency recording and encoding regressions
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1 compiler/rustc_middle
+          --test-args encode_edges_matches_wire_format
+
+      - name: Run dependency recording incremental regressions
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1
-          tests/ui/associated-consts/primitive-const-entailment.rs
-          tests/ui/associated-consts/associated-const-impl-wrong-type.rs
-          tests/ui/associated-consts/associated-const-generic-obligations.rs
-          tests/ui/generic-const-items/compare-impl-item.rs
-          tests/ui/generic-const-items/unsatisfied-bounds.rs
+          tests/incremental/issue-108481-feed-eval-always.rs
+          tests/incremental/lint-unused-features.rs tests/incremental/feature_gate.rs
 
       - name: Run cached hygiene unit tests
         run: >-
