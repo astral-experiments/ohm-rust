@@ -616,11 +616,20 @@ fn get_flow_results<'a, 'tcx>(
     // a single results so that `mbcx` can visit them all together.
     let borrows = {
         let _timer = tcx.prof.generic_activity("borrowck_dataflow_borrows");
-        Borrows::new(tcx, body, regioncx, borrow_set).iterate_to_fixpoint(
-            tcx,
-            body,
-            Some("borrowck"),
-        )
+        let borrows = Borrows::new(tcx, body, regioncx, borrow_set);
+        if borrow_set.len() == 0 {
+            // With no loans to generate, the borrow state is empty at every block entry.
+            // Avoid traversing the MIR just to compute this fixed point.
+            Results {
+                entry_states: EntryStates::from_elem_n(
+                    borrows.bottom_value(body),
+                    body.basic_blocks.len(),
+                ),
+                analysis: borrows,
+            }
+        } else {
+            borrows.iterate_to_fixpoint(tcx, body, Some("borrowck"))
+        }
     };
     let uninits = {
         let _timer = tcx.prof.generic_activity("borrowck_dataflow_maybe_uninits");
