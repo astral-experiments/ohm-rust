@@ -2211,6 +2211,20 @@ fn compare_const_clause_entailment<'tcx>(
     let impl_ty = tcx.type_of(impl_ct_def_id).instantiate_identity();
 
     let trait_ty = tcx.type_of(trait_ct.def_id).instantiate(tcx, trait_to_impl_args);
+    let impl_ct_clauses = tcx.clauses_of(impl_ct.def_id);
+
+    // Equal primitive types need neither normalization nor region constraints.
+    // With no additional bounds on the impl's const, there is nothing to prove.
+    if impl_ct_clauses.clauses.is_empty()
+        && impl_ty == trait_ty
+        && matches!(
+            impl_ty.skip_normalization().kind(),
+            ty::Bool | ty::Char | ty::Int(_) | ty::Uint(_) | ty::Float(_)
+        )
+    {
+        return Ok(());
+    }
+
     let code = ObligationCauseCode::CompareImplItem {
         impl_item_def_id: impl_ct_def_id,
         trait_item_def_id: trait_ct.def_id,
@@ -2218,7 +2232,6 @@ fn compare_const_clause_entailment<'tcx>(
     };
     let mut cause = ObligationCause::new(impl_ct_span, impl_ct_def_id, code.clone());
 
-    let impl_ct_clauses = tcx.clauses_of(impl_ct.def_id);
     let trait_ct_clauses = tcx.clauses_of(trait_ct.def_id);
 
     // The clauses declared by the impl definition, the trait and the
