@@ -19,12 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - kind: dense_interners
-            sha: ea4e9cc5343eb98dc3d42d0099da8b8416145471
-            run: 33971439882
-          - kind: thin_stalled
-            sha: fe7c0d0c1d1a0dfae692641b020ed214364142b5
-            run: 33971705326
+          - kind: nested_argfolder
+            sha: 8a6a1c5dba9e4136f37e53f58634b41dae59adc3
+            run: 33971787859
     steps:
       - name: Checkout validation script
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
