@@ -19,9 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - kind: interned_arenas
-            sha: 00b45135ef5d7be659351ce89c8b63595736380c
-            run: 33970652704
+          - kind: copy_impl_schema
+            sha: db029ae942064533f669fd3d78caff31d5aa1443
+            run: 33970806995
     steps:
       - name: Checkout validation script
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
