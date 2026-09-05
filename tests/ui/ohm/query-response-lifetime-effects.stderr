@@ -1,0 +1,31 @@
+error: lifetime may not live long enough
+  --> $DIR/query-response-lifetime-effects.rs:21:14
+   |
+LL | fn higher_ranked<'a>(value: &'a u8) -> impl for<'b> Fn(&'b u8) -> &'b u8 {
+   |                  -- lifetime `'a` defined here
+LL |     // A captured reference cannot be returned for every argument lifetime.
+LL |     move |_| value
+   |              ^^^^^ returning this value requires that `'a` must outlive `'static`
+   |
+help: to declare that `impl for<'b> Fn(&'b u8) -> for<'b> &'b u8` captures data from argument `value`, you can add an explicit `'a` lifetime bound
+   |
+LL | fn higher_ranked<'a>(value: &'a u8) -> impl for<'b> Fn(&'b u8) -> &'b u8 + 'a {
+   |                                                                          ++++
+
+error[E0597]: `value` does not live long enough
+  --> $DIR/query-response-lifetime-effects.rs:12:30
+   |
+LL |     let value = 3;
+   |         ----- binding `value` declared here
+LL |     let wrapped = StaticOnly(&value);
+   |                              ^^^^^^ borrowed value does not live long enough
+...
+LL |     drop(wrapped);
+   |          ------- copying this value requires that `value` is borrowed for `'static`
+LL |     drop(wrapped);
+LL | }
+   | - `value` dropped here while still borrowed
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0597`.

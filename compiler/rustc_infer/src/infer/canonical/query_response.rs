@@ -14,7 +14,9 @@ use rustc_index::{Idx, IndexVec};
 use rustc_middle::arena::ArenaAllocatable;
 use rustc_middle::bug;
 use rustc_middle::infer::canonical::{CanonicalVarKind, QueryRegionConstraint};
-use rustc_middle::ty::{self, BoundVar, GenericArg, GenericArgKind, Ty, TyCtxt, TypeFoldable};
+use rustc_middle::ty::{
+    self, BoundVar, GenericArg, GenericArgKind, Ty, TyCtxt, TypeFoldable, TypeVisitableExt,
+};
 use tracing::{debug, instrument};
 
 use crate::infer::canonical::instantiate::{CanonicalExt, instantiate_value};
@@ -259,6 +261,35 @@ impl<'tcx> InferCtxt<'tcx> {
     where
         R: Debug + TypeFoldable<TyCtxt<'tcx>>,
     {
+        // An identity response containing only root-universe regions reuses each original
+        // region without adding constraints. Type variables must take the full path: their
+        // canonical kinds can carry new sub-root relationships even when the values are unchanged.
+        // Keep the original traversal in debug builds to retain its invariant checks.
+        if !cfg!(debug_assertions)
+            && !self.disable_trait_solver_fast_paths()
+            && query_response.value.is_proven()
+            && query_response.value.region_constraints.is_empty()
+            && query_response.value.opaque_types.is_empty()
+            && query_response.max_universe == ty::UniverseIndex::ROOT
+            && query_response.var_kinds.len() == original_values.var_values.len()
+            && query_response.value.var_values.len() == original_values.var_values.len()
+            && query_response
+                .var_kinds
+                .iter()
+                .all(|kind| matches!(kind, CanonicalVarKind::Region(ty::UniverseIndex::ROOT)))
+            && original_values
+                .var_values
+                .iter()
+                .all(|value| matches!(value.kind(), GenericArgKind::Lifetime(_)))
+            && query_response.value.var_values.is_identity()
+            && !query_response.value.value.has_type_flags(ty::TypeFlags::HAS_CANONICAL_BOUND)
+        {
+            return Ok(InferOk {
+                value: query_response.value.value.clone(),
+                obligations: PredicateObligations::new(),
+            });
+        }
+
         let InferOk { value: result_args, mut obligations } = self
             .query_response_instantiation_guess(
                 cause,
