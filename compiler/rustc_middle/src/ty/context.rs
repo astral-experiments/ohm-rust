@@ -23,7 +23,7 @@ use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::intern::Interned;
 use rustc_data_structures::jobserver::Proxy;
 use rustc_data_structures::profiling::SelfProfilerRef;
-use rustc_data_structures::sharded::{IntoPointer, ShardedHashMap, make_hash};
+use rustc_data_structures::sharded::{IntoPointer, ShardedHashMap, ShardedHashSet, make_hash};
 use rustc_data_structures::stable_hash::StableHash;
 use rustc_data_structures::steal::Steal;
 use rustc_data_structures::sync::{
@@ -131,6 +131,7 @@ impl<'tcx> rustc_type_ir::inherent::Span<TyCtxt<'tcx>> for Span {
 }
 
 type InternedSet<'tcx, T> = ShardedHashMap<InternedInSet<'tcx, T>, ()>;
+type HashedInternedSet<'tcx, T> = ShardedHashSet<InternedInSet<'tcx, T>>;
 
 // A power of two so the hash selects a bounded direct-mapped cache slot.
 const INTERNER_CACHE_LEN: usize = 16384;
@@ -150,14 +151,14 @@ pub struct CtxtInterners<'tcx> {
 
     // Specifically use a speedy hash algorithm for these hash sets, since
     // they're accessed quite often.
-    type_: InternedSet<'tcx, WithCachedTypeInfo<TyKind<'tcx>>>,
+    type_: HashedInternedSet<'tcx, WithCachedTypeInfo<TyKind<'tcx>>>,
     const_lists: InternedSet<'tcx, List<ty::Const<'tcx>>>,
-    args: InternedSet<'tcx, GenericArgs<'tcx>>,
-    type_lists: InternedSet<'tcx, List<Ty<'tcx>>>,
+    args: HashedInternedSet<'tcx, GenericArgs<'tcx>>,
+    type_lists: HashedInternedSet<'tcx, List<Ty<'tcx>>>,
     canonical_var_kinds: InternedSet<'tcx, List<CanonicalVarKind<'tcx>>>,
     region: InternedSet<'tcx, RegionKind<'tcx>>,
     poly_existential_predicates: InternedSet<'tcx, List<PolyExistentialPredicate<'tcx>>>,
-    predicate: InternedSet<'tcx, WithCachedTypeInfo<ty::Binder<'tcx, PredicateKind<'tcx>>>>,
+    predicate: HashedInternedSet<'tcx, WithCachedTypeInfo<ty::Binder<'tcx, PredicateKind<'tcx>>>>,
     clauses: InternedSet<'tcx, ListWithCachedTypeInfo<Clause<'tcx>>>,
     projs: InternedSet<'tcx, List<ProjectionKind>>,
     place_elems: InternedSet<'tcx, List<PlaceElem<'tcx>>>,
@@ -201,14 +202,14 @@ impl<'tcx> CtxtInterners<'tcx> {
             // local perf runs. To get the interner sizes, insert `eprintln` printing the size of
             // the interner in functions like `intern_ty`. Bigger benchmarks tend to give more
             // accurate ratios, so use something like `x perf eprintln --includes cargo`.
-            type_: InternedSet::with_capacity(N * 16),
+            type_: HashedInternedSet::with_capacity(N * 16),
             const_lists: InternedSet::with_capacity(N * 4),
-            args: InternedSet::with_capacity(N * 4),
-            type_lists: InternedSet::with_capacity(N * 4),
+            args: HashedInternedSet::with_capacity(N * 4),
+            type_lists: HashedInternedSet::with_capacity(N * 4),
             region: InternedSet::with_capacity(N * 4),
             poly_existential_predicates: InternedSet::with_capacity(N / 4),
             canonical_var_kinds: InternedSet::with_capacity(N / 2),
-            predicate: InternedSet::with_capacity(N),
+            predicate: HashedInternedSet::with_capacity(N),
             clauses: InternedSet::with_capacity(N),
             projs: InternedSet::with_capacity(N * 4),
             place_elems: InternedSet::with_capacity(N * 2),
@@ -1763,6 +1764,9 @@ impl<'tcx> TyCtxt<'tcx> {
 
 macro_rules! nop_lift {
     ($set:ident; $ty:ty => $lifted:ty) => {
+        nop_lift! { $set: InternedSet; $ty => $lifted }
+    };
+    ($set:ident: $set_ty:ident; $ty:ty => $lifted:ty) => {
         impl<'a, 'tcx> Lift<TyCtxt<'tcx>> for $ty {
             type Lifted = $lifted;
             #[track_caller]
@@ -1773,7 +1777,7 @@ macro_rules! nop_lift {
                 // just doing this to compute said type!
                 fn _intern_set_ty_from_interned_ty<'tcx, Inner>(
                     _x: Interned<'tcx, Inner>,
-                ) -> InternedSet<'tcx, Inner> {
+                ) -> $set_ty<'tcx, Inner> {
                     unreachable!()
                 }
                 fn _type_eq<T>(_x: &T, _y: &T) {}
@@ -1801,12 +1805,15 @@ macro_rules! nop_list_lift {
     };
     // Allows defining own list type
     ($set:ident: $list:ident; $ty:ty => $lifted:ty) => {
+        nop_list_lift! { $set: $list, InternedSet; $ty => $lifted }
+    };
+    ($set:ident: $list:ident, $set_ty:ident; $ty:ty => $lifted:ty) => {
         impl<'a, 'tcx> Lift<TyCtxt<'tcx>> for &'a $list<$ty> {
             type Lifted = &'tcx $list<$lifted>;
             fn lift_to_interner(self, tcx: TyCtxt<'tcx>) -> Self::Lifted {
                 // Assert that the set has the right type.
                 if false {
-                    let _x: &InternedSet<'tcx, $list<$lifted>> = &tcx.interners.$set;
+                    let _x: &$set_ty<'tcx, $list<$lifted>> = &tcx.interners.$set;
                 }
 
                 if self.is_empty() {
@@ -1821,17 +1828,17 @@ macro_rules! nop_list_lift {
     };
 }
 
-nop_lift! { type_; Ty<'a> => Ty<'tcx> }
+nop_lift! { type_: HashedInternedSet; Ty<'a> => Ty<'tcx> }
 nop_lift! { region; Region<'a> => Region<'tcx> }
 nop_lift! { const_; Const<'a> => Const<'tcx> }
 nop_lift! { pat; Pattern<'a> => Pattern<'tcx> }
 nop_lift! { const_allocation; ConstAllocation<'a> => ConstAllocation<'tcx> }
-nop_lift! { predicate; Predicate<'a> => Predicate<'tcx> }
-nop_lift! { predicate; Clause<'a> => Clause<'tcx> }
+nop_lift! { predicate: HashedInternedSet; Predicate<'a> => Predicate<'tcx> }
+nop_lift! { predicate: HashedInternedSet; Clause<'a> => Clause<'tcx> }
 nop_lift! { layout; Layout<'a> => Layout<'tcx> }
 nop_lift! { valtree; ValTree<'a> => ValTree<'tcx> }
 
-nop_list_lift! { type_lists; Ty<'a> => Ty<'tcx> }
+nop_list_lift! { type_lists: List, HashedInternedSet; Ty<'a> => Ty<'tcx> }
 nop_list_lift! { clauses: ListWithCachedTypeInfo; Clause<'a> => Clause<'tcx> }
 nop_list_lift! {
     poly_existential_predicates; PolyExistentialPredicate<'a> => PolyExistentialPredicate<'tcx>
@@ -1843,7 +1850,7 @@ nop_list_lift! {
 }
 
 // This is the impl for `&'a GenericArgs<'a>`.
-nop_list_lift! { args; GenericArg<'a> => GenericArg<'tcx> }
+nop_list_lift! { args: List, HashedInternedSet; GenericArg<'a> => GenericArg<'tcx> }
 
 macro_rules! sty_debug_print {
     ($fmt: expr, $ctxt: expr, $($variant: ident),*) => {{
@@ -1877,7 +1884,7 @@ macro_rules! sty_debug_print {
                     // It seems that ordering doesn't affect anything here.
                     #[allow(rustc::potential_query_instability)]
                     let types = shard.iter();
-                    for &(InternedInSet(t), ()) in types {
+                    for &(InternedInSet(t), _) in types {
                         let variant = match t.internee {
                             ty::Bool | ty::Char | ty::Int(..) | ty::Uint(..) |
                                 ty::Float(..) | ty::Str | ty::Never => continue,
