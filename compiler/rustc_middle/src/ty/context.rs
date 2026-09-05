@@ -2277,7 +2277,7 @@ impl<'tcx> TyCtxt<'tcx> {
         })
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn mk_predicate(self, binder: Binder<'tcx, PredicateKind<'tcx>>) -> Predicate<'tcx> {
         self.interners.intern_predicate(binder)
     }
@@ -2498,7 +2498,7 @@ impl<'tcx> TyCtxt<'tcx> {
 
     // Avoid this in favour of more specific `Ty::new_*` methods, where possible.
     #[allow(rustc::usage_of_ty_tykind)]
-    #[inline]
+    #[inline(always)]
     pub fn mk_ty_from_kind(self, st: TyKind<'tcx>) -> Ty<'tcx> {
         self.interners.intern_ty(st)
     }

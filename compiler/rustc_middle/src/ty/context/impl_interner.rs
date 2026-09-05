@@ -263,6 +263,7 @@ impl<'tcx> Interner for TyCtxt<'tcx> {
         (trait_ref, &args[trait_ref.args.len()..])
     }
 
+    #[inline(always)]
     fn mk_args(self, args: &[Self::GenericArg]) -> ty::GenericArgsRef<'tcx> {
         self.mk_args(args)
     }
