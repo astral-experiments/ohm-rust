@@ -2617,6 +2617,8 @@ pub(super) fn closed_associated_type_bounds_hold<'tcx>(
     (trait_item, definition): (DefId, Ty<'tcx>),
 ) -> bool {
     let item = tcx.associated_item(trait_item);
+    // An associated type's own where clauses can depend on the impl's Self;
+    // they are not included in `explicit_item_bounds` below.
     // The next solver may defer type-outlives constraints during evaluation.
     if tcx.next_trait_solver_globally()
         || tcx.assumptions_on_binders()
