@@ -1,0 +1,59 @@
+error[E0276]: impl has stricter requirements than trait
+  --> $DIR/lazy-obligation-errors.rs:13:28
+   |
+LL |     fn identity<T: Clone>(value: T) -> T;
+   |     ------------------------------------- definition of `identity` from trait
+...
+LL |     fn identity<T: Clone + Copy>(value: T) -> T { value }
+   |                            ^^^^ impl has extra requirement `T: Copy`
+
+error[E0271]: expected `Once<()>` to be an iterator that yields `T`, but it yields `()`
+  --> $DIR/lazy-obligation-errors.rs:22:34
+   |
+LL |     fn values<T: Clone>(_: T) -> impl Iterator<Item = T> + Clone {
+   |               -                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected type parameter `T`, found `()`
+   |               |
+   |               expected this type parameter
+LL |         //~^ ERROR expected `Once<()>` to be an iterator that yields `T`, but it yields `()`
+LL |         std::iter::once(())
+   |         ------------------- return type was inferred to be `std::iter::Once<()>` here
+   |
+   = note: expected type parameter `T`
+                   found unit type `()`
+
+error[E0597]: `first` does not live long enough
+  --> $DIR/lazy-obligation-errors.rs:47:26
+   |
+LL |         let first = String::from("first");
+   |             ----- binding `first` declared here
+...
+LL |             first: Watch(&first),
+   |                          ^^^^^^ borrowed value does not live long enough
+...
+LL |     }
+   |     - `first` dropped here while still borrowed
+LL | }
+   | - borrow might be used here, when `_pair` is dropped and runs the destructor for type `ProjectedPair<Vec<Watch<'_>>>`
+   |
+   = note: values in a scope are dropped in the opposite order they are defined
+
+error[E0597]: `second` does not live long enough
+  --> $DIR/lazy-obligation-errors.rs:49:32
+   |
+LL |         let second = String::from("second");
+   |             ------ binding `second` declared here
+...
+LL |             second: Some(Watch(&second)),
+   |                                ^^^^^^^ borrowed value does not live long enough
+...
+LL |     }
+   |     - `second` dropped here while still borrowed
+LL | }
+   | - borrow might be used here, when `_pair` is dropped and runs the destructor for type `ProjectedPair<Vec<Watch<'_>>>`
+   |
+   = note: values in a scope are dropped in the opposite order they are defined
+
+error: aborting due to 4 previous errors
+
+Some errors have detailed explanations: E0271, E0276, E0597.
+For more information about an error, try `rustc --explain E0271`.
