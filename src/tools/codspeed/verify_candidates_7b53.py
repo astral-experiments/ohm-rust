@@ -19,7 +19,9 @@ CANDIDATES = {
     "inline_interners": ("d431f7e2d7c2cee45cea4dde567e37846b075969", 33967115972),
     "global_trait_proofs": ("b57fb8b21cfa45a10f51fc4a90f6495518f40458", 33967204643),
     "query_cache": ("c1c0df5ea61aa9567b08597983c3bc66d74f4e3c", 33967420811),
-    "interner_tables": ("fee565ff358fa73dc55dfe7927538d3592abfc43", 33967646842),
+    "interner_tables": ("bff200000e19c2f7f7d9727aceff4b49805217c5", 33968145281),
+    "inline_constructors": ("af4c4ee447316d08ed42da16d708286438701f71", 33968335687),
+    "early_sized": ("7edf3a10d157b8aec91b643b4ba9153cb3487039", 33968214867),
 }
 
 
@@ -40,7 +42,7 @@ def main():
     def check(
         name, fixture, *, revision=None, next_solver=False, disable_fast_paths=False,
         errors=(), incremental=None, require_loaded=False, threads=None,
-        crate_name=None, artifact=None, execute=True, extra_flags=(),
+        crate_name=None, artifact=None, execute=True, extra_flags=(), required_spans=(),
     ):
         """Compile one fixture and execute successful binary fixtures."""
         default_name = incremental.name if incremental is not None else name
@@ -109,6 +111,24 @@ def main():
             ]
             record["actual_errors"] = actual
             assert Counter(actual) == Counter(errors), (actual, errors)
+            if required_spans:
+                pending = [d for d in diagnostics if d.get("level") == "error"]
+                spans = []
+                while pending:
+                    diagnostic = pending.pop()
+                    pending.extend(diagnostic.get("children", ()))
+                    for span in diagnostic.get("spans", ()):
+                        if (
+                            Path(span["file_name"]).name == Path(fixture).name
+                            and span["line_start"] == span["line_end"]
+                        ):
+                            spans.append((
+                                span["line_start"], span["column_start"], span["column_end"],
+                                span["is_primary"], span["label"],
+                            ))
+                record["required_spans"] = required_spans
+                record["actual_spans"] = spans
+                assert all(span in spans for span in required_spans), (required_spans, spans)
             if not errors and execute:
                 run = subprocess.run(
                     [str(binary)], cwd=source, env=env, capture_output=True,
@@ -302,10 +322,10 @@ def main():
                     revision="bfail2", incremental=incremental, require_loaded=True,
                     errors=lifetime_errors, **controls,
                 )
-        if kind in ("inline_interners", "query_cache", "interner_tables"):
+        if kind in ("inline_interners", "inline_constructors", "query_cache", "interner_tables"):
             for solver in ("current", "next"):
                 next_solver = solver == "next"
-                threads = None if kind == "inline_interners" else 4
+                threads = 4 if kind in ("query_cache", "interner_tables") else None
                 check(
                     f"nominal-obligations-{solver}",
                     "tests/ui/wf/nominal-inherited-obligations.rs",
@@ -347,6 +367,37 @@ def main():
                         require_loaded=revision != "rpass1",
                         extra_flags=("-Zquery-dep-graph", "--extern", f"a={rlib}"),
                     )
+        if kind == "early_sized":
+            for solver in ("current", "next", "slow"):
+                options = {
+                    "revision": solver,
+                    "next_solver": solver == "next",
+                    "disable_fast_paths": solver == "slow",
+                }
+                check(
+                    f"early-sized-{solver}", "tests/ui/ohm/early-sized-impl-obligations.rs",
+                    **options,
+                )
+                check(
+                    f"early-sized-fail-{solver}",
+                    "tests/ui/ohm/early-sized-impl-obligations-fail.rs",
+                    errors=(("E0277", "the size for values of type `str` cannot be known at compilation time"),),
+                    required_spans=(
+                        (22, 13, 27, True, "doesn't have a size known at compile-time"),
+                        (17, 55, 60, False, "unsatisfied trait bound introduced here"),
+                        (19, 15, 20, True, "required by this bound in `require`"),
+                    ), **options,
+                )
+                check(
+                    f"early-sized-alias-{solver}", "tests/ui/sized-hierarchy/alias-bounds.rs",
+                    extra_flags=("--crate-type=lib",), execute=False, **options,
+                )
+                check(
+                    f"early-sized-tainted-{solver}",
+                    "tests/ui/async-await/async-closures/dont-ice-when-body-tainted-by-errors.rs",
+                    errors=(("E0277", "the trait bound `(): Impossible` is not satisfied"),),
+                    **options,
+                )
         failed = [case["name"] for case in report["cases"] if case["status"] != "passed"]
         assert not failed, f"Failed cases: {', '.join(failed)}"
         report["status"] = "passed"
