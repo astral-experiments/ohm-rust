@@ -34,6 +34,7 @@ pub use self::atomic::AtomicU64;
 pub use self::freeze::{FreezeLock, FreezeReadGuard, FreezeWriteGuard};
 #[doc(no_inline)]
 pub use self::lock::{Lock, LockGuard, Mode};
+pub(crate) use self::mode::might_be_dyn_thread_safe;
 pub use self::mode::{
     FromDyn, check_dyn_thread_safe, is_dyn_thread_safe, set_dyn_thread_safe_mode,
 };
@@ -92,7 +93,7 @@ mod mode {
 
     // Whether thread safety might be enabled.
     #[inline]
-    pub(super) fn might_be_dyn_thread_safe() -> bool {
+    pub(crate) fn might_be_dyn_thread_safe() -> bool {
         DYN_THREAD_SAFE_MODE.load(Ordering::Relaxed) != DYN_NOT_THREAD_SAFE
     }
 

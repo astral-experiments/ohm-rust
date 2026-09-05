@@ -77,19 +77,121 @@ fn sparse_inserts() {
 
 #[test]
 fn concurrent_stress_check() {
-    let cache: VecCache<u32, u32, u32> = VecCache::default();
+    fn value(key: u32) -> [u32; 4] {
+        [key, !key, key + 1, key + 2]
+    }
+
+    crate::sync::set_dyn_thread_safe_mode(true);
+    let proof = crate::sync::check_dyn_thread_safe().unwrap();
+    let cache: VecCache<u32, [u32; 4], u32> = VecCache::default();
+    assert!(matches!(cache.mode, Mode::Sync));
+    let barrier = std::sync::Barrier::new(100);
     std::thread::scope(|s| {
         for idx in 0..100 {
-            let cache = &cache;
+            let cache = proof.derive(&cache);
+            let barrier = &barrier;
             s.spawn(move || {
-                cache.complete(idx, idx, idx);
+                barrier.wait();
+                cache.complete(idx, value(idx), idx);
+                // Read while other threads publish their entries, before joining them.
+                for key in 0..100 {
+                    if let Some(entry) = cache.lookup(&key) {
+                        assert_eq!(entry, (value(key), key));
+                    }
+                }
             });
         }
     });
 
     for idx in 0..100 {
-        assert_eq!(cache.lookup(&idx), Some((idx, idx)));
+        assert_eq!(cache.lookup(&idx), Some((value(idx), idx)));
     }
+    assert_eq!(cache.len(), 100);
+    cache.for_each(&mut |key, actual, index| {
+        assert_eq!((*actual, index), (value(*key), *key));
+    });
+}
+
+#[test]
+#[cfg(not(miri))]
+fn modes_are_captured_at_construction() {
+    const CHILD: &str = "RUSTC_VEC_CACHE_MODE_TEST_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        // The runtime mode is process-global and other tests enable synchronization.
+        // Use a fresh process to test both an unset mode and permanently disabled synchronization.
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "vec_cache::tests::modes_are_captured_at_construction"])
+            .env(CHILD, "1")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+        return;
+    }
+
+    let before: VecCache<u32, u32, u32> = VecCache::default();
+    assert!(matches!(before.mode, Mode::Sync));
+    crate::sync::set_dyn_thread_safe_mode(false);
+    assert!(matches!(before.mode, Mode::Sync));
+    let after: VecCache<u32, u32, u32> = VecCache::default();
+    assert!(matches!(after.mode, Mode::NoSync));
+    for cache in [before, after] {
+        for key in [0, 4096] {
+            cache.complete(key, key + 1, key + 2);
+            assert_eq!(cache.lookup(&key), Some((key + 1, key + 2)));
+        }
+        assert_eq!(cache.len(), 2);
+        cache.for_each(&mut |key, value, index| assert_eq!((*value, index), (key + 1, key + 2)));
+    }
+}
+
+#[test]
+fn value_marker_controls_auto_traits() {
+    macro_rules! assert_not_impl {
+        ($ty:ty, $bound:path) => {
+            const _: fn() = || {
+                trait AmbiguousIfImpl<A> {
+                    fn check() {}
+                }
+                impl<T: ?Sized> AmbiguousIfImpl<()> for T {}
+                impl<T: ?Sized + $bound> AmbiguousIfImpl<u8> for T {}
+                let _ = <$ty as AmbiguousIfImpl<_>>::check;
+            };
+        };
+    }
+    fn assert_send<T: Send>() {}
+
+    type Cache = VecCache<u32, u32, u32>;
+    assert_send::<Cache>();
+    crate::sync::assert_dyn_send::<Cache>();
+    crate::sync::assert_dyn_sync::<Cache>();
+    assert_not_impl!(Cache, Sync);
+
+    type LocalValue = VecCache<u32, &'static std::cell::Cell<u32>, u32>;
+    assert_not_impl!(LocalValue, Send);
+    assert_not_impl!(LocalValue, DynSend);
+    assert_not_impl!(LocalValue, DynSync);
+
+    // Query caches store values which are dynamically safe but lack ordinary auto traits.
+    type DynamicValue = VecCache<u32, &'static crate::sync::Lock<()>, u32>;
+    crate::sync::assert_dyn_send::<DynamicValue>();
+    crate::sync::assert_dyn_sync::<DynamicValue>();
+    assert_not_impl!(DynamicValue, Send);
+}
+
+#[test]
+fn dropping_cache_does_not_access_values() {
+    // The declaration order drops the String before the cache. The value marker must preserve
+    // the existing may_dangle contract, since dropping the cache only deallocates its buckets.
+    let cache;
+    let value = String::from("cached value");
+    cache = VecCache::<u32, &str, u32>::default();
+    cache.complete(0, value.as_str(), 1);
+    assert_eq!(cache.lookup(&0), Some((value.as_str(), 1)));
 }
 
 #[test]

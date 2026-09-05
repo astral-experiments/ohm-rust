@@ -13,6 +13,8 @@ use std::sync::atomic::{AtomicPtr, AtomicU32, AtomicUsize, Ordering};
 
 use rustc_index::Idx;
 
+use crate::sync::{DynSend, DynSync, Mode, might_be_dyn_thread_safe};
+
 #[cfg(test)]
 mod tests;
 
@@ -69,11 +71,16 @@ impl SlotIndex {
     }
 
     // SAFETY: Buckets must be managed solely by functions here (i.e., get/put on SlotIndex) and
-    // `self` comes from SlotIndex::from_index
+    // `self` comes from SlotIndex::from_index. If SYNC is false, access to the cache must be
+    // confined to one thread or externally synchronized.
     #[inline]
-    unsafe fn get<V: Copy>(&self, buckets: &[AtomicPtr<Slot<V>>; 21]) -> Option<(V, u32)> {
+    unsafe fn get<V: Copy, const SYNC: bool>(
+        &self,
+        buckets: &[AtomicPtr<Slot<V>>; 21],
+    ) -> Option<(V, u32)> {
+        let ordering = if SYNC { Ordering::Acquire } else { Ordering::Relaxed };
         let bucket = &buckets[self.bucket_idx];
-        let ptr = bucket.load(Ordering::Acquire);
+        let ptr = bucket.load(ordering);
         // Bucket is not yet initialized: then we obviously won't find this entry in that bucket.
         if ptr.is_null() {
             return None;
@@ -86,7 +93,7 @@ impl SlotIndex {
         // SAFETY: initialized bucket has zeroed all memory within the bucket, so we are valid for
         // AtomicU32 access.
         let index_and_lock = unsafe { &(*slot).index_and_lock };
-        let current = index_and_lock.load(Ordering::Acquire);
+        let current = index_and_lock.load(ordering);
         let index = match current {
             0 => return None,
             // Treat "initializing" as actually just not initialized at all.
@@ -222,6 +229,9 @@ impl SlotIndex {
 ///
 /// [#124780]: https://github.com/rust-lang/rust/pull/124780
 pub struct VecCache<K: Idx, V, I> {
+    // Captured at construction and never changed. An unset runtime mode requires synchronization.
+    mode: Mode,
+
     // Entries per bucket:
     // Bucket  0:       4096 2^12
     // Bucket  1:       4096 2^12
@@ -238,14 +248,23 @@ pub struct VecCache<K: Idx, V, I> {
     present: [AtomicPtr<Slot<()>>; BUCKETS],
     len: AtomicUsize,
 
-    key: PhantomData<(K, I)>,
+    // AtomicPtr does not propagate V's auto traits, but the cache owns and returns values of V.
+    marker: PhantomData<(K, V, I)>,
 }
+
+impl<K: Idx, V, I> !Sync for VecCache<K, V, I> {}
+
+// SAFETY: FromDyn can share this cache only when the runtime mode is permanently thread safe.
+// A cache constructed before that mode was set uses Mode::Sync as well. Values are published
+// with release stores and read with acquire loads in that mode.
+unsafe impl<K: Idx + DynSync, V: DynSend + DynSync, I: DynSync> DynSync for VecCache<K, V, I> {}
 
 impl<K: Idx, V, I> Default for VecCache<K, V, I> {
     fn default() -> Self {
         VecCache {
+            mode: if might_be_dyn_thread_safe() { Mode::Sync } else { Mode::NoSync },
             buckets: Default::default(),
-            key: PhantomData,
+            marker: PhantomData,
             len: Default::default(),
             present: Default::default(),
         }
@@ -297,7 +316,16 @@ where
     pub fn lookup(&self, key: &K) -> Option<(V, I)> {
         let key = u32::try_from(key.index()).unwrap();
         let slot_idx = SlotIndex::from_index(key);
-        match unsafe { slot_idx.get(&self.buckets) } {
+        // SAFETY: The buckets and slot index are managed here. VecCache is never Sync, so
+        // Mode::NoSync cannot be shared without external synchronization. Dynamic sharing
+        // requires a permanently thread-safe runtime mode, which excludes Mode::NoSync caches.
+        let entry = unsafe {
+            match self.mode {
+                Mode::NoSync => slot_idx.get::<_, false>(&self.buckets),
+                Mode::Sync => slot_idx.get::<_, true>(&self.buckets),
+            }
+        };
+        match entry {
             Some((value, idx)) => Some((value, I::new(idx as usize))),
             None => None,
         }
@@ -320,7 +348,7 @@ where
     pub fn for_each(&self, f: &mut dyn FnMut(&K, &V, I)) {
         for idx in 0..self.len.load(Ordering::Acquire) {
             let key = SlotIndex::from_index(idx as u32);
-            match unsafe { key.get(&self.present) } {
+            match unsafe { key.get::<_, true>(&self.present) } {
                 // This shouldn't happen in our current usage (iter is really only
                 // used long after queries are done running), but if we hit this in practice it's
                 // probably fine to just break early.
