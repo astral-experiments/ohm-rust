@@ -23,7 +23,7 @@ use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::intern::Interned;
 use rustc_data_structures::jobserver::Proxy;
 use rustc_data_structures::profiling::SelfProfilerRef;
-use rustc_data_structures::sharded::{IntoPointer, ShardedHashMap, make_hash};
+use rustc_data_structures::sharded::{IntoPointer, ShardedHashMap, ShardedHashSet, make_hash};
 use rustc_data_structures::stable_hash::StableHash;
 use rustc_data_structures::steal::Steal;
 use rustc_data_structures::sync::{
@@ -131,6 +131,7 @@ impl<'tcx> rustc_type_ir::inherent::Span<TyCtxt<'tcx>> for Span {
 }
 
 type InternedSet<'tcx, T> = ShardedHashMap<InternedInSet<'tcx, T>, ()>;
+type HashedInternedSet<'tcx, T> = ShardedHashSet<InternedInSet<'tcx, T>>;
 
 // A power of two so the hash selects a bounded direct-mapped cache slot.
 const INTERNER_CACHE_LEN: usize = 16384;
@@ -150,14 +151,14 @@ pub struct CtxtInterners<'tcx> {
 
     // Specifically use a speedy hash algorithm for these hash sets, since
     // they're accessed quite often.
-    type_: InternedSet<'tcx, WithCachedTypeInfo<TyKind<'tcx>>>,
+    type_: HashedInternedSet<'tcx, WithCachedTypeInfo<TyKind<'tcx>>>,
     const_lists: InternedSet<'tcx, List<ty::Const<'tcx>>>,
-    args: InternedSet<'tcx, GenericArgs<'tcx>>,
-    type_lists: InternedSet<'tcx, List<Ty<'tcx>>>,
+    args: HashedInternedSet<'tcx, GenericArgs<'tcx>>,
+    type_lists: HashedInternedSet<'tcx, List<Ty<'tcx>>>,
     canonical_var_kinds: InternedSet<'tcx, List<CanonicalVarKind<'tcx>>>,
     region: InternedSet<'tcx, RegionKind<'tcx>>,
     poly_existential_predicates: InternedSet<'tcx, List<PolyExistentialPredicate<'tcx>>>,
-    predicate: InternedSet<'tcx, WithCachedTypeInfo<ty::Binder<'tcx, PredicateKind<'tcx>>>>,
+    predicate: HashedInternedSet<'tcx, WithCachedTypeInfo<ty::Binder<'tcx, PredicateKind<'tcx>>>>,
     clauses: InternedSet<'tcx, ListWithCachedTypeInfo<Clause<'tcx>>>,
     projs: InternedSet<'tcx, List<ProjectionKind>>,
     place_elems: InternedSet<'tcx, List<PlaceElem<'tcx>>>,
@@ -201,14 +202,14 @@ impl<'tcx> CtxtInterners<'tcx> {
             // local perf runs. To get the interner sizes, insert `eprintln` printing the size of
             // the interner in functions like `intern_ty`. Bigger benchmarks tend to give more
             // accurate ratios, so use something like `x perf eprintln --includes cargo`.
-            type_: InternedSet::with_capacity(N * 16),
+            type_: HashedInternedSet::with_capacity(N * 16),
             const_lists: InternedSet::with_capacity(N * 4),
-            args: InternedSet::with_capacity(N * 4),
-            type_lists: InternedSet::with_capacity(N * 4),
+            args: HashedInternedSet::with_capacity(N * 4),
+            type_lists: HashedInternedSet::with_capacity(N * 4),
             region: InternedSet::with_capacity(N * 4),
             poly_existential_predicates: InternedSet::with_capacity(N / 4),
             canonical_var_kinds: InternedSet::with_capacity(N / 2),
-            predicate: InternedSet::with_capacity(N),
+            predicate: HashedInternedSet::with_capacity(N),
             clauses: InternedSet::with_capacity(N),
             projs: InternedSet::with_capacity(N * 4),
             place_elems: InternedSet::with_capacity(N * 2),
@@ -1877,7 +1878,7 @@ macro_rules! sty_debug_print {
                     // It seems that ordering doesn't affect anything here.
                     #[allow(rustc::potential_query_instability)]
                     let types = shard.iter();
-                    for &(InternedInSet(t), ()) in types {
+                    for &(InternedInSet(t), _) in types {
                         let variant = match t.internee {
                             ty::Bool | ty::Char | ty::Int(..) | ty::Uint(..) |
                                 ty::Float(..) | ty::Str | ty::Never => continue,

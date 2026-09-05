@@ -278,6 +278,87 @@ impl<K: Eq + Hash + Copy> ShardedHashMap<K, ()> {
     }
 }
 
+/// An interner that retains each entry's hash for table growth and collision checks.
+///
+/// The cached hash costs one `u64` per bucket, avoiding repeated structural hashing
+/// and dereferencing keys whose full hash differs during lookup.
+pub struct ShardedHashSet<K>(ShardedHashMap<K, u64>);
+
+impl<K: Eq> ShardedHashSet<K> {
+    pub fn with_capacity(cap: usize) -> Self {
+        Self(ShardedHashMap::with_capacity(cap))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn lock_shards(&self) -> impl Iterator<Item = LockGuard<'_, HashTable<(K, u64)>>> {
+        self.0.lock_shards()
+    }
+}
+
+impl<K: Eq + Hash + Copy> ShardedHashSet<K> {
+    /// Interns `value` using a hash computed by [`make_hash`].
+    ///
+    /// `make` must return a key whose borrowed value equals `value`, with the same hash.
+    #[inline]
+    pub fn intern_ref_with_hash<Q: ?Sized>(
+        &self,
+        hash: u64,
+        value: &Q,
+        make: impl FnOnce() -> K,
+    ) -> K
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq,
+    {
+        let mut shard = self.0.lock_shard_by_hash(hash);
+        if let Some(&(key, _)) =
+            shard.find(hash, |(key, cached_hash)| *cached_hash == hash && key.borrow() == value)
+        {
+            return key;
+        }
+
+        // Keep reservation before construction, and avoid growing for existing keys.
+        shard.reserve(1, |(_, cached_hash)| *cached_hash);
+        let key = make();
+        shard.insert_unique(hash, (key, hash), |(_, cached_hash)| *cached_hash);
+        key
+    }
+
+    /// Like [`Self::intern_ref_with_hash`], taking ownership of the value to intern.
+    #[inline]
+    pub fn intern_with_hash<Q>(&self, hash: u64, value: Q, make: impl FnOnce(Q) -> K) -> K
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq,
+    {
+        let mut shard = self.0.lock_shard_by_hash(hash);
+        if let Some(&(key, _)) =
+            shard.find(hash, |(key, cached_hash)| *cached_hash == hash && key.borrow() == &value)
+        {
+            return key;
+        }
+
+        shard.reserve(1, |(_, cached_hash)| *cached_hash);
+        let key = make(value);
+        shard.insert_unique(hash, (key, hash), |(_, cached_hash)| *cached_hash);
+        key
+    }
+}
+
+impl<K: Eq + Hash + Copy + IntoPointer> ShardedHashSet<K> {
+    pub fn contains_pointer_to<T: Hash + IntoPointer>(&self, value: &T) -> bool {
+        let hash = make_hash(value);
+        let shard = self.0.lock_shard_by_hash(hash);
+        let value = value.into_pointer();
+        shard
+            .find(hash, |(key, cached_hash)| *cached_hash == hash && key.into_pointer() == value)
+            .is_some()
+    }
+}
+
 pub trait IntoPointer {
     /// Returns a pointer which outlives `self`.
     fn into_pointer(&self) -> *const ();
