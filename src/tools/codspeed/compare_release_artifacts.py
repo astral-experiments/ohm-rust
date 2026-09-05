@@ -24,20 +24,20 @@ UV = "3392e29bdc4f09bb4f6d92f7aca8d450b835ce4f"
 RUFF = "efcffd2178ce62e9951a53d4c50cadc225a0cfec"
 CODEX = "74004b5397b24662a87a5264a6ae80664168c7f3"
 SUITE = "c0301bc44d175b9b2c5442b25049475c39d7700c"
-CANDIDATE_TREE = "05491635bd49b73847b589f131af795a6b49a477"
+CANDIDATE_TREE = "9a1cbae32a59096c562550f1d29a1767811866c9"
 CANDIDATE_PATCH_SHA = "6c061e7e500164c1639d82101185818b930107822a42629ecdddbb3fc8f70379"
 EDIT_SPEC_SHA = "7e4d21d6da2a06beac99e60a7e190c9cb50c4866d22070d15b1a4e93641cbd08"
-BOOTSTRAP_SHA = "9aa59b04767b1d89a3bc57c52895020423a3a189130820e1e33fb733b47db169"
+BOOTSTRAP_SHA = "a4d3a2c637f2ea4b5fe9eedc4926fee2451ad63ce16867e693f707afbe774eb7"
 EXPECTED = {
     "A": {
-        "revision": "4627d2156ce9cb9889f48c34f2ecf018150c6bb0",
-        "run_id": 33842773781,
-        "artifact_id": 9926674271,
-        "bytes": 260457377,
-        "digest": "sha256:aef36a546f0a4e5c8845f8a4bd825427c8f194ea96a9c3b985c517ed764fffdb",
+        "revision": "feba5046b5c7cb67e0315655a838302aca456b71",
+        "run_id": 33929253092,
+        "artifact_id": 9958246484,
+        "bytes": 260679844,
+        "digest": "sha256:5148231b7a422ce51dd8befaf4cfbc3ae6c92add1f8b53995d6e6ff71e5a4834",
     },
     "B": {
-        "revision": "4627d2156ce9cb9889f48c34f2ecf018150c6bb0",
+        "revision": "feba5046b5c7cb67e0315655a838302aca456b71",
         "artifact_name": "codspeed-toolchain-candidate",
     },
 }
@@ -92,14 +92,14 @@ def candidate_source(source, *, prepare):
     git = lambda *args: subprocess.check_output(["git", "-C", str(source), *args], text=True).strip()
     patch = base64.b64decode(Path(__file__).with_name("mir-block-count.patch.b64").read_bytes().strip(), validate=True)
     if git("rev-parse", "HEAD") != EXPECTED["A"]["revision"] or hashlib.sha256(patch).hexdigest() != CANDIDATE_PATCH_SHA:
-        raise ValueError("Candidate must start at exact #107 with the reviewed patch")
+        raise ValueError("Candidate must start at exact #108 with the reviewed patch")
     if prepare:
         if git("status", "--porcelain", "--untracked-files=all"):
             raise ValueError("Candidate source checkout is not clean")
         subprocess.run(["git", "-C", str(source), "apply", "--index", "-"], input=patch, check=True)
     if (git("write-tree") != CANDIDATE_TREE or git("diff", "--name-only")
             or git("ls-files", "--others", "--exclude-standard")):
-        raise ValueError("Candidate source differs from #107 plus the reviewed codegen patch")
+        raise ValueError("Candidate source differs from #108 plus the reviewed codegen patch")
     if record(source / "src/tools/codspeed/bootstrap.toml")["sha256"] != BOOTSTRAP_SHA:
         raise ValueError("Candidate compiler recipe changed")
     return source
@@ -482,7 +482,7 @@ def main(shard, cycles, confirm=False):
 
     plan = comparison_plan(cycles, confirm)
     result = {
-        "status": "running", "role": "descriptive walltime comparison",
+        "status": "running", "role": "PR-local walltime comparison against #108",
         "baseline": EXPECTED["A"], "candidate": EXPECTED["B"],
         "case": f"{shard}-Full-NoICH", "scenario": "Full",
         "planned_warmups": 2, "planned_measured": 4 * cycles,
