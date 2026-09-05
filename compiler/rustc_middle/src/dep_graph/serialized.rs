@@ -569,6 +569,34 @@ struct NodeInfo {
 }
 
 impl NodeInfo {
+    /// Encode all edges with one reservation. The spare trailing bytes allow each
+    /// compact index to use an overlapping, unaligned `u32` store.
+    #[inline]
+    fn encode_edges(e: &mut MemEncoder, edges: &[DepNodeIndex], bytes_per_index: usize) {
+        if edges.is_empty() {
+            return;
+        }
+        assert!((1..=size_of::<u32>()).contains(&bytes_per_index));
+
+        let encoded_len = edges.len().checked_mul(bytes_per_index).unwrap();
+        e.data.reserve(encoded_len.checked_add(size_of::<u32>() - 1).unwrap());
+        let old_len = e.data.len();
+
+        // SAFETY: The reservation leaves room for every encoded byte and three
+        // extra bytes. Each store starts inside the encoded range and writes at
+        // most three bytes beyond it. All bytes in the appended range are
+        // initialized because the stores overlap or abut. Padding stays outside
+        // the new length, and the existing encoded bytes are untouched.
+        unsafe {
+            let mut dest = e.data.as_mut_ptr().add(old_len);
+            for edge in edges {
+                dest.cast::<u32>().write_unaligned(edge.as_u32().to_le());
+                dest = dest.add(bytes_per_index);
+            }
+            e.data.set_len(old_len + encoded_len);
+        }
+    }
+
     fn encode(&self, e: &mut MemEncoder, index: DepNodeIndex) {
         let NodeInfo { ref node, value_fingerprint, ref edges } = *self;
         let header = SerializedNodeHeader::new(
@@ -585,13 +613,7 @@ impl NodeInfo {
             e.emit_u32(edges.len().try_into().unwrap());
         }
 
-        let bytes_per_index = header.bytes_per_index();
-        for node_index in edges.iter() {
-            e.write_with(|dest| {
-                *dest = node_index.as_u32().to_le_bytes();
-                bytes_per_index
-            });
-        }
+        Self::encode_edges(e, edges, header.bytes_per_index());
     }
 
     /// Encode a node that was promoted from the previous graph. It reads the edges directly from
@@ -619,14 +641,7 @@ impl NodeInfo {
             e.emit_u32(edge_count.try_into().unwrap());
         }
 
-        let bytes_per_index = header.bytes_per_index();
-        for edge in edges {
-            let edge = edge.as_u32();
-            e.write_with(|dest| {
-                *dest = edge.to_le_bytes();
-                bytes_per_index
-            });
-        }
+        Self::encode_edges(e, edges, header.bytes_per_index());
 
         edge_count
     }
@@ -1042,5 +1057,38 @@ impl GraphEncoder {
         let _prof_timer = self.profiler.generic_activity("incr_comp_encode_dep_graph_finish");
 
         self.status.finish(&self.profiler, current)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DepNodeIndex, MemEncoder, NodeInfo};
+
+    #[test]
+    fn encode_edges_matches_wire_format() {
+        for (width, max_index) in [(1, 0xff), (2, 0xffff), (3, 0xff_ffff), (4, 0xfedc_ba98)] {
+            let values = [0, 1, max_index, 0x0102_0304 & max_index].map(DepNodeIndex::from_u32);
+            for len in [0, 1, 2, 7, 8, 9, 255, 1024] {
+                let edges: Vec<_> = values.iter().copied().cycle().take(len).collect();
+                for prefix_len in [0, 1, 2, 3, 38] {
+                    let mut encoder = MemEncoder { data: vec![0xa5; prefix_len] };
+                    let mut expected = encoder.data.clone();
+                    for edge in &edges {
+                        expected.extend_from_slice(&edge.as_u32().to_le_bytes()[..width]);
+                    }
+
+                    NodeInfo::encode_edges(&mut encoder, &edges, width);
+                    assert_eq!(
+                        encoder.data, expected,
+                        "width={width}, len={len}, prefix_len={prefix_len}"
+                    );
+
+                    // The overlapping stores must not append padding to the wire format.
+                    encoder.write_array([0x12, 0x34, 0x56, 0x78]);
+                    expected.extend_from_slice(&[0x12, 0x34, 0x56, 0x78]);
+                    assert_eq!(encoder.finish(), expected);
+                }
+            }
+        }
     }
 }
