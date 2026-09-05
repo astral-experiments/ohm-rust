@@ -260,6 +260,12 @@ impl<'tcx> QueryKey for (DefId, GenericArgsRef<'tcx>) {
     }
 }
 
+impl<'tcx> QueryKey for (DefId, Ty<'tcx>) {
+    fn default_span(&self, tcx: TyCtxt<'_>) -> Span {
+        self.0.default_span(tcx)
+    }
+}
+
 impl<'tcx> QueryKey for ty::TraitRef<'tcx> {
     fn default_span(&self, tcx: TyCtxt<'_>) -> Span {
         tcx.def_span(self.def_id)
