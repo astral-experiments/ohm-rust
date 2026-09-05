@@ -35,6 +35,7 @@ CANDIDATES = {
     "trait_impl_schema": ("f4655021ef46126bed6893d0a5de8aa87bbfc9fe", 33973544227),
     "interner_cache": ("c320a2b6ad359b0e8a36d694780a25415b7a0360", 33973762897),
     "wf_nominal": ("33036e29a96f566733bc26bc3ba12ed0c13400f8", 33973833734),
+    "hir_trait_proofs": ("7442c4ca9ea86b089bc36616bfbb873908c34f9c", 33974598690),
 }
 
 
@@ -481,7 +482,7 @@ def main():
                     next_solver=solver == "next",
                     errors=((None, "lifetime may not live long enough"),),
                 )
-        if kind in ("copy_impl_schema", "lazy_copy", "copy_adt", "trait_impl_schema"):
+        if kind in ("copy_impl_schema", "lazy_copy", "copy_adt", "trait_impl_schema", "hir_trait_proofs"):
             fixtures = Path(__file__).resolve().parent / "cases" / "copy_impl_schema"
             for solver in ("current", "next", "slow"):
                 controls = {
@@ -547,7 +548,7 @@ def main():
                         errors=((None, "lifetime may not live long enough"),)
                         if revision == "restricted" else (), **controls,
                     )
-        if kind in ("copy_adt", "trait_impl_schema"):
+        if kind in ("copy_adt", "trait_impl_schema", "hir_trait_proofs"):
             failures = {
                 "lifetimes": ((None, "lifetime may not live long enough"),) * 6,
                 "params": (("E0507", "cannot move out of `*value` which is behind a shared reference"),) * 3,
@@ -592,7 +593,7 @@ def main():
                         execute=False, extra_flags=("--emit=metadata",), errors=errors,
                         **controls,
                     )
-        if kind == "trait_impl_schema":
+        if kind in ("trait_impl_schema", "hir_trait_proofs"):
             failures = {
                 "arguments": (
                     (None, "lifetime may not live long enough"),
@@ -650,6 +651,41 @@ def main():
                         extra_flags=("--crate-type=rlib", "--emit=metadata", "--extern", f"proof_traits={rlib}"),
                         errors=errors, **controls,
                     )
+        if kind == "hir_trait_proofs":
+            for solver in ("current", "next", "slow"):
+                controls = {
+                    "revision": solver,
+                    "next_solver": solver == "next",
+                    "disable_fast_paths": solver == "slow",
+                }
+                for case in ("basics", "contexts"):
+                    check(
+                        f"hir-trait-proofs-{case}-{solver}",
+                        f"tests/ui/ohm/hir-trait-proofs-{case}.rs", **controls,
+                    )
+                check(
+                    f"hir-trait-proofs-depth-limit-{solver}",
+                    "tests/ui/ohm/hir-trait-proofs-depth-limit.rs", execute=False,
+                    extra_flags=("--emit=metadata",), **controls,
+                )
+                check(
+                    f"hir-trait-proofs-depth-overflow-{solver}",
+                    "tests/ui/ohm/hir-trait-proofs-depth-overflow.rs",
+                    errors=(("E0275", "overflow evaluating the requirement " +
+                             ("`Layer<Layer<Layer<Leaf<'a>>>>: Ordinary`" if solver == "next"
+                              else "`Leaf<'a>: Ordinary`")),),
+                    required_spans=((17, 15, 44, True, None),) if solver == "next"
+                    else ((17, 5, 47, True, None),), **controls,
+                )
+                check(
+                    f"hir-trait-proofs-invalid-impls-{solver}",
+                    "tests/ui/ohm/hir-trait-proofs-invalid-impls.rs",
+                    errors=(
+                        ("E0204", "the trait `Copy` cannot be implemented for this type"),
+                        ("E0277", "the trait bound `MissingSupertrait: Super` is not satisfied"),
+                        ("E0119", "conflicting implementations of trait `Coherent` for type `Duplicate`"),
+                    ), **controls,
+                )
         if kind in ("wf_adt", "wf_nominal"):
             for solver in ("current", "next", "slow"):
                 controls = {

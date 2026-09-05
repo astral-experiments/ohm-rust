@@ -19,9 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - kind: wf_nominal
-            sha: 33036e29a96f566733bc26bc3ba12ed0c13400f8
-            run: 33973833734
+          - kind: hir_trait_proofs
+            sha: 7442c4ca9ea86b089bc36616bfbb873908c34f9c
+            run: 33974598690
     steps:
       - name: Checkout validation script
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
