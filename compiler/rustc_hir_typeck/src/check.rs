@@ -6,7 +6,7 @@ use rustc_hir::lang_items::LangItem;
 use rustc_hir_analysis::check::check_function_signature;
 use rustc_infer::infer::RegionVariableOrigin;
 use rustc_infer::traits::WellFormedLoc;
-use rustc_middle::ty::{self, Binder, Ty, TyCtxt};
+use rustc_middle::ty::{self, Binder, Ty, TyCtxt, TypeVisitableExt};
 use rustc_span::def_id::LocalDefId;
 use rustc_span::sym;
 use rustc_trait_selection::traits::{ObligationCause, ObligationCauseCode};
@@ -48,8 +48,17 @@ pub(super) fn check_fn<'a, 'tcx>(
 
     let span = body.value.span;
 
-    for param in body.params {
-        GatherLocalsVisitor::gather_from_param(fcx, param);
+    // For ordinary functions, the normalized input types are already known.
+    // Bind simple parameters to those types without creating an inference variable
+    // and a second Sized obligation for each one.
+    let known_input_tys = (!fn_sig.c_variadic() && !tcx.is_typeck_child(fn_def_id.to_def_id()))
+        .then_some(fn_sig.inputs());
+    for (idx, param) in body.params.iter().enumerate() {
+        let known_ty = known_input_tys
+            .and_then(|inputs| inputs.get(idx))
+            .copied()
+            .filter(|ty| !ty.has_infer_types() && !ty.references_error());
+        GatherLocalsVisitor::gather_from_param(fcx, param, known_ty);
     }
 
     // C-variadic fns also have a `VaList` input that's not listed in `fn_sig`

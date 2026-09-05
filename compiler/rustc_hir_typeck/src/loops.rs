@@ -80,6 +80,20 @@ struct CheckLoopVisitor<'tcx> {
 }
 
 pub(crate) fn check<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId, body: &'tcx hir::Body<'tcx>) {
+    // HIR indexing visits every expression in the owner, including nested bodies.
+    // Without a `break` or `continue`, there is nothing for this visitor to check.
+    if !tcx.hir_owner_nodes(body.value.hir_id.owner).nodes.iter().any(|node| {
+        matches!(
+            node.node,
+            Node::Expr(hir::Expr {
+                kind: hir::ExprKind::Break(..) | hir::ExprKind::Continue(..),
+                ..
+            })
+        )
+    }) {
+        return;
+    }
+
     let mut check =
         CheckLoopVisitor { tcx, cx_stack: vec![Normal], block_breaks: Default::default() };
     let cx = match tcx.def_kind(def_id) {
