@@ -31,16 +31,12 @@ fn mimalloc() {
         .define("MI_OVERRIDE", "ON")
         .build_target("mimalloc-static")
         .build();
-    let archive = destination.join("build/libmimalloc.a");
-
     // Keep the native malloc override in the executable so it also covers LLVM.
-    println!("cargo:rustc-link-arg-bin=rustc-main=-Wl,--whole-archive");
-    println!("cargo:rustc-link-arg-bin=rustc-main={}", archive.display());
-    println!("cargo:rustc-link-arg-bin=rustc-main=-Wl,--no-whole-archive");
-    println!("cargo:rustc-link-arg-bin=rustc-main=-lpthread");
-    println!("cargo:rustc-link-arg-bin=rustc-main=-ldl");
-    // Resolve mimalloc's libc references after the archive, including the ARM stack guard.
-    println!("cargo:rustc-link-arg-bin=rustc-main=-lc");
+    // Native libraries precede compiler-builtins and libc, which resolve its ARM helpers.
+    println!("cargo:rustc-link-search=native={}", destination.join("build").display());
+    println!("cargo:rustc-link-lib=static:+whole-archive=mimalloc");
+    println!("cargo:rustc-link-lib=pthread");
+    println!("cargo:rustc-link-lib=dl");
 }
 
 // Add a manifest file to rustc.exe.
