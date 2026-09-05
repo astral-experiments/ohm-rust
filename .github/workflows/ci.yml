@@ -141,6 +141,7 @@ jobs:
           --set rust.lto=off test --stage 1
           tests/ui/associated-types/closed-definition-proofs.rs
           tests/ui/associated-types/closed-definition-proof-failures.rs
+          tests/ui/associated-types/concrete-impl-bound-normalization.rs
           tests/incremental/closed-associated-type-proofs.rs
 
       - name: Run well-formedness obligation regression tests
