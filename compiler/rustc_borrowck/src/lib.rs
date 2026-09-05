@@ -612,31 +612,27 @@ fn get_flow_results<'a, 'tcx>(
     borrow_set: &'a BorrowSet<'tcx>,
     regioncx: &RegionInferenceContext<'tcx>,
 ) -> Results<'tcx, Borrowck<'a, 'tcx>> {
-    let analysis = Borrowck {
-        borrows: Borrows::new(tcx, body, regioncx, borrow_set),
-        uninits: MaybeUninitializedPlaces::new(tcx, body, move_data),
-        ever_inits: EverInitializedPlaces::new(body, move_data),
-    };
-
-    // Share the CFG work queue between analyses. Preserve the individual
-    // graphviz files when dumping MIR dataflow.
-    if !tcx.sess.opts.unstable_opts.dump_mir_dataflow {
-        let _timer = tcx.prof.generic_activity("borrowck_dataflow");
-        return analysis.iterate_to_fixpoint(tcx, body, Some("borrowck"));
-    }
-
-    let Borrowck { borrows, uninits, ever_inits } = analysis;
+    // Compute these analyses independently, then combine their results so that `mbcx`
+    // can visit them together.
     let borrows = {
         let _timer = tcx.prof.generic_activity("borrowck_dataflow_borrows");
-        borrows.iterate_to_fixpoint(tcx, body, Some("borrowck"))
+        Borrows::new(tcx, body, regioncx, borrow_set).iterate_to_fixpoint(
+            tcx,
+            body,
+            Some("borrowck"),
+        )
     };
     let uninits = {
         let _timer = tcx.prof.generic_activity("borrowck_dataflow_maybe_uninits");
-        uninits.iterate_to_fixpoint(tcx, body, Some("borrowck"))
+        MaybeUninitializedPlaces::new(tcx, body, move_data).iterate_to_fixpoint(
+            tcx,
+            body,
+            Some("borrowck"),
+        )
     };
     let ever_inits = {
         let _timer = tcx.prof.generic_activity("borrowck_dataflow_ever_inits");
-        ever_inits.iterate_to_fixpoint(tcx, body, Some("borrowck"))
+        EverInitializedPlaces::new(body, move_data).iterate_to_fixpoint(tcx, body, Some("borrowck"))
     };
 
     let analysis = Borrowck {
