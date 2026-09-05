@@ -2552,12 +2552,13 @@ pub(super) fn check_type_bounds<'tcx>(
 
     // A final, nongeneric associated type with a primitive value or array cannot be overridden.
     // Directly replace its projection when every bound is a trait predicate whose arguments
-    // are only that projection. Other bounds, particularly well-formedness predicates, must
-    // keep the original normalization path.
+    // are only that projection. Associated-type where clauses can add obligations during
+    // normalization, so they and other complex bounds keep the original path.
     let simple_value = if !obligations.is_empty()
         && traits::impl_item_is_final(tcx, &impl_ty)
         && tcx.generics_of(impl_ty.def_id).count() == 0
         && param_env.caller_bounds().is_empty()
+        && tcx.predicates_of(trait_ty.def_id).predicates.is_empty()
         && !rebased_args.has_aliases()
         && !rebased_args.has_infer()
         && !rebased_args.references_error()
