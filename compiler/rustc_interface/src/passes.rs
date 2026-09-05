@@ -29,7 +29,7 @@ use rustc_incremental::setup_dep_graph;
 use rustc_lint::{BufferedEarlyLint, EarlyCheckNode, LintStore, unerased_lint_store};
 use rustc_metadata::EncodedMetadata;
 use rustc_metadata::creader::CStore;
-use rustc_middle::arena::Arena;
+use rustc_middle::arena::{Arena, InternedTypeArenas};
 use rustc_middle::ty::{self, RegisteredTools, TyCtxt};
 use rustc_middle::util::Providers;
 use rustc_parse::lexer::StripTokens;
@@ -986,10 +986,12 @@ pub fn create_and_enter_global_ctxt<T, F: for<'tcx> FnOnce(TyCtxt<'tcx>) -> T>(
     // would be `&'a GlobalCtxt<'tcx>`, with two lifetimes.
     //
     // Similarly, by creating `arena` here and passing in `&arena`, that reference has the type
-    // `&'tcx WorkerLocal<Arena<'tcx>>`, also with one lifetime. And likewise for `hir_arena`.
+    // `&'tcx WorkerLocal<Arena<'tcx>>`, also with one lifetime. And likewise for
+    // `type_arenas` and `hir_arena`.
 
     let gcx_cell = OnceLock::new();
     let arena = WorkerLocal::new(|_| Arena::default());
+    let type_arenas = WorkerLocal::new(|_| InternedTypeArenas::default());
     let hir_arena = WorkerLocal::new(|_| rustc_hir::Arena::default());
 
     TyCtxt::create_global_ctxt(
@@ -998,6 +1000,7 @@ pub fn create_and_enter_global_ctxt<T, F: for<'tcx> FnOnce(TyCtxt<'tcx>) -> T>(
         crate_types,
         stable_crate_id,
         &arena,
+        &type_arenas,
         &hir_arena,
         untracked,
         dep_graph,

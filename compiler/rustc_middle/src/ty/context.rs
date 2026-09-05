@@ -50,7 +50,7 @@ pub use rustc_type_ir::lift::Lift;
 use rustc_type_ir::{CollectAndApply, WithCachedTypeInfo, elaborate, search_graph};
 use tracing::{debug, instrument};
 
-use crate::arena::Arena;
+use crate::arena::{Arena, InternedTypeArenas};
 use crate::dep_graph::dep_node::make_metadata;
 use crate::dep_graph::{DepGraph, DepKindVTable, DepNodeIndex};
 use crate::hir::{ProjectedMaybeOwner, ProjectedOwnerInfo};
@@ -145,8 +145,9 @@ type FnSigInstantiationCacheEntry<'tcx> =
     (PolyFnSig<'tcx>, GenericArgsRef<'tcx>, ty::Unnormalized<'tcx, PolyFnSig<'tcx>>);
 
 pub struct CtxtInterners<'tcx> {
-    /// The arena that types, regions, etc. are allocated from.
+    /// General-purpose storage for regions, lists, and other interned values.
     arena: &'tcx WorkerLocal<Arena<'tcx>>,
+    type_arenas: &'tcx WorkerLocal<InternedTypeArenas<'tcx>>,
 
     // Specifically use a speedy hash algorithm for these hash sets, since
     // they're accessed quite often.
@@ -191,12 +192,16 @@ pub struct CtxtInterners<'tcx> {
 }
 
 impl<'tcx> CtxtInterners<'tcx> {
-    fn new(arena: &'tcx WorkerLocal<Arena<'tcx>>) -> CtxtInterners<'tcx> {
+    fn new(
+        arena: &'tcx WorkerLocal<Arena<'tcx>>,
+        type_arenas: &'tcx WorkerLocal<InternedTypeArenas<'tcx>>,
+    ) -> CtxtInterners<'tcx> {
         // Default interner size - this value has been chosen empirically, and may need to be
         // adjusted as the compiler evolves.
         const N: usize = 2048;
         CtxtInterners {
             arena,
+            type_arenas,
             // The factors have been chosen by @FractalFir based on observed interner sizes, and
             // local perf runs. To get the interner sizes, insert `eprintln` printing the size of
             // the interner in functions like `intern_ty`. Bigger benchmarks tend to give more
@@ -272,7 +277,7 @@ impl<'tcx> CtxtInterners<'tcx> {
             self.type_
                 .intern_with_hash(hash, kind, |kind| {
                     let flags = ty::FlagComputation::<TyCtxt<'tcx>>::for_kind(&kind);
-                    InternedInSet(self.arena.alloc(WithCachedTypeInfo {
+                    InternedInSet(self.type_arenas.types.alloc(WithCachedTypeInfo {
                         internee: kind,
                         flags: flags.flags,
                         outer_exclusive_binder: flags.outer_exclusive_binder,
@@ -290,7 +295,7 @@ impl<'tcx> CtxtInterners<'tcx> {
             self.const_
                 .intern(kind, |kind: ty::ConstKind<'_>| {
                     let flags = ty::FlagComputation::<TyCtxt<'tcx>>::for_const_kind(&kind);
-                    InternedInSet(self.arena.alloc(WithCachedTypeInfo {
+                    InternedInSet(self.type_arenas.consts.alloc(WithCachedTypeInfo {
                         internee: kind,
                         flags: flags.flags,
                         outer_exclusive_binder: flags.outer_exclusive_binder,
@@ -332,7 +337,7 @@ impl<'tcx> CtxtInterners<'tcx> {
             self.predicate
                 .intern_with_hash(hash, kind, |kind| {
                     let flags = ty::FlagComputation::<TyCtxt<'tcx>>::for_predicate(kind);
-                    InternedInSet(self.arena.alloc(WithCachedTypeInfo {
+                    InternedInSet(self.type_arenas.predicates.alloc(WithCachedTypeInfo {
                         internee: kind,
                         flags: flags.flags,
                         outer_exclusive_binder: flags.outer_exclusive_binder,
@@ -1035,6 +1040,7 @@ impl<'tcx> TyCtxt<'tcx> {
         crate_types: Vec<CrateType>,
         stable_crate_id: StableCrateId,
         arena: &'tcx WorkerLocal<Arena<'tcx>>,
+        type_arenas: &'tcx WorkerLocal<InternedTypeArenas<'tcx>>,
         hir_arena: &'tcx WorkerLocal<hir::Arena<'tcx>>,
         untracked: Untracked,
         dep_graph: DepGraph,
@@ -1048,7 +1054,7 @@ impl<'tcx> TyCtxt<'tcx> {
         let data_layout = sess.target.parse_data_layout().unwrap_or_else(|err| {
             sess.dcx().emit_fatal(err);
         });
-        let interners = CtxtInterners::new(arena);
+        let interners = CtxtInterners::new(arena, type_arenas);
         let common_types = CommonTypes::new(&interners);
         let common_lifetimes = CommonLifetimes::new(&interners);
         let common_consts = CommonConsts::new(&interners, &common_types);

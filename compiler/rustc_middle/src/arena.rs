@@ -1,3 +1,7 @@
+use rustc_arena::TypedArena;
+
+use crate::ty::{self, WithCachedTypeInfo};
+
 /// This higher-order macro declares a list of types which can be allocated by `Arena`.
 ///
 /// Specifying the `decode` modifier will add decode impls for `&T` and `&[T]` where `T` is the type
@@ -138,3 +142,12 @@ macro_rules! arena_types {
 }
 
 arena_types!(rustc_arena::declare_arena);
+
+/// Separate storage for the records behind interned types, constants, and predicates.
+#[derive(Default)]
+pub struct InternedTypeArenas<'tcx> {
+    pub(crate) types: TypedArena<WithCachedTypeInfo<ty::TyKind<'tcx>>>,
+    pub(crate) consts: TypedArena<WithCachedTypeInfo<ty::ConstKind<'tcx>>>,
+    pub(crate) predicates:
+        TypedArena<WithCachedTypeInfo<ty::Binder<'tcx, ty::PredicateKind<'tcx>>>>,
+}
