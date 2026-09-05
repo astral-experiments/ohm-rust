@@ -19,9 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - kind: inline_interners
-            sha: d431f7e2d7c2cee45cea4dde567e37846b075969
-            run: 33967115972
+          - kind: global_trait_proofs
+            sha: b57fb8b21cfa45a10f51fc4a90f6495518f40458
+            run: 33967204643
     steps:
       - name: Checkout validation script
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
