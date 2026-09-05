@@ -2550,20 +2550,88 @@ pub(super) fn check_type_bounds<'tcx>(
     }
     debug!(item_bounds=?obligations);
 
-    // Normalize predicates with the assumption that the GAT may always normalize
-    // to its definition type. This should be the param-env we use to *prove* the
-    // predicate too, but we don't do that because of performance issues.
-    // See <https://github.com/rust-lang/rust/pull/117542#issue-1976337685>.
-    let normalize_param_env = param_env_with_gat_bounds(tcx, impl_ty, impl_trait_ref);
-    for obligation in &mut obligations {
-        match ocx.deeply_normalize(
-            &normalize_cause,
-            normalize_param_env,
-            Unnormalized::new_wip(obligation.predicate),
-        ) {
-            Ok(pred) => obligation.predicate = pred,
-            Err(e) => {
-                return Err(infcx.err_ctxt().report_fulfillment_errors(e));
+    // A final, nongeneric associated type with a primitive value or array cannot be overridden.
+    // Replace its projection directly for simple trait bounds without other aliases. Keep
+    // all predicates unchanged until we know that the whole set qualifies.
+    let simple_predicates = if traits::impl_item_is_final(tcx, &impl_ty)
+        && tcx.generics_of(impl_ty.def_id).count() == 0
+        && param_env.caller_bounds().is_empty()
+        && !impl_ty.is_impl_trait_in_trait()
+        && !tcx.is_conditionally_const(impl_ty_def_id)
+        // In particular, normalizing a well-formedness predicate is unsound.
+        && obligations.iter().all(|obligation| {
+            matches!(
+                obligation.predicate.kind().skip_binder(),
+                ty::PredicateKind::Clause(ty::ClauseKind::Trait(_))
+            )
+        }) {
+        let value_ty = tcx.type_of(impl_ty.def_id).instantiate_identity().skip_norm_wip();
+        let simple_value = match value_ty.kind() {
+            ty::Bool | ty::Int(_) | ty::Uint(_) => true,
+            ty::Array(element, length) => {
+                matches!(element.kind(), ty::Bool | ty::Int(_) | ty::Uint(_))
+                    && matches!(length.kind(), ty::ConstKind::Value(_))
+            }
+            _ => false,
+        };
+        if simple_value && !value_ty.references_error() {
+            let projection =
+                Ty::new_projection_from_args(tcx, ty::IsRigid::No, trait_ty.def_id, rebased_args);
+            let mut replaced = false;
+            let mut folder = BottomUpFolder {
+                tcx,
+                ty_op: |ty| {
+                    if ty == projection {
+                        replaced = true;
+                        value_ty
+                    } else {
+                        ty
+                    }
+                },
+                lt_op: |lt| lt,
+                ct_op: |ct| ct,
+            };
+            let predicates: Vec<_> = obligations
+                .iter()
+                .map(|obligation| obligation.predicate.fold_with(&mut folder))
+                .collect();
+            drop(folder);
+            (replaced
+                && predicates.iter().all(|predicate| {
+                    !predicate.has_aliases()
+                        && !predicate.has_infer()
+                        && !predicate.references_error()
+                        && predicate.kind().bound_vars().is_empty()
+                        && !predicate.has_bound_vars()
+                }))
+            .then_some(predicates)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if let Some(predicates) = simple_predicates {
+        for (obligation, predicate) in obligations.iter_mut().zip(predicates) {
+            obligation.predicate = predicate;
+        }
+    } else {
+        // Normalize predicates with the assumption that the GAT may always normalize
+        // to its definition type. This should be the param-env we use to *prove* the
+        // predicate too, but we don't do that because of performance issues.
+        // See <https://github.com/rust-lang/rust/pull/117542#issue-1976337685>.
+        let normalize_param_env = param_env_with_gat_bounds(tcx, impl_ty, impl_trait_ref);
+        for obligation in &mut obligations {
+            match ocx.deeply_normalize(
+                &normalize_cause,
+                normalize_param_env,
+                Unnormalized::new_wip(obligation.predicate),
+            ) {
+                Ok(pred) => obligation.predicate = pred,
+                Err(e) => {
+                    return Err(infcx.err_ctxt().report_fulfillment_errors(e));
+                }
             }
         }
     }
