@@ -19,9 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - kind: copy_impl_schema
-            sha: db029ae942064533f669fd3d78caff31d5aa1443
-            run: 33970806995
+          - kind: nightly_hasher
+            sha: 9bd0045de920bbae10d45b9045945d5a1137321e
+            run: 33971229116
     steps:
       - name: Checkout validation script
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5

@@ -28,6 +28,8 @@ CANDIDATES = {
     "lazy_copy": ("6e7ba93e7fa550912fb96e1b602dd29567edd809", 33971290579),
     "nightly_hasher": ("9bd0045de920bbae10d45b9045945d5a1137321e", 33971229116),
     "dense_interners": ("ea4e9cc5343eb98dc3d42d0099da8b8416145471", 33971439882),
+    "thin_stalled": ("fe7c0d0c1d1a0dfae692641b020ed214364142b5", 33971705326),
+    "nested_argfolder": ("8a6a1c5dba9e4136f37e53f58634b41dae59adc3", 33971787859),
 }
 
 
@@ -356,8 +358,8 @@ def main():
                         next_solver=next_solver, threads=threads,
                         errors=(("E0597", "`s` does not live long enough"),),
                     )
-        if kind in ("query_cache", "interner_tables", "packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners"):
-            thread_counts = (4,) if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners") else (1, 4)
+        if kind in ("query_cache", "interner_tables", "packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "nested_argfolder"):
+            thread_counts = (4,) if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "nested_argfolder") else (1, 4)
             for threads in thread_counts:
                 rlib = output / "bin" / f"liba_threads_{threads}.rlib"
                 auxiliary_cache = output / "incremental" / f"query-cache-aux-{threads}"
@@ -378,7 +380,7 @@ def main():
                         require_loaded=revision != "rpass1",
                         extra_flags=("-Zquery-dep-graph", "--extern", f"a={rlib}"),
                     )
-        if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners"):
+        if kind in ("packed_aliases", "interned_arenas", "nightly_hasher", "dense_interners", "nested_argfolder"):
             for solver in ("current", "next"):
                 next_solver = solver == "next"
                 check(
@@ -437,6 +439,42 @@ def main():
                     next_solver=next_solver, threads=4,
                     extra_flags=("--extern", f"associated_types_cc_lib={rlib}"),
                     expected_stdout="22\n",
+                )
+        if kind == "thin_stalled":
+            fixtures = (
+                ("probe", "tests/ui/inference/issue-36053.rs", True, ()),
+                ("infer-types", "tests/ui/traits/multidispatch-infer-convert-target.rs", True, ()),
+                ("ambiguous-types", "tests/ui/traits/multidispatch-convert-ambig-dest.rs", False,
+                 (("E0283", "type annotations needed"),)),
+                ("infer-const", "tests/ui/const-generics/associated-const-bindings/equality_bound_with_infer.rs", False, ()),
+                ("ambiguous-const", "tests/ui/const-generics/infer/one-param-uninferred.rs", False,
+                 (("E0284", "type annotations needed"),)),
+                ("coerce", "tests/ui/inference/iter-ufcs-coercion-type-unification.rs", False, ()),
+                ("subtype", "tests/ui/inference/type-infer-generalize-ty-var.rs", False, ()),
+                ("projection", "tests/ui/typeck/project-cache-issue-37154.rs", True, ()),
+                ("lifetimes", "tests/ui/nll/do-not-ignore-lifetime-bounds-in-copy.rs", False,
+                 (("E0597", "`s` does not live long enough"),)),
+            )
+            for solver in ("current", "next", "slow"):
+                for name, fixture, execute, errors in fixtures:
+                    check(
+                        f"thin-stalled-{name}-{solver}", fixture,
+                        next_solver=solver == "next", disable_fast_paths=solver == "slow",
+                        execute=execute, errors=errors,
+                        extra_flags=() if execute or errors else ("--emit=metadata",),
+                    )
+        if kind == "nested_argfolder":
+            for solver in ("current", "next"):
+                check(
+                    f"nested-argfolder-{solver}",
+                    "tests/ui/ohm/nested-argfolder-cache.rs", revision=solver,
+                    next_solver=solver == "next",
+                )
+                check(
+                    f"nested-argfolder-lifetimes-{solver}",
+                    "tests/ui/ohm/nested-argfolder-cache-lifetimes.rs", revision=solver,
+                    next_solver=solver == "next",
+                    errors=((None, "lifetime may not live long enough"),),
                 )
         if kind in ("copy_impl_schema", "lazy_copy"):
             fixtures = Path(__file__).resolve().parent / "cases" / "copy_impl_schema"
