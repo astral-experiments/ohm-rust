@@ -1883,8 +1883,10 @@ fn effective_visibilities(tcx: TyCtxt<'_>, (): ()) -> &EffectiveVisibilities {
     visitor.effective_visibilities.check_invariants(tcx);
 
     if tcx.features().rustc_attrs() {
-        let check_visitor =
-            TestReachabilityVisitor { tcx, effective_visibilities: &visitor.effective_visibilities };
+        let check_visitor = TestReachabilityVisitor {
+            tcx,
+            effective_visibilities: &visitor.effective_visibilities,
+        };
         for id in crate_items.owners() {
             check_visitor.check_def_id(id);
         }
