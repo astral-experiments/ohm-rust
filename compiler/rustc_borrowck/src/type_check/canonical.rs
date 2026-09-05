@@ -180,9 +180,19 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
         let param_env = self.infcx.param_env;
         let predicate = predicate.upcast(self.tcx());
         let cacheable = !cfg!(debug_assertions)
-            && matches!(category, ConstraintCategory::CopyBound)
             && !self.infcx.next_trait_solver()
             && !self.infcx.disable_trait_solver_fast_paths()
+            && match predicate.kind().no_bound_vars() {
+                Some(ty::PredicateKind::Clause(ty::ClauseKind::Trait(trait_predicate))) => {
+                    let lang_items = self.tcx().lang_items();
+                    let trait_def_id = Some(trait_predicate.def_id());
+                    trait_predicate.polarity == ty::PredicatePolarity::Positive
+                        && trait_def_id != lang_items.sized_trait()
+                        && trait_def_id != lang_items.meta_sized_trait()
+                        && trait_def_id != lang_items.pointee_sized_trait()
+                }
+                _ => false,
+            }
             && self.infcx.num_open_snapshots() == 0
             && !predicate.has_non_region_infer()
             && !predicate.has_aliases()
@@ -198,7 +208,7 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
                     && inner.opaque_types().is_empty()
                     && inner.unwrap_region_constraints().data().is_empty()
             };
-        if cacheable && self.proven_copy_predicates.contains(&predicate) {
+        if cacheable && self.proven_trait_predicates.contains(&predicate) {
             return;
         }
 
@@ -216,13 +226,13 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
         // Keep every region identity in the key and require an actual, effect-free proof.
         // A converted constraint list can be empty even when raw constraints mattered.
         // The type-op interface also permits ambiguous query responses, so check certainty
-        // through the already-cached query before retaining a successful Copy proof.
+        // through the already-cached query before retaining a successful trait proof.
         if cacheable
             && let Ok(((), true, Some(goal))) = result
             && !self.infcx.has_opaque_types_in_storage()
             && self.tcx().type_op_prove_predicate(goal).is_ok_and(|r| r.value.is_proven())
         {
-            self.proven_copy_predicates.insert(predicate);
+            self.proven_trait_predicates.insert(predicate);
         }
     }
 

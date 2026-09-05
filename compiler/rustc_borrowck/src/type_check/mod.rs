@@ -155,7 +155,7 @@ pub(crate) fn type_check<'tcx>(
         region_bound_pairs: &region_bound_pairs,
         known_type_outlives_obligations: &known_type_outlives_obligations,
         reported_errors: Default::default(),
-        proven_copy_predicates: Default::default(),
+        proven_trait_predicates: Default::default(),
         universal_regions: &universal_region_relations.universal_regions,
         location_table,
         polonius_facts,
@@ -242,9 +242,9 @@ struct TypeChecker<'a, 'tcx> {
     region_bound_pairs: &'a RegionBoundPairs<'tcx>,
     known_type_outlives_obligations: &'a [ty::PolyTypeOutlivesPredicate<'tcx>],
     reported_errors: FxIndexSet<(Ty<'tcx>, Span)>,
-    /// Proven Copy predicates whose evaluation produces no location-dependent effects.
+    /// Proven positive trait predicates whose evaluation produces no location-dependent effects.
     /// The parameter environment and inference context are fixed for this type checker.
-    proven_copy_predicates: FxHashSet<ty::Predicate<'tcx>>,
+    proven_trait_predicates: FxHashSet<ty::Predicate<'tcx>>,
     universal_regions: &'a UniversalRegions<'tcx>,
     location_table: &'a PoloniusLocationTable,
     polonius_facts: &'a mut Option<PoloniusFacts>,

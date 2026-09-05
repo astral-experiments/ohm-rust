@@ -1,0 +1,23 @@
+error[E0597]: `value` does not live long enough
+  --> $DIR/trait-proofs-region-bound.rs:12:20
+   |
+LL |     let value = 7;
+   |         ----- binding `value` declared here
+LL |     let borrowed = &value;
+   |                    ^^^^^^ borrowed value does not live long enough
+...
+LL |     require(borrowed);
+   |     ----------------- argument requires that `value` is borrowed for `'static`
+...
+LL | }
+   | - `value` dropped here while still borrowed
+   |
+note: requirement that the value outlives `'static` introduced here
+  --> $DIR/trait-proofs-region-bound.rs:8:15
+   |
+LL | fn require<T: StaticOnly>(_: T) {}
+   |               ^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0597`.
