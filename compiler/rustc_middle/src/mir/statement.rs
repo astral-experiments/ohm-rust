@@ -840,7 +840,7 @@ impl<'tcx> Rvalue<'tcx> {
                     Ty::new_tup_from_iter(tcx, ops.iter().map(|op| op.ty(local_decls, tcx)))
                 }
                 AggregateKind::Adt(did, _, args, _, _) => {
-                    tcx.type_of(did).instantiate(tcx, args).skip_norm_wip()
+                    tcx.instantiate_ty(tcx.type_of(did), args).skip_norm_wip()
                 }
                 AggregateKind::Closure(did, args) => Ty::new_closure(tcx, did, args),
                 AggregateKind::Coroutine(did, args) => Ty::new_coroutine(tcx, did, args),

@@ -137,12 +137,15 @@ const INTERNER_CACHE_LEN: usize = 16384;
 const SUPERTRAIT_CACHE_LEN: usize = 16384;
 const CLAUSE_INSTANTIATION_CACHE_LEN: usize = 16384;
 const FN_SIG_INSTANTIATION_CACHE_LEN: usize = 16384;
+const TY_INSTANTIATION_CACHE_LEN: usize = 16384;
 
 type SupertraitCacheEntry<'tcx> = (Clause<'tcx>, ty::PolyTraitRef<'tcx>, Clause<'tcx>);
 type ClauseInstantiationCacheEntry<'tcx> =
     (Clause<'tcx>, GenericArgsRef<'tcx>, ty::Unnormalized<'tcx, Clause<'tcx>>);
 type FnSigInstantiationCacheEntry<'tcx> =
     (PolyFnSig<'tcx>, GenericArgsRef<'tcx>, ty::Unnormalized<'tcx, PolyFnSig<'tcx>>);
+type TyInstantiationCacheEntry<'tcx> =
+    (Ty<'tcx>, GenericArgsRef<'tcx>, ty::Unnormalized<'tcx, Ty<'tcx>>);
 
 pub struct CtxtInterners<'tcx> {
     /// The arena that types, regions, etc. are allocated from.
@@ -188,6 +191,8 @@ pub struct CtxtInterners<'tcx> {
     fn_sig_instantiation_cache: WorkerLocal<
         [Cell<Option<FnSigInstantiationCacheEntry<'tcx>>>; FN_SIG_INSTANTIATION_CACHE_LEN],
     >,
+    ty_instantiation_cache:
+        WorkerLocal<[Cell<Option<TyInstantiationCacheEntry<'tcx>>>; TY_INSTANTIATION_CACHE_LEN]>,
 }
 
 impl<'tcx> CtxtInterners<'tcx> {
@@ -238,6 +243,9 @@ impl<'tcx> CtxtInterners<'tcx> {
             }),
             fn_sig_instantiation_cache: WorkerLocal::new(|_| {
                 [const { Cell::new(None) }; FN_SIG_INSTANTIATION_CACHE_LEN]
+            }),
+            ty_instantiation_cache: WorkerLocal::new(|_| {
+                [const { Cell::new(None) }; TY_INSTANTIATION_CACHE_LEN]
             }),
         }
     }
@@ -2289,6 +2297,44 @@ impl<'tcx> TyCtxt<'tcx> {
         binder: Binder<'tcx, PredicateKind<'tcx>>,
     ) -> Predicate<'tcx> {
         if pred.kind() != binder { self.mk_predicate(binder) } else { pred }
+    }
+
+    /// Reuses pure type substitutions after the caller has queried the uninstantiated type.
+    /// Aliases and inference variables stay unresolved, so the type and arguments fully
+    /// determine the result without depending on an inference context or parameter environment.
+    pub(crate) fn instantiate_ty(
+        self,
+        bound_ty: ty::EarlyBinder<'tcx, Ty<'tcx>>,
+        args: GenericArgsRef<'tcx>,
+    ) -> ty::Unnormalized<'tcx, Ty<'tcx>> {
+        use ty::TypeVisitableExt;
+
+        if cfg!(debug_assertions) {
+            return bound_ty.instantiate(self, args);
+        }
+
+        let ty = bound_ty.skip_binder();
+        if !ty.has_param() {
+            return ty::Unnormalized::new(ty);
+        }
+        if matches!(ty.kind(), ty::Param(_)) {
+            return bound_ty.instantiate(self, args);
+        }
+        let cache = self.interners.ty_instantiation_cache.get_if_registered().map(|cache| {
+            &cache[make_hash(&(ty, args)) as usize & (TY_INSTANTIATION_CACHE_LEN - 1)]
+        });
+        if let Some(cache) = cache
+            && let Some((cached_ty, cached_args, result)) = cache.get()
+            && cached_ty == ty
+            && cached_args == args
+        {
+            return result;
+        }
+        let result = bound_ty.instantiate(self, args);
+        if let Some(cache) = cache {
+            cache.set(Some((ty, args, result)));
+        }
+        result
     }
 
     /// Reuses signature substitutions after the caller has queried the uninstantiated signature.

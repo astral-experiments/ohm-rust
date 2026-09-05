@@ -1517,7 +1517,7 @@ impl<'tcx> FieldDef {
         tcx: TyCtxt<'tcx>,
         args: GenericArgsRef<'tcx>,
     ) -> Unnormalized<'tcx, Ty<'tcx>> {
-        tcx.type_of(self.did).instantiate(tcx, args)
+        tcx.instantiate_ty(tcx.type_of(self.did), args)
     }
 
     /// Computes the `Ident` of this variant by looking up the `Span`
