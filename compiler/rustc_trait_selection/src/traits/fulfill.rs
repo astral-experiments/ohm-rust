@@ -89,6 +89,13 @@ where
 {
     /// Creates a new fulfillment context.
     pub(super) fn new(infcx: &InferCtxt<'tcx>) -> FulfillmentContext<'tcx, E> {
+        Self::new_in_snapshot(infcx, infcx.num_open_snapshots())
+    }
+
+    pub(super) fn new_in_snapshot(
+        infcx: &InferCtxt<'tcx>,
+        usable_in_snapshot: usize,
+    ) -> FulfillmentContext<'tcx, E> {
         assert!(
             !infcx.next_trait_solver(),
             "old trait solver fulfillment context created when \
@@ -96,7 +103,7 @@ where
         );
         FulfillmentContext {
             predicates: ObligationForest::new(),
-            usable_in_snapshot: infcx.num_open_snapshots(),
+            usable_in_snapshot,
             _errors: PhantomData,
         }
     }

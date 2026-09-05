@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::fmt::Debug;
 
 use rustc_data_structures::fx::FxIndexSet;
@@ -49,27 +49,58 @@ where
 /// with obligations outside of hir or mir typeck.
 pub struct ObligationCtxt<'a, 'tcx, E = ScrubbedTraitError<'tcx>> {
     pub infcx: &'a InferCtxt<'tcx>,
-    engine: RefCell<Box<dyn TraitEngine<'tcx, E>>>,
+    // Many operations never register an obligation. Defer the allocation until needed.
+    engine: RefCell<Option<Box<dyn TraitEngine<'tcx, E>>>>,
+    usable_in_snapshot: usize,
 }
 
 impl<'a, 'tcx> ObligationCtxt<'a, 'tcx, FulfillmentError<'tcx>> {
     pub fn new_with_diagnostics(infcx: &'a InferCtxt<'tcx>) -> Self {
-        Self { infcx, engine: RefCell::new(<dyn TraitEngine<'tcx, _>>::new(infcx)) }
+        Self::new_lazy(infcx)
     }
 }
 
 impl<'a, 'tcx> ObligationCtxt<'a, 'tcx, ScrubbedTraitError<'tcx>> {
     pub fn new(infcx: &'a InferCtxt<'tcx>) -> Self {
-        Self { infcx, engine: RefCell::new(<dyn TraitEngine<'tcx, _>>::new(infcx)) }
+        Self::new_lazy(infcx)
     }
 }
 
 impl<'a, 'tcx, E> ObligationCtxt<'a, 'tcx, E>
 where
-    E: 'tcx,
+    E: FromSolverError<'tcx, NextSolverError<'tcx>> + FromSolverError<'tcx, OldSolverError<'tcx>>,
 {
+    fn new_lazy(infcx: &'a InferCtxt<'tcx>) -> Self {
+        if !infcx.next_trait_solver() {
+            assert!(
+                !infcx.tcx.next_trait_solver_globally(),
+                "using old solver even though new solver is enabled globally"
+            );
+        }
+        Self { infcx, engine: RefCell::new(None), usable_in_snapshot: infcx.num_open_snapshots() }
+    }
+
+    /// Initializes the engine with the snapshot in which this context was created.
+    fn engine(&self) -> RefMut<'_, dyn TraitEngine<'tcx, E>> {
+        RefMut::map(self.engine.borrow_mut(), |engine| {
+            &mut **engine.get_or_insert_with(|| {
+                if self.infcx.next_trait_solver() {
+                    Box::new(NextFulfillmentCtxt::new_in_snapshot(
+                        self.infcx,
+                        self.usable_in_snapshot,
+                    ))
+                } else {
+                    Box::new(FulfillmentContext::new_in_snapshot(
+                        self.infcx,
+                        self.usable_in_snapshot,
+                    ))
+                }
+            })
+        })
+    }
+
     pub fn register_obligation(&self, obligation: PredicateObligation<'tcx>) {
-        self.engine.borrow_mut().register_predicate_obligation(self.infcx, obligation);
+        self.engine().register_predicate_obligation(self.infcx, obligation);
     }
 
     pub fn register_obligations(
@@ -79,13 +110,15 @@ where
         // Can't use `register_predicate_obligations` because the iterator
         // may also use this `ObligationCtxt`.
         for obligation in obligations {
-            self.engine.borrow_mut().register_predicate_obligation(self.infcx, obligation)
+            self.engine().register_predicate_obligation(self.infcx, obligation)
         }
     }
 
     pub fn register_infer_ok_obligations<T>(&self, infer_ok: InferOk<'tcx, T>) -> T {
         let InferOk { value, obligations } = infer_ok;
-        self.engine.borrow_mut().register_predicate_obligations(self.infcx, obligations);
+        if !obligations.is_empty() {
+            self.engine().register_predicate_obligations(self.infcx, obligations);
+        }
         value
     }
 
@@ -212,7 +245,14 @@ where
     /// Returns a list of errors from obligations that evaluated to Err.
     #[must_use]
     pub fn try_evaluate_obligations(&self) -> Vec<E> {
-        self.engine.borrow_mut().try_evaluate_obligations(self.infcx)
+        if let Some(engine) = &mut *self.engine.borrow_mut() {
+            engine.try_evaluate_obligations(self.infcx)
+        } else {
+            if self.infcx.next_trait_solver() {
+                assert_eq!(self.usable_in_snapshot, self.infcx.num_open_snapshots());
+            }
+            Vec::new()
+        }
     }
 
     /// Evaluate all pending obligations, return error if they can't be evaluated.
@@ -225,7 +265,14 @@ where
     /// Returns a list of errors from obligations that evaluated to Ambiguous or Err.
     #[must_use]
     pub fn evaluate_obligations_error_on_ambiguity(&self) -> Vec<E> {
-        self.engine.borrow_mut().evaluate_obligations_error_on_ambiguity(self.infcx)
+        if let Some(engine) = &mut *self.engine.borrow_mut() {
+            engine.evaluate_obligations_error_on_ambiguity(self.infcx)
+        } else {
+            if self.infcx.next_trait_solver() {
+                assert_eq!(self.usable_in_snapshot, self.infcx.num_open_snapshots());
+            }
+            Vec::new()
+        }
     }
 
     /// Returns the not-yet-processed and stalled obligations from the
@@ -237,7 +284,10 @@ where
     /// needs to be done in a loop, for example.
     #[must_use]
     pub fn into_pending_obligations(self) -> PredicateObligations<'tcx> {
-        self.engine.borrow().pending_obligations()
+        self.engine
+            .borrow()
+            .as_ref()
+            .map_or_else(PredicateObligations::new, |engine| engine.pending_obligations())
     }
 
     /// Resolves regions and reports errors.
@@ -294,17 +344,13 @@ impl<'tcx> ObligationCtxt<'_, 'tcx, ScrubbedTraitError<'tcx>> {
         T: Debug + TypeFoldable<TyCtxt<'tcx>>,
         Canonical<'tcx, QueryResponse<'tcx, T>>: ArenaAllocatable<'tcx>,
     {
-        self.infcx.make_canonicalized_query_response(
-            inference_vars,
-            answer,
-            &mut **self.engine.borrow_mut(),
-        )
+        self.infcx.make_canonicalized_query_response(inference_vars, answer, &mut *self.engine())
     }
 }
 
 impl<'tcx, E> ObligationCtxt<'_, 'tcx, E>
 where
-    E: FromSolverError<'tcx, NextSolverError<'tcx>>,
+    E: FromSolverError<'tcx, NextSolverError<'tcx>> + FromSolverError<'tcx, OldSolverError<'tcx>>,
 {
     pub fn assumed_wf_types(
         &self,
@@ -331,7 +377,7 @@ where
             match self
                 .infcx
                 .at(&cause, param_env)
-                .deeply_normalize(Unnormalized::new_wip(ty), &mut **self.engine.borrow_mut())
+                .deeply_normalize(Unnormalized::new_wip(ty), &mut *self.engine())
             {
                 // Insert well-formed types, ignoring duplicates.
                 Ok(normalized) => drop(implied_bounds.insert(normalized)),
@@ -348,7 +394,7 @@ where
         param_env: ty::ParamEnv<'tcx>,
         value: Unnormalized<'tcx, T>,
     ) -> Result<T, Vec<E>> {
-        self.infcx.at(cause, param_env).deeply_normalize(value, &mut **self.engine.borrow_mut())
+        self.infcx.at(cause, param_env).deeply_normalize(value, &mut *self.engine())
     }
 
     pub fn structurally_normalize_ty(
@@ -357,9 +403,7 @@ where
         param_env: ty::ParamEnv<'tcx>,
         value: Unnormalized<'tcx, Ty<'tcx>>,
     ) -> Result<Ty<'tcx>, Vec<E>> {
-        self.infcx
-            .at(cause, param_env)
-            .structurally_normalize_ty(value, &mut **self.engine.borrow_mut())
+        self.infcx.at(cause, param_env).structurally_normalize_ty(value, &mut *self.engine())
     }
 
     pub fn structurally_normalize_const(
@@ -368,9 +412,7 @@ where
         param_env: ty::ParamEnv<'tcx>,
         value: Unnormalized<'tcx, ty::Const<'tcx>>,
     ) -> Result<ty::Const<'tcx>, Vec<E>> {
-        self.infcx
-            .at(cause, param_env)
-            .structurally_normalize_const(value, &mut **self.engine.borrow_mut())
+        self.infcx.at(cause, param_env).structurally_normalize_const(value, &mut *self.engine())
     }
 
     pub fn structurally_normalize_term(
@@ -379,8 +421,6 @@ where
         param_env: ty::ParamEnv<'tcx>,
         value: Unnormalized<'tcx, ty::Term<'tcx>>,
     ) -> Result<ty::Term<'tcx>, Vec<E>> {
-        self.infcx
-            .at(cause, param_env)
-            .structurally_normalize_term(value, &mut **self.engine.borrow_mut())
+        self.infcx.at(cause, param_env).structurally_normalize_term(value, &mut *self.engine())
     }
 }

@@ -146,6 +146,13 @@ impl<'tcx> ObligationStorage<'tcx> {
 
 impl<'tcx, E: 'tcx> FulfillmentCtxt<'tcx, E> {
     pub fn new(infcx: &InferCtxt<'tcx>) -> FulfillmentCtxt<'tcx, E> {
+        Self::new_in_snapshot(infcx, infcx.num_open_snapshots())
+    }
+
+    pub(crate) fn new_in_snapshot(
+        infcx: &InferCtxt<'tcx>,
+        usable_in_snapshot: usize,
+    ) -> FulfillmentCtxt<'tcx, E> {
         assert!(
             infcx.next_trait_solver(),
             "new trait solver fulfillment context created when \
@@ -153,7 +160,7 @@ impl<'tcx, E: 'tcx> FulfillmentCtxt<'tcx, E> {
         );
         FulfillmentCtxt {
             obligations: Default::default(),
-            usable_in_snapshot: infcx.num_open_snapshots(),
+            usable_in_snapshot,
             _errors: PhantomData,
         }
     }
