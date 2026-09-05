@@ -129,7 +129,7 @@ def main():
         run(f"{feature_set}-{profile}-boundary-compile",
             ["rustc", f"+{TOOLCHAIN}", "--test", "--edition=2024", HERE / "table_boundaries.rs",
              "--extern", f"hashbrown={library}", "-L", f"dependency={library.parent}",
-             *optimize, "-o", binary], cwd=scratch)
+             "-L", f"dependency={library.parent / 'deps'}", *optimize, "-o", binary], cwd=scratch)
         run(f"{feature_set}-{profile}-boundaries", [binary], cwd=scratch)
 
     try:
