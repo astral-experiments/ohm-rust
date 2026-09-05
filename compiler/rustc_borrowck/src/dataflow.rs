@@ -9,7 +9,6 @@ use rustc_mir_dataflow::impls::{
     EverInitializedPlaces, EverInitializedPlacesDomain, MaybeUninitializedPlaces,
     MaybeUninitializedPlacesDomain,
 };
-use rustc_mir_dataflow::move_paths::{HasMoveData, MoveData};
 use rustc_mir_dataflow::{Analysis, GenKill, JoinSemiLattice};
 use tracing::debug;
 
@@ -18,17 +17,12 @@ use crate::{BorrowSet, PlaceConflictBias, PlaceExt, RegionInferenceContext, plac
 #[cfg(test)]
 mod tests;
 
-/// Solves the borrow, maybe-uninitialized, and ever-initialized analyses together.
+// These analyses converge independently. Combine their results for a single visit without
+// making changes in one analysis requeue work for the others.
 pub(crate) struct Borrowck<'a, 'tcx> {
     pub(crate) borrows: Borrows<'a, 'tcx>,
     pub(crate) uninits: MaybeUninitializedPlaces<'a, 'tcx>,
     pub(crate) ever_inits: EverInitializedPlaces<'a, 'tcx>,
-}
-
-impl<'tcx> HasMoveData<'tcx> for Borrowck<'_, 'tcx> {
-    fn move_data(&self) -> &MoveData<'tcx> {
-        self.uninits.move_data()
-    }
 }
 
 impl<'a, 'tcx> Analysis<'tcx> for Borrowck<'a, 'tcx> {
@@ -44,10 +38,9 @@ impl<'a, 'tcx> Analysis<'tcx> for Borrowck<'a, 'tcx> {
         }
     }
 
-    fn initialize_start_block(&self, body: &mir::Body<'tcx>, state: &mut Self::Domain) {
-        self.borrows.initialize_start_block(body, &mut state.borrows);
-        self.uninits.initialize_start_block(body, &mut state.uninits);
-        self.ever_inits.initialize_start_block(body, &mut state.ever_inits);
+    fn initialize_start_block(&self, _body: &mir::Body<'tcx>, _state: &mut Self::Domain) {
+        // This is only reachable from `iterate_to_fixpoint`, which this analysis doesn't use.
+        unreachable!();
     }
 
     fn apply_early_statement_effect(
@@ -104,21 +97,19 @@ impl<'a, 'tcx> Analysis<'tcx> for Borrowck<'a, 'tcx> {
 
     fn apply_call_return_effect(
         &self,
-        state: &mut Self::Domain,
-        block: BasicBlock,
-        return_places: CallReturnPlaces<'_, 'tcx>,
+        _state: &mut Self::Domain,
+        _block: BasicBlock,
+        _return_places: CallReturnPlaces<'_, 'tcx>,
     ) {
-        self.borrows.apply_call_return_effect(&mut state.borrows, block, return_places);
-        self.uninits.apply_call_return_effect(&mut state.uninits, block, return_places);
-        self.ever_inits.apply_call_return_effect(&mut state.ever_inits, block, return_places);
+        // This is only reachable from `iterate_to_fixpoint`, which this analysis doesn't use.
+        unreachable!();
     }
 }
 
 impl JoinSemiLattice for BorrowckDomain {
-    fn join(&mut self, other: &Self) -> bool {
-        self.borrows.join(&other.borrows)
-            | self.uninits.join(&other.uninits)
-            | self.ever_inits.join(&other.ever_inits)
+    fn join(&mut self, _other: &Self) -> bool {
+        // This is only reachable from `iterate_to_fixpoint`, which this analysis doesn't use.
+        unreachable!();
     }
 }
 
