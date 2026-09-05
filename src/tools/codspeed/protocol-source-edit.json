@@ -1,0 +1,10 @@
+{
+  "source_revision": "74004b5397b24662a87a5264a6ae80664168c7f3",
+  "relative_path": "codex-rs/protocol/src/tool_name.rs",
+  "original_file": "protocol-tool-name.original.rs",
+  "original_sha256": "2d102304a638001c46ffd5bd31fba05960b88a870e3db5b163b87eb9652c65ac",
+  "edited_sha256": "2f15e27d0194ae6d8969de12c4e2d0e3d29fe38c58cf70bbddfc944f72af1729",
+  "before": "    pub fn is_default_namespace(&self) -> bool {\n        matches!(\n            self.namespace.as_deref(),\n            None | Some(\"\") | Some(DEFAULT_FUNCTION_NAMESPACE)\n        )\n    }\n",
+  "after": "    pub fn is_default_namespace(&self) -> bool {\n        let is_default = matches!(\n            self.namespace.as_deref(),\n            None | Some(\"\") | Some(DEFAULT_FUNCTION_NAMESPACE)\n        );\n        is_default\n    }\n",
+  "occurrences": 1
+}

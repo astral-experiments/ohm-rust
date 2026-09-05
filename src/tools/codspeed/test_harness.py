@@ -191,3 +191,114 @@ def test_sampling_restores_state_outside_measurement(fixture, monkeypatch, scena
     assert (stats.warmup_iters, stats.rounds, stats.iter_per_round) == (1, 10, 1)
     # Only the target's ten clock ticks count, not setup's hundred ticks.
     assert stats.min_ns == stats.max_ns == 10
+
+
+@pytest.mark.parametrize("outcome,count", [("pass", 40), ("early", 20), ("late", 40), ("compiler", 7), ("timeout", 7), ("diagnostics", 11), ("source_mutation", 7), ("hash_failure", 7), ("short", 6)])
+def test_release_confirmation_cadence_and_cleanup(fixture, tmp_path, monkeypatch, outcome, count):
+    from contextlib import nullcontext
+    import hashlib
+    import json
+    import compare_release_artifacts as comparison
+    import test_compiler_walltime as walltime_helper
+
+    original, edited = b"pub fn value() -> u8 { 1 }\n", b"pub fn value() -> u8 { let n = 1; n }\n"
+    source = Path(fixture["source"]) / "protocol/src/tool_name.rs"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(original)
+    edit = {"before": original.decode(), "after": edited.decode(), "occurrences": 1,
+            "original_sha256": hashlib.sha256(original).hexdigest(),
+            "edited_sha256": hashlib.sha256(edited).hexdigest()}
+    fixtures = {arm: fixture | {"cwd": str(tmp_path / arm)} for arm in "AB"}
+    invocations = {}
+    for arm in "AB":
+        args, kwargs = prepare_invocation(fixtures[arm], "Full")
+        invocations[arm] = {"argv": args[0], "cwd": kwargs["cwd"], "env": kwargs["env"]}
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    monkeypatch.setattr(comparison, "EVIDENCE", evidence)
+    monkeypatch.setattr(comparison, "PREPARED", {arm: tmp_path / arm for arm in "AB"})
+    monkeypatch.setattr(comparison, "leaf_affinity", nullcontext)
+    confirm = outcome != "short"
+    plan = comparison.comparison_plan(1, confirm)
+    if confirm:
+        assert [(arm, phase) for _, arm, _, phase in plan[::5]] == [(arm, phase) for arm in "ABBA" for phase in ("original", "edited")]
+    else:
+        assert plan == [("warmup", "A"), ("warmup", "B")] + [("measured", arm) for arm in "ABBA"]
+    result = {"status": "running", "calls": [], "blocks": []}
+    now, observed, fail_next_record = 0, [], False
+    record = comparison.record
+
+    def record_source(path):
+        nonlocal fail_next_record
+        if fail_next_record:
+            fail_next_record = False
+            raise OSError("mock post-call source read failure")
+        return record(path)
+
+    def setup(fixture, scenario):
+        nonlocal now
+        now += 10000  # Setup must not enter the measured interval.
+        args, kwargs = prepare_invocation(fixture, scenario)
+        assert (Path(kwargs["cwd"]) / "protocol/src/tool_name.rs").read_bytes() == original
+        return args, kwargs
+
+    def compiler(command, **kwargs):
+        nonlocal now, fail_next_record
+        index = len(observed)
+        phase, arm, *details = plan[index]
+        source_phase = details[-1] if confirm else "original"
+        path = Path(kwargs["cwd"]) / "protocol/src/tool_name.rs"
+        assert path.read_bytes() == (edited if source_phase == "edited" else original)
+        assert kwargs["check"] is True
+        observed.append((phase, arm, source_phase))
+        duration = 100 if arm == "A" else 97
+        if ((outcome == "early" and arm == "B" and source_phase == "edited")
+                or (outcome == "late" and details[0] == 2 and source_phase == "original")) and index % 5 == 3:
+            duration = 102  # Mean fails while the block minimum still passes.
+        now += duration if phase == "measured" else 5000
+        message = {"artifact": str(Path(kwargs["cwd"]) / "out.rmeta")}
+        if outcome == "diagnostics" and index == 10:
+            message["unexpected"] = True
+        kwargs["stderr"].write(json.dumps(message).encode())
+        if index == 6 and outcome == "source_mutation":
+            path.write_text("compiler-side mutation must reject and restore\n")
+        if index == 6 and outcome == "hash_failure":
+            fail_next_record = True
+        if index == 6 and outcome in ("compiler", "timeout"):
+            if outcome == "timeout":
+                raise TimeoutError("mock process timeout")
+            raise subprocess.CalledProcessError(7, command)
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(walltime_helper, "prepare_invocation", setup)
+    monkeypatch.setattr(comparison.subprocess, "run", compiler)
+    monkeypatch.setattr(comparison.time, "perf_counter_ns", lambda: now)
+    monkeypatch.setattr(comparison, "record", record_source)
+    if outcome in ("compiler", "timeout", "diagnostics", "source_mutation", "hash_failure"):
+        with pytest.raises((subprocess.CalledProcessError, TimeoutError, ValueError, OSError)):
+            comparison.run_calls(fixtures, invocations, [0, 1, 2, 3], result, plan, edit)
+        assert result["status"] == "failed"
+    else:
+        comparison.run_calls(fixtures, invocations, [0, 1, 2, 3], result, plan, edit if confirm else None)
+    assert len(observed) == len(result["calls"]) == count
+    assert all(row["cpu_affinity"] == [0, 1, 2, 3] for row in result["calls"])
+    assert all(row["elapsed_ns"] in (97, 100, 102) for row in result["calls"] if row["phase"] == "measured")
+    assert all((tmp_path / arm / "protocol/src/tool_name.rs").read_bytes() == original for arm in "AB")
+    if confirm:
+        assert result["actual_calls"] == count and not result["confirmed"]
+        if outcome in ("pass", "early", "late"):
+            assert result["actual_measured"] == (12 if outcome == "early" else 24)
+            assert result["strict_gate_passed"] == (outcome == "pass")
+            assert all(gate["passed"] for gate in result["gates"] if gate["statistic"] == "min")
+            assert result["status"] == ("early-rejected" if outcome == "early" else "running")
+
+
+def test_release_confirmation_is_strict_and_codex_only():
+    import compare_release_artifacts as comparison
+
+    blocks = [{"arm": arm, "phases": {phase: {"min_ns": value, "sum_ns": 3 * value}
+                                       for phase in ("original", "edited")}}
+              for arm, value in (("A", 100), ("B", 98))]
+    assert not any(gate["passed"] for gate in comparison.confirmation_gates(blocks))
+    with pytest.raises(ValueError, match="only the frozen Codex"):
+        comparison.main("uv-release-resolver", 3, confirm=True)

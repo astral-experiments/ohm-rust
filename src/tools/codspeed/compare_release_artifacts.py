@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Release artifact comparison against #107; no CodSpeed upload or acceptance gate."""
+"""Release artifact comparison or strict Codex confirmation; no CodSpeed upload."""
 
 import argparse
 import base64
@@ -11,6 +11,7 @@ from pathlib import Path
 import platform
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -25,6 +26,7 @@ CODEX = "74004b5397b24662a87a5264a6ae80664168c7f3"
 SUITE = "c0301bc44d175b9b2c5442b25049475c39d7700c"
 CANDIDATE_TREE = "05491635bd49b73847b589f131af795a6b49a477"
 CANDIDATE_PATCH_SHA = "6c061e7e500164c1639d82101185818b930107822a42629ecdddbb3fc8f70379"
+EDIT_SPEC_SHA = "7e4d21d6da2a06beac99e60a7e190c9cb50c4866d22070d15b1a4e93641cbd08"
 BOOTSTRAP_SHA = "9aa59b04767b1d89a3bc57c52895020423a3a189130820e1e33fb733b47db169"
 EXPECTED = {
     "A": {
@@ -205,11 +207,158 @@ def normalized(arm, value):
     return value
 
 
-def main(shard, cycles):
+def comparison_plan(cycles, confirm=False):
+    if confirm:
+        return [(phase, arm, block, source_phase) for block, arm in enumerate("ABBA")
+                for source_phase in ("original", "edited")
+                for phase in ("warmup", "measured", "measured", "measured", "final_probe")]
+    return [("warmup", arm) for arm in "AB"] + [("measured", arm) for arm in "ABBA" * cycles]
+
+
+def confirmation_gates(blocks):
+    """The worst B block must beat the best A block by strictly more than 2%."""
+    gates = []
+    for phase in ("original", "edited"):
+        for statistic, field, denominator in (("min", "min_ns", 1), ("mean", "sum_ns", 3)):
+            values = {arm: [block["phases"][phase][field] for block in blocks if block["arm"] == arm] for arm in "AB"}
+            baseline, candidate = min(values["A"]), max(values["B"])
+            gates.append({"phase": phase, "statistic": statistic,
+                          "baseline_block_numerators": values["A"], "candidate_block_numerators": values["B"],
+                          "denominator": denominator, "best_A_numerator": baseline, "worst_B_numerator": candidate,
+                          "reduction_percent": 100 * (baseline - candidate) / baseline,
+                          "criterion": "100 * max(B) < 98 * min(A)", "passed": 100 * candidate < 98 * baseline})
+    return gates
+
+
+def run_calls(fixtures, invocations, leaf_cpus, result, plan, edit=None):
+    from test_compiler_walltime import prepare_invocation
+
+    diagnostic_baselines = {}
+    try:
+        for index, (phase, arm, *source_phase) in enumerate(plan):
+            args, kwargs = prepare_invocation(fixtures[arm], "Full")
+            original = expected = row = None
+            try:
+                if edit is not None:
+                    result["edited_working_source_restored"] = False
+                    block, source_phase = source_phase
+                    path = Path(kwargs["cwd"]) / "protocol/src/tool_name.rs"
+                    original = path.read_bytes()
+                    if hashlib.sha256(original).hexdigest() != edit["original_sha256"]:
+                        raise ValueError("Call setup did not restore the pinned original source")
+                    if source_phase == "edited":
+                        before, after = edit["before"].encode(), edit["after"].encode()
+                        if original.count(before) != edit["occurrences"]:
+                            raise ValueError("Frozen edit occurrence count differs")
+                        path.write_bytes(original.replace(before, after))
+                    expected = edit["edited_sha256" if source_phase == "edited" else "original_sha256"]
+                    if record(path)["sha256"] != expected:
+                        path.write_bytes(original)
+                        raise ValueError("Frozen source edit hash differs")
+                actual = {"argv": args[0], "cwd": kwargs["cwd"], "env": kwargs["env"]}
+                if actual != invocations[arm]:
+                    raise ValueError("Compiler invocation changed after admission")
+                stdout_path = EVIDENCE / f"call-{index:02d}-{phase}-{arm}.stdout.txt"
+                stderr_path = EVIDENCE / f"call-{index:02d}-{phase}-{arm}.stderr.txt"
+                row = {"index": index, "phase": phase, "arm": arm}
+                if edit is not None:
+                    row.update(block=block, source_phase=source_phase, source_sha256=expected)
+                with stdout_path.open("xb") as stdout, stderr_path.open("xb") as stderr, leaf_affinity(leaf_cpus) as affinity:
+                    row["cpu_affinity"] = affinity
+                    start = time.perf_counter_ns()
+                    try:
+                        child = subprocess.run(*args, **kwargs, stdout=stdout, stderr=stderr)
+                        stop = time.perf_counter_ns()
+                        row["returncode"] = child.returncode
+                    except BaseException as error:
+                        stop = time.perf_counter_ns()
+                        row["error"] = type(error).__name__
+                        row["returncode"] = getattr(error, "returncode", None)
+                        result["status"] = "failed"
+                        raise
+                    finally:
+                        row["elapsed_ns"] = stop - start
+                        row["stdout"] = str(stdout_path)
+                        row["stderr"] = str(stderr_path)
+                        result["calls"].append(row)
+                        save("results.json", result)
+            finally:
+                if original is not None:
+                    try:
+                        if expected is not None:
+                            post_source = record(path)
+                            if row is not None:
+                                row["source_after"] = post_source
+                                row["source_unchanged"] = post_source["sha256"] == expected
+                            if post_source["sha256"] != expected:
+                                raise ValueError("Working source changed during compiler invocation")
+                    finally:
+                        path.write_bytes(original)
+                        result["edited_working_source_restored"] = record(path)["sha256"] == edit["original_sha256"]
+                        save("results.json", result)
+                        if not result["edited_working_source_restored"]:
+                            raise ValueError("Edited working source was not restored")
+            print(f"{index + 1}/{len(plan)} {phase} {arm}: {row['elapsed_ns']} ns", flush=True)
+
+            if edit is not None:
+                diagnostics = {name: normalized(arm, Path(row[name]).read_text()) for name in ("stdout", "stderr")}
+                if diagnostics != diagnostic_baselines.setdefault(source_phase, diagnostics):
+                    raise ValueError("Compiler diagnostics changed within a source phase")
+                row["diagnostics"] = {name: record(row[name]) for name in diagnostics}
+                row["normalized_diagnostics_sha256"] = hashlib.sha256(json.dumps(diagnostics, sort_keys=True).encode()).hexdigest()
+                if phase == "final_probe":
+                    calls = result["calls"][-5:]
+                    if [call["phase"] for call in calls] != ["warmup", "measured", "measured", "measured", "final_probe"]:
+                        raise ValueError("Confirmation phase cadence changed")
+                    measured = [call["elapsed_ns"] for call in calls if call["phase"] == "measured"]
+                    if len(result["blocks"]) == block:
+                        result["blocks"].append({"index": block, "arm": arm, "phases": {}})
+                    result["blocks"][block]["phases"][source_phase] = {
+                        "call_indices": [call["index"] for call in calls], "measured_ns": measured,
+                        "min_ns": min(measured), "mean_ns": sum(measured) / 3,
+                        "sum_ns": sum(measured), "diagnostics_equal": True,
+                    }
+                    if source_phase == "edited" and block in (1, 3):
+                        result["gates"] = confirmation_gates(result["blocks"])
+                        result["acceptance_evaluated"] = True
+                        result["strict_gate_passed"] = all(gate["passed"] for gate in result["gates"])
+                        if block == 1 and not result["strict_gate_passed"]:
+                            result["status"] = "early-rejected"
+                            result["early_rejection_reason"] = "strict-gate-impossible"
+                            break
+                save("results.json", result)
+    except BaseException as error:
+        if edit is not None:
+            result["status"] = "failed"
+            result["error"] = {"type": type(error).__name__, "message": str(error)}
+        raise
+    finally:
+        if edit is not None:
+            result["actual_calls"] = len(result["calls"])
+            result["actual_measured"] = sum(call["phase"] == "measured" for call in result["calls"])
+            result["actual_warmups"] = sum(call["phase"] == "warmup" for call in result["calls"])
+            result["actual_final_probes"] = sum(call["phase"] == "final_probe" for call in result["calls"])
+            result["confirmed"] = False  # Full source/runtime/dependency checks still follow.
+            save("blocks.json", result["blocks"])
+            save("results.json", result)
+
+
+def main(shard, cycles, confirm=False):
     from benchmarks import WORKSPACES
     from capture import COMPILE_ENV
     from test_compiler_walltime import prepare_invocation
 
+    if confirm and shard != "codex-release-protocol":
+        raise ValueError("Confirmation supports only the frozen Codex protocol edit")
+    edit = None
+    if confirm:
+        spec_path = Path(__file__).with_name("protocol-source-edit.json")
+        if record(spec_path)["sha256"] != EDIT_SPEC_SHA:
+            raise ValueError("Confirmation edit spec changed")
+        edit = json.loads(spec_path.read_text())
+        if edit["source_revision"] != CODEX or edit["relative_path"] != "codex-rs/protocol/src/tool_name.rs":
+            raise ValueError("Confirmation edit source differs")
+        shutil.copy2(spec_path, EVIDENCE / "protocol-source-edit.json")
     if platform.system() != "Linux" or platform.machine() != "aarch64":
         raise ValueError("These artifacts require the Linux ARM64 Macro runner")
     leaf_cpus = sorted(os.sched_getaffinity(0))[:4]
@@ -331,7 +480,7 @@ def main(shard, cycles):
     if comparison["A"] != comparison["B"]:
         raise ValueError("A/B normalized compiler arguments or environments differ")
 
-    plan = [("warmup", arm) for arm in "AB"] + [("measured", arm) for arm in "ABBA" * cycles]
+    plan = comparison_plan(cycles, confirm)
     result = {
         "status": "running", "role": "descriptive walltime comparison",
         "baseline": EXPECTED["A"], "candidate": EXPECTED["B"],
@@ -342,35 +491,16 @@ def main(shard, cycles):
         "order": "warm AB; measured " + " ".join(["ABBA"] * cycles),
         "acceptance_evaluated": False, "codspeed_upload": False, "calls": [],
     }
+    if confirm:
+        result.update(role="strict original/edited confirmation", planned_actual_calls=40,
+                      planned_warmups=8, planned_measured=24, planned_final_probes=8,
+                      early_rejection_actual_calls=20, early_rejection_measured=12,
+                      order="ABBA arm blocks; each original then edited; each warmup, 3 measured, final_probe",
+                      blocks=[], edit_spec=record(Path(__file__).with_name("protocol-source-edit.json")),
+                      threshold_percent=2, confirmed=False,
+                      final_probe_role="elapsed time retained; excluded from measured statistics; not an SDK call")
     save("results.json", result)
-    for index, (phase, arm) in enumerate(plan):
-        args, kwargs = prepare_invocation(fixtures[arm], "Full")
-        actual = {"argv": args[0], "cwd": kwargs["cwd"], "env": kwargs["env"]}
-        if actual != invocations[arm]:
-            raise ValueError("Compiler invocation changed after admission")
-        stdout_path = EVIDENCE / f"call-{index:02d}-{phase}-{arm}.stdout.txt"
-        stderr_path = EVIDENCE / f"call-{index:02d}-{phase}-{arm}.stderr.txt"
-        row = {"index": index, "phase": phase, "arm": arm}
-        with stdout_path.open("xb") as stdout, stderr_path.open("xb") as stderr, leaf_affinity(leaf_cpus) as affinity:
-            row["cpu_affinity"] = affinity
-            start = time.perf_counter_ns()
-            try:
-                child = subprocess.run(*args, **kwargs, stdout=stdout, stderr=stderr)
-                stop = time.perf_counter_ns()
-                row["returncode"] = child.returncode
-            except BaseException as error:
-                stop = time.perf_counter_ns()
-                row["error"] = type(error).__name__
-                row["returncode"] = getattr(error, "returncode", None)
-                result["status"] = "failed"
-                raise
-            finally:
-                row["elapsed_ns"] = stop - start
-                row["stdout"] = str(stdout_path)
-                row["stderr"] = str(stderr_path)
-                result["calls"].append(row)
-                save("results.json", result)
-        print(f"{index + 1}/{len(plan)} {phase} {arm}: {row['elapsed_ns']} ns", flush=True)
+    run_calls(fixtures, invocations, leaf_cpus, result, plan, edit)
 
     after = source_records()
     save("sources-after.json", after)
@@ -384,8 +514,11 @@ def main(shard, cycles):
                 raise ValueError(f"Runtime changed: {arm} {key}")
         if [record(item["path"]) for item in runtimes[arm]["driver"]] != runtimes[arm]["driver"]:
             raise ValueError(f"Compiler driver changed: {arm}")
-    result["status"] = "complete"
+    if result["status"] != "early-rejected":
+        result["status"] = "complete"
     result["source_runtime_dependencies_preserved"] = True
+    if confirm:
+        result["confirmed"] = result["status"] == "complete" and result["actual_calls"] == 40 and result["strict_gate_passed"]
     save("results.json", result)
     save("evidence-files.json", [record(path) for path in sorted(EVIDENCE.iterdir()) if path.is_file()])
 
@@ -397,6 +530,7 @@ if __name__ == "__main__":
     mode.add_argument("--record-candidate-build", type=Path)
     parser.add_argument("--check-artifacts", action="store_true")
     parser.add_argument("--candidate-artifact", default="")
+    parser.add_argument("--confirm", action="store_true", help="Confirm Codex original/edited in four ABBA arm blocks; ignores short --cycles")
     parser.add_argument("--cycles", type=int, choices=(1, 3), default=3)
     parser.add_argument("--shard", choices=("uv-release-resolver", "codex-release-protocol"), default="uv-release-resolver")
     args = parser.parse_args()
@@ -409,4 +543,8 @@ if __name__ == "__main__":
         if args.check_artifacts:
             check_artifacts()
         else:
-            main(args.shard, args.cycles)
+            if args.confirm:
+                def terminate(*_):
+                    raise TimeoutError("Confirmation process timeout")
+                signal.signal(signal.SIGTERM, terminate)
+            main(args.shard, args.cycles, args.confirm)
