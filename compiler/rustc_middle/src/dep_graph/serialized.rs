@@ -582,11 +582,12 @@ impl NodeInfo<'_> {
         }
 
         let bytes_per_index = header.bytes_per_index();
-        for node_index in edges.iter() {
-            e.write_with(|dest| {
-                *dest = node_index.as_u32().to_le_bytes();
-                bytes_per_index
-            });
+        // Grow once rather than reserving four bytes for each edge.
+        let edge_bytes = edges.len().checked_mul(bytes_per_index).unwrap();
+        let start = e.data.len();
+        e.data.resize(start.checked_add(edge_bytes).unwrap(), 0);
+        for (dest, node_index) in e.data[start..].chunks_exact_mut(bytes_per_index).zip(edges) {
+            dest.copy_from_slice(&node_index.as_u32().to_le_bytes()[..bytes_per_index]);
         }
     }
 }
