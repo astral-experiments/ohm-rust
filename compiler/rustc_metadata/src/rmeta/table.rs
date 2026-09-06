@@ -62,8 +62,8 @@ impl<T> IsDefault for LazyArray<T> {
 /// Helper trait, for encoding to, and decoding from, a fixed number of bytes.
 /// Used mainly for Lazy positions and lengths.
 ///
-/// Invariant: `Self::default()` should encode as `[0; BYTE_LEN]`,
-/// but this has no impact on safety.
+/// Invariant: `[0; BYTE_LEN]` decodes to the default value. Sparse tables omit
+/// these entries and return `Default::default()` without decoding any bytes.
 /// In debug builds, this invariant is checked in `[TableBuilder::set]`
 pub(super) trait FixedSizeEncoding: IsDefault {
     /// This should be `[u8; BYTE_LEN]`;
@@ -649,18 +649,25 @@ impl<H: TablePublicApiHasher<I>, I: Idx, const N: usize, T: FixedSizeEncoding<By
         let width = self.width;
         let sparse_index = sparse_table_index(self.blocks.raw.as_slice(), width);
         if let Some(index) = &sparse_index {
-            for bucket in index {
-                buf.emit_raw_bytes(bucket);
+            buf.emit_raw_bytes(index.as_slice().as_flattened());
+            for (blocks, bucket) in self.blocks.raw.chunks(SPARSE_BUCKET_LEN).zip(index) {
+                let mut bitmap = u64::from_le_bytes(bucket[..8].try_into().unwrap());
+                while bitmap != 0 {
+                    let block = blocks[bitmap.trailing_zeros() as usize];
+                    buf.write_with(|dest| {
+                        *dest = block;
+                        width
+                    });
+                    bitmap &= bitmap - 1;
+                }
             }
-        }
-        for block in &self.blocks {
-            if sparse_index.is_some() && *block == [0; N] {
-                continue;
+        } else {
+            for block in &self.blocks {
+                buf.write_with(|dest| {
+                    *dest = *block;
+                    width
+                });
             }
-            buf.write_with(|dest| {
-                *dest = *block;
-                width
-            });
         }
         GraphHashed(LazyTable::from_position_and_encoded_size(
             NonZero::new(pos).unwrap(),
@@ -680,12 +687,13 @@ fn sparse_table_index<const N: usize>(blocks: &[[u8; N]], width: usize) -> Optio
         return None;
     }
 
-    let index_bytes = blocks.len().div_ceil(SPARSE_BUCKET_LEN) * SPARSE_BUCKET_BYTES;
-    let dense_bytes = blocks.len() * width;
+    let index_bytes = blocks.len().div_ceil(SPARSE_BUCKET_LEN).checked_mul(SPARSE_BUCKET_BYTES)?;
+    let dense_bytes = blocks.len().checked_mul(width)?;
     // A sparse width needs one extra varint byte.
     if index_bytes + 1 >= dense_bytes {
         return None;
     }
+    let max_present = (dense_bytes - index_bytes - 2) / width;
 
     let mut index = Vec::with_capacity(blocks.len().div_ceil(SPARSE_BUCKET_LEN));
     let mut present = 0u32;
@@ -700,35 +708,64 @@ fn sparse_table_index<const N: usize>(blocks: &[[u8; N]], width: usize) -> Optio
         entry[..8].copy_from_slice(&bitmap.to_le_bytes());
         entry[8..].copy_from_slice(&present.to_le_bytes());
         index.push(entry);
-        present += bitmap.count_ones();
+        present = present.checked_add(bitmap.count_ones())?;
+        // Later entries cannot make an already oversized sparse representation profitable.
+        if present as usize > max_present {
+            return None;
+        }
     }
 
-    (index_bytes + present as usize * width + 1 < dense_bytes).then_some(index)
+    Some(index)
 }
 
 fn trailing_zeros(x: &[u8]) -> usize {
     x.iter().rev().take_while(|b| **b == 0).count()
 }
 
-impl<I, T> LazyTable<I, T> {
-    /// Locates the complete table representation, including a sparse table's index.
-    /// Metadata-prefix reuse needs this range when validating and relocating suffix tables.
-    pub(super) fn encoded_range(&self, metadata: &[u8]) -> Option<std::ops::Range<usize>> {
+impl<I, T: FixedSizeEncoding> LazyTable<I, T> {
+    /// Checks the width and the largest possible offset before a table is used for lookup.
+    pub(super) fn checked_layout(&self) -> Option<(usize, usize)> {
         let width = self.width & !SPARSE_TABLE;
-        let length = if self.width & SPARSE_TABLE != 0 {
-            let index_bytes =
-                self.len.div_ceil(SPARSE_BUCKET_LEN).checked_mul(SPARSE_BUCKET_BYTES)?;
-            let index_end = self.position.get().checked_add(index_bytes)?;
-            let last_bucket =
-                metadata.get(index_end.checked_sub(SPARSE_BUCKET_BYTES)?..index_end)?;
-            let bitmap = u64::from_le_bytes(last_bucket[..8].try_into().unwrap());
-            let preceding = u32::from_le_bytes(last_bucket[8..].try_into().unwrap());
-            let entries = (preceding as usize).checked_add(bitmap.count_ones() as usize)?;
-            index_bytes.checked_add(entries.checked_mul(width)?)?
+        if width > std::mem::size_of::<T::ByteArray>() {
+            return None;
+        }
+        let index_bytes = if self.width & SPARSE_TABLE != 0 {
+            if width == 0 || self.len == 0 || self.len > u32::MAX as usize {
+                return None;
+            }
+            self.len.div_ceil(SPARSE_BUCKET_LEN).checked_mul(SPARSE_BUCKET_BYTES)?
         } else {
-            self.len.checked_mul(width)?
+            0
         };
-        let end = self.position.get().checked_add(length)?;
+        self.position.get().checked_add(index_bytes)?.checked_add(self.len.checked_mul(width)?)?;
+        Some((width, index_bytes))
+    }
+
+    /// Locates the complete table representation, including a sparse table's index.
+    /// Metadata-prefix reuse validates every bucket before relocating suffix tables; ordinary
+    /// table lookups only inspect their own bucket and remain constant-time.
+    pub(super) fn encoded_range(&self, metadata: &[u8]) -> Option<std::ops::Range<usize>> {
+        let (width, index_bytes) = self.checked_layout()?;
+        let data_start = self.position.get() + index_bytes;
+        let entries = if index_bytes != 0 {
+            let index = metadata.get(self.position.get()..data_start)?;
+            let mut entries = 0usize;
+            for (i, bucket) in index.chunks_exact(SPARSE_BUCKET_BYTES).enumerate() {
+                let bitmap = u64::from_le_bytes(bucket[..8].try_into().unwrap());
+                let preceding = u32::from_le_bytes(bucket[8..].try_into().unwrap());
+                let valid_bits = (self.len - i * SPARSE_BUCKET_LEN).min(SPARSE_BUCKET_LEN);
+                if preceding as usize != entries
+                    || (valid_bits < SPARSE_BUCKET_LEN && bitmap >> valid_bits != 0)
+                {
+                    return None;
+                }
+                entries += bitmap.count_ones() as usize;
+            }
+            entries
+        } else {
+            self.len
+        };
+        let end = data_start + entries * width;
         (end <= metadata.len()).then_some(self.position.get()..end)
     }
 }
@@ -745,8 +782,8 @@ where
             return Default::default();
         }
 
-        let width = self.width & !SPARSE_TABLE;
-        let start = if self.width & SPARSE_TABLE != 0 {
+        let (start, width) = if self.width & SPARSE_TABLE != 0 {
+            let width = self.width - SPARSE_TABLE;
             let bucket_start =
                 self.position.get() + (i.index() / SPARSE_BUCKET_LEN) * SPARSE_BUCKET_BYTES;
             let bucket = &metadata.blob()[bucket_start..bucket_start + SPARSE_BUCKET_BYTES];
@@ -756,12 +793,18 @@ where
                 return Default::default();
             }
             let preceding = u32::from_le_bytes(bucket[8..].try_into().unwrap());
-            let index = preceding as usize + (bitmap & (bit - 1)).count_ones() as usize;
-            self.position.get()
-                + self.len.div_ceil(SPARSE_BUCKET_LEN) * SPARSE_BUCKET_BYTES
-                + width * index
+            let index = (preceding as usize)
+                .checked_add((bitmap & (bit - 1)).count_ones() as usize)
+                .filter(|&index| index < self.len)
+                .expect("invalid sparse metadata table index");
+            (
+                self.position.get()
+                    + self.len.div_ceil(SPARSE_BUCKET_LEN) * SPARSE_BUCKET_BYTES
+                    + width * index,
+                width,
+            )
         } else {
-            self.position.get() + width * i.index()
+            (self.position.get() + self.width * i.index(), self.width)
         };
         let end = start + width;
         let bytes = &metadata.blob()[start..end];
