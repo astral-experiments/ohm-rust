@@ -35,9 +35,10 @@ installed. Each checks for unrelated compiler/build processes and samples CPU id
 I/O wait, and steal time before every invocation. The host still requires exclusive
 scheduling for the duration of a measurement phase.
 
-Each cycle uses ABBA then BAAB, giving four samples per compiler, after one excluded
-warmup per compiler. `--cycles 2` doubles this; `--cases` selects a subset when a
-large Cachegrind run needs a separate window. Every sample invokes rustc directly
+Each native cycle uses ABBA then BAAB, giving four samples per compiler, after one
+excluded warmup per compiler. Instruction cycles default to ABBA (two samples per
+compiler); `--instruction-samples 4` selects ABBA then BAAB. `--cycles 2` doubles
+these counts, and `--cases` selects the workloads for that phase. Every sample invokes rustc directly
 with one frontend thread and `--emit=metadata`; incremental compilation is disabled.
 Fresh output files are prepared outside each measurement. Cargo cannot skip a sample.
 
