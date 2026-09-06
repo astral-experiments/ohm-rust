@@ -24,6 +24,21 @@ pub(crate) fn parse(config: &str) -> Config {
     TestCtx::new().config("check").with_default_toml_config(config).create_config()
 }
 
+#[test]
+fn ohm_wild_linker_is_an_optional_packaging_input() {
+    let config = parse("[target.x86_64-unknown-linux-gnu]\nohm-wild-linker = 'pinned-wild'");
+    let target = &config.target_config[&TargetSelection::from_user("x86_64-unknown-linux-gnu")];
+    assert_eq!(target.ohm_wild_linker, Some(config.src.join("pinned-wild")));
+    assert!(target.linker.is_none());
+    assert!(target.default_linker.is_none());
+}
+
+#[test]
+#[should_panic(expected = "`ohm-wild-linker` is only supported for x86_64-unknown-linux-gnu")]
+fn ohm_wild_linker_rejects_other_platforms() {
+    parse("[target.aarch64-apple-darwin]\nohm-wild-linker = 'pinned-wild'");
+}
+
 fn modified(upstream: impl Into<String>, changes: &[&str]) -> PathFreshness {
     PathFreshness::HasLocalModifications {
         upstream: upstream.into(),
