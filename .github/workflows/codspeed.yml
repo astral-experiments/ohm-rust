@@ -25,7 +25,8 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 128
+          # Bootstrap needs the upstream LLVM commit, even on long-lived fork branches.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Checkout pinned compiler dependencies
