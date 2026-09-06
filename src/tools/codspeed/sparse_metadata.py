@@ -392,6 +392,9 @@ def measure(args):
         )
         for path, expected in prepared["driver_sha256"].items():
             assert digest(path) == expected
+    order = ORDERS
+    if args.operation == "instructions":
+        order = ORDERS[: args.instruction_samples * 2]
     save(
         output / "environment.json",
         {
@@ -404,7 +407,7 @@ def measure(args):
             )
             if args.operation == "instructions"
             else None,
-            "order": ORDERS,
+            "order": order,
             "cycles": args.cycles,
             "cases": args.cases,
         },
@@ -414,7 +417,7 @@ def measure(args):
         # Warm both the compiler and dependency mappings before accepted observations.
         sequence = [(arm, "warmup", 0) for arm in ARMS]
         for cycle in range(args.cycles):
-            sequence.extend((arm, "measured", cycle) for arm in ORDERS)
+            sequence.extend((arm, "measured", cycle) for arm in order)
         for index, (arm, phase, cycle) in enumerate(sequence):
             prepared = manifest["arms"][arm]["cases"][case]
             argv = prepared["command"]
@@ -591,6 +594,13 @@ def main():
         help="Each ABBA+BAAB cycle measures four calls per arm",
     )
     parser.add_argument("--cases", nargs="+", choices=CASES, default=list(CASES))
+    parser.add_argument(
+        "--instruction-samples",
+        type=int,
+        choices=(2, 4),
+        default=2,
+        help="Samples per arm per cycle in the instruction phase (ABBA or ABBA+BAAB)",
+    )
     parser.add_argument("--valgrind", default="valgrind")
     args = parser.parse_args()
     args.cargo = args.cargo or args.root / "toolchain/bin/cargo"
