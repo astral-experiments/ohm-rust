@@ -3356,15 +3356,20 @@ fn try_reuse_metadata_prefix(
         // The old work product can have hard links in finalized sessions. Only
         // truncate an independent clone, never the original inode.
         std::fs::remove_file(&temporary_file).ok()?;
-        rustc_fs_util::clone_file(&metadata_path, &temporary_file)
-            .and_then(|()| {
-                File::options()
-                    .write(true)
-                    .open(&temporary_file)?
-                    .set_len(prefix_position as u64)?;
-                opaque::FileEncoder::with_existing_prefix(&temporary_file, prefix_position)
-            })
-            .ok()
+        let cloned = rustc_fs_util::clone_file(&metadata_path, &temporary_file).and_then(|()| {
+            File::options().write(true).open(&temporary_file)?.set_len(prefix_position as u64)?;
+            opaque::FileEncoder::with_existing_prefix(&temporary_file, prefix_position)
+        });
+        match cloned {
+            Ok(encoder) => Some(encoder),
+            Err(_) => {
+                // A successful clone can retain read-only permissions even if
+                // opening it for append fails. Recreate our temporary output
+                // before falling back to the ordinary encoder.
+                let _ = std::fs::remove_file(&temporary_file);
+                None
+            }
+        }
     } else {
         None
     };
