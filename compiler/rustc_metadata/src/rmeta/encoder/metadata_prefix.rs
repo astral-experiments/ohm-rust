@@ -60,10 +60,9 @@ pub(super) fn relocate_metadata_table<'tcx, I, T>(
     metadata: &[u8],
     table: LazyTable<I, T>,
 ) -> LazyTable<I, T> {
-    let start = table.position.get();
-    let length = table.width * table.len;
+    let range = table.encoded_range(metadata).expect("metadata table bounds were validated");
     let position = NonZero::new(ecx.position()).expect("metadata preamble is nonempty");
-    ecx.emit_raw_bytes(&metadata[start..start + length]);
+    ecx.emit_raw_bytes(&metadata[range]);
     LazyTable::from_position_and_encoded_size(position, table.width, table.len)
 }
 
