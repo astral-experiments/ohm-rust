@@ -424,6 +424,10 @@ impl OnDiskCache {
                         let id = encoder.interpret_allocs[idx];
                         if let Some(&(depth, previous_index)) = allocation_origins.get(&id) {
                             forwarded_allocations.push((idx, depth, previous_index));
+                            // The alias is decoded using the ancestor's complete context. Its
+                            // index remains present, but no current-generation payload is needed.
+                            interpret_alloc_index.push(0);
+                            continue;
                         }
                         let pos: u64 = encoder.position().try_into().unwrap();
                         interpret_alloc_index.push(pos);
@@ -433,6 +437,12 @@ impl OnDiskCache {
                 }
                 interpret_alloc_index
             };
+            if tcx.sess.opts.unstable_opts.incremental_info {
+                eprintln!(
+                    "[incremental] Retained allocation payload aliases: {}",
+                    forwarded_allocations.len()
+                );
+            }
 
             let mut syntax_contexts = FxHashMap::default();
             let mut expn_data = UnhashMap::default();
@@ -565,6 +575,7 @@ impl OnDiskCache {
         let serialized_data = self.serialized_data.read();
         let mut decoder = CacheDecoder {
             tcx,
+            cache: self,
             opaque: MemDecoder::new(
                 serialized_data.as_ref().map_or(&[], |data| &data[..self.data_len]),
                 pos.to_usize(),
@@ -589,6 +600,7 @@ impl OnDiskCache {
 /// will also handle things that contain `Ty` instances.
 pub struct CacheDecoder<'a, 'tcx> {
     tcx: TyCtxt<'tcx>,
+    cache: &'a OnDiskCache,
     opaque: MemDecoder<'a>,
     file_index_to_file: &'a Lock<FxHashMap<SourceFileIndex, Arc<SourceFile>>>,
     file_index_to_stable_id: &'a FxHashMap<SourceFileIndex, EncodedSourceFileId>,
@@ -600,6 +612,26 @@ pub struct CacheDecoder<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> CacheDecoder<'a, 'tcx> {
+    /// Loads retained allocation bytes using the generation that encoded their references.
+    fn decode_alloc_id_at(&mut self, index: usize) -> interpret::AllocId {
+        let session = self.alloc_decoding_session;
+        if let Some((origin, origin_index)) = session.alias(index) {
+            let mut ancestor = self.cache.previous_cache.as_deref();
+            while let Some(cache) = ancestor {
+                if std::ptr::eq(&*cache.alloc_decoding_state, origin) {
+                    return cache.with_decoder(
+                        self.tcx,
+                        AbsoluteBytePos::new(cache.start_pos),
+                        |decoder| decoder.decode_alloc_id_at(origin_index),
+                    );
+                }
+                ancestor = cache.previous_cache.as_deref();
+            }
+            unreachable!("allocation aliases are validated against ancestor generations");
+        }
+        session.decode_alloc_id_at(self, index)
+    }
+
     #[inline]
     fn file_index_to_file(&self, index: SourceFileIndex) -> Arc<SourceFile> {
         let CacheDecoder { tcx, file_index_to_file, file_index_to_stable_id, .. } = *self;
@@ -714,8 +746,8 @@ impl<'a, 'tcx> TyDecoder<'tcx> for CacheDecoder<'a, 'tcx> {
     }
 
     fn decode_alloc_id(&mut self) -> interpret::AllocId {
-        let alloc_decoding_session = self.alloc_decoding_session;
-        alloc_decoding_session.decode_alloc_id(self)
+        let index = usize::try_from(self.read_u32()).unwrap();
+        self.decode_alloc_id_at(index)
     }
 }
 

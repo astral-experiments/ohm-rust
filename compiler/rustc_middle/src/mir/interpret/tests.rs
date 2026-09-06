@@ -13,4 +13,12 @@ fn aliases_preserve_allocation_identity() {
     assert!(std::ptr::eq(original.state_at(0), rewritten.state_at(0)));
     assert!(std::ptr::eq(original.state_at(0), rewritten_again.state_at(0)));
     assert!(!std::ptr::eq(original.state_at(0), rewritten.state_at(1)));
+    let session = rewritten_again.new_decoding_session();
+    let (origin, index) = session.alias(0).unwrap();
+    assert!(std::ptr::eq(origin, &*rewritten));
+    assert_eq!(index, 0);
+    let (origin, index) = origin.new_decoding_session().alias(index).unwrap();
+    assert!(std::ptr::eq(origin, &*original));
+    assert_eq!(index, 0);
+    assert!(origin.new_decoding_session().alias(index).is_none());
 }

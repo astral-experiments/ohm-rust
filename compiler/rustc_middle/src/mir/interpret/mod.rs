@@ -205,6 +205,11 @@ pub struct AllocDecodingSession<'s> {
 }
 
 impl<'s> AllocDecodingSession<'s> {
+    /// Returns the original allocation state when this entry retains an older payload.
+    pub(crate) fn alias(&self, index: usize) -> Option<(&'s AllocDecodingState, usize)> {
+        self.state.aliases.get(index)?.as_ref().map(|(state, index)| (&**state, *index))
+    }
+
     /// Decodes an `AllocId` in a thread-safe way.
     pub fn decode_alloc_id<'tcx, D>(&self, decoder: &mut D) -> AllocId
     where
@@ -212,6 +217,14 @@ impl<'s> AllocDecodingSession<'s> {
     {
         // Read the index of the allocation.
         let idx = usize::try_from(decoder.read_u32()).unwrap();
+        self.decode_alloc_id_at(decoder, idx)
+    }
+
+    /// Decodes an allocation whose index was already read by a generation-aware decoder.
+    pub(crate) fn decode_alloc_id_at<'tcx, D>(&self, decoder: &mut D, idx: usize) -> AllocId
+    where
+        D: TyDecoder<'tcx>,
+    {
         let pos = usize::try_from(self.state.data_offsets[idx]).unwrap();
 
         // Decode the `AllocDiscriminant` now so that we know if we have to reserve an
