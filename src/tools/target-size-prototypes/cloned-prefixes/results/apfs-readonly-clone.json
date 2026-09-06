@@ -1,0 +1,20 @@
+{
+  "scope": "APFS clone/open/unlink/recreate mechanism; not candidate macOS compiler coverage",
+  "reviewed_code_commit": "0ee8042ac2422aa67047004ce3758dd4a5410df9",
+  "script_sha256": "25e1ab0d186cffc099dc7038123376213a5fe8bbcc5910211649e33ee8d16eb9",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "filesystem_type": "apfs",
+  "root": "/private/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/apfs-readonly-clone-mechanism/after-format",
+  "clone_flags": 2,
+  "source_inode": 890408413,
+  "clone_inode": 890408416,
+  "source_mode": "0o444",
+  "clone_mode": "0o444",
+  "clone_write_open_errno": 13,
+  "recreated_inode": 890408417,
+  "recreated_mode": "0o644",
+  "source_sha256": "2452f5677fe2bc0eb91aea5f873a5a6b8360f6928f7bb0728f9d3b2fabad8121",
+  "recreated_sha256": "5f56d2e01d7492a65fb07cd134d1a35dcaa1b920fc80a5f1b425cdbe91b4e03d",
+  "source_and_retained_hardlink_unchanged": true,
+  "completed": true
+}

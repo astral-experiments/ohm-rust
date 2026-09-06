@@ -1,0 +1,14 @@
+{
+  "host": "charlie-ohm-target-size",
+  "remote": {
+    "path": "/tmp/ohm-target-size-prototypes/prefix-validation/metadata_runtime.py",
+    "sha256": "433f12cfb789d1cf953b9832793f4d56cdacb9b380cc15eae19d931d7eeb36e7"
+  },
+  "local_script_sha256": "433f12cfb789d1cf953b9832793f4d56cdacb9b380cc15eae19d931d7eeb36e7",
+  "preserved_failure_paths": [
+    "/tmp/ohm-target-size-prototypes/prefix-correctness-readonly-output-failure",
+    "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness-readonly-output-failure",
+    "/tmp/ohm-target-size-prototypes/prefix-correctness-watcher-readonly-output-failure.json",
+    "/tmp/ohm-target-size-prototypes/prefix-correctness-watcher-readonly-output-failure.log"
+  ]
+}

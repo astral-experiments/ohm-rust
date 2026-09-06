@@ -1,0 +1,97 @@
+{
+  "compiler": {
+    "version": "rustc 1.98.0-dev (605ed6327c1 2026-09-05) (built from a source tarball)\nbinary: rustc\ncommit-hash: 605ed6327c1a14970ec6e9fa4f7068b75e459ef1\ncommit-date: 2026-09-05\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.0-dev\nLLVM version: 22.1.8\n",
+    "sha256": "7cb4adf64cc89f83e73e349473891b973ef222db665feb3ef04021caddfee076",
+    "revision": "605ed6327c1a14970ec6e9fa4f7068b75e459ef1",
+    "patch_sha256": "b36da1f3479e564d195dc02b6b2ab1c04809a76d6ab31ba7f7addef15118cd54",
+    "library_sha256": {
+      "lib/librustc_driver-75408ace3de817b3.so": "3b6f923c7b1196baa3e2d8a11ec96686ca1f4237b3d72fe1ae44eae5369314fc",
+      "lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-e855770556130410.rlib": "b9483b4f195b2127dccf3256350a65ab603ebae31cebda1f0d47f352d19ea3f6"
+    }
+  },
+  "checks": [
+    {
+      "filesystem": "btrfs",
+      "kind": "query",
+      "returncode": 0,
+      "config": {
+        "root": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query",
+        "rustc": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+        "rustc_sha256": "7cb4adf64cc89f83e73e349473891b973ef222db665feb3ef04021caddfee076",
+        "expect_cloning": true,
+        "fixture_source": "/tmp/ohm-target-size-prototypes/sources/cloned-prefixes/tests/incremental/forward-cached-query-value-cloned.rs"
+      }
+    },
+    {
+      "filesystem": "btrfs",
+      "kind": "metadata",
+      "returncode": 0,
+      "config": {
+        "root": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/metadata",
+        "rustc": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+        "rustc_sha256": "7cb4adf64cc89f83e73e349473891b973ef222db665feb3ef04021caddfee076",
+        "expect_cloning": true,
+        "fixture_source": "/tmp/ohm-target-size-prototypes/sources/cloned-prefixes/tests/run-make/cloned-metadata-prefix"
+      }
+    },
+    {
+      "filesystem": "ext4",
+      "kind": "query",
+      "returncode": 0,
+      "config": {
+        "root": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query",
+        "rustc": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+        "rustc_sha256": "7cb4adf64cc89f83e73e349473891b973ef222db665feb3ef04021caddfee076",
+        "expect_cloning": false,
+        "fixture_source": "/tmp/ohm-target-size-prototypes/sources/cloned-prefixes/tests/incremental/forward-cached-query-value-cloned.rs"
+      }
+    },
+    {
+      "filesystem": "ext4",
+      "kind": "metadata",
+      "returncode": 0,
+      "config": {
+        "root": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/metadata",
+        "rustc": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+        "rustc_sha256": "7cb4adf64cc89f83e73e349473891b973ef222db665feb3ef04021caddfee076",
+        "expect_cloning": false,
+        "fixture_source": "/tmp/ohm-target-size-prototypes/sources/cloned-prefixes/tests/run-make/cloned-metadata-prefix"
+      }
+    }
+  ],
+  "bootstrap": {
+    "command": [
+      "python3",
+      "x.py",
+      "test",
+      "--stage",
+      "1",
+      "-j",
+      "8",
+      "compiler/rustc_fs_util",
+      "compiler/rustc_serialize",
+      "tests/incremental/forward-cached-query-value-cloned.rs",
+      "tests/run-make/cloned-metadata-prefix"
+    ],
+    "cwd": "/tmp/ohm-target-size-prototypes/sources/cloned-prefixes",
+    "environment": {
+      "CARGO_HOME": "/tmp/codex-cargo-home",
+      "__CARGO_OHM_DEFAULTS": "no",
+      "LD_LIBRARY_PATH": "/tmp/ohm-target-size-prototypes/llvm/lib",
+      "TMPDIR": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/unit-temp"
+    },
+    "temporary_filesystem": {
+      "filesystems": [
+        {
+          "target": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow",
+          "source": "/dev/loop0",
+          "fstype": "btrfs",
+          "options": "rw,relatime,discard=async,space_cache=v2,subvolid=5,subvol=/"
+        }
+      ]
+    },
+    "started": 1788663603.7871346,
+    "returncode": 0,
+    "finished": 1788663687.9290967
+  }
+}

@@ -17,7 +17,10 @@ def median_range(values):
 
 def summarize(root):
     result = {
-        "storage_scope": "known physical data extent union across target and retained donor; excludes filesystem metadata and flagged uninterpretable extents",
+        "storage_scope": (
+            "known physical data extent union across target and retained donor; "
+            "excludes filesystem metadata and flagged uninterpretable extents"
+        ),
         "comparison": "same candidate compiler, both opt-ins enabled versus disabled",
         "fixtures": {},
     }

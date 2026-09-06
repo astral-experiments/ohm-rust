@@ -1,0 +1,2961 @@
+{
+  "storage_scope": "known physical data extent union across target and retained donor; excludes filesystem metadata and flagged uninterpretable extents",
+  "comparison": "same candidate compiler, both opt-ins enabled versus disabled",
+  "fixtures": {
+    "regex-automata-0.4.8-dev": {
+      "storage": [
+        {
+          "mode": "off",
+          "revision": 1,
+          "bytes": 159928320,
+          "baseline_bytes": 159928320,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 76509184
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 12144640
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65449992,
+              "inode_allocated_bytes": 65462272,
+              "known_physical_data_union_bytes": 32731136
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 26841910,
+              "inode_allocated_bytes": 26845184,
+              "known_physical_data_union_bytes": 13422592
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 25120768
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "off",
+          "revision": 2,
+          "bytes": 236257280,
+          "baseline_bytes": 236257280,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 12144640
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65450032,
+              "inode_allocated_bytes": 65462272,
+              "known_physical_data_union_bytes": 63410176
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 25120768
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 28809884,
+              "inode_allocated_bytes": 28815360,
+              "known_physical_data_union_bytes": 28815360
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "off",
+          "revision": 3,
+          "bytes": 252919808,
+          "baseline_bytes": 252919808,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65470961,
+              "inode_allocated_bytes": 65482752,
+              "known_physical_data_union_bytes": 65482752
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 36656730,
+              "inode_allocated_bytes": 36659200,
+              "known_physical_data_union_bytes": 36659200
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "off",
+          "revision": 4,
+          "bytes": 239955968,
+          "baseline_bytes": 239955968,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65450533,
+              "inode_allocated_bytes": 65462272,
+              "known_physical_data_union_bytes": 65462272
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 23710846,
+              "inode_allocated_bytes": 23715840,
+              "known_physical_data_union_bytes": 23715840
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "off",
+          "revision": 5,
+          "bytes": 247820288,
+          "baseline_bytes": 247820288,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65470961,
+              "inode_allocated_bytes": 65482752,
+              "known_physical_data_union_bytes": 65482752
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 31557662,
+              "inode_allocated_bytes": 31559680,
+              "known_physical_data_union_bytes": 31559680
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "off",
+          "revision": 6,
+          "bytes": 249769984,
+          "baseline_bytes": 249769984,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65450533,
+              "inode_allocated_bytes": 65462272,
+              "known_physical_data_union_bytes": 65462272
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 33525636,
+              "inode_allocated_bytes": 33529856,
+              "known_physical_data_union_bytes": 33529856
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "off",
+          "revision": 7,
+          "bytes": 240144384,
+          "baseline_bytes": 240144384,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65470961,
+              "inode_allocated_bytes": 65482752,
+              "known_physical_data_union_bytes": 65482752
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 23878936,
+              "inode_allocated_bytes": 23883776,
+              "known_physical_data_union_bytes": 23883776
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "query",
+          "revision": 1,
+          "bytes": 159928320,
+          "baseline_bytes": 159928320,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 76509184
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 12144640
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65449992,
+              "inode_allocated_bytes": 65462272,
+              "known_physical_data_union_bytes": 32731136
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 26841906,
+              "inode_allocated_bytes": 26845184,
+              "known_physical_data_union_bytes": 13422592
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 25120768
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "query",
+          "revision": 2,
+          "bytes": 222838784,
+          "baseline_bytes": 236257280,
+          "change_pct": -5.679611650485439,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 12144640
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65450032,
+              "inode_allocated_bytes": 65462272,
+              "known_physical_data_union_bytes": 63410176
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 25120768
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 28809880,
+              "inode_allocated_bytes": 28815360,
+              "known_physical_data_union_bytes": 15396864
+            }
+          },
+          "admission_messages": [
+            "[incremental] query cache preserved 13420953 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "mode": "query",
+          "revision": 3,
+          "bytes": 239501312,
+          "baseline_bytes": 252919808,
+          "change_pct": -5.305434993845958,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65470961,
+              "inode_allocated_bytes": 65482752,
+              "known_physical_data_union_bytes": 65482752
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 36656726,
+              "inode_allocated_bytes": 36659200,
+              "known_physical_data_union_bytes": 23240704
+            }
+          },
+          "admission_messages": [
+            "[incremental] query cache preserved 15388927 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "mode": "query",
+          "revision": 4,
+          "bytes": 239955968,
+          "baseline_bytes": 239955968,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65450533,
+              "inode_allocated_bytes": 65462272,
+              "known_physical_data_union_bytes": 65462272
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 23710844,
+              "inode_allocated_bytes": 23715840,
+              "known_physical_data_union_bytes": 23715840
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "query",
+          "revision": 5,
+          "bytes": 247820288,
+          "baseline_bytes": 247820288,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65470961,
+              "inode_allocated_bytes": 65482752,
+              "known_physical_data_union_bytes": 65482752
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 31557660,
+              "inode_allocated_bytes": 31559680,
+              "known_physical_data_union_bytes": 31559680
+            }
+          },
+          "admission_messages": [
+            "[incremental] query cache preserved 10289891 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "mode": "query",
+          "revision": 6,
+          "bytes": 249769984,
+          "baseline_bytes": 249769984,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65450533,
+              "inode_allocated_bytes": 65462272,
+              "known_physical_data_union_bytes": 65462272
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 33525634,
+              "inode_allocated_bytes": 33529856,
+              "known_physical_data_union_bytes": 33529856
+            }
+          },
+          "admission_messages": [
+            "[incremental] query cache preserved 18136707 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "mode": "query",
+          "revision": 7,
+          "bytes": 240144384,
+          "baseline_bytes": 240144384,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65470961,
+              "inode_allocated_bytes": 65482752,
+              "known_physical_data_union_bytes": 65482752
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 23878934,
+              "inode_allocated_bytes": 23883776,
+              "known_physical_data_union_bytes": 23883776
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "metadata",
+          "revision": 1,
+          "bytes": 159928320,
+          "baseline_bytes": 159928320,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 76509184
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 12144640
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65449992,
+              "inode_allocated_bytes": 65462272,
+              "known_physical_data_union_bytes": 32731136
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 26841904,
+              "inode_allocated_bytes": 26845184,
+              "known_physical_data_union_bytes": 13422592
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 25120768
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "metadata",
+          "revision": 2,
+          "bytes": 236257280,
+          "baseline_bytes": 236257280,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 12144640
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65450032,
+              "inode_allocated_bytes": 65462272,
+              "known_physical_data_union_bytes": 63410176
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 25120768
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 28809878,
+              "inode_allocated_bytes": 28815360,
+              "known_physical_data_union_bytes": 28815360
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "metadata",
+          "revision": 3,
+          "bytes": 252919808,
+          "baseline_bytes": 252919808,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65470961,
+              "inode_allocated_bytes": 65482752,
+              "known_physical_data_union_bytes": 65482752
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 36656724,
+              "inode_allocated_bytes": 36659200,
+              "known_physical_data_union_bytes": 36659200
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "metadata",
+          "revision": 4,
+          "bytes": 239955968,
+          "baseline_bytes": 239955968,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65450533,
+              "inode_allocated_bytes": 65462272,
+              "known_physical_data_union_bytes": 65462272
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 23710843,
+              "inode_allocated_bytes": 23715840,
+              "known_physical_data_union_bytes": 23715840
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "metadata",
+          "revision": 5,
+          "bytes": 247820288,
+          "baseline_bytes": 247820288,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65470961,
+              "inode_allocated_bytes": 65482752,
+              "known_physical_data_union_bytes": 65482752
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 31557659,
+              "inode_allocated_bytes": 31559680,
+              "known_physical_data_union_bytes": 31559680
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "metadata",
+          "revision": 6,
+          "bytes": 249769984,
+          "baseline_bytes": 249769984,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65450533,
+              "inode_allocated_bytes": 65462272,
+              "known_physical_data_union_bytes": 65462272
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 33525633,
+              "inode_allocated_bytes": 33529856,
+              "known_physical_data_union_bytes": 33529856
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "metadata",
+          "revision": 7,
+          "bytes": 240144384,
+          "baseline_bytes": 240144384,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65470961,
+              "inode_allocated_bytes": 65482752,
+              "known_physical_data_union_bytes": 65482752
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 23878933,
+              "inode_allocated_bytes": 23883776,
+              "known_physical_data_union_bytes": 23883776
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "both",
+          "revision": 1,
+          "bytes": 159928320,
+          "baseline_bytes": 159928320,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 76509184
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 12144640
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65449992,
+              "inode_allocated_bytes": 65462272,
+              "known_physical_data_union_bytes": 32731136
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 26841896,
+              "inode_allocated_bytes": 26845184,
+              "known_physical_data_union_bytes": 13422592
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 25120768
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "both",
+          "revision": 2,
+          "bytes": 222838784,
+          "baseline_bytes": 236257280,
+          "change_pct": -5.679611650485439,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 12144640
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65450032,
+              "inode_allocated_bytes": 65462272,
+              "known_physical_data_union_bytes": 63410176
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 25120768
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 28809870,
+              "inode_allocated_bytes": 28815360,
+              "known_physical_data_union_bytes": 15396864
+            }
+          },
+          "admission_messages": [
+            "[incremental] query cache preserved 13420948 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "mode": "both",
+          "revision": 3,
+          "bytes": 239501312,
+          "baseline_bytes": 252919808,
+          "change_pct": -5.305434993845958,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65470961,
+              "inode_allocated_bytes": 65482752,
+              "known_physical_data_union_bytes": 65482752
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 36656716,
+              "inode_allocated_bytes": 36659200,
+              "known_physical_data_union_bytes": 23240704
+            }
+          },
+          "admission_messages": [
+            "[incremental] query cache preserved 15388922 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "mode": "both",
+          "revision": 4,
+          "bytes": 239955968,
+          "baseline_bytes": 239955968,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65450533,
+              "inode_allocated_bytes": 65462272,
+              "known_physical_data_union_bytes": 65462272
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 23710839,
+              "inode_allocated_bytes": 23715840,
+              "known_physical_data_union_bytes": 23715840
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "both",
+          "revision": 5,
+          "bytes": 247820288,
+          "baseline_bytes": 247820288,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65470961,
+              "inode_allocated_bytes": 65482752,
+              "known_physical_data_union_bytes": 65482752
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 31557655,
+              "inode_allocated_bytes": 31559680,
+              "known_physical_data_union_bytes": 31559680
+            }
+          },
+          "admission_messages": [
+            "[incremental] query cache preserved 10289891 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "mode": "both",
+          "revision": 6,
+          "bytes": 249769984,
+          "baseline_bytes": 249769984,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65450533,
+              "inode_allocated_bytes": 65462272,
+              "known_physical_data_union_bytes": 65462272
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 33525629,
+              "inode_allocated_bytes": 33529856,
+              "known_physical_data_union_bytes": 33529856
+            }
+          },
+          "admission_messages": [
+            "[incremental] query cache preserved 18136707 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "mode": "both",
+          "revision": 7,
+          "bytes": 240144384,
+          "baseline_bytes": 240144384,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 82,
+              "logical_bytes": 152995332,
+              "inode_allocated_bytes": 153223168,
+              "uninterpretable_files": 50,
+              "uninterpretable_logical_bytes": 17090,
+              "uninterpretable_inode_allocated_bytes": 204800,
+              "known_physical_data_union_bytes": 106766336
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 24273066,
+              "inode_allocated_bytes": 24289280,
+              "known_physical_data_union_bytes": 16863232
+            },
+            "other-incremental": {
+              "files": 8,
+              "logical_bytes": 65470961,
+              "inode_allocated_bytes": 65482752,
+              "known_physical_data_union_bytes": 65482752
+            },
+            "incremental-object": {
+              "files": 512,
+              "logical_bytes": 49178368,
+              "inode_allocated_bytes": 50241536,
+              "known_physical_data_union_bytes": 27148288
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 23878929,
+              "inode_allocated_bytes": 23883776,
+              "known_physical_data_union_bytes": 23883776
+            }
+          },
+          "admission_messages": []
+        }
+      ],
+      "native": [
+        {
+          "revision": 1,
+          "off": {
+            "samples": [
+              6008986563,
+              5914615735,
+              5740190698,
+              6052225834
+            ],
+            "median": 5961801149.0,
+            "min": 5740190698,
+            "max": 6052225834
+          },
+          "both": {
+            "samples": [
+              5823987333,
+              5776405811,
+              5834932433,
+              5843682014
+            ],
+            "median": 5829459883.0,
+            "min": 5776405811,
+            "max": 5843682014
+          },
+          "change_pct": -2.219820196824218
+        },
+        {
+          "revision": 2,
+          "off": {
+            "samples": [
+              992691305,
+              966740855,
+              1124863225,
+              917997435
+            ],
+            "median": 979716080.0,
+            "min": 917997435,
+            "max": 1124863225
+          },
+          "both": {
+            "samples": [
+              1198562097,
+              1168378968,
+              981911049,
+              1080687969
+            ],
+            "median": 1124533468.5,
+            "min": 981911049,
+            "max": 1198562097
+          },
+          "change_pct": 14.781566971933335
+        },
+        {
+          "revision": 3,
+          "off": {
+            "samples": [
+              2035904340,
+              2232467993,
+              2128777615,
+              1836015205
+            ],
+            "median": 2082340977.5,
+            "min": 1836015205,
+            "max": 2232467993
+          },
+          "both": {
+            "samples": [
+              1739788075,
+              1938942133,
+              1762976423,
+              1882203715
+            ],
+            "median": 1822590069.0,
+            "min": 1739788075,
+            "max": 1938942133
+          },
+          "change_pct": -12.473985351421636
+        },
+        {
+          "revision": 4,
+          "off": {
+            "samples": [
+              788585457,
+              768373573,
+              1616717605,
+              756819959
+            ],
+            "median": 778479515.0,
+            "min": 756819959,
+            "max": 1616717605
+          },
+          "both": {
+            "samples": [
+              813661721,
+              804257018,
+              780136654,
+              852734448
+            ],
+            "median": 808959369.5,
+            "min": 780136654,
+            "max": 852734448
+          },
+          "change_pct": 3.9153059152751135
+        },
+        {
+          "revision": 5,
+          "off": {
+            "samples": [
+              1752348931,
+              1721251136,
+              1378436018,
+              1615351048
+            ],
+            "median": 1668301092.0,
+            "min": 1378436018,
+            "max": 1752348931
+          },
+          "both": {
+            "samples": [
+              1755550416,
+              1918836993,
+              1871124023,
+              2226270437
+            ],
+            "median": 1894980508.0,
+            "min": 1755550416,
+            "max": 2226270437
+          },
+          "change_pct": 13.587440365950432
+        },
+        {
+          "revision": 6,
+          "off": {
+            "samples": [
+              714566565,
+              689437931,
+              694908708,
+              685092059
+            ],
+            "median": 692173319.5,
+            "min": 685092059,
+            "max": 714566565
+          },
+          "both": {
+            "samples": [
+              709483416,
+              979567321,
+              764604205,
+              731587281
+            ],
+            "median": 748095743.0,
+            "min": 709483416,
+            "max": 979567321
+          },
+          "change_pct": 8.079251529139597
+        },
+        {
+          "revision": 7,
+          "off": {
+            "samples": [
+              2226959908,
+              1997355595,
+              1733389636,
+              1883040127
+            ],
+            "median": 1940197861.0,
+            "min": 1733389636,
+            "max": 2226959908
+          },
+          "both": {
+            "samples": [
+              2254480482,
+              1684785263,
+              1663025593,
+              1954811468
+            ],
+            "median": 1819798365.5,
+            "min": 1663025593,
+            "max": 2254480482
+          },
+          "change_pct": -6.205526658912241
+        }
+      ],
+      "instructions": [],
+      "native_seven_revision_totals": {
+        "off": {
+          "samples": [
+            14520043069,
+            14290242818,
+            14417283505,
+            13746541667
+          ],
+          "median": 14353763161.5,
+          "min": 13746541667,
+          "max": 14520043069
+        },
+        "both": {
+          "samples": [
+            14295513540,
+            14271173507,
+            13658710380,
+            14571977332
+          ],
+          "median": 14283343523.5,
+          "min": 13658710380,
+          "max": 14571977332
+        },
+        "change_pct": -0.49060052898797224
+      },
+      "compiler": {
+        "version": "rustc 1.98.0-dev (605ed6327c1 2026-09-05) (built from a source tarball)\nbinary: rustc\ncommit-hash: 605ed6327c1a14970ec6e9fa4f7068b75e459ef1\ncommit-date: 2026-09-05\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.0-dev\nLLVM version: 22.1.8\n",
+        "sha256": "7cb4adf64cc89f83e73e349473891b973ef222db665feb3ef04021caddfee076",
+        "revision": "605ed6327c1a14970ec6e9fa4f7068b75e459ef1",
+        "patch_sha256": "b36da1f3479e564d195dc02b6b2ab1c04809a76d6ab31ba7f7addef15118cd54",
+        "library_sha256": {
+          "lib/librustc_driver-75408ace3de817b3.so": "3b6f923c7b1196baa3e2d8a11ec96686ca1f4237b3d72fe1ae44eae5369314fc",
+          "lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-e855770556130410.rlib": "b9483b4f195b2127dccf3256350a65ab603ebae31cebda1f0d47f352d19ea3f6"
+        }
+      }
+    },
+    "syn-2.0.101-dev": {
+      "storage": [
+        {
+          "mode": "off",
+          "revision": 1,
+          "bytes": 95526912,
+          "baseline_bytes": 95526912,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 46825472
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 3309568
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42109102,
+              "inode_allocated_bytes": 42115072,
+              "known_physical_data_union_bytes": 21057536
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 15566632,
+              "inode_allocated_bytes": 15572992,
+              "known_physical_data_union_bytes": 7786496
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16547840
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "off",
+          "revision": 2,
+          "bytes": 145244160,
+          "baseline_bytes": 145244160,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 3309568
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42109142,
+              "inode_allocated_bytes": 42115072,
+              "known_physical_data_union_bytes": 42115072
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16547840
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 17045194,
+              "inode_allocated_bytes": 17051648,
+              "known_physical_data_union_bytes": 17051648
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "off",
+          "revision": 3,
+          "bytes": 151166976,
+          "baseline_bytes": 151166976,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42111302,
+              "inode_allocated_bytes": 42119168,
+              "known_physical_data_union_bytes": 42119168
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 20355602,
+              "inode_allocated_bytes": 20361216,
+              "known_physical_data_union_bytes": 20361216
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "off",
+          "revision": 4,
+          "bytes": 144699392,
+          "baseline_bytes": 144699392,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42109142,
+              "inode_allocated_bytes": 42115072,
+              "known_physical_data_union_bytes": 42115072
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 13891788,
+              "inode_allocated_bytes": 13897728,
+              "known_physical_data_union_bytes": 13897728
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "off",
+          "revision": 5,
+          "bytes": 148013056,
+          "baseline_bytes": 148013056,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42111302,
+              "inode_allocated_bytes": 42119168,
+              "known_physical_data_union_bytes": 42119168
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 17202196,
+              "inode_allocated_bytes": 17207296,
+              "known_physical_data_union_bytes": 17207296
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "off",
+          "revision": 6,
+          "bytes": 149487616,
+          "baseline_bytes": 149487616,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42109142,
+              "inode_allocated_bytes": 42115072,
+              "known_physical_data_union_bytes": 42115072
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 18680758,
+              "inode_allocated_bytes": 18685952,
+              "known_physical_data_union_bytes": 18685952
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "off",
+          "revision": 7,
+          "bytes": 144703488,
+          "baseline_bytes": 144703488,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42111302,
+              "inode_allocated_bytes": 42119168,
+              "known_physical_data_union_bytes": 42119168
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 13893308,
+              "inode_allocated_bytes": 13897728,
+              "known_physical_data_union_bytes": 13897728
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "query",
+          "revision": 1,
+          "bytes": 95526912,
+          "baseline_bytes": 95526912,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 46825472
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 3309568
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42109102,
+              "inode_allocated_bytes": 42115072,
+              "known_physical_data_union_bytes": 21057536
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 15566642,
+              "inode_allocated_bytes": 15572992,
+              "known_physical_data_union_bytes": 7786496
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16547840
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "query",
+          "revision": 2,
+          "bytes": 137461760,
+          "baseline_bytes": 145244160,
+          "change_pct": -5.358150028200792,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 3309568
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42109142,
+              "inode_allocated_bytes": 42115072,
+              "known_physical_data_union_bytes": 42115072
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16547840
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 17045204,
+              "inode_allocated_bytes": 17051648,
+              "known_physical_data_union_bytes": 9269248
+            }
+          },
+          "admission_messages": [
+            "[incremental] query cache preserved 7783321 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "mode": "query",
+          "revision": 3,
+          "bytes": 143384576,
+          "baseline_bytes": 151166976,
+          "change_pct": -5.148214382485228,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42111302,
+              "inode_allocated_bytes": 42119168,
+              "known_physical_data_union_bytes": 42119168
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 20355612,
+              "inode_allocated_bytes": 20361216,
+              "known_physical_data_union_bytes": 12578816
+            }
+          },
+          "admission_messages": [
+            "[incremental] query cache preserved 9261883 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "mode": "query",
+          "revision": 4,
+          "bytes": 144699392,
+          "baseline_bytes": 144699392,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42109142,
+              "inode_allocated_bytes": 42115072,
+              "known_physical_data_union_bytes": 42115072
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 13891793,
+              "inode_allocated_bytes": 13897728,
+              "known_physical_data_union_bytes": 13897728
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "query",
+          "revision": 5,
+          "bytes": 148013056,
+          "baseline_bytes": 148013056,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42111302,
+              "inode_allocated_bytes": 42119168,
+              "known_physical_data_union_bytes": 42119168
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 17202201,
+              "inode_allocated_bytes": 17207296,
+              "known_physical_data_union_bytes": 17207296
+            }
+          },
+          "admission_messages": [
+            "[incremental] query cache preserved 6108472 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "mode": "query",
+          "revision": 6,
+          "bytes": 149487616,
+          "baseline_bytes": 149487616,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42109142,
+              "inode_allocated_bytes": 42115072,
+              "known_physical_data_union_bytes": 42115072
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 18680763,
+              "inode_allocated_bytes": 18685952,
+              "known_physical_data_union_bytes": 18685952
+            }
+          },
+          "admission_messages": [
+            "[incremental] query cache preserved 9418880 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "mode": "query",
+          "revision": 7,
+          "bytes": 144703488,
+          "baseline_bytes": 144703488,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42111302,
+              "inode_allocated_bytes": 42119168,
+              "known_physical_data_union_bytes": 42119168
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 13893313,
+              "inode_allocated_bytes": 13897728,
+              "known_physical_data_union_bytes": 13897728
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "metadata",
+          "revision": 1,
+          "bytes": 95526912,
+          "baseline_bytes": 95526912,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 46825472
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 3309568
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42109102,
+              "inode_allocated_bytes": 42115072,
+              "known_physical_data_union_bytes": 21057536
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 15566636,
+              "inode_allocated_bytes": 15572992,
+              "known_physical_data_union_bytes": 7786496
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16547840
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "metadata",
+          "revision": 2,
+          "bytes": 145244160,
+          "baseline_bytes": 145244160,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 3309568
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42109142,
+              "inode_allocated_bytes": 42115072,
+              "known_physical_data_union_bytes": 42115072
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16547840
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 17045198,
+              "inode_allocated_bytes": 17051648,
+              "known_physical_data_union_bytes": 17051648
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "metadata",
+          "revision": 3,
+          "bytes": 151166976,
+          "baseline_bytes": 151166976,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42111302,
+              "inode_allocated_bytes": 42119168,
+              "known_physical_data_union_bytes": 42119168
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 20355606,
+              "inode_allocated_bytes": 20361216,
+              "known_physical_data_union_bytes": 20361216
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "metadata",
+          "revision": 4,
+          "bytes": 144699392,
+          "baseline_bytes": 144699392,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42109142,
+              "inode_allocated_bytes": 42115072,
+              "known_physical_data_union_bytes": 42115072
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 13891790,
+              "inode_allocated_bytes": 13897728,
+              "known_physical_data_union_bytes": 13897728
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "metadata",
+          "revision": 5,
+          "bytes": 148013056,
+          "baseline_bytes": 148013056,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42111302,
+              "inode_allocated_bytes": 42119168,
+              "known_physical_data_union_bytes": 42119168
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 17202198,
+              "inode_allocated_bytes": 17207296,
+              "known_physical_data_union_bytes": 17207296
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "metadata",
+          "revision": 6,
+          "bytes": 149487616,
+          "baseline_bytes": 149487616,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42109142,
+              "inode_allocated_bytes": 42115072,
+              "known_physical_data_union_bytes": 42115072
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 18680760,
+              "inode_allocated_bytes": 18685952,
+              "known_physical_data_union_bytes": 18685952
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "metadata",
+          "revision": 7,
+          "bytes": 144703488,
+          "baseline_bytes": 144703488,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42111302,
+              "inode_allocated_bytes": 42119168,
+              "known_physical_data_union_bytes": 42119168
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 13893310,
+              "inode_allocated_bytes": 13897728,
+              "known_physical_data_union_bytes": 13897728
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "both",
+          "revision": 1,
+          "bytes": 95526912,
+          "baseline_bytes": 95526912,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 46825472
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 3309568
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42109102,
+              "inode_allocated_bytes": 42115072,
+              "known_physical_data_union_bytes": 21057536
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 15566636,
+              "inode_allocated_bytes": 15572992,
+              "known_physical_data_union_bytes": 7786496
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16547840
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "both",
+          "revision": 2,
+          "bytes": 137461760,
+          "baseline_bytes": 145244160,
+          "change_pct": -5.358150028200792,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 3309568
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42109142,
+              "inode_allocated_bytes": 42115072,
+              "known_physical_data_union_bytes": 42115072
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16547840
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 17045198,
+              "inode_allocated_bytes": 17051648,
+              "known_physical_data_union_bytes": 9269248
+            }
+          },
+          "admission_messages": [
+            "[incremental] query cache preserved 7783318 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "mode": "both",
+          "revision": 3,
+          "bytes": 143384576,
+          "baseline_bytes": 151166976,
+          "change_pct": -5.148214382485228,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42111302,
+              "inode_allocated_bytes": 42119168,
+              "known_physical_data_union_bytes": 42119168
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 20355606,
+              "inode_allocated_bytes": 20361216,
+              "known_physical_data_union_bytes": 12578816
+            }
+          },
+          "admission_messages": [
+            "[incremental] query cache preserved 9261880 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "mode": "both",
+          "revision": 4,
+          "bytes": 144699392,
+          "baseline_bytes": 144699392,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42109142,
+              "inode_allocated_bytes": 42115072,
+              "known_physical_data_union_bytes": 42115072
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 13891790,
+              "inode_allocated_bytes": 13897728,
+              "known_physical_data_union_bytes": 13897728
+            }
+          },
+          "admission_messages": []
+        },
+        {
+          "mode": "both",
+          "revision": 5,
+          "bytes": 148013056,
+          "baseline_bytes": 148013056,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42111302,
+              "inode_allocated_bytes": 42119168,
+              "known_physical_data_union_bytes": 42119168
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 17202198,
+              "inode_allocated_bytes": 17207296,
+              "known_physical_data_union_bytes": 17207296
+            }
+          },
+          "admission_messages": [
+            "[incremental] query cache preserved 6108472 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "mode": "both",
+          "revision": 6,
+          "bytes": 149487616,
+          "baseline_bytes": 149487616,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42109142,
+              "inode_allocated_bytes": 42115072,
+              "known_physical_data_union_bytes": 42115072
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 18680760,
+              "inode_allocated_bytes": 18685952,
+              "known_physical_data_union_bytes": 18685952
+            }
+          },
+          "admission_messages": [
+            "[incremental] query cache preserved 9418880 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "mode": "both",
+          "revision": 7,
+          "bytes": 144703488,
+          "baseline_bytes": 144703488,
+          "change_pct": 0.0,
+          "categories": {
+            "other": {
+              "files": 110,
+              "logical_bytes": 93633054,
+              "inode_allocated_bytes": 93954048,
+              "uninterpretable_files": 74,
+              "uninterpretable_logical_bytes": 24808,
+              "uninterpretable_inode_allocated_bytes": 303104,
+              "known_physical_data_union_bytes": 66220032
+            },
+            "metadata": {
+              "files": 8,
+              "logical_bytes": 6596864,
+              "inode_allocated_bytes": 6619136,
+              "known_physical_data_union_bytes": 5894144
+            },
+            "other-incremental": {
+              "files": 6,
+              "logical_bytes": 42111302,
+              "inode_allocated_bytes": 42119168,
+              "known_physical_data_union_bytes": 42119168
+            },
+            "incremental-object": {
+              "files": 352,
+              "logical_bytes": 32355872,
+              "inode_allocated_bytes": 33095680,
+              "known_physical_data_union_bytes": 16572416
+            },
+            "query-cache": {
+              "files": 2,
+              "logical_bytes": 13893310,
+              "inode_allocated_bytes": 13897728,
+              "known_physical_data_union_bytes": 13897728
+            }
+          },
+          "admission_messages": []
+        }
+      ],
+      "native": [
+        {
+          "revision": 1,
+          "off": {
+            "samples": [
+              3293631225,
+              3438494866,
+              3414463479,
+              3553729182
+            ],
+            "median": 3426479172.5,
+            "min": 3293631225,
+            "max": 3553729182
+          },
+          "both": {
+            "samples": [
+              3314154018,
+              3402020873,
+              3374627908,
+              3175429401
+            ],
+            "median": 3344390963.0,
+            "min": 3175429401,
+            "max": 3402020873
+          },
+          "change_pct": -2.395701399816408
+        },
+        {
+          "revision": 2,
+          "off": {
+            "samples": [
+              473649351,
+              470018288,
+              485465240,
+              457766408
+            ],
+            "median": 471833819.5,
+            "min": 457766408,
+            "max": 485465240
+          },
+          "both": {
+            "samples": [
+              670783390,
+              467128582,
+              492928099,
+              977273832
+            ],
+            "median": 581855744.5,
+            "min": 467128582,
+            "max": 977273832
+          },
+          "change_pct": 23.317939590805437
+        },
+        {
+          "revision": 3,
+          "off": {
+            "samples": [
+              649604849,
+              1110837871,
+              676888482,
+              998955173
+            ],
+            "median": 837921827.5,
+            "min": 649604849,
+            "max": 1110837871
+          },
+          "both": {
+            "samples": [
+              1103382678,
+              646781931,
+              1200522592,
+              896481557
+            ],
+            "median": 999932117.5,
+            "min": 646781931,
+            "max": 1200522592
+          },
+          "change_pct": 19.334773803824802
+        },
+        {
+          "revision": 4,
+          "off": {
+            "samples": [
+              789782782,
+              524599280,
+              960472928,
+              521701815
+            ],
+            "median": 657191031.0,
+            "min": 521701815,
+            "max": 960472928
+          },
+          "both": {
+            "samples": [
+              722183557,
+              981544702,
+              834327428,
+              522987161
+            ],
+            "median": 778255492.5,
+            "min": 522987161,
+            "max": 981544702
+          },
+          "change_pct": 18.421502392658184
+        },
+        {
+          "revision": 5,
+          "off": {
+            "samples": [
+              762436847,
+              637722489,
+              968248211,
+              636323718
+            ],
+            "median": 700079668.0,
+            "min": 636323718,
+            "max": 968248211
+          },
+          "both": {
+            "samples": [
+              802246379,
+              817242869,
+              882041658,
+              1106710133
+            ],
+            "median": 849642263.5,
+            "min": 802246379,
+            "max": 1106710133
+          },
+          "change_pct": 21.36365364348789
+        },
+        {
+          "revision": 6,
+          "off": {
+            "samples": [
+              796185638,
+              547379245,
+              917149580,
+              720997547
+            ],
+            "median": 758591592.5,
+            "min": 547379245,
+            "max": 917149580
+          },
+          "both": {
+            "samples": [
+              551491913,
+              499350086,
+              821364117,
+              489503157
+            ],
+            "median": 525420999.5,
+            "min": 489503157,
+            "max": 821364117
+          },
+          "change_pct": -30.737302562445677
+        },
+        {
+          "revision": 7,
+          "off": {
+            "samples": [
+              719879038,
+              759037330,
+              1010974683,
+              1007928093
+            ],
+            "median": 883482711.5,
+            "min": 719879038,
+            "max": 1010974683
+          },
+          "both": {
+            "samples": [
+              809648124,
+              1386902366,
+              1010373207,
+              986820636
+            ],
+            "median": 998596921.5,
+            "min": 809648124,
+            "max": 1386902366
+          },
+          "change_pct": 13.029593958274077
+        }
+      ],
+      "instructions": [
+        {
+          "revision": 2,
+          "off": {
+            "samples": [
+              1482995842,
+              1482974629
+            ],
+            "median": 1482985235.5,
+            "min": 1482974629,
+            "max": 1482995842
+          },
+          "both": {
+            "samples": [
+              1483001180,
+              1482943614
+            ],
+            "median": 1482972397.0,
+            "min": 1482943614,
+            "max": 1483001180
+          },
+          "change_pct": -0.0008657200147865751
+        },
+        {
+          "revision": 3,
+          "off": {
+            "samples": [
+              2114666058,
+              2114365841
+            ],
+            "median": 2114515949.5,
+            "min": 2114365841,
+            "max": 2114666058
+          },
+          "both": {
+            "samples": [
+              2114168204,
+              2115492400
+            ],
+            "median": 2114830302.0,
+            "min": 2114168204,
+            "max": 2115492400
+          },
+          "change_pct": 0.014866404770996766
+        },
+        {
+          "revision": 4,
+          "off": {
+            "samples": [
+              1712061524,
+              1712010720
+            ],
+            "median": 1712036122.0,
+            "min": 1712010720,
+            "max": 1712061524
+          },
+          "both": {
+            "samples": [
+              1712007690,
+              1712020757
+            ],
+            "median": 1712014223.5,
+            "min": 1712007690,
+            "max": 1712020757
+          },
+          "change_pct": -0.0012790910027260516
+        }
+      ],
+      "native_seven_revision_totals": {
+        "off": {
+          "samples": [
+            7485169730,
+            7488089369,
+            8433662603,
+            7897401936
+          ],
+          "median": 7692745652.5,
+          "min": 7485169730,
+          "max": 8433662603
+        },
+        "both": {
+          "samples": [
+            7973890059,
+            8200971409,
+            8616185009,
+            8155205877
+          ],
+          "median": 8178088643.0,
+          "min": 7973890059,
+          "max": 8616185009
+        },
+        "change_pct": 6.3090996690144285
+      },
+      "compiler": {
+        "version": "rustc 1.98.0-dev (605ed6327c1 2026-09-05) (built from a source tarball)\nbinary: rustc\ncommit-hash: 605ed6327c1a14970ec6e9fa4f7068b75e459ef1\ncommit-date: 2026-09-05\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.0-dev\nLLVM version: 22.1.8\n",
+        "sha256": "7cb4adf64cc89f83e73e349473891b973ef222db665feb3ef04021caddfee076",
+        "revision": "605ed6327c1a14970ec6e9fa4f7068b75e459ef1",
+        "patch_sha256": "b36da1f3479e564d195dc02b6b2ab1c04809a76d6ab31ba7f7addef15118cd54",
+        "library_sha256": {
+          "lib/librustc_driver-75408ace3de817b3.so": "3b6f923c7b1196baa3e2d8a11ec96686ca1f4237b3d72fe1ae44eae5369314fc",
+          "lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-e855770556130410.rlib": "b9483b4f195b2127dccf3256350a65ab603ebae31cebda1f0d47f352d19ea3f6"
+        }
+      }
+    }
+  }
+}

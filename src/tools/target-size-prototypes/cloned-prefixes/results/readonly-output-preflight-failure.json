@@ -1,0 +1,201 @@
+{
+  "classification": "harness output-permission preflight before metadata encoding",
+  "compiler_revision": "605ed6327c1a14970ec6e9fa4f7068b75e459ef1",
+  "runtime_sha256": "b7044b842b5ce262399cda1f21de82317743c21a57dffdb55b2b00f13bd379a8",
+  "summary": {
+    "compiler": {
+      "version": "rustc 1.98.0-dev (605ed6327c1 2026-09-05) (built from a source tarball)\nbinary: rustc\ncommit-hash: 605ed6327c1a14970ec6e9fa4f7068b75e459ef1\ncommit-date: 2026-09-05\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.0-dev\nLLVM version: 22.1.8\n",
+      "sha256": "7cb4adf64cc89f83e73e349473891b973ef222db665feb3ef04021caddfee076",
+      "revision": "605ed6327c1a14970ec6e9fa4f7068b75e459ef1",
+      "patch_sha256": "b36da1f3479e564d195dc02b6b2ab1c04809a76d6ab31ba7f7addef15118cd54",
+      "library_sha256": {
+        "lib/librustc_driver-75408ace3de817b3.so": "3b6f923c7b1196baa3e2d8a11ec96686ca1f4237b3d72fe1ae44eae5369314fc",
+        "lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-e855770556130410.rlib": "b9483b4f195b2127dccf3256350a65ab603ebae31cebda1f0d47f352d19ea3f6"
+      }
+    },
+    "checks": [
+      {
+        "filesystem": "btrfs",
+        "kind": "query",
+        "returncode": 0,
+        "config": {
+          "root": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query",
+          "rustc": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+          "rustc_sha256": "7cb4adf64cc89f83e73e349473891b973ef222db665feb3ef04021caddfee076",
+          "expect_cloning": true,
+          "fixture_source": "/tmp/ohm-target-size-prototypes/sources/cloned-prefixes/tests/incremental/forward-cached-query-value-cloned.rs"
+        }
+      },
+      {
+        "filesystem": "btrfs",
+        "kind": "metadata",
+        "returncode": 1,
+        "config": {
+          "root": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/metadata",
+          "rustc": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+          "rustc_sha256": "7cb4adf64cc89f83e73e349473891b973ef222db665feb3ef04021caddfee076",
+          "expect_cloning": true,
+          "fixture_source": "/tmp/ohm-target-size-prototypes/sources/cloned-prefixes/tests/run-make/cloned-metadata-prefix"
+        }
+      }
+    ]
+  },
+  "metadata_log": "Traceback (most recent call last):\n  File \"/tmp/ohm-target-size-prototypes/prefix-validation/metadata_runtime.py\", line 69, in <module>\n    assert process.returncode == 0, process.stderr\n           ^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: [incremental] session directory: 6 files hard-linked\n[incremental] session directory: 0 files copied\nerror: output file liblibrary.rmeta is not writeable -- check its permissions\n\nerror: aborting due to 1 previous error\n\n\n",
+  "partial_metadata_receipt": {
+    "configuration": {
+      "root": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/metadata",
+      "rustc": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+      "rustc_sha256": "7cb4adf64cc89f83e73e349473891b973ef222db665feb3ef04021caddfee076",
+      "expect_cloning": true,
+      "fixture_source": "/tmp/ohm-target-size-prototypes/sources/cloned-prefixes/tests/run-make/cloned-metadata-prefix"
+    },
+    "revisions": [
+      {
+        "revision": 0,
+        "mode": 0,
+        "readonly_source_case": false,
+        "command": [
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+          "library.rs",
+          "-Cincremental=incremental",
+          "--emit=link,metadata",
+          "-Zpublic-api-hash",
+          "-Zincremental-verify-ich",
+          "-Zincremental-info"
+        ],
+        "output": "10\n",
+        "size": 2997,
+        "inode": 371,
+        "sha256": "8916d07589a827a48c80126514be8eca2a718f91c321a16333c4239b74c07515",
+        "extents": [
+          {
+            "logical": 0,
+            "physical": 14266368,
+            "length": 4096,
+            "flags": 1
+          }
+        ],
+        "flags": 1,
+        "messages": []
+      },
+      {
+        "revision": 1,
+        "mode": 1,
+        "readonly_source_case": false,
+        "command": [
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+          "library.rs",
+          "-Cincremental=incremental",
+          "--emit=link,metadata",
+          "-Zpublic-api-hash",
+          "-Zincremental-verify-ich",
+          "-Zincremental-info"
+        ],
+        "output": "11\n",
+        "size": 2997,
+        "inode": 396,
+        "sha256": "b273fe676e3ec70445e6bc43c23111cfefd12c5accdcb9bba97c4d38c008ab71",
+        "extents": [
+          {
+            "logical": 0,
+            "physical": 14282752,
+            "length": 4096,
+            "flags": 1
+          }
+        ],
+        "flags": 1,
+        "messages": [
+          "[incremental] metadata preserved 2111 copy-on-write prefix bytes"
+        ]
+      },
+      {
+        "revision": 2,
+        "mode": 1,
+        "readonly_source_case": false,
+        "command": [
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+          "library.rs",
+          "-Cincremental=incremental",
+          "--emit=link,metadata",
+          "-Zpublic-api-hash",
+          "-Zincremental-verify-ich",
+          "-Zincremental-info"
+        ],
+        "output": "12\n",
+        "size": 2997,
+        "inode": 420,
+        "sha256": "e2be06b0789007c9243177009027d56f83bd61c704029e693bf7bea80def4724",
+        "extents": [
+          {
+            "logical": 0,
+            "physical": 14303232,
+            "length": 4096,
+            "flags": 1
+          }
+        ],
+        "flags": 1,
+        "messages": [
+          "[incremental] metadata preserved 2111 copy-on-write prefix bytes"
+        ]
+      },
+      {
+        "revision": 3,
+        "mode": 0,
+        "readonly_source_case": false,
+        "command": [
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+          "library.rs",
+          "-Cincremental=incremental",
+          "--emit=link,metadata",
+          "-Zpublic-api-hash",
+          "-Zincremental-verify-ich",
+          "-Zincremental-info"
+        ],
+        "output": "13\n",
+        "size": 2997,
+        "inode": 443,
+        "sha256": "cabff0f3df12b2b6cd96a1fd949c9ce838c2117eaaf8dc16504183d8aff9280e",
+        "extents": [
+          {
+            "logical": 0,
+            "physical": 14311424,
+            "length": 4096,
+            "flags": 1
+          }
+        ],
+        "flags": 1,
+        "messages": []
+      },
+      {
+        "revision": 4,
+        "mode": 1,
+        "readonly_source_case": false,
+        "command": [
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+          "library.rs",
+          "-Cincremental=incremental",
+          "--emit=link,metadata",
+          "-Zpublic-api-hash",
+          "-Zincremental-verify-ich",
+          "-Zincremental-info"
+        ],
+        "output": "14\n",
+        "size": 2997,
+        "inode": 467,
+        "sha256": "4b679d801aeef83c4596c738eb03bdaeba1abf27ae4a127f351de7cb86ff2d68",
+        "extents": [
+          {
+            "logical": 0,
+            "physical": 14344192,
+            "length": 4096,
+            "flags": 1
+          }
+        ],
+        "flags": 1,
+        "messages": [
+          "[incremental] metadata preserved 2111 copy-on-write prefix bytes"
+        ]
+      }
+    ]
+  }
+}

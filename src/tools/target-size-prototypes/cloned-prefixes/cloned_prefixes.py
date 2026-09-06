@@ -137,7 +137,9 @@ def cycle(fixture, profile, mode, label, collect_storage=False, instrument=None)
             or key in {"LD_LIBRARY_PATH", "RUSTC_BOOTSTRAP", "CARGO_HOME"}
         },
         "revisions": [],
-        "scope": "candidate off/on; full target plus retained donor; same-length private body edits",
+        "scope": (
+            "candidate off/on; full target plus retained donor; same-length private body edits"
+        ),
     }
     donor_hashes = None
     for revision, patched in enumerate(REVISIONS, 1):

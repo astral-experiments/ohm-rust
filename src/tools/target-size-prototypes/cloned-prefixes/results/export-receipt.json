@@ -1,0 +1,14 @@
+{
+  "raw-results.json.gz": {
+    "remote_path": "/tmp/ohm-target-size-prototypes/prefix-results.json.gz",
+    "bytes": 3417236,
+    "sha256": "7dca64089bc520084f894ff0dc648183c15dabd230a4355cc67644824cb315ef"
+  },
+  "summary.json": {
+    "remote_path": "/tmp/ohm-target-size-prototypes/prefix-summary.json",
+    "bytes": 99485,
+    "sha256": "12fe015bfd9b24dc4e5f7a368abb50c9b928ae80d9bbd1bdef290e0fed390e8b"
+  },
+  "included_files_verified": 580,
+  "omitted_large_profiles": 12
+}

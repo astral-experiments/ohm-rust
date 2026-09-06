@@ -136,7 +136,10 @@ def inventory(root, evidence):
     result = {
         "scope": str(root),
         "filesystem": "task-owned Btrfs loop image, compression disabled",
-        "method": "FIEMAP with SYNC, unique-inode scan and union of physical ranges; filesystem metadata excluded",
+        "method": (
+            "FIEMAP with SYNC, unique-inode scan and union of physical ranges; "
+            "filesystem metadata excluded"
+        ),
         "known_physical_data_union_bytes": union_size(known),
         "categories": {k: dict(v) for k, v in totals.items()},
         "files": rows,

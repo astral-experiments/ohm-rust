@@ -1,0 +1,1274 @@
+{
+  "compiler": {
+    "version": "rustc 1.98.0-dev (605ed6327c1 2026-09-05) (built from a source tarball)\nbinary: rustc\ncommit-hash: 605ed6327c1a14970ec6e9fa4f7068b75e459ef1\ncommit-date: 2026-09-05\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.0-dev\nLLVM version: 22.1.8\n",
+    "sha256": "7cb4adf64cc89f83e73e349473891b973ef222db665feb3ef04021caddfee076",
+    "revision": "605ed6327c1a14970ec6e9fa4f7068b75e459ef1",
+    "patch_sha256": "b36da1f3479e564d195dc02b6b2ab1c04809a76d6ab31ba7f7addef15118cd54",
+    "library_sha256": {
+      "lib/librustc_driver-75408ace3de817b3.so": "3b6f923c7b1196baa3e2d8a11ec96686ca1f4237b3d72fe1ae44eae5369314fc",
+      "lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-e855770556130410.rlib": "b9483b4f195b2127dccf3256350a65ab603ebae31cebda1f0d47f352d19ea3f6"
+    }
+  },
+  "receipts": {
+    "btrfs-query": {
+      "configuration": {
+        "root": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query",
+        "rustc": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+        "rustc_sha256": "7cb4adf64cc89f83e73e349473891b973ef222db665feb3ef04021caddfee076",
+        "expect_cloning": true,
+        "fixture_source": "/tmp/ohm-target-size-prototypes/sources/cloned-prefixes/tests/incremental/forward-cached-query-value-cloned.rs"
+      },
+      "commands": [
+        {
+          "name": "rpass1-mode0",
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/fixture.rs",
+            "--crate-name",
+            "retained_prefix_fixture",
+            "--edition=2024",
+            "--cfg",
+            "rpass1",
+            "-Ccodegen-units=1",
+            "-Zthreads=4",
+            "-Zquery-dep-graph",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info",
+            "-Cincremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/incremental",
+            "-o",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/fixture"
+          ],
+          "mode": 0,
+          "returncode": 0,
+          "prefix_messages": []
+        },
+        {
+          "name": "rpass2-mode1",
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/fixture.rs",
+            "--crate-name",
+            "retained_prefix_fixture",
+            "--edition=2024",
+            "--cfg",
+            "rpass2",
+            "-Ccodegen-units=1",
+            "-Zthreads=4",
+            "-Zquery-dep-graph",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info",
+            "-Cincremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/incremental",
+            "-o",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/fixture"
+          ],
+          "mode": 1,
+          "returncode": 0,
+          "prefix_messages": [
+            "[incremental] query cache preserved 11706 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "name": "rpass3-mode0",
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/fixture.rs",
+            "--crate-name",
+            "retained_prefix_fixture",
+            "--edition=2024",
+            "--cfg",
+            "rpass3",
+            "-Ccodegen-units=1",
+            "-Zthreads=4",
+            "-Zquery-dep-graph",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info",
+            "-Cincremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/incremental",
+            "-o",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/fixture"
+          ],
+          "mode": 0,
+          "returncode": 0,
+          "prefix_messages": []
+        },
+        {
+          "name": "rpass3-mode1-failure",
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/fixture.rs",
+            "--crate-name",
+            "retained_prefix_fixture",
+            "--edition=2024",
+            "--cfg",
+            "rpass3",
+            "-Ccodegen-units=1",
+            "-Zthreads=4",
+            "-Zquery-dep-graph",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info",
+            "-Cincremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/incremental",
+            "-o",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/fixture"
+          ],
+          "mode": 1,
+          "returncode": 1,
+          "prefix_messages": []
+        },
+        {
+          "name": "rpass4-mode1",
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/fixture.rs",
+            "--crate-name",
+            "retained_prefix_fixture",
+            "--edition=2024",
+            "--cfg",
+            "rpass4",
+            "-Ccodegen-units=1",
+            "-Zthreads=4",
+            "-Zquery-dep-graph",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info",
+            "-Cincremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/incremental",
+            "-o",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/fixture"
+          ],
+          "mode": 1,
+          "returncode": 0,
+          "prefix_messages": []
+        },
+        {
+          "name": "rpass5-mode1",
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/fixture.rs",
+            "--crate-name",
+            "retained_prefix_fixture",
+            "--edition=2024",
+            "--cfg",
+            "rpass5",
+            "-Ccodegen-units=1",
+            "-Zthreads=4",
+            "-Zquery-dep-graph",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info",
+            "-Cincremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/incremental",
+            "-o",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/fixture"
+          ],
+          "mode": 1,
+          "returncode": 0,
+          "prefix_messages": [
+            "[incremental] query cache preserved 27741 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "name": "rpass6-mode1",
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/fixture.rs",
+            "--crate-name",
+            "retained_prefix_fixture",
+            "--edition=2024",
+            "--cfg",
+            "rpass6",
+            "-Ccodegen-units=1",
+            "-Zthreads=4",
+            "-Zquery-dep-graph",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info",
+            "-Cincremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/incremental",
+            "-o",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/fixture"
+          ],
+          "mode": 1,
+          "returncode": 0,
+          "prefix_messages": [
+            "[incremental] query cache preserved 48457 copy-on-write prefix bytes"
+          ]
+        },
+        {
+          "name": "rpass7-mode1",
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/fixture.rs",
+            "--crate-name",
+            "retained_prefix_fixture",
+            "--edition=2024",
+            "--cfg",
+            "rpass7",
+            "-Ccodegen-units=1",
+            "-Zthreads=4",
+            "-Zquery-dep-graph",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info",
+            "-Cincremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/incremental",
+            "-o",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/fixture"
+          ],
+          "mode": 1,
+          "returncode": 0,
+          "prefix_messages": []
+        }
+      ],
+      "snapshots": [
+        {
+          "revision": 1,
+          "mode": 0,
+          "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/snapshots/rpass1.bin",
+          "size": 11706,
+          "device": 58,
+          "inode": 503,
+          "sha256": "4a9c239015ed865653b6a42cf4f7e516502c92640d243cf330ac13e8fcea8b58",
+          "generations": [
+            {
+              "file_prefix_len": 11706,
+              "footer_offset": 9717,
+              "previous_cache_len": null
+            }
+          ],
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 14745600,
+              "length": 12288,
+              "flags": 1
+            }
+          ],
+          "flags": 1
+        },
+        {
+          "revision": 2,
+          "mode": 1,
+          "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/snapshots/rpass2.bin",
+          "size": 32343,
+          "device": 58,
+          "inode": 519,
+          "sha256": "b4478782e998e02615d594cdf67385fb3b85a43e6c4558ff2ff7051a79501502",
+          "generations": [
+            {
+              "file_prefix_len": 32343,
+              "footer_offset": 14551,
+              "previous_cache_len": 11706
+            },
+            {
+              "file_prefix_len": 11706,
+              "footer_offset": 9717,
+              "previous_cache_len": null
+            }
+          ],
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 14745600,
+              "length": 8192,
+              "flags": 8192
+            },
+            {
+              "logical": 8192,
+              "physical": 13643776,
+              "length": 24576,
+              "flags": 1
+            }
+          ],
+          "flags": 8193,
+          "shared_data_bytes_with_previous": 8192
+        },
+        {
+          "revision": 3,
+          "mode": 0,
+          "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/snapshots/rpass3.bin",
+          "size": 53059,
+          "device": 58,
+          "inode": 532,
+          "sha256": "02fa9152e616d253b27c9c580b7d84a08b292e7aaeb77677cbe0f0288db327d3",
+          "generations": [
+            {
+              "file_prefix_len": 53059,
+              "footer_offset": 35198,
+              "previous_cache_len": 32343
+            },
+            {
+              "file_prefix_len": 32343,
+              "footer_offset": 14551,
+              "previous_cache_len": 11706
+            },
+            {
+              "file_prefix_len": 11706,
+              "footer_offset": 9717,
+              "previous_cache_len": null
+            }
+          ],
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 14905344,
+              "length": 53248,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "shared_data_bytes_with_previous": 0
+        },
+        {
+          "revision": 4,
+          "mode": 1,
+          "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/snapshots/rpass4.bin",
+          "size": 27741,
+          "device": 58,
+          "inode": 546,
+          "sha256": "615d7665168774261324227f15bdd59bdbc188ebf7002d74ba5a1197bd5d2cbc",
+          "generations": [
+            {
+              "file_prefix_len": 27741,
+              "footer_offset": 9718,
+              "previous_cache_len": null
+            }
+          ],
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 15036416,
+              "length": 28672,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "shared_data_bytes_with_previous": 0
+        },
+        {
+          "revision": 5,
+          "mode": 1,
+          "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/snapshots/rpass5.bin",
+          "size": 48457,
+          "device": 58,
+          "inode": 561,
+          "sha256": "6d7c1da54ec7b943de3f778c8e640f39e68a1fbf87e9c263ae8380a8bda098a7",
+          "generations": [
+            {
+              "file_prefix_len": 48457,
+              "footer_offset": 30596,
+              "previous_cache_len": 27741
+            },
+            {
+              "file_prefix_len": 27741,
+              "footer_offset": 9718,
+              "previous_cache_len": null
+            }
+          ],
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 15036416,
+              "length": 24576,
+              "flags": 8192
+            },
+            {
+              "logical": 24576,
+              "physical": 13668352,
+              "length": 24576,
+              "flags": 1
+            }
+          ],
+          "flags": 8193,
+          "shared_data_bytes_with_previous": 24576
+        },
+        {
+          "revision": 6,
+          "mode": 1,
+          "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/snapshots/rpass6.bin",
+          "size": 69173,
+          "device": 58,
+          "inode": 575,
+          "sha256": "45c3b4937a19766aa86bdf7157b6c0de3a8fec85a33ddfdf94ab0a1a718859d6",
+          "generations": [
+            {
+              "file_prefix_len": 69173,
+              "footer_offset": 51312,
+              "previous_cache_len": 48457
+            },
+            {
+              "file_prefix_len": 48457,
+              "footer_offset": 30596,
+              "previous_cache_len": 27741
+            },
+            {
+              "file_prefix_len": 27741,
+              "footer_offset": 9718,
+              "previous_cache_len": null
+            }
+          ],
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 15036416,
+              "length": 24576,
+              "flags": 8192
+            },
+            {
+              "logical": 24576,
+              "physical": 13668352,
+              "length": 20480,
+              "flags": 8192
+            },
+            {
+              "logical": 45056,
+              "physical": 13737984,
+              "length": 24576,
+              "flags": 1
+            }
+          ],
+          "flags": 8193,
+          "shared_data_bytes_with_previous": 45056
+        },
+        {
+          "revision": 7,
+          "mode": 1,
+          "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/query/snapshots/rpass7.bin",
+          "size": 27740,
+          "device": 58,
+          "inode": 588,
+          "sha256": "0dd15e0c5c358879b85509a686e5a8ac1727336c24c3bdc50383c2e37e51a47c",
+          "generations": [
+            {
+              "file_prefix_len": 27740,
+              "footer_offset": 9717,
+              "previous_cache_len": null
+            }
+          ],
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 15314944,
+              "length": 28672,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "shared_data_bytes_with_previous": 0
+        }
+      ],
+      "completed": true
+    },
+    "btrfs-metadata": {
+      "configuration": {
+        "root": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/metadata",
+        "rustc": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+        "rustc_sha256": "7cb4adf64cc89f83e73e349473891b973ef222db665feb3ef04021caddfee076",
+        "expect_cloning": true,
+        "fixture_source": "/tmp/ohm-target-size-prototypes/sources/cloned-prefixes/tests/run-make/cloned-metadata-prefix"
+      },
+      "revisions": [
+        {
+          "revision": 0,
+          "mode": 0,
+          "readonly_source_case": false,
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "library.rs",
+            "-Cincremental=incremental",
+            "--emit=link,metadata",
+            "-Zpublic-api-hash",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info"
+          ],
+          "output": "10\n",
+          "size": 2997,
+          "inode": 605,
+          "sha256": "8916d07589a827a48c80126514be8eca2a718f91c321a16333c4239b74c07515",
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 15376384,
+              "length": 4096,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "messages": []
+        },
+        {
+          "revision": 1,
+          "mode": 1,
+          "readonly_source_case": false,
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "library.rs",
+            "-Cincremental=incremental",
+            "--emit=link,metadata",
+            "-Zpublic-api-hash",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info"
+          ],
+          "output": "11\n",
+          "size": 2997,
+          "inode": 630,
+          "sha256": "b273fe676e3ec70445e6bc43c23111cfefd12c5accdcb9bba97c4d38c008ab71",
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 13692928,
+              "length": 4096,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "messages": [
+            "[incremental] metadata preserved 2111 copy-on-write prefix bytes"
+          ],
+          "shared_data_bytes_with_previous": 0
+        },
+        {
+          "revision": 2,
+          "mode": 1,
+          "readonly_source_case": false,
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "library.rs",
+            "-Cincremental=incremental",
+            "--emit=link,metadata",
+            "-Zpublic-api-hash",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info"
+          ],
+          "output": "12\n",
+          "size": 2997,
+          "inode": 654,
+          "sha256": "e2be06b0789007c9243177009027d56f83bd61c704029e693bf7bea80def4724",
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 13697024,
+              "length": 4096,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "messages": [
+            "[incremental] metadata preserved 2111 copy-on-write prefix bytes"
+          ],
+          "shared_data_bytes_with_previous": 0
+        },
+        {
+          "revision": 3,
+          "mode": 0,
+          "readonly_source_case": false,
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "library.rs",
+            "-Cincremental=incremental",
+            "--emit=link,metadata",
+            "-Zpublic-api-hash",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info"
+          ],
+          "output": "13\n",
+          "size": 2997,
+          "inode": 677,
+          "sha256": "cabff0f3df12b2b6cd96a1fd949c9ce838c2117eaaf8dc16504183d8aff9280e",
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 15413248,
+              "length": 4096,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "messages": [],
+          "shared_data_bytes_with_previous": 0
+        },
+        {
+          "revision": 4,
+          "mode": 1,
+          "readonly_source_case": false,
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "library.rs",
+            "-Cincremental=incremental",
+            "--emit=link,metadata",
+            "-Zpublic-api-hash",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info"
+          ],
+          "output": "14\n",
+          "size": 2997,
+          "inode": 701,
+          "sha256": "4b679d801aeef83c4596c738eb03bdaeba1abf27ae4a127f351de7cb86ff2d68",
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 13701120,
+              "length": 4096,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "messages": [
+            "[incremental] metadata preserved 2111 copy-on-write prefix bytes"
+          ],
+          "shared_data_bytes_with_previous": 0
+        },
+        {
+          "revision": 5,
+          "mode": 1,
+          "readonly_source_case": true,
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "library.rs",
+            "-Cincremental=incremental",
+            "--emit=link,metadata",
+            "-Zpublic-api-hash",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info"
+          ],
+          "output": "15\n",
+          "size": 2997,
+          "inode": 726,
+          "sha256": "05a6bf6620ed587cab853cd4c56a94412cc6eba26bf1baaf7e87d9a636ce7129",
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 13705216,
+              "length": 4096,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "messages": [
+            "[incremental] metadata preserved 2111 copy-on-write prefix bytes"
+          ],
+          "shared_data_bytes_with_previous": 0
+        }
+      ],
+      "readonly_sources": [
+        {
+          "original": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/metadata/incremental/library-0xwko7opb8owj/s-hm10polfs5-0zlj3jv-b3yknlt9bv3emefcvtmo84o33/metadata.rmeta",
+          "retained": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/metadata/readonly-inputs/0.rmeta",
+          "inode": 701,
+          "mode": 292,
+          "sha256": "4b679d801aeef83c4596c738eb03bdaeba1abf27ae4a127f351de7cb86ff2d68"
+        }
+      ],
+      "readonly_source_setup": {
+        "removed_published_output": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes-cow/correctness/metadata/liblibrary.rmeta",
+        "published_inode": 701,
+        "aliased_readonly_input": true
+      },
+      "completed": true
+    },
+    "ext4-query": {
+      "configuration": {
+        "root": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query",
+        "rustc": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+        "rustc_sha256": "7cb4adf64cc89f83e73e349473891b973ef222db665feb3ef04021caddfee076",
+        "expect_cloning": false,
+        "fixture_source": "/tmp/ohm-target-size-prototypes/sources/cloned-prefixes/tests/incremental/forward-cached-query-value-cloned.rs"
+      },
+      "commands": [
+        {
+          "name": "rpass1-mode0",
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/fixture.rs",
+            "--crate-name",
+            "retained_prefix_fixture",
+            "--edition=2024",
+            "--cfg",
+            "rpass1",
+            "-Ccodegen-units=1",
+            "-Zthreads=4",
+            "-Zquery-dep-graph",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info",
+            "-Cincremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/incremental",
+            "-o",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/fixture"
+          ],
+          "mode": 0,
+          "returncode": 0,
+          "prefix_messages": []
+        },
+        {
+          "name": "rpass2-mode1",
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/fixture.rs",
+            "--crate-name",
+            "retained_prefix_fixture",
+            "--edition=2024",
+            "--cfg",
+            "rpass2",
+            "-Ccodegen-units=1",
+            "-Zthreads=4",
+            "-Zquery-dep-graph",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info",
+            "-Cincremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/incremental",
+            "-o",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/fixture"
+          ],
+          "mode": 1,
+          "returncode": 0,
+          "prefix_messages": [
+            "[incremental] query cache rewriting 11706 prefix bytes after clone failure: Operation not supported (os error 95)"
+          ]
+        },
+        {
+          "name": "rpass3-mode0",
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/fixture.rs",
+            "--crate-name",
+            "retained_prefix_fixture",
+            "--edition=2024",
+            "--cfg",
+            "rpass3",
+            "-Ccodegen-units=1",
+            "-Zthreads=4",
+            "-Zquery-dep-graph",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info",
+            "-Cincremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/incremental",
+            "-o",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/fixture"
+          ],
+          "mode": 0,
+          "returncode": 0,
+          "prefix_messages": []
+        },
+        {
+          "name": "rpass3-mode1-failure",
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/fixture.rs",
+            "--crate-name",
+            "retained_prefix_fixture",
+            "--edition=2024",
+            "--cfg",
+            "rpass3",
+            "-Ccodegen-units=1",
+            "-Zthreads=4",
+            "-Zquery-dep-graph",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info",
+            "-Cincremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/incremental",
+            "-o",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/fixture"
+          ],
+          "mode": 1,
+          "returncode": 1,
+          "prefix_messages": []
+        },
+        {
+          "name": "rpass4-mode1",
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/fixture.rs",
+            "--crate-name",
+            "retained_prefix_fixture",
+            "--edition=2024",
+            "--cfg",
+            "rpass4",
+            "-Ccodegen-units=1",
+            "-Zthreads=4",
+            "-Zquery-dep-graph",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info",
+            "-Cincremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/incremental",
+            "-o",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/fixture"
+          ],
+          "mode": 1,
+          "returncode": 0,
+          "prefix_messages": []
+        },
+        {
+          "name": "rpass5-mode1",
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/fixture.rs",
+            "--crate-name",
+            "retained_prefix_fixture",
+            "--edition=2024",
+            "--cfg",
+            "rpass5",
+            "-Ccodegen-units=1",
+            "-Zthreads=4",
+            "-Zquery-dep-graph",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info",
+            "-Cincremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/incremental",
+            "-o",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/fixture"
+          ],
+          "mode": 1,
+          "returncode": 0,
+          "prefix_messages": [
+            "[incremental] query cache rewriting 27740 prefix bytes after clone failure: Operation not supported (os error 95)"
+          ]
+        },
+        {
+          "name": "rpass6-mode1",
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/fixture.rs",
+            "--crate-name",
+            "retained_prefix_fixture",
+            "--edition=2024",
+            "--cfg",
+            "rpass6",
+            "-Ccodegen-units=1",
+            "-Zthreads=4",
+            "-Zquery-dep-graph",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info",
+            "-Cincremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/incremental",
+            "-o",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/fixture"
+          ],
+          "mode": 1,
+          "returncode": 0,
+          "prefix_messages": [
+            "[incremental] query cache rewriting 48456 prefix bytes after clone failure: Operation not supported (os error 95)"
+          ]
+        },
+        {
+          "name": "rpass7-mode1",
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/fixture.rs",
+            "--crate-name",
+            "retained_prefix_fixture",
+            "--edition=2024",
+            "--cfg",
+            "rpass7",
+            "-Ccodegen-units=1",
+            "-Zthreads=4",
+            "-Zquery-dep-graph",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info",
+            "-Cincremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/incremental",
+            "-o",
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/fixture"
+          ],
+          "mode": 1,
+          "returncode": 0,
+          "prefix_messages": []
+        }
+      ],
+      "snapshots": [
+        {
+          "revision": 1,
+          "mode": 0,
+          "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/snapshots/rpass1.bin",
+          "size": 11706,
+          "device": 64769,
+          "inode": 13632775,
+          "sha256": "28c1ef68f2b79ba238e32442a4d7be310b76b5fd45483fb7b71c1cbb15dd745c",
+          "generations": [
+            {
+              "file_prefix_len": 11706,
+              "footer_offset": 9717,
+              "previous_cache_len": null
+            }
+          ],
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 68038963200,
+              "length": 12288,
+              "flags": 1
+            }
+          ],
+          "flags": 1
+        },
+        {
+          "revision": 2,
+          "mode": 1,
+          "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/snapshots/rpass2.bin",
+          "size": 32343,
+          "device": 64769,
+          "inode": 13632784,
+          "sha256": "f23b9e2a77f997d19d12ba31518c0fd43a3a1ce4b699f57ab04e477bf1279060",
+          "generations": [
+            {
+              "file_prefix_len": 32343,
+              "footer_offset": 14551,
+              "previous_cache_len": 11706
+            },
+            {
+              "file_prefix_len": 11706,
+              "footer_offset": 9717,
+              "previous_cache_len": null
+            }
+          ],
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 103447597056,
+              "length": 32768,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "shared_data_bytes_with_previous": 0
+        },
+        {
+          "revision": 3,
+          "mode": 0,
+          "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/snapshots/rpass3.bin",
+          "size": 53059,
+          "device": 64769,
+          "inode": 13632783,
+          "sha256": "91bf34a11a197d4c4cf4e59736030e3c9b24e455684afcb07bf2cbaec3d6c6a8",
+          "generations": [
+            {
+              "file_prefix_len": 53059,
+              "footer_offset": 35198,
+              "previous_cache_len": 32343
+            },
+            {
+              "file_prefix_len": 32343,
+              "footer_offset": 14551,
+              "previous_cache_len": 11706
+            },
+            {
+              "file_prefix_len": 11706,
+              "footer_offset": 9717,
+              "previous_cache_len": null
+            }
+          ],
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 103447633920,
+              "length": 53248,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "shared_data_bytes_with_previous": 0
+        },
+        {
+          "revision": 4,
+          "mode": 1,
+          "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/snapshots/rpass4.bin",
+          "size": 27740,
+          "device": 64769,
+          "inode": 13632788,
+          "sha256": "5b1f83fb5ba1148d68e89dca30019af5c0c631ff5561c79f184c2a27e3c607c2",
+          "generations": [
+            {
+              "file_prefix_len": 27740,
+              "footer_offset": 9717,
+              "previous_cache_len": null
+            }
+          ],
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 103447703552,
+              "length": 28672,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "shared_data_bytes_with_previous": 0
+        },
+        {
+          "revision": 5,
+          "mode": 1,
+          "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/snapshots/rpass5.bin",
+          "size": 48456,
+          "device": 64769,
+          "inode": 13632790,
+          "sha256": "642f74b94c250c3054c35c9d55de5be424fef7ae2a82ce0f83f263b32261ebfa",
+          "generations": [
+            {
+              "file_prefix_len": 48456,
+              "footer_offset": 30595,
+              "previous_cache_len": 27740
+            },
+            {
+              "file_prefix_len": 27740,
+              "footer_offset": 9717,
+              "previous_cache_len": null
+            }
+          ],
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 103447744512,
+              "length": 49152,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "shared_data_bytes_with_previous": 0
+        },
+        {
+          "revision": 6,
+          "mode": 1,
+          "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/snapshots/rpass6.bin",
+          "size": 69172,
+          "device": 64769,
+          "inode": 13632793,
+          "sha256": "3da3d85e7c6c1a268ccebc2ec734ab4a1296198b90c218d7cb17f3d26129e746",
+          "generations": [
+            {
+              "file_prefix_len": 69172,
+              "footer_offset": 51311,
+              "previous_cache_len": 48456
+            },
+            {
+              "file_prefix_len": 48456,
+              "footer_offset": 30595,
+              "previous_cache_len": 27740
+            },
+            {
+              "file_prefix_len": 27740,
+              "footer_offset": 9717,
+              "previous_cache_len": null
+            }
+          ],
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 111851339776,
+              "length": 69632,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "shared_data_bytes_with_previous": 0
+        },
+        {
+          "revision": 7,
+          "mode": 1,
+          "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/query/snapshots/rpass7.bin",
+          "size": 27740,
+          "device": 64769,
+          "inode": 13632792,
+          "sha256": "e1f461baa4e0b2aec33400ddb1245f58d7793881beeb87af5038c2ecbf762d41",
+          "generations": [
+            {
+              "file_prefix_len": 27740,
+              "footer_offset": 9717,
+              "previous_cache_len": null
+            }
+          ],
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 108025610240,
+              "length": 28672,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "shared_data_bytes_with_previous": 0
+        }
+      ],
+      "completed": true
+    },
+    "ext4-metadata": {
+      "configuration": {
+        "root": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/metadata",
+        "rustc": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+        "rustc_sha256": "7cb4adf64cc89f83e73e349473891b973ef222db665feb3ef04021caddfee076",
+        "expect_cloning": false,
+        "fixture_source": "/tmp/ohm-target-size-prototypes/sources/cloned-prefixes/tests/run-make/cloned-metadata-prefix"
+      },
+      "revisions": [
+        {
+          "revision": 0,
+          "mode": 0,
+          "readonly_source_case": false,
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "library.rs",
+            "-Cincremental=incremental",
+            "--emit=link,metadata",
+            "-Zpublic-api-hash",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info"
+          ],
+          "output": "10\n",
+          "size": 2971,
+          "inode": 13632802,
+          "sha256": "7ff920f149516523f7b4a1402a093a6c7918a04d984d2fdc88eda3f131da094b",
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 103447793664,
+              "length": 4096,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "messages": []
+        },
+        {
+          "revision": 1,
+          "mode": 1,
+          "readonly_source_case": false,
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "library.rs",
+            "-Cincremental=incremental",
+            "--emit=link,metadata",
+            "-Zpublic-api-hash",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info"
+          ],
+          "output": "11\n",
+          "size": 2971,
+          "inode": 13632814,
+          "sha256": "db771799bafd9aaa831a25e2e19e01400526df57b93ac05e47ec98556e70ef5c",
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 103447801856,
+              "length": 4096,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "messages": [],
+          "shared_data_bytes_with_previous": 0
+        },
+        {
+          "revision": 2,
+          "mode": 1,
+          "readonly_source_case": false,
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "library.rs",
+            "-Cincremental=incremental",
+            "--emit=link,metadata",
+            "-Zpublic-api-hash",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info"
+          ],
+          "output": "12\n",
+          "size": 2971,
+          "inode": 13632805,
+          "sha256": "c3c7d0eba9273eeff3d83e33a158be19d71820e3787635ae2236f9face9e3644",
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 103447814144,
+              "length": 4096,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "messages": [],
+          "shared_data_bytes_with_previous": 0
+        },
+        {
+          "revision": 3,
+          "mode": 0,
+          "readonly_source_case": false,
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "library.rs",
+            "-Cincremental=incremental",
+            "--emit=link,metadata",
+            "-Zpublic-api-hash",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info"
+          ],
+          "output": "13\n",
+          "size": 2971,
+          "inode": 13632816,
+          "sha256": "4f1632162b5a080e4d19a8aef4f4cc55b7c3bf2658db17fd21d89b1bb91af792",
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 108071817216,
+              "length": 4096,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "messages": [],
+          "shared_data_bytes_with_previous": 0
+        },
+        {
+          "revision": 4,
+          "mode": 1,
+          "readonly_source_case": false,
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "library.rs",
+            "-Cincremental=incremental",
+            "--emit=link,metadata",
+            "-Zpublic-api-hash",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info"
+          ],
+          "output": "14\n",
+          "size": 2971,
+          "inode": 13632818,
+          "sha256": "91aedfde6ad0923876508ddfe570c45088a147fb28a395b95c08ee652d707931",
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 103447834624,
+              "length": 4096,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "messages": [],
+          "shared_data_bytes_with_previous": 0
+        },
+        {
+          "revision": 5,
+          "mode": 1,
+          "readonly_source_case": true,
+          "command": [
+            "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+            "library.rs",
+            "-Cincremental=incremental",
+            "--emit=link,metadata",
+            "-Zpublic-api-hash",
+            "-Zincremental-verify-ich",
+            "-Zincremental-info"
+          ],
+          "output": "15\n",
+          "size": 2971,
+          "inode": 13632821,
+          "sha256": "467870ae8a537cf4b85139fdd7f6c64dee78899c2997447ee501b43cf72ee234",
+          "extents": [
+            {
+              "logical": 0,
+              "physical": 110431952896,
+              "length": 4096,
+              "flags": 1
+            }
+          ],
+          "flags": 1,
+          "messages": [],
+          "shared_data_bytes_with_previous": 0
+        }
+      ],
+      "readonly_sources": [
+        {
+          "original": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/metadata/incremental/library-0xwko7opb8owj/s-hm10pre8gz-0rf3pro-8f5ozw88ub1p4zuthyz9y1y44/metadata.rmeta",
+          "retained": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/metadata/readonly-inputs/0.rmeta",
+          "inode": 13632818,
+          "mode": 292,
+          "sha256": "91aedfde6ad0923876508ddfe570c45088a147fb28a395b95c08ee652d707931"
+        }
+      ],
+      "readonly_source_setup": {
+        "removed_published_output": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/prefix-correctness/metadata/liblibrary.rmeta",
+        "published_inode": 13632818,
+        "aliased_readonly_input": true
+      },
+      "completed": true
+    }
+  }
+}

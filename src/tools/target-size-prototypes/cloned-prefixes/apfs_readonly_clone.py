@@ -19,7 +19,8 @@ parser.add_argument(
     "--root",
     type=Path,
     default=Path(
-        "/private/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/apfs-readonly-clone-mechanism"
+        "/private/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/"
+        "apfs-readonly-clone-mechanism"
     ),
 )
 root = parser.parse_args().root

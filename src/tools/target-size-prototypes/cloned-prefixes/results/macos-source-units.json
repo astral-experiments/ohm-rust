@@ -1,0 +1,63 @@
+{
+  "scope": "macOS source-unit coverage of clone_file and FileEncoder, compiled with installed Ohm; not a complete candidate macOS compiler build",
+  "source_revision": "605ed6327c1a14970ec6e9fa4f7068b75e459ef1",
+  "source_sha256": {
+    "compiler/rustc_fs_util/src/lib.rs": "a23ee6a2e22484c1a3e877a925557f2ce6c01a32f7f45020f3ba15485d5f0fe7",
+    "compiler/rustc_fs_util/src/tests.rs": "8c228daabfcddfe663d0ddb152afae596ba94711e4b39e0bbe5fb2ba2f6eb802",
+    "compiler/rustc_serialize/src/opaque.rs": "55f26f11721d66fb11e6cbe429de47468d26dd8f32c900397c8d7a189e40cab7",
+    "compiler/rustc_serialize/src/opaque/tests.rs": "560675b32b66e61fe14b91800459e84b0516e581bdd5a3da95459eca16d2c1c0"
+  },
+  "environment": {
+    "CARGO_HOME": "/private/tmp/codex-cargo-home",
+    "CARGO_TARGET_DIR": "/private/tmp/codex-cargo-targets/ohm-rust/cloned-prefixes/ohm",
+    "CARGO_BUILD_BUILD_DIR": "/private/tmp/codex-cargo-targets/shared-build/ohm",
+    "CARGO_UNSTABLE_OHM_PROC_MACRO_TRUST": "all",
+    "CARGO_UNSTABLE_OHM_NATIVE_TOOL_TRUST": "all"
+  },
+  "rustc_version": "rustc 1.98.0-dev (d37229159 2026-09-05) (ohm-1.98.0-9)\nbinary: rustc\ncommit-hash: d37229159e545bbdec917dd7efdf5d26da40d2bc\ncommit-date: 2026-09-05\nhost: aarch64-apple-darwin\nrelease: 1.98.0-dev\nLLVM version: 22.1.8\n",
+  "cargo_version": "cargo 1.98.0-dev (49a7295fc 2026-09-05) (ohm-1.98.0-9)\nrelease: 1.98.0-dev\ncommit-hash: 49a7295fc6b46da600c6dca91d188a972d6abcc7\ncommit-date: 2026-09-05\nhost: aarch64-apple-darwin\nlibgit2: 1.9.4 (sys:0.21.0 vendored)\nlibcurl: 8.7.1 (sys:0.4.90+curl-8.21.0 system ssl:(SecureTransport) LibreSSL/3.3.6)\nssl: OpenSSL 3.6.3 9 Jun 2026\nos: Mac OS 26.6.2 [64-bit]\n",
+  "data_volume": [
+    "/dev/disk3s5 on /System/Volumes/Data (apfs, local, journaled, nobrowse, protect, root data)"
+  ],
+  "checks": [
+    {
+      "command": [
+        "cargo",
+        "+ohm",
+        "test",
+        "-p",
+        "rustc_fs_util",
+        "--locked"
+      ],
+      "passed": 5,
+      "returncode": 0,
+      "log": "macos-fs-unit.log.gz",
+      "test_binary": "/private/tmp/codex-cargo-targets/shared-build/ohm/debug/build/workspaces/d1c6505a128d5b20/dc9979b604f846c4-all-native-all/rustc_fs_util/a6b758d5819e0f4e/out/rustc_fs_util-a6b758d5819e0f4e",
+      "test_binary_sha256": "d210f58362fa31ed4bac46d21e83fb6053ec305cae06ea25ccb8446340a591a9",
+      "extra_environment": {},
+      "uncompressed_log_sha256": "f532ab99fa42a255051897a989c8fdeeabcce5ecd3868865e82bbe38b7e99d91",
+      "log_sha256": "8498c32b294bc344c68d2929d62b41e3f4e5784389b39d8e26e4ed33d08617c5"
+    },
+    {
+      "command": [
+        "cargo",
+        "+ohm",
+        "test",
+        "-p",
+        "rustc_serialize",
+        "existing_prefix_preserves_bytes_and_absolute_encoder_positions",
+        "--locked"
+      ],
+      "passed": 1,
+      "returncode": 0,
+      "log": "macos-encoder-unit.log.gz",
+      "test_binary": "/private/tmp/codex-cargo-targets/shared-build/ohm/debug/build/workspaces/d1c6505a128d5b20/15ca086e71829b39-all-native-all/rustc_serialize/e13a06cc27ec8d3d/out/rustc_serialize-e13a06cc27ec8d3d",
+      "test_binary_sha256": "bd4bcebfa3ba0b3809e4c13a9ee7d50f84bb6a5091607966ce0e2cbc40a751da",
+      "extra_environment": {
+        "RUSTC_BOOTSTRAP": "1"
+      },
+      "uncompressed_log_sha256": "5dccc957724899cefd0b7e54f444b067970f2a3467ffd740a2a390286edc7494",
+      "log_sha256": "da1fa3cdbf2202778e983d3c0ec0798bb30aecbc30f1b66ffdb3a141f049521b"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "host": "charlie-ohm-target-size",
+  "remote": {
+    "path": "/tmp/ohm-target-size-prototypes/prefix-validation/run_correctness.py",
+    "sha256": "cfc8e0be64b4d9ce76d5436afe1faa8bb135fda1a99eb19f7baae5e8e72ed8d9"
+  },
+  "local_script_sha256": "cfc8e0be64b4d9ce76d5436afe1faa8bb135fda1a99eb19f7baae5e8e72ed8d9"
+}

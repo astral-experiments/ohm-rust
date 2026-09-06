@@ -1,0 +1,29 @@
+{
+  "compiler": {
+    "version": "rustc 1.98.0-dev (605ed6327c1 2026-09-05) (built from a source tarball)\nbinary: rustc\ncommit-hash: 605ed6327c1a14970ec6e9fa4f7068b75e459ef1\ncommit-date: 2026-09-05\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.0-dev\nLLVM version: 22.1.8\n",
+    "sha256": "7cb4adf64cc89f83e73e349473891b973ef222db665feb3ef04021caddfee076",
+    "revision": "605ed6327c1a14970ec6e9fa4f7068b75e459ef1",
+    "patch_sha256": "b36da1f3479e564d195dc02b6b2ab1c04809a76d6ab31ba7f7addef15118cd54",
+    "library_sha256": {
+      "lib/librustc_driver-75408ace3de817b3.so": "3b6f923c7b1196baa3e2d8a11ec96686ca1f4237b3d72fe1ae44eae5369314fc",
+      "lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-e855770556130410.rlib": "b9483b4f195b2127dccf3256350a65ab603ebae31cebda1f0d47f352d19ea3f6"
+    }
+  },
+  "compiler_identity_unchanged": true,
+  "watcher": {
+    "state": "completed",
+    "returncode": 0,
+    "build": {
+      "name": "cloned-prefixes",
+      "revision": "605ed6327c1a14970ec6e9fa4f7068b75e459ef1",
+      "source": "/tmp/ohm-target-size-prototypes/sources/cloned-prefixes",
+      "build": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes",
+      "config": "change-id = \"ignore\"\n[build]\nbuild-dir = \"/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/cloned-prefixes\"\nrustc = \"/tmp/ohm-target-size-prototypes/toolchain/bin/rustc\"\ncargo = \"/tmp/ohm-target-size-prototypes/toolchain/bin/cargo\"\njobs = 24\ndocs = false\nlocked-deps = true\nsubmodules = false\n[llvm]\ndownload-ci-llvm = false\nlink-shared = true\n[rust]\nllvm-tools = false\nchannel = \"dev\"\ndownload-rustc = false\noptimize = 3\ndebug-assertions = false\ndebug-logging = false\nincremental = false\ndebuginfo-level = 1\ncodegen-units = 16\ncodegen-units-std = 1\nlto = \"thin-local\"\njemalloc = false\nmimalloc = true\nomit-git-hash = false\n[target.x86_64-unknown-linux-gnu]\nllvm-config = \"/tmp/ohm-target-size-prototypes/llvm/bin/llvm-config\"\n",
+      "started": 1788662955.7258945,
+      "patch_sha256": "b36da1f3479e564d195dc02b6b2ab1c04809a76d6ab31ba7f7addef15118cd54",
+      "returncode": 0,
+      "finished": 1788663097.1921628
+    },
+    "finished": 1788663687.9484184
+  }
+}
