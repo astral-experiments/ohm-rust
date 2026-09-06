@@ -1,0 +1,26 @@
+{
+  "command": [
+    "python3",
+    "x.py",
+    "test",
+    "--stage",
+    "1",
+    "-j",
+    "8",
+    "compiler/rustc_middle",
+    "--test-args",
+    "compact_headers_preserve_indices_fingerprints_and_edge_layout"
+  ],
+  "cwd": "/tmp/ohm-target-size-prototypes/sources/dep-fingerprints",
+  "source_sha256": {
+    "compiler/rustc_middle/src/dep_graph/serialized.rs": "6dd235fa986fad566b5db2cc96b81bc1ce4a0d29374abfce5723336971dae76d",
+    "compiler/rustc_middle/src/dep_graph/serialized/tests.rs": "370bd72d91b98913781e397c7e6e3ae84e8bb1ef13c70065137e156719add169"
+  },
+  "returncode": 0,
+  "log_sha256": "7a0f39f90cb77e4d06c1bc535e89fb272ccafdd1afd5c87bfd3ac010a1ecda79",
+  "tail": "warn: Looks like you are trying to bootstrap Rust from a source that is neither a git clone nor distributed tarball.\nThis build may fail due to missing submodules unless you put them in place manually.\nBuilding bootstrap\n    Finished `dev` profile [unoptimized] target(s) in 0.14s\nfatal: not a git repository (or any of the parent directories): .git\nTesting stage1 {rustc_middle} (x86_64-unknown-linux-gnu)\n   Compiling rustc_middle v0.0.0 (/tmp/ohm-target-size-prototypes/sources/dep-fingerprints/compiler/rustc_middle)\n    Finished `release` profile [optimized + debuginfo] target(s) in 32.32s\n     Running unittests src/lib.rs (/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/dep-fingerprints/x86_64-unknown-linux-gnu/stage1-rustc/x86_64-unknown-linux-gnu/release/build/rustc_middle/419aa2b8a795f8d2/out/rustc_middle-419aa2b8a795f8d2)\n\nrunning 1 tests\n.\n   Doc-tests\n rustc_middle\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 560.46\u00b5s\n\n\nrunning 0 tests\n\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 76 filtered out; finished in 77.91\u00b5s\n\n\nrunning 0 tests\n\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 26 filtered out; finished in 1.72ms\n\nall doctests ran in 0.33s; merged doctests compilation took 0.32s\n\tfinished in 36.178 seconds\nBuild completed successfully in 0:00:36\n",
+  "note": "Unchanged test body relocated to serialized/tests.rs to satisfy tidy; measured production compiler binary is unchanged. This run is not performance data.",
+  "production_source_unchanged_excluding_test_module": true,
+  "unit_test_body_unchanged_after_relocation": true,
+  "original_implementation_revision": "3c0bc75c33c3ba4d3ea63fe431cd500cde48da4a"
+}
