@@ -292,6 +292,14 @@ def prepare(args):
             argv[argv.index("--out-dir") + 1] = str(outdir)
             entry["cases"][case] = {**captured, "command": argv, "outputs": str(outdir)}
         save(evidence / "manifest.json", manifest)
+    finalize(args)
+
+
+def finalize(args):
+    """Validate source and command identities after both captures are available."""
+    evidence = args.root / "sparse-metadata-bench"
+    targets = args.target_root / "sparse-metadata-bench"
+    manifest = json.loads((evidence / "manifest.json").read_text())
     for name, path in sources(args).items():
         assert (
             source_digest(path) == manifest["source_provenance"]["source_digests"][name]
@@ -306,8 +314,8 @@ def prepare(args):
             argv = manifest["arms"][arm]["cases"][case]["command"]
             normalized.append(
                 [
-                    arg.replace(str(args.target_root / arm), "<sysroot>")
-                    .replace(str(targets / arm), "<dependencies>")
+                    arg.replace(str(targets / arm), "<dependencies>")
+                    .replace(str(args.target_root / arm), "<sysroot>")
                     .replace(str(evidence / "outputs" / arm), "<outputs>")
                     for arg in argv
                 ]
@@ -563,7 +571,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "operation",
-        choices=("unpack", "fetch", "prepare", "native", "instructions", "report"),
+        choices=(
+            "unpack",
+            "fetch",
+            "prepare",
+            "finalize",
+            "native",
+            "instructions",
+            "report",
+        ),
     )
     parser.add_argument(
         "--root", type=Path, default=Path("/tmp/ohm-target-size-prototypes")
