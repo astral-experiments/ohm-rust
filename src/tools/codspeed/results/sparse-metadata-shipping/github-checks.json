@@ -1,0 +1,118 @@
+{
+  "baseRefName": "charlie/pin-cargo-release-9",
+  "headRefOid": "4e23d8dabdd5e6cfd2df667ce9dc36b10cfaeea7",
+  "isDraft": true,
+  "state": "OPEN",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-06T12:13:58Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/astral-sh/ohm-rust/actions/runs/34032397942/job/101484217652",
+      "name": "Formatting and tidy",
+      "startedAt": "2026-09-06T12:12:03Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-06T12:29:43Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/astral-sh/ohm-rust/actions/runs/34032397943/job/101484263209",
+      "name": "Build benchmark compiler",
+      "startedAt": "2026-09-06T12:13:36Z",
+      "status": "COMPLETED",
+      "workflowName": "Compiler performance"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-06T12:17:58Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/astral-sh/ohm-rust/actions/runs/34032397942/job/101484217603",
+      "name": "Compiler and regression tests",
+      "startedAt": "2026-09-06T12:12:03Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-06T12:34:35Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/astral-sh/ohm-rust/actions/runs/34032397943/job/101486633443",
+      "name": "Compiler Walltime benchmarks (bitmaps-3.2.1)",
+      "startedAt": "2026-09-06T12:31:13Z",
+      "status": "COMPLETED",
+      "workflowName": "Compiler performance"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-06T12:17:37Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/astral-sh/ohm-rust/actions/runs/34032397942/job/101484217644",
+      "name": "Compiler and regression tests (macOS)",
+      "startedAt": "2026-09-06T12:12:23Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-06T12:38:24Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/astral-sh/ohm-rust/actions/runs/34032397943/job/101486633411",
+      "name": "Compiler Walltime benchmarks (syn-2.0.101)",
+      "startedAt": "2026-09-06T12:31:03Z",
+      "status": "COMPLETED",
+      "workflowName": "Compiler performance"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-06T12:42:14Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/astral-sh/ohm-rust/actions/runs/34032397943/job/101486633375",
+      "name": "Compiler Walltime benchmarks (serde-1.0.219)",
+      "startedAt": "2026-09-06T12:30:59Z",
+      "status": "COMPLETED",
+      "workflowName": "Compiler performance"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-06T12:42:30Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/astral-sh/ohm-rust/actions/runs/34032397943/job/101486633406",
+      "name": "Compiler Walltime benchmarks (regex-automata-0.4.8)",
+      "startedAt": "2026-09-06T12:31:05Z",
+      "status": "COMPLETED",
+      "workflowName": "Compiler performance"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-06T12:48:48Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/astral-sh/ohm-rust/actions/runs/34032397943/job/101486633366",
+      "name": "Compiler Walltime benchmarks (ruff-ty_python_semantic)",
+      "startedAt": "2026-09-06T12:30:57Z",
+      "status": "COMPLETED",
+      "workflowName": "Compiler performance"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-06T12:38:45Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/astral-sh/ohm-rust/actions/runs/34032397943/job/101486633386",
+      "name": "Compiler Walltime benchmarks (uv-resolver)",
+      "startedAt": "2026-09-06T12:30:59Z",
+      "status": "COMPLETED",
+      "workflowName": "Compiler performance"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-06T12:48:56Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://app.codspeed.io/astral-sh/ohm-rust/branches/charlie%2Ftarget-size-sparse-metadata?utm_source=github&utm_medium=check&utm_content=details",
+      "name": "CodSpeed Performance Analysis",
+      "startedAt": "2026-09-06T12:48:56Z",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ]
+}

@@ -1,0 +1,298 @@
+{
+  "time": 1788697905.6788485,
+  "commands": [
+    [
+      "cg_diff",
+      "--mod-filename=s/[0-9a-f]{40}/REV/",
+      "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/instructions/ruff_python_parser-02-baseline.cachegrind",
+      "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/instructions/ruff_python_parser-03-sparse-metadata.cachegrind"
+    ],
+    [
+      "cg_annotate",
+      "--auto=no",
+      "--show=Ir",
+      "--sort=Ir",
+      "--threshold=0",
+      "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/diagnostics/parser-profile-diff-slash/difference.cachegrind"
+    ]
+  ],
+  "inputs": [
+    {
+      "path": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/instructions/ruff_python_parser-02-baseline.cachegrind",
+      "sha256": "0190a372be22b54f1940b85495cd748a1389f268f273c9c7105f7fbf3130101d",
+      "bytes": 25530706
+    },
+    {
+      "path": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/instructions/ruff_python_parser-03-sparse-metadata.cachegrind",
+      "sha256": "9d87ee82aa595078a93d1a900c35cf8a236ce4a023d531f1b5fce8d64a58ee3b",
+      "bytes": 25604932
+    }
+  ],
+  "baseline": {
+    "all": 3016965774,
+    "table_file": 3120034,
+    "metadata_files": 34435240,
+    "metadata_functions": 148467763
+  },
+  "candidate": {
+    "all": 3021675547,
+    "table_file": 5187430,
+    "metadata_files": 37017338,
+    "metadata_functions": 152033665
+  },
+  "deltas": {
+    "all": 4709773,
+    "table_file": 2067396,
+    "metadata_files": 2582098,
+    "metadata_functions": 3565902
+  },
+  "largest_function_deltas": [
+    {
+      "function": "<rustc_metadata::rmeta::LazyTable<rustc_span::def_id::DefIndex, core::option::Option<rustc_metadata::rmeta::LazyValue<rustc_span::def_id::DefId>>>>::get::<&rustc_metadata::rmeta::decoder::CrateMetadata>",
+      "baseline": 0,
+      "candidate": 2106028,
+      "delta": 2106028
+    },
+    {
+      "function": "<rustc_metadata::rmeta::LazyTable<rustc_span::def_id::DefIndex, u64>>::get::<&rustc_metadata::rmeta::decoder::MetadataBlob>",
+      "baseline": 0,
+      "candidate": 1006047,
+      "delta": 1006047
+    },
+    {
+      "function": "rustc_metadata::rmeta::table::sparse_table_index::<8>",
+      "baseline": 0,
+      "candidate": 879201,
+      "delta": 879201
+    },
+    {
+      "function": "<rustc_metadata::rmeta::decoder::BlobDecodeContext as rustc_metadata::rmeta::decoder::LazyDecoder>::read_lazy_table::<rustc_span::def_id::DefIndex, u64>",
+      "baseline": 0,
+      "candidate": 612174,
+      "delta": 612174
+    },
+    {
+      "function": "<rustc_metadata::rmeta::LazyTable<rustc_span::def_id::DefIndex, core::option::Option<rustc_hir::def::DefKind>>>::get::<&rustc_metadata::rmeta::decoder::CrateMetadata>",
+      "baseline": 0,
+      "candidate": 540504,
+      "delta": 540504
+    },
+    {
+      "function": "<rustc_metadata::rmeta::decoder::BlobDecodeContext as rustc_metadata::rmeta::decoder::LazyDecoder>::read_lazy_table::<rustc_span::def_id::DefIndex, bool>",
+      "baseline": 648524,
+      "candidate": 134892,
+      "delta": -513632
+    },
+    {
+      "function": "<rustc_metadata::rmeta::table::TableBuilder<rustc_metadata::rmeta::encoder::public_api_hasher::RDRHashNone<rustc_span::def_id::DefIndex>, rustc_span::def_id::DefIndex, u64>>::encode::<rustc_metadata::rmeta::encoder::DefPathHashDefIdEncoder>",
+      "baseline": 987019,
+      "candidate": 495612,
+      "delta": -491407
+    },
+    {
+      "function": "<rustc_hash::FxBuildHasher as core::hash::BuildHasher>::hash_one::<&std::path::PathBuf>",
+      "baseline": 0,
+      "candidate": 481372,
+      "delta": 481372
+    },
+    {
+      "function": "<std::path::PathBuf as core::hash::Hash>::hash::<rustc_hash::FxHasher>",
+      "baseline": 483193,
+      "candidate": 15084,
+      "delta": -468109
+    },
+    {
+      "function": "__memset_avx2_unaligned_erms",
+      "baseline": 17058018,
+      "candidate": 17519013,
+      "delta": 460995
+    },
+    {
+      "function": "<hashbrown::table::HashTable<usize>>::entry::<indexmap::inner::equivalent<usize, (), usize>::{closure#0}, indexmap::inner::get_hash<usize, ()>::{closure#0}>",
+      "baseline": 0,
+      "candidate": 427288,
+      "delta": 427288
+    },
+    {
+      "function": "<rustc_metadata::rmeta::decoder::CrateMetadata>::def_kind",
+      "baseline": 374052,
+      "candidate": 0,
+      "delta": -374052
+    },
+    {
+      "function": "<rustc_metadata::creader::CStore as rustc_session::cstore::CrateStore>::def_path_hash",
+      "baseline": 1144928,
+      "candidate": 787138,
+      "delta": -357790
+    },
+    {
+      "function": "rustc_metadata::rmeta::table::sparse_table_index::<16>",
+      "baseline": 0,
+      "candidate": 282503,
+      "delta": 282503
+    },
+    {
+      "function": "<rustc_metadata::rmeta::encoder::public_api_hasher::ReachabilityGraphBuilder>::build_graph",
+      "baseline": 10795136,
+      "candidate": 10516160,
+      "delta": -278976
+    },
+    {
+      "function": "<rustc_metadata::rmeta::LazyTable<rustc_span::def_id::DefIndex, core::option::Option<rustc_metadata::rmeta::LazyArray<rustc_span::def_id::DefIndex>>>>::get::<&rustc_metadata::rmeta::decoder::CrateMetadata>",
+      "baseline": 433040,
+      "candidate": 707259,
+      "delta": 274219
+    },
+    {
+      "function": "<hashbrown::map::HashMap<rustc_metadata::rmeta::encoder::public_api_hasher::Node, (), rustc_hash::FxBuildHasher>>::insert",
+      "baseline": 7682823,
+      "candidate": 7893410,
+      "delta": 210587
+    },
+    {
+      "function": "<rustc_metadata::rmeta::decoder::BlobDecodeContext as rustc_metadata::rmeta::decoder::LazyDecoder>::read_lazy_table::<rustc_span::def_id::DefIndex, rustc_metadata::rmeta::LazyArray<rustc_span::def_id::DefIndex>>",
+      "baseline": 0,
+      "candidate": 206121,
+      "delta": 206121
+    },
+    {
+      "function": "<rustc_metadata::rmeta::table::TableBuilder<rustc_metadata::rmeta::encoder::public_api_hasher::RDRHashAll<rustc_span::def_id::DefIndex>, rustc_span::def_id::DefIndex, rustc_metadata::rmeta::LazyArray<rustc_span::def_id::DefIndex>>>::encode::<rustc_metadata::rmeta::encoder::DefPathHashDefIdEncoder>",
+      "baseline": 300245,
+      "candidate": 102053,
+      "delta": -198192
+    },
+    {
+      "function": "<rustc_ast::token::TokenKind as rustc_serialize::serialize::Decodable<rustc_metadata::rmeta::decoder::MetadataDecodeContext>>::decode",
+      "baseline": 188071,
+      "candidate": 0,
+      "delta": -188071
+    }
+  ],
+  "largest_metadata_function_deltas": [
+    {
+      "function": "<rustc_metadata::rmeta::LazyTable<rustc_span::def_id::DefIndex, core::option::Option<rustc_metadata::rmeta::LazyValue<rustc_span::def_id::DefId>>>>::get::<&rustc_metadata::rmeta::decoder::CrateMetadata>",
+      "baseline": 0,
+      "candidate": 2106028,
+      "delta": 2106028
+    },
+    {
+      "function": "<rustc_metadata::rmeta::LazyTable<rustc_span::def_id::DefIndex, u64>>::get::<&rustc_metadata::rmeta::decoder::MetadataBlob>",
+      "baseline": 0,
+      "candidate": 1006047,
+      "delta": 1006047
+    },
+    {
+      "function": "rustc_metadata::rmeta::table::sparse_table_index::<8>",
+      "baseline": 0,
+      "candidate": 879201,
+      "delta": 879201
+    },
+    {
+      "function": "<rustc_metadata::rmeta::decoder::BlobDecodeContext as rustc_metadata::rmeta::decoder::LazyDecoder>::read_lazy_table::<rustc_span::def_id::DefIndex, u64>",
+      "baseline": 0,
+      "candidate": 612174,
+      "delta": 612174
+    },
+    {
+      "function": "<rustc_metadata::rmeta::LazyTable<rustc_span::def_id::DefIndex, core::option::Option<rustc_hir::def::DefKind>>>::get::<&rustc_metadata::rmeta::decoder::CrateMetadata>",
+      "baseline": 0,
+      "candidate": 540504,
+      "delta": 540504
+    },
+    {
+      "function": "<rustc_metadata::rmeta::decoder::BlobDecodeContext as rustc_metadata::rmeta::decoder::LazyDecoder>::read_lazy_table::<rustc_span::def_id::DefIndex, bool>",
+      "baseline": 648524,
+      "candidate": 134892,
+      "delta": -513632
+    },
+    {
+      "function": "<rustc_metadata::rmeta::table::TableBuilder<rustc_metadata::rmeta::encoder::public_api_hasher::RDRHashNone<rustc_span::def_id::DefIndex>, rustc_span::def_id::DefIndex, u64>>::encode::<rustc_metadata::rmeta::encoder::DefPathHashDefIdEncoder>",
+      "baseline": 987019,
+      "candidate": 495612,
+      "delta": -491407
+    },
+    {
+      "function": "<rustc_metadata::rmeta::decoder::CrateMetadata>::def_kind",
+      "baseline": 374052,
+      "candidate": 0,
+      "delta": -374052
+    },
+    {
+      "function": "<rustc_metadata::creader::CStore as rustc_session::cstore::CrateStore>::def_path_hash",
+      "baseline": 1144928,
+      "candidate": 787138,
+      "delta": -357790
+    },
+    {
+      "function": "rustc_metadata::rmeta::table::sparse_table_index::<16>",
+      "baseline": 0,
+      "candidate": 282503,
+      "delta": 282503
+    },
+    {
+      "function": "<rustc_metadata::rmeta::encoder::public_api_hasher::ReachabilityGraphBuilder>::build_graph",
+      "baseline": 10795136,
+      "candidate": 10516160,
+      "delta": -278976
+    },
+    {
+      "function": "<rustc_metadata::rmeta::LazyTable<rustc_span::def_id::DefIndex, core::option::Option<rustc_metadata::rmeta::LazyArray<rustc_span::def_id::DefIndex>>>>::get::<&rustc_metadata::rmeta::decoder::CrateMetadata>",
+      "baseline": 433040,
+      "candidate": 707259,
+      "delta": 274219
+    },
+    {
+      "function": "<hashbrown::map::HashMap<rustc_metadata::rmeta::encoder::public_api_hasher::Node, (), rustc_hash::FxBuildHasher>>::insert",
+      "baseline": 7682823,
+      "candidate": 7893410,
+      "delta": 210587
+    },
+    {
+      "function": "<rustc_metadata::rmeta::decoder::BlobDecodeContext as rustc_metadata::rmeta::decoder::LazyDecoder>::read_lazy_table::<rustc_span::def_id::DefIndex, rustc_metadata::rmeta::LazyArray<rustc_span::def_id::DefIndex>>",
+      "baseline": 0,
+      "candidate": 206121,
+      "delta": 206121
+    },
+    {
+      "function": "<rustc_metadata::rmeta::table::TableBuilder<rustc_metadata::rmeta::encoder::public_api_hasher::RDRHashAll<rustc_span::def_id::DefIndex>, rustc_span::def_id::DefIndex, rustc_metadata::rmeta::LazyArray<rustc_span::def_id::DefIndex>>>::encode::<rustc_metadata::rmeta::encoder::DefPathHashDefIdEncoder>",
+      "baseline": 300245,
+      "candidate": 102053,
+      "delta": -198192
+    },
+    {
+      "function": "<rustc_ast::token::TokenKind as rustc_serialize::serialize::Decodable<rustc_metadata::rmeta::decoder::MetadataDecodeContext>>::decode",
+      "baseline": 188071,
+      "candidate": 0,
+      "delta": -188071
+    },
+    {
+      "function": "<rustc_middle::mir::syntax::ConstOperand as rustc_serialize::serialize::Encodable<rustc_metadata::rmeta::encoder::EncodeContext<rustc_metadata::rmeta::encoder::DefPathHashDefIdEncoder>>>::encode",
+      "baseline": 0,
+      "candidate": 178503,
+      "delta": 178503
+    },
+    {
+      "function": "<rustc_metadata::creader::CStore as rustc_session::cstore::CrateStore>::def_key",
+      "baseline": 4314124,
+      "candidate": 4142062,
+      "delta": -172062
+    },
+    {
+      "function": "<rustc_middle::mir::consts::Const as rustc_serialize::serialize::Encodable<rustc_metadata::rmeta::encoder::EncodeContext<rustc_metadata::rmeta::encoder::DefPathHashDefIdEncoder>>>::encode",
+      "baseline": 170646,
+      "candidate": 0,
+      "delta": -170646
+    },
+    {
+      "function": "<rustc_metadata::rmeta::encoder::public_api_hasher::ReachabilityGraphBuilder>::record",
+      "baseline": 6129591,
+      "candidate": 6283954,
+      "delta": 154363
+    }
+  ],
+  "annotation": {
+    "path": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/diagnostics/parser-profile-diff-slash/annotation.log",
+    "sha256": "d48cce7f89671c160acecec1a48aeab8caccc3a6ea443a6408104c6d55dde31e"
+  },
+  "note": "Diagnostic source/function attribution from first parser pair. Inlining and code layout can redistribute attribution; complete compiler Ir deltas remain primary."
+}

@@ -1,0 +1,712 @@
+{
+  "manifest": "provenance.json",
+  "cases": {
+    "syn": {
+      "native": {
+        "arms": {
+          "baseline": {
+            "values": [
+              1571178774,
+              1291811093,
+              1286634297,
+              1661119579
+            ],
+            "median": 1431494933.5,
+            "min": 1286634297,
+            "max": 1661119579,
+            "metadata_bytes": 1990426,
+            "public_api_hashes": []
+          },
+          "sparse-metadata": {
+            "values": [
+              1286117816,
+              1713914784,
+              1677860142,
+              1290412712
+            ],
+            "median": 1484136427.0,
+            "min": 1286117816,
+            "max": 1713914784,
+            "metadata_bytes": 1428551,
+            "public_api_hashes": []
+          }
+        },
+        "candidate_delta_percent": 3.6773789601400653,
+        "metadata_delta_percent": -28.228881656489612,
+        "public_api_hashes_equal": null
+      },
+      "instructions": {
+        "arms": {
+          "baseline": {
+            "values": [
+              3476799990,
+              3476834697
+            ],
+            "median": 3476817343.5,
+            "min": 3476799990,
+            "max": 3476834697,
+            "metadata_bytes": 1990426,
+            "public_api_hashes": []
+          },
+          "sparse-metadata": {
+            "values": [
+              3480468414,
+              3480497886
+            ],
+            "median": 3480483150.0,
+            "min": 3480468414,
+            "max": 3480497886,
+            "metadata_bytes": 1428551,
+            "public_api_hashes": []
+          }
+        },
+        "candidate_delta_percent": 0.10543569413714593,
+        "metadata_delta_percent": -28.228881656489612,
+        "public_api_hashes_equal": null
+      }
+    },
+    "ruff_python_ast": {
+      "native": {
+        "arms": {
+          "baseline": {
+            "values": [
+              4472262494,
+              4409995561,
+              4620751649,
+              4517180384
+            ],
+            "median": 4494721439.0,
+            "min": 4409995561,
+            "max": 4620751649,
+            "metadata_bytes": 5255775,
+            "public_api_hashes": [
+              "4d111817bc129c42deaa9cb58da40fa8"
+            ]
+          },
+          "sparse-metadata": {
+            "values": [
+              4483558318,
+              4237042248,
+              4471696829,
+              4459544547
+            ],
+            "median": 4465620688.0,
+            "min": 4237042248,
+            "max": 4483558318,
+            "metadata_bytes": 4041222,
+            "public_api_hashes": [
+              "702461450e755f5dd9a887da40c9b445"
+            ]
+          }
+        },
+        "candidate_delta_percent": -0.647442814753707,
+        "metadata_delta_percent": -23.10892304179688,
+        "public_api_hashes_equal": false
+      },
+      "instructions": {
+        "arms": {
+          "baseline": {
+            "values": [
+              10747498071,
+              10747259796
+            ],
+            "median": 10747378933.5,
+            "min": 10747259796,
+            "max": 10747498071,
+            "metadata_bytes": 5255775,
+            "public_api_hashes": [
+              "4d111817bc129c42deaa9cb58da40fa8"
+            ]
+          },
+          "sparse-metadata": {
+            "values": [
+              10754945781,
+              10754501904
+            ],
+            "median": 10754723842.5,
+            "min": 10754501904,
+            "max": 10754945781,
+            "metadata_bytes": 4041222,
+            "public_api_hashes": [
+              "702461450e755f5dd9a887da40c9b445"
+            ]
+          }
+        },
+        "candidate_delta_percent": 0.0683413978928904,
+        "metadata_delta_percent": -23.10892304179688,
+        "public_api_hashes_equal": false
+      }
+    },
+    "ruff_python_parser": {
+      "native": {
+        "arms": {
+          "baseline": {
+            "values": [
+              1275795202,
+              1097555028,
+              1101188211,
+              1437914323
+            ],
+            "median": 1188491706.5,
+            "min": 1097555028,
+            "max": 1437914323,
+            "metadata_bytes": 1271263,
+            "public_api_hashes": [
+              "af97e694cd1b6029cf396ea0c75f3a80"
+            ]
+          },
+          "sparse-metadata": {
+            "values": [
+              1099404822,
+              1353224967,
+              1405963037,
+              1097215665
+            ],
+            "median": 1226314894.5,
+            "min": 1097215665,
+            "max": 1405963037,
+            "metadata_bytes": 997236,
+            "public_api_hashes": [
+              "25c8fca4b45d25fad083c2e22fff72a9"
+            ]
+          }
+        },
+        "candidate_delta_percent": 3.1824528343900482,
+        "metadata_delta_percent": -21.555492451207968,
+        "public_api_hashes_equal": false
+      },
+      "instructions": {
+        "arms": {
+          "baseline": {
+            "values": [
+              3016965774,
+              3017070146
+            ],
+            "median": 3017017960.0,
+            "min": 3016965774,
+            "max": 3017070146,
+            "metadata_bytes": 1271263,
+            "public_api_hashes": [
+              "af97e694cd1b6029cf396ea0c75f3a80"
+            ]
+          },
+          "sparse-metadata": {
+            "values": [
+              3021675547,
+              3021794343
+            ],
+            "median": 3021734945.0,
+            "min": 3021675547,
+            "max": 3021794343,
+            "metadata_bytes": 997236,
+            "public_api_hashes": [
+              "25c8fca4b45d25fad083c2e22fff72a9"
+            ]
+          }
+        },
+        "candidate_delta_percent": 0.1563459370324649,
+        "metadata_delta_percent": -21.555492451207968,
+        "public_api_hashes_equal": false
+      }
+    },
+    "ty_python_semantic": {
+      "native": {
+        "arms": {
+          "baseline": {
+            "values": [
+              25271952692,
+              25356700743,
+              25253457628,
+              25312906075
+            ],
+            "median": 25292429383.5,
+            "min": 25253457628,
+            "max": 25356700743,
+            "metadata_bytes": 20604209,
+            "public_api_hashes": []
+          },
+          "sparse-metadata": {
+            "values": [
+              25303619943,
+              24960369379,
+              25862131833,
+              24779572835
+            ],
+            "median": 25131994661.0,
+            "min": 24779572835,
+            "max": 25862131833,
+            "metadata_bytes": 12707903,
+            "public_api_hashes": []
+          }
+        },
+        "candidate_delta_percent": -0.6343191477077403,
+        "metadata_delta_percent": -38.32375220033926,
+        "public_api_hashes_equal": null
+      },
+      "instructions": {
+        "arms": {
+          "baseline": {
+            "values": [
+              58735524909,
+              58734652906
+            ],
+            "median": 58735088907.5,
+            "min": 58734652906,
+            "max": 58735524909,
+            "metadata_bytes": 20604209,
+            "public_api_hashes": []
+          },
+          "sparse-metadata": {
+            "values": [
+              58748977842,
+              58748919994
+            ],
+            "median": 58748948918.0,
+            "min": 58748919994,
+            "max": 58748977842,
+            "metadata_bytes": 12707903,
+            "public_api_hashes": []
+          }
+        },
+        "candidate_delta_percent": 0.023597496416205566,
+        "metadata_delta_percent": -38.32375220033926,
+        "public_api_hashes_equal": null
+      }
+    }
+  },
+  "unchanged_sources": {
+    "syn": true,
+    "ruff": true
+  },
+  "limitations": [
+    "Leaf compiler samples measure .rmeta; dev_storage separately measures full dev targets.",
+    "Allocated bytes count filesystem blocks, not APFS clone sharing.",
+    "Compiler process instruction counts; no child-process instruction aggregation.",
+    "Nonincremental warm-page-cache checking; no clean-build or incremental latency claim.",
+    "Parser and ty combine dependency metadata reads with their own analysis and encoding."
+  ],
+  "dev_storage": {
+    "syn": {
+      "arms": {
+        "baseline": {
+          "mode": "incremental-dev",
+          "totals": {
+            "entries": 256,
+            "apparent_bytes": 102114348,
+            "unique_bytes": 75891973,
+            "allocated_bytes": 76517376
+          },
+          "incremental_totals": {
+            "apparent_bytes": 47588299,
+            "unique_bytes": 47588299,
+            "allocated_bytes": 47968256
+          },
+          "categories": {
+            "directories": {
+              "entries": 18,
+              "apparent_bytes": 0,
+              "unique_bytes": 0,
+              "allocated_bytes": 98304
+            },
+            "other": {
+              "entries": 27,
+              "apparent_bytes": 9457516,
+              "unique_bytes": 5006892,
+              "allocated_bytes": 5083136
+            },
+            ".json": {
+              "entries": 7,
+              "apparent_bytes": 5521,
+              "unique_bytes": 5521,
+              "allocated_bytes": 28672
+            },
+            ".timestamp": {
+              "entries": 6,
+              "apparent_bytes": 288,
+              "unique_bytes": 288,
+              "allocated_bytes": 24576
+            },
+            ".public-api-hash": {
+              "entries": 4,
+              "apparent_bytes": 224,
+              "unique_bytes": 224,
+              "allocated_bytes": 16384
+            },
+            ".d": {
+              "entries": 6,
+              "apparent_bytes": 26612,
+              "unique_bytes": 26612,
+              "allocated_bytes": 40960
+            },
+            ".rlib": {
+              "entries": 5,
+              "apparent_bytes": 41736708,
+              "unique_bytes": 22547142,
+              "allocated_bytes": 22552576
+            },
+            ".rmeta": {
+              "entries": 5,
+              "apparent_bytes": 5881365,
+              "unique_bytes": 3299180,
+              "allocated_bytes": 3309568
+            },
+            ".o": {
+              "entries": 174,
+              "apparent_bytes": 15982736,
+              "unique_bytes": 15982736,
+              "allocated_bytes": 16330752
+            },
+            ".bin": {
+              "entries": 3,
+              "apparent_bytes": 29023378,
+              "unique_bytes": 29023378,
+              "allocated_bytes": 29032448
+            },
+            ".lock": {
+              "entries": 1,
+              "apparent_bytes": 0,
+              "unique_bytes": 0,
+              "allocated_bytes": 0
+            }
+          },
+          "filesystem": "ext2/ext3"
+        },
+        "sparse-metadata": {
+          "mode": "incremental-dev",
+          "totals": {
+            "entries": 256,
+            "apparent_bytes": 99402749,
+            "unique_bytes": 74479767,
+            "allocated_bytes": 75112448
+          },
+          "incremental_totals": {
+            "apparent_bytes": 46940526,
+            "unique_bytes": 46940526,
+            "allocated_bytes": 47325184
+          },
+          "categories": {
+            "directories": {
+              "entries": 18,
+              "apparent_bytes": 0,
+              "unique_bytes": 0,
+              "allocated_bytes": 102400
+            },
+            "other": {
+              "entries": 27,
+              "apparent_bytes": 9457593,
+              "unique_bytes": 5006969,
+              "allocated_bytes": 5083136
+            },
+            ".json": {
+              "entries": 7,
+              "apparent_bytes": 5543,
+              "unique_bytes": 5543,
+              "allocated_bytes": 28672
+            },
+            ".timestamp": {
+              "entries": 6,
+              "apparent_bytes": 288,
+              "unique_bytes": 288,
+              "allocated_bytes": 24576
+            },
+            ".public-api-hash": {
+              "entries": 4,
+              "apparent_bytes": 224,
+              "unique_bytes": 224,
+              "allocated_bytes": 16384
+            },
+            ".d": {
+              "entries": 6,
+              "apparent_bytes": 26717,
+              "unique_bytes": 26717,
+              "allocated_bytes": 40960
+            },
+            ".rlib": {
+              "entries": 5,
+              "apparent_bytes": 40442372,
+              "unique_bytes": 21900590,
+              "allocated_bytes": 21905408
+            },
+            ".rmeta": {
+              "entries": 5,
+              "apparent_bytes": 4460062,
+              "unique_bytes": 2529486,
+              "allocated_bytes": 2539520
+            },
+            ".o": {
+              "entries": 174,
+              "apparent_bytes": 15986568,
+              "unique_bytes": 15986568,
+              "allocated_bytes": 16338944
+            },
+            ".bin": {
+              "entries": 3,
+              "apparent_bytes": 29023382,
+              "unique_bytes": 29023382,
+              "allocated_bytes": 29032448
+            },
+            ".lock": {
+              "entries": 1,
+              "apparent_bytes": 0,
+              "unique_bytes": 0,
+              "allocated_bytes": 0
+            }
+          },
+          "filesystem": "ext2/ext3"
+        }
+      },
+      "total_delta_percent": {
+        "apparent_bytes": -2.6554534726109247,
+        "unique_bytes": -1.8608107605793789,
+        "allocated_bytes": -1.8360901450671818
+      }
+    },
+    "ruff": {
+      "arms": {
+        "baseline": {
+          "mode": "incremental-dev",
+          "totals": {
+            "entries": 4387,
+            "apparent_bytes": 2281899652,
+            "unique_bytes": 1901359784,
+            "allocated_bytes": 1913786368
+          },
+          "incremental_totals": {
+            "apparent_bytes": 1074132985,
+            "unique_bytes": 1074132985,
+            "allocated_bytes": 1077817344
+          },
+          "categories": {
+            "directories": {
+              "entries": 408,
+              "apparent_bytes": 0,
+              "unique_bytes": 0,
+              "allocated_bytes": 1814528
+            },
+            "other": {
+              "entries": 883,
+              "apparent_bytes": 252306678,
+              "unique_bytes": 126312782,
+              "allocated_bytes": 129409024
+            },
+            ".json": {
+              "entries": 267,
+              "apparent_bytes": 170834,
+              "unique_bytes": 170834,
+              "allocated_bytes": 1093632
+            },
+            ".timestamp": {
+              "entries": 266,
+              "apparent_bytes": 12768,
+              "unique_bytes": 12768,
+              "allocated_bytes": 1089536
+            },
+            ".public-api-hash": {
+              "entries": 194,
+              "apparent_bytes": 10864,
+              "unique_bytes": 10864,
+              "allocated_bytes": 794624
+            },
+            ".d": {
+              "entries": 239,
+              "apparent_bytes": 2005030,
+              "unique_bytes": 2005030,
+              "allocated_bytes": 2543616
+            },
+            ".o": {
+              "entries": 1563,
+              "apparent_bytes": 237732064,
+              "unique_bytes": 237732064,
+              "allocated_bytes": 240885760
+            },
+            ".a": {
+              "entries": 1,
+              "apparent_bytes": 3414,
+              "unique_bytes": 3414,
+              "allocated_bytes": 4096
+            },
+            ".expr": {
+              "entries": 1,
+              "apparent_bytes": 100,
+              "unique_bytes": 100,
+              "allocated_bytes": 4096
+            },
+            ".rs": {
+              "entries": 6,
+              "apparent_bytes": 2315126,
+              "unique_bytes": 2315126,
+              "allocated_bytes": 2330624
+            },
+            ".zip": {
+              "entries": 1,
+              "apparent_bytes": 5562316,
+              "unique_bytes": 5562316,
+              "allocated_bytes": 5562368
+            },
+            ".rlib": {
+              "entries": 195,
+              "apparent_bytes": 590680928,
+              "unique_bytes": 390422996,
+              "allocated_bytes": 390782976
+            },
+            ".rmeta": {
+              "entries": 219,
+              "apparent_bytes": 258641028,
+              "unique_bytes": 204352988,
+              "allocated_bytes": 204754944
+            },
+            ".so": {
+              "entries": 17,
+              "apparent_bytes": 150365872,
+              "unique_bytes": 150365872,
+              "allocated_bytes": 150396928
+            },
+            ".bin": {
+              "entries": 78,
+              "apparent_bytes": 778968774,
+              "unique_bytes": 778968774,
+              "allocated_bytes": 779149312
+            },
+            ".ohm-prefix-v3": {
+              "entries": 23,
+              "apparent_bytes": 3123856,
+              "unique_bytes": 3123856,
+              "allocated_bytes": 3170304
+            },
+            ".lock": {
+              "entries": 26,
+              "apparent_bytes": 0,
+              "unique_bytes": 0,
+              "allocated_bytes": 0
+            }
+          },
+          "filesystem": "ext2/ext3"
+        },
+        "sparse-metadata": {
+          "mode": "incremental-dev",
+          "totals": {
+            "entries": 4387,
+            "apparent_bytes": 2210037274,
+            "unique_bytes": 1850823266,
+            "allocated_bytes": 1863258112
+          },
+          "incremental_totals": {
+            "apparent_bytes": 1061516995,
+            "unique_bytes": 1061516995,
+            "allocated_bytes": 1065193472
+          },
+          "categories": {
+            "directories": {
+              "entries": 408,
+              "apparent_bytes": 0,
+              "unique_bytes": 0,
+              "allocated_bytes": 1818624
+            },
+            "other": {
+              "entries": 883,
+              "apparent_bytes": 252318121,
+              "unique_bytes": 126320257,
+              "allocated_bytes": 129413120
+            },
+            ".json": {
+              "entries": 267,
+              "apparent_bytes": 170788,
+              "unique_bytes": 170788,
+              "allocated_bytes": 1093632
+            },
+            ".timestamp": {
+              "entries": 266,
+              "apparent_bytes": 12768,
+              "unique_bytes": 12768,
+              "allocated_bytes": 1089536
+            },
+            ".public-api-hash": {
+              "entries": 194,
+              "apparent_bytes": 10864,
+              "unique_bytes": 10864,
+              "allocated_bytes": 794624
+            },
+            ".d": {
+              "entries": 239,
+              "apparent_bytes": 2010000,
+              "unique_bytes": 2010000,
+              "allocated_bytes": 2543616
+            },
+            ".o": {
+              "entries": 1563,
+              "apparent_bytes": 237819432,
+              "unique_bytes": 237819432,
+              "allocated_bytes": 240971776
+            },
+            ".a": {
+              "entries": 1,
+              "apparent_bytes": 3414,
+              "unique_bytes": 3414,
+              "allocated_bytes": 4096
+            },
+            ".expr": {
+              "entries": 1,
+              "apparent_bytes": 100,
+              "unique_bytes": 100,
+              "allocated_bytes": 4096
+            },
+            ".rs": {
+              "entries": 6,
+              "apparent_bytes": 2315126,
+              "unique_bytes": 2315126,
+              "allocated_bytes": 2330624
+            },
+            ".zip": {
+              "entries": 1,
+              "apparent_bytes": 5562316,
+              "unique_bytes": 5562316,
+              "allocated_bytes": 5562368
+            },
+            ".rlib": {
+              "entries": 195,
+              "apparent_bytes": 569475408,
+              "unique_bytes": 377849636,
+              "allocated_bytes": 378241024
+            },
+            ".rmeta": {
+              "entries": 219,
+              "apparent_bytes": 207986997,
+              "unique_bytes": 166396625,
+              "allocated_bytes": 166776832
+            },
+            ".so": {
+              "entries": 17,
+              "apparent_bytes": 150259240,
+              "unique_bytes": 150259240,
+              "allocated_bytes": 150294528
+            },
+            ".bin": {
+              "entries": 78,
+              "apparent_bytes": 778968844,
+              "unique_bytes": 778968844,
+              "allocated_bytes": 779149312
+            },
+            ".ohm-prefix-v3": {
+              "entries": 23,
+              "apparent_bytes": 3123856,
+              "unique_bytes": 3123856,
+              "allocated_bytes": 3170304
+            },
+            ".lock": {
+              "entries": 26,
+              "apparent_bytes": 0,
+              "unique_bytes": 0,
+              "allocated_bytes": 0
+            }
+          },
+          "filesystem": "ext2/ext3"
+        }
+      },
+      "total_delta_percent": {
+        "apparent_bytes": -3.1492348025477512,
+        "unique_bytes": -2.6579145317612296,
+        "allocated_bytes": -2.6402244704462174
+      }
+    }
+  }
+}

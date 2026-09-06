@@ -1,0 +1,237 @@
+{
+  "baseline-build": {
+    "name": "baseline-build",
+    "command": [
+      "python3",
+      "-B",
+      "build-shipping.py",
+      "baseline",
+      "d37229159e545bbdec917dd7efdf5d26da40d2bc",
+      "2026-09-05"
+    ],
+    "cwd": "/tmp/ohm-target-size-prototypes",
+    "started": 1788695729.4769742,
+    "returncode": 0,
+    "finished": 1788695973.2201152,
+    "log_evidence": {
+      "sha256": "a56dedc0f27bd106500ea16409f658fd8e4296d4bc496400058756479d9e73fa",
+      "bytes": 10298
+    },
+    "test_result_lines": []
+  },
+  "shipping-sparse-build": {
+    "name": "shipping-sparse-build",
+    "command": [
+      "python3",
+      "-B",
+      "build-shipping.py",
+      "shipping-sparse",
+      "54d6de980917d03fd2a003b6b7f6d3d46ad3d63e",
+      "2026-09-06"
+    ],
+    "cwd": "/tmp/ohm-target-size-prototypes",
+    "started": 1788695973.4645379,
+    "returncode": 0,
+    "finished": 1788696214.676036,
+    "log_evidence": {
+      "sha256": "58758c96170cc05e8ba67229e5276a1b6b5fcf6e00f0988c0165f4dab4dee12b",
+      "bytes": 10686
+    },
+    "test_result_lines": []
+  },
+  "baseline-runtime": {
+    "name": "baseline",
+    "revision": "d37229159e545bbdec917dd7efdf5d26da40d2bc",
+    "rustc": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/baseline/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+    "sha256": "faf39b0eabc906cc419f8d7cf1cd2d02d9b9ebadcb32c097afae2ff0dac22250",
+    "version": "rustc 1.98.0-dev (d37229159e5 2026-09-05) (built from a source tarball)\nbinary: rustc\ncommit-hash: d37229159e545bbdec917dd7efdf5d26da40d2bc\ncommit-date: 2026-09-05\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.0-dev\nLLVM version: 22.1.8\n",
+    "source_files": {
+      "compiler/rustc_metadata/src/rmeta/decoder.rs": "45f39a58c2a46cd77e08ed38f7f687adf6dd4b5d2d07ce45e25ab8db43f91db4",
+      "compiler/rustc_metadata/src/rmeta/encoder.rs": "486ab0f6fe9198c6ccdfdf885111070a437ddf2248e925d57bc1f14a4387135a",
+      "compiler/rustc_metadata/src/rmeta/encoder/metadata_prefix.rs": "bab175c47159d244e569fb164c3334e4200e84e2d753ef212055437e8556397e",
+      "compiler/rustc_metadata/src/rmeta/mod.rs": "a984870b3dce4278694b9cbbc4dfd47b32386ef524bdd95cc78517da0bbf5454",
+      "compiler/rustc_metadata/src/rmeta/table.rs": "7480789714cb4cbb502f366221ee72d8509a718cca9b785152aedec82e3c6791"
+    },
+    "rustc_driver": [
+      {
+        "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/baseline/x86_64-unknown-linux-gnu/stage1/lib/librustc_driver-1dd8e7556cfc3c51.so",
+        "sha256": "dfaaa032098d156d2110fc3d437c61f6c6f58a097845e92390c68e7dbd126adf"
+      }
+    ]
+  },
+  "shipping-sparse-runtime": {
+    "name": "shipping-sparse",
+    "revision": "54d6de980917d03fd2a003b6b7f6d3d46ad3d63e",
+    "rustc": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/shipping-sparse/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+    "sha256": "8d02bcfc679b7b071910e5f9dcbc334e8012bfd0a9cc2b91c3789c8933af7e95",
+    "version": "rustc 1.98.0-dev (54d6de98091 2026-09-06) (built from a source tarball)\nbinary: rustc\ncommit-hash: 54d6de980917d03fd2a003b6b7f6d3d46ad3d63e\ncommit-date: 2026-09-06\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.0-dev\nLLVM version: 22.1.8\n",
+    "source_files": {
+      "compiler/rustc_metadata/src/rmeta/decoder.rs": "b5b4e5952ca8b5379f66a8d1a80971c73adcc682339a2d0aa0a9a0c0141fff71",
+      "compiler/rustc_metadata/src/rmeta/encoder.rs": "f8743063635862bc18fdebbe49766bb07cf56cef7a61ee006d6317ebafd4913d",
+      "compiler/rustc_metadata/src/rmeta/encoder/metadata_prefix.rs": "956468f7043c241537a7b34e4f0dc0caa6594c35339670703e2e6998ed35bcb4",
+      "compiler/rustc_metadata/src/rmeta/mod.rs": "c992010b96c1ca15850b4505e23340decf4ce142f307c2ef9389b9d7f4a29a52",
+      "compiler/rustc_metadata/src/rmeta/table.rs": "06d1bf0e70ef45bc0ded49560bc41c970f165a9145b2da916cd3f64cb9010bea",
+      "compiler/rustc_metadata/src/rmeta/table/tests.rs": "ca406b06795a7c4eb99b359d22347b93693e43c354b20434cb886c57e2d33ab1",
+      "tests/run-make/sparse-metadata-tables/rmake.rs": "298cc0249c656c54fa19bc7f80d3fd0713133717c6206b223806ab63443fb66e"
+    },
+    "rustc_driver": [
+      {
+        "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/shipping-sparse/x86_64-unknown-linux-gnu/stage1/lib/librustc_driver-1dd8e7556cfc3c51.so",
+        "sha256": "cc337b34c98f4a4d92933aae854f1f1d6b06e1c4399a0d9f9b5b45bb4f28939b"
+      }
+    ]
+  },
+  "sparse-units": {
+    "name": "sparse-units",
+    "command": [
+      "python3",
+      "x.py",
+      "test",
+      "--stage",
+      "1",
+      "-j",
+      "8",
+      "compiler/rustc_metadata",
+      "--test-args",
+      "rmeta::table::tests"
+    ],
+    "cwd": "/tmp/ohm-target-size-prototypes/sources/shipping-sparse",
+    "started": 1788696214.940247,
+    "environment": {
+      "CARGO_HOME": "/tmp/codex-cargo-home",
+      "__CARGO_OHM_DEFAULTS": "no",
+      "LD_LIBRARY_PATH": "/tmp/ohm-target-size-prototypes/llvm/lib",
+      "CARGO_TARGET_DIR": null,
+      "CARGO_BUILD_BUILD_DIR": null,
+      "RUSTFLAGS": null,
+      "RUSTC_WRAPPER": null,
+      "RUSTC_WORKSPACE_WRAPPER": null,
+      "RUSTUP_TOOLCHAIN": null,
+      "RUSTC": null,
+      "RUSTDOC": null
+    },
+    "returncode": 0,
+    "finished": 1788696282.1856203,
+    "log_evidence": {
+      "sha256": "ebcd5646ee937c7963d6bed905d7442405498279e80930bd88e96d8e429fff72",
+      "bytes": 5404
+    },
+    "test_result_lines": [
+      "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.21ms",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 30.65\u00b5s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 117.90\u00b5s"
+    ]
+  },
+  "sparse-run-make": {
+    "name": "sparse-run-make",
+    "command": [
+      "python3",
+      "x.py",
+      "test",
+      "--stage",
+      "1",
+      "-j",
+      "8",
+      "tests/run-make/sparse-metadata-tables",
+      "tests/run-make/rmeta-preferred",
+      "tests/run-make/metadata-only-crate-no-ice",
+      "tests/run-make/embed-metadata"
+    ],
+    "cwd": "/tmp/ohm-target-size-prototypes/sources/shipping-sparse",
+    "started": 1788696282.1864023,
+    "environment": {
+      "CARGO_HOME": "/tmp/codex-cargo-home",
+      "__CARGO_OHM_DEFAULTS": "no",
+      "LD_LIBRARY_PATH": "/tmp/ohm-target-size-prototypes/llvm/lib",
+      "CARGO_TARGET_DIR": null,
+      "CARGO_BUILD_BUILD_DIR": null,
+      "RUSTFLAGS": null,
+      "RUSTC_WRAPPER": null,
+      "RUSTC_WORKSPACE_WRAPPER": null,
+      "RUSTUP_TOOLCHAIN": null,
+      "RUSTC": null,
+      "RUSTDOC": null
+    },
+    "returncode": 0,
+    "finished": 1788696362.7541356,
+    "log_evidence": {
+      "sha256": "7f1a020a19591e5c0c683bbabdb964a10c35400a5e8ccaf2c8224e6bb2decbea",
+      "bytes": 9577
+    },
+    "test_result_lines": [
+      "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 502 filtered out; finished in 6.27s"
+    ]
+  },
+  "storage_stabilization": [
+    {
+      "arm": "baseline",
+      "source": "syn",
+      "totals": {
+        "entries": 256,
+        "apparent_bytes": 102114348,
+        "unique_bytes": 75891973,
+        "allocated_bytes": 76517376
+      },
+      "incremental_totals": {
+        "apparent_bytes": 47588299,
+        "unique_bytes": 47588299,
+        "allocated_bytes": 47968256
+      },
+      "allocation_changes_from_initial": []
+    },
+    {
+      "arm": "baseline",
+      "source": "ruff",
+      "totals": {
+        "entries": 4387,
+        "apparent_bytes": 2281899652,
+        "unique_bytes": 1901359784,
+        "allocated_bytes": 1913786368
+      },
+      "incremental_totals": {
+        "apparent_bytes": 1074132985,
+        "unique_bytes": 1074132985,
+        "allocated_bytes": 1077817344
+      },
+      "allocation_changes_from_initial": []
+    },
+    {
+      "arm": "sparse-metadata",
+      "source": "syn",
+      "totals": {
+        "entries": 256,
+        "apparent_bytes": 99402749,
+        "unique_bytes": 74479767,
+        "allocated_bytes": 75112448
+      },
+      "incremental_totals": {
+        "apparent_bytes": 46940526,
+        "unique_bytes": 46940526,
+        "allocated_bytes": 47325184
+      },
+      "allocation_changes_from_initial": []
+    },
+    {
+      "arm": "sparse-metadata",
+      "source": "ruff",
+      "totals": {
+        "entries": 4387,
+        "apparent_bytes": 2210037274,
+        "unique_bytes": 1850823266,
+        "allocated_bytes": 1863258112
+      },
+      "incremental_totals": {
+        "apparent_bytes": 1061516995,
+        "unique_bytes": 1061516995,
+        "allocated_bytes": 1065193472
+      },
+      "allocation_changes_from_initial": [
+        {
+          "path": "debug/deps/libty_python_semantic-9d0b89916ede9883.rlib",
+          "initial_allocated_bytes": 191627264,
+          "settled_allocated_bytes": 191631360
+        }
+      ]
+    }
+  ]
+}

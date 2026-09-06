@@ -1,0 +1,74 @@
+[
+  {
+    "arm": "baseline",
+    "case": "syn",
+    "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/shipping-sparse-metadata/incremental-dev-storage/baseline/syn",
+    "realpath": "/home/dev-user/.local/share/ohm-target-size-prototypes/builds/shipping-sparse-metadata/incremental-dev-storage/baseline/syn",
+    "command": [
+      "findmnt",
+      "-T",
+      "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/shipping-sparse-metadata/incremental-dev-storage/baseline/syn",
+      "--noheadings",
+      "--output",
+      "FSTYPE,SOURCE,TARGET"
+    ],
+    "returncode": 0,
+    "stdout": "ext4   /dev/vda1 /\n",
+    "stderr": "",
+    "time": 1788698675.2181368
+  },
+  {
+    "arm": "baseline",
+    "case": "ruff",
+    "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/shipping-sparse-metadata/incremental-dev-storage/baseline/ruff",
+    "realpath": "/home/dev-user/.local/share/ohm-target-size-prototypes/builds/shipping-sparse-metadata/incremental-dev-storage/baseline/ruff",
+    "command": [
+      "findmnt",
+      "-T",
+      "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/shipping-sparse-metadata/incremental-dev-storage/baseline/ruff",
+      "--noheadings",
+      "--output",
+      "FSTYPE,SOURCE,TARGET"
+    ],
+    "returncode": 0,
+    "stdout": "ext4   /dev/vda1 /\n",
+    "stderr": "",
+    "time": 1788698675.2225742
+  },
+  {
+    "arm": "sparse-metadata",
+    "case": "syn",
+    "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/shipping-sparse-metadata/incremental-dev-storage/sparse-metadata/syn",
+    "realpath": "/home/dev-user/.local/share/ohm-target-size-prototypes/builds/shipping-sparse-metadata/incremental-dev-storage/sparse-metadata/syn",
+    "command": [
+      "findmnt",
+      "-T",
+      "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/shipping-sparse-metadata/incremental-dev-storage/sparse-metadata/syn",
+      "--noheadings",
+      "--output",
+      "FSTYPE,SOURCE,TARGET"
+    ],
+    "returncode": 0,
+    "stdout": "ext4   /dev/vda1 /\n",
+    "stderr": "",
+    "time": 1788698675.2267175
+  },
+  {
+    "arm": "sparse-metadata",
+    "case": "ruff",
+    "path": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/shipping-sparse-metadata/incremental-dev-storage/sparse-metadata/ruff",
+    "realpath": "/home/dev-user/.local/share/ohm-target-size-prototypes/builds/shipping-sparse-metadata/incremental-dev-storage/sparse-metadata/ruff",
+    "command": [
+      "findmnt",
+      "-T",
+      "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/shipping-sparse-metadata/incremental-dev-storage/sparse-metadata/ruff",
+      "--noheadings",
+      "--output",
+      "FSTYPE,SOURCE,TARGET"
+    ],
+    "returncode": 0,
+    "stdout": "ext4   /dev/vda1 /\n",
+    "stderr": "",
+    "time": 1788698675.2312255
+  }
+]

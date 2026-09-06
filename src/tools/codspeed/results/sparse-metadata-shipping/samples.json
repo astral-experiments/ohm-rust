@@ -1,0 +1,2574 @@
+{
+  "native": [
+    {
+      "case": "syn",
+      "arm": "baseline",
+      "phase": "warmup",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 0,
+      "started": 1788696906.1613023,
+      "elapsed_ns": 1651790131,
+      "quiet_sample": {
+        "idle": 0.99625,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libsyn-d52ae8db1ead0d7d.rmeta",
+          "bytes": 1990426,
+          "sha256": "d329b910b18971966b757cb2d492f04af626237befac3238f3e3848a91d1fc5d"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/syn/libsyn-d52ae8db1ead0d7d.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "baseline.syn",
+      "log_evidence": {
+        "sha256": "ccfebf5dd338b77163f16c18828ef5de871c955bc1db738979b7cbc4ba227cff",
+        "bytes": 547495
+      }
+    },
+    {
+      "case": "syn",
+      "arm": "sparse-metadata",
+      "phase": "warmup",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 1,
+      "started": 1788696908.1135938,
+      "elapsed_ns": 1218603097,
+      "quiet_sample": {
+        "idle": 0.9975031210986267,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libsyn-d52ae8db1ead0d7d.rmeta",
+          "bytes": 1428551,
+          "sha256": "6a714f6eadd9abca0803fbc4a8b9aa5374a22c75cdd7a04edacc6b12549e057a"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/syn/libsyn-d52ae8db1ead0d7d.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "sparse-metadata.syn",
+      "log_evidence": {
+        "sha256": "8ee9a8c7ecd58f16223e3d17105d845d89183236aa9d16af56cff470dd05ffc2",
+        "bytes": 547502
+      }
+    },
+    {
+      "case": "syn",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 2,
+      "started": 1788696909.629641,
+      "elapsed_ns": 1571178774,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libsyn-d52ae8db1ead0d7d.rmeta",
+          "bytes": 1990426,
+          "sha256": "d329b910b18971966b757cb2d492f04af626237befac3238f3e3848a91d1fc5d"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/syn/libsyn-d52ae8db1ead0d7d.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "baseline.syn",
+      "log_evidence": {
+        "sha256": "ccfebf5dd338b77163f16c18828ef5de871c955bc1db738979b7cbc4ba227cff",
+        "bytes": 547495
+      }
+    },
+    {
+      "case": "syn",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 3,
+      "started": 1788696911.5139203,
+      "elapsed_ns": 1286117816,
+      "quiet_sample": {
+        "idle": 0.9962546816479401,
+        "iowait": 0.003745318352059925,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libsyn-d52ae8db1ead0d7d.rmeta",
+          "bytes": 1428551,
+          "sha256": "6a714f6eadd9abca0803fbc4a8b9aa5374a22c75cdd7a04edacc6b12549e057a"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/syn/libsyn-d52ae8db1ead0d7d.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "sparse-metadata.syn",
+      "log_evidence": {
+        "sha256": "8ee9a8c7ecd58f16223e3d17105d845d89183236aa9d16af56cff470dd05ffc2",
+        "bytes": 547502
+      }
+    },
+    {
+      "case": "syn",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 4,
+      "started": 1788696913.100507,
+      "elapsed_ns": 1713914784,
+      "quiet_sample": {
+        "idle": 0.99875,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libsyn-d52ae8db1ead0d7d.rmeta",
+          "bytes": 1428551,
+          "sha256": "6a714f6eadd9abca0803fbc4a8b9aa5374a22c75cdd7a04edacc6b12549e057a"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/syn/libsyn-d52ae8db1ead0d7d.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "sparse-metadata.syn",
+      "log_evidence": {
+        "sha256": "8ee9a8c7ecd58f16223e3d17105d845d89183236aa9d16af56cff470dd05ffc2",
+        "bytes": 547502
+      }
+    },
+    {
+      "case": "syn",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 5,
+      "started": 1788696915.128102,
+      "elapsed_ns": 1291811093,
+      "quiet_sample": {
+        "idle": 0.9962546816479401,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libsyn-d52ae8db1ead0d7d.rmeta",
+          "bytes": 1990426,
+          "sha256": "d329b910b18971966b757cb2d492f04af626237befac3238f3e3848a91d1fc5d"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/syn/libsyn-d52ae8db1ead0d7d.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "baseline.syn",
+      "log_evidence": {
+        "sha256": "ccfebf5dd338b77163f16c18828ef5de871c955bc1db738979b7cbc4ba227cff",
+        "bytes": 547495
+      }
+    },
+    {
+      "case": "syn",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 6,
+      "started": 1788696916.7197077,
+      "elapsed_ns": 1677860142,
+      "quiet_sample": {
+        "idle": 0.9987515605493134,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libsyn-d52ae8db1ead0d7d.rmeta",
+          "bytes": 1428551,
+          "sha256": "6a714f6eadd9abca0803fbc4a8b9aa5374a22c75cdd7a04edacc6b12549e057a"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/syn/libsyn-d52ae8db1ead0d7d.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "sparse-metadata.syn",
+      "log_evidence": {
+        "sha256": "8ee9a8c7ecd58f16223e3d17105d845d89183236aa9d16af56cff470dd05ffc2",
+        "bytes": 547502
+      }
+    },
+    {
+      "case": "syn",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 7,
+      "started": 1788696918.7096076,
+      "elapsed_ns": 1286634297,
+      "quiet_sample": {
+        "idle": 0.9975031210986267,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libsyn-d52ae8db1ead0d7d.rmeta",
+          "bytes": 1990426,
+          "sha256": "d329b910b18971966b757cb2d492f04af626237befac3238f3e3848a91d1fc5d"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/syn/libsyn-d52ae8db1ead0d7d.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "baseline.syn",
+      "log_evidence": {
+        "sha256": "ccfebf5dd338b77163f16c18828ef5de871c955bc1db738979b7cbc4ba227cff",
+        "bytes": 547495
+      }
+    },
+    {
+      "case": "syn",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 8,
+      "started": 1788696920.296841,
+      "elapsed_ns": 1661119579,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libsyn-d52ae8db1ead0d7d.rmeta",
+          "bytes": 1990426,
+          "sha256": "d329b910b18971966b757cb2d492f04af626237befac3238f3e3848a91d1fc5d"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/syn/libsyn-d52ae8db1ead0d7d.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "baseline.syn",
+      "log_evidence": {
+        "sha256": "ccfebf5dd338b77163f16c18828ef5de871c955bc1db738979b7cbc4ba227cff",
+        "bytes": 547495
+      }
+    },
+    {
+      "case": "syn",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 9,
+      "started": 1788696922.270844,
+      "elapsed_ns": 1290412712,
+      "quiet_sample": {
+        "idle": 0.99375,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libsyn-d52ae8db1ead0d7d.rmeta",
+          "bytes": 1428551,
+          "sha256": "6a714f6eadd9abca0803fbc4a8b9aa5374a22c75cdd7a04edacc6b12549e057a"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/syn/libsyn-d52ae8db1ead0d7d.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "sparse-metadata.syn",
+      "log_evidence": {
+        "sha256": "8ee9a8c7ecd58f16223e3d17105d845d89183236aa9d16af56cff470dd05ffc2",
+        "bytes": 547502
+      }
+    },
+    {
+      "case": "ruff_python_ast",
+      "arm": "baseline",
+      "phase": "warmup",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 0,
+      "started": 1788696923.8611047,
+      "elapsed_ns": 4759766081,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_ast-cd1aabe252d96101.rmeta",
+          "bytes": 5255775,
+          "sha256": "9a807ffde887bb36fd9c4c8f252762566161c97db2286a2ff9b18def80c9e34b"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ruff_python_ast/libruff_python_ast-cd1aabe252d96101.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "4d111817bc129c42deaa9cb58da40fa8"
+          }
+        }
+      ],
+      "command_reference": "baseline.ruff_python_ast",
+      "log_evidence": {
+        "sha256": "14855961db27c78ea90aa24c6f7c1d5a92c8d114f90634069c882e26c4b99c62",
+        "bytes": 267
+      }
+    },
+    {
+      "case": "ruff_python_ast",
+      "arm": "sparse-metadata",
+      "phase": "warmup",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 1,
+      "started": 1788696928.9271362,
+      "elapsed_ns": 4383431979,
+      "quiet_sample": {
+        "idle": 0.9698870765370138,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_ast-cd1aabe252d96101.rmeta",
+          "bytes": 4041222,
+          "sha256": "fd71dd12d7c971ff499deb8c17aea543cef2a1abb87c5b8daed93cc337c68570"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ruff_python_ast/libruff_python_ast-cd1aabe252d96101.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "702461450e755f5dd9a887da40c9b445"
+          }
+        }
+      ],
+      "command_reference": "sparse-metadata.ruff_python_ast",
+      "log_evidence": {
+        "sha256": "7a80aacd772ecfa6651a97fad13926af0cd507e80c5b4b4ca503aa12cec33a6c",
+        "bytes": 274
+      }
+    },
+    {
+      "case": "ruff_python_ast",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 2,
+      "started": 1788696933.6176486,
+      "elapsed_ns": 4472262494,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_ast-cd1aabe252d96101.rmeta",
+          "bytes": 5255775,
+          "sha256": "9a807ffde887bb36fd9c4c8f252762566161c97db2286a2ff9b18def80c9e34b"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ruff_python_ast/libruff_python_ast-cd1aabe252d96101.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "4d111817bc129c42deaa9cb58da40fa8"
+          }
+        }
+      ],
+      "command_reference": "baseline.ruff_python_ast",
+      "log_evidence": {
+        "sha256": "14855961db27c78ea90aa24c6f7c1d5a92c8d114f90634069c882e26c4b99c62",
+        "bytes": 267
+      }
+    },
+    {
+      "case": "ruff_python_ast",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 3,
+      "started": 1788696938.3947067,
+      "elapsed_ns": 4483558318,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_ast-cd1aabe252d96101.rmeta",
+          "bytes": 4041222,
+          "sha256": "fd71dd12d7c971ff499deb8c17aea543cef2a1abb87c5b8daed93cc337c68570"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ruff_python_ast/libruff_python_ast-cd1aabe252d96101.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "702461450e755f5dd9a887da40c9b445"
+          }
+        }
+      ],
+      "command_reference": "sparse-metadata.ruff_python_ast",
+      "log_evidence": {
+        "sha256": "7a80aacd772ecfa6651a97fad13926af0cd507e80c5b4b4ca503aa12cec33a6c",
+        "bytes": 274
+      }
+    },
+    {
+      "case": "ruff_python_ast",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 4,
+      "started": 1788696943.1849215,
+      "elapsed_ns": 4237042248,
+      "quiet_sample": {
+        "idle": 0.9975031210986267,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_ast-cd1aabe252d96101.rmeta",
+          "bytes": 4041222,
+          "sha256": "fd71dd12d7c971ff499deb8c17aea543cef2a1abb87c5b8daed93cc337c68570"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ruff_python_ast/libruff_python_ast-cd1aabe252d96101.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "702461450e755f5dd9a887da40c9b445"
+          }
+        }
+      ],
+      "command_reference": "sparse-metadata.ruff_python_ast",
+      "log_evidence": {
+        "sha256": "7a80aacd772ecfa6651a97fad13926af0cd507e80c5b4b4ca503aa12cec33a6c",
+        "bytes": 274
+      }
+    },
+    {
+      "case": "ruff_python_ast",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 5,
+      "started": 1788696947.7302656,
+      "elapsed_ns": 4409995561,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_ast-cd1aabe252d96101.rmeta",
+          "bytes": 5255775,
+          "sha256": "9a807ffde887bb36fd9c4c8f252762566161c97db2286a2ff9b18def80c9e34b"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ruff_python_ast/libruff_python_ast-cd1aabe252d96101.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "4d111817bc129c42deaa9cb58da40fa8"
+          }
+        }
+      ],
+      "command_reference": "baseline.ruff_python_ast",
+      "log_evidence": {
+        "sha256": "14855961db27c78ea90aa24c6f7c1d5a92c8d114f90634069c882e26c4b99c62",
+        "bytes": 267
+      }
+    },
+    {
+      "case": "ruff_python_ast",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 6,
+      "started": 1788696952.4510736,
+      "elapsed_ns": 4471696829,
+      "quiet_sample": {
+        "idle": 0.9962593516209476,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_ast-cd1aabe252d96101.rmeta",
+          "bytes": 4041222,
+          "sha256": "fd71dd12d7c971ff499deb8c17aea543cef2a1abb87c5b8daed93cc337c68570"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ruff_python_ast/libruff_python_ast-cd1aabe252d96101.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "702461450e755f5dd9a887da40c9b445"
+          }
+        }
+      ],
+      "command_reference": "sparse-metadata.ruff_python_ast",
+      "log_evidence": {
+        "sha256": "7a80aacd772ecfa6651a97fad13926af0cd507e80c5b4b4ca503aa12cec33a6c",
+        "bytes": 274
+      }
+    },
+    {
+      "case": "ruff_python_ast",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 7,
+      "started": 1788696957.2306824,
+      "elapsed_ns": 4620751649,
+      "quiet_sample": {
+        "idle": 0.9975031210986267,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_ast-cd1aabe252d96101.rmeta",
+          "bytes": 5255775,
+          "sha256": "9a807ffde887bb36fd9c4c8f252762566161c97db2286a2ff9b18def80c9e34b"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ruff_python_ast/libruff_python_ast-cd1aabe252d96101.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "4d111817bc129c42deaa9cb58da40fa8"
+          }
+        }
+      ],
+      "command_reference": "baseline.ruff_python_ast",
+      "log_evidence": {
+        "sha256": "14855961db27c78ea90aa24c6f7c1d5a92c8d114f90634069c882e26c4b99c62",
+        "bytes": 267
+      }
+    },
+    {
+      "case": "ruff_python_ast",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 8,
+      "started": 1788696962.1557229,
+      "elapsed_ns": 4517180384,
+      "quiet_sample": {
+        "idle": 0.99875,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_ast-cd1aabe252d96101.rmeta",
+          "bytes": 5255775,
+          "sha256": "9a807ffde887bb36fd9c4c8f252762566161c97db2286a2ff9b18def80c9e34b"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ruff_python_ast/libruff_python_ast-cd1aabe252d96101.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "4d111817bc129c42deaa9cb58da40fa8"
+          }
+        }
+      ],
+      "command_reference": "baseline.ruff_python_ast",
+      "log_evidence": {
+        "sha256": "14855961db27c78ea90aa24c6f7c1d5a92c8d114f90634069c882e26c4b99c62",
+        "bytes": 267
+      }
+    },
+    {
+      "case": "ruff_python_ast",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 9,
+      "started": 1788696966.9832742,
+      "elapsed_ns": 4459544547,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_ast-cd1aabe252d96101.rmeta",
+          "bytes": 4041222,
+          "sha256": "fd71dd12d7c971ff499deb8c17aea543cef2a1abb87c5b8daed93cc337c68570"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ruff_python_ast/libruff_python_ast-cd1aabe252d96101.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "702461450e755f5dd9a887da40c9b445"
+          }
+        }
+      ],
+      "command_reference": "sparse-metadata.ruff_python_ast",
+      "log_evidence": {
+        "sha256": "7a80aacd772ecfa6651a97fad13926af0cd507e80c5b4b4ca503aa12cec33a6c",
+        "bytes": 274
+      }
+    },
+    {
+      "case": "ruff_python_parser",
+      "arm": "baseline",
+      "phase": "warmup",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 0,
+      "started": 1788696971.751053,
+      "elapsed_ns": 1090016024,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "bytes": 1271263,
+          "sha256": "10cabbf894f9bf67e8b4e5155d6f707f317e7e0635fd4ab24c7034bbd7915b1b"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ruff_python_parser/libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "af97e694cd1b6029cf396ea0c75f3a80"
+          }
+        }
+      ],
+      "command_reference": "baseline.ruff_python_parser",
+      "log_evidence": {
+        "sha256": "f48afda8969d549b6d936a2b0ed1d7a12d02d6aaf764ac8ed87fd57cf93ecb72",
+        "bytes": 273
+      }
+    },
+    {
+      "case": "ruff_python_parser",
+      "arm": "sparse-metadata",
+      "phase": "warmup",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 1,
+      "started": 1788696973.1369793,
+      "elapsed_ns": 1266313705,
+      "quiet_sample": {
+        "idle": 0.99875,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "bytes": 997236,
+          "sha256": "8bf2ff6bd995e4a718839e784334039ee1b5d66987a22d181c9f1d7e0ceb2c82"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ruff_python_parser/libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "25c8fca4b45d25fad083c2e22fff72a9"
+          }
+        }
+      ],
+      "command_reference": "sparse-metadata.ruff_python_parser",
+      "log_evidence": {
+        "sha256": "08fcb0d9c25e3684d0d4c8fe9f93729b91837a207edb8c5336af436e48f2cca1",
+        "bytes": 280
+      }
+    },
+    {
+      "case": "ruff_python_parser",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 2,
+      "started": 1788696974.7015684,
+      "elapsed_ns": 1275795202,
+      "quiet_sample": {
+        "idle": 0.981203007518797,
+        "iowait": 0.002506265664160401,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "bytes": 1271263,
+          "sha256": "10cabbf894f9bf67e8b4e5155d6f707f317e7e0635fd4ab24c7034bbd7915b1b"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ruff_python_parser/libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "af97e694cd1b6029cf396ea0c75f3a80"
+          }
+        }
+      ],
+      "command_reference": "baseline.ruff_python_parser",
+      "log_evidence": {
+        "sha256": "f48afda8969d549b6d936a2b0ed1d7a12d02d6aaf764ac8ed87fd57cf93ecb72",
+        "bytes": 273
+      }
+    },
+    {
+      "case": "ruff_python_parser",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 3,
+      "started": 1788696976.291103,
+      "elapsed_ns": 1099404822,
+      "quiet_sample": {
+        "idle": 0.995,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "bytes": 997236,
+          "sha256": "8bf2ff6bd995e4a718839e784334039ee1b5d66987a22d181c9f1d7e0ceb2c82"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ruff_python_parser/libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "25c8fca4b45d25fad083c2e22fff72a9"
+          }
+        }
+      ],
+      "command_reference": "sparse-metadata.ruff_python_parser",
+      "log_evidence": {
+        "sha256": "08fcb0d9c25e3684d0d4c8fe9f93729b91837a207edb8c5336af436e48f2cca1",
+        "bytes": 280
+      }
+    },
+    {
+      "case": "ruff_python_parser",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 4,
+      "started": 1788696977.6872933,
+      "elapsed_ns": 1353224967,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "bytes": 997236,
+          "sha256": "8bf2ff6bd995e4a718839e784334039ee1b5d66987a22d181c9f1d7e0ceb2c82"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ruff_python_parser/libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "25c8fca4b45d25fad083c2e22fff72a9"
+          }
+        }
+      ],
+      "command_reference": "sparse-metadata.ruff_python_parser",
+      "log_evidence": {
+        "sha256": "08fcb0d9c25e3684d0d4c8fe9f93729b91837a207edb8c5336af436e48f2cca1",
+        "bytes": 280
+      }
+    },
+    {
+      "case": "ruff_python_parser",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 5,
+      "started": 1788696979.344946,
+      "elapsed_ns": 1097555028,
+      "quiet_sample": {
+        "idle": 0.9987531172069826,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "bytes": 1271263,
+          "sha256": "10cabbf894f9bf67e8b4e5155d6f707f317e7e0635fd4ab24c7034bbd7915b1b"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ruff_python_parser/libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "af97e694cd1b6029cf396ea0c75f3a80"
+          }
+        }
+      ],
+      "command_reference": "baseline.ruff_python_parser",
+      "log_evidence": {
+        "sha256": "f48afda8969d549b6d936a2b0ed1d7a12d02d6aaf764ac8ed87fd57cf93ecb72",
+        "bytes": 273
+      }
+    },
+    {
+      "case": "ruff_python_parser",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 6,
+      "started": 1788696980.738505,
+      "elapsed_ns": 1405963037,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "bytes": 997236,
+          "sha256": "8bf2ff6bd995e4a718839e784334039ee1b5d66987a22d181c9f1d7e0ceb2c82"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ruff_python_parser/libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "25c8fca4b45d25fad083c2e22fff72a9"
+          }
+        }
+      ],
+      "command_reference": "sparse-metadata.ruff_python_parser",
+      "log_evidence": {
+        "sha256": "08fcb0d9c25e3684d0d4c8fe9f93729b91837a207edb8c5336af436e48f2cca1",
+        "bytes": 280
+      }
+    },
+    {
+      "case": "ruff_python_parser",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 7,
+      "started": 1788696982.4536753,
+      "elapsed_ns": 1101188211,
+      "quiet_sample": {
+        "idle": 0.9987546699875467,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "bytes": 1271263,
+          "sha256": "10cabbf894f9bf67e8b4e5155d6f707f317e7e0635fd4ab24c7034bbd7915b1b"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ruff_python_parser/libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "af97e694cd1b6029cf396ea0c75f3a80"
+          }
+        }
+      ],
+      "command_reference": "baseline.ruff_python_parser",
+      "log_evidence": {
+        "sha256": "f48afda8969d549b6d936a2b0ed1d7a12d02d6aaf764ac8ed87fd57cf93ecb72",
+        "bytes": 273
+      }
+    },
+    {
+      "case": "ruff_python_parser",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 8,
+      "started": 1788696983.851739,
+      "elapsed_ns": 1437914323,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "bytes": 1271263,
+          "sha256": "10cabbf894f9bf67e8b4e5155d6f707f317e7e0635fd4ab24c7034bbd7915b1b"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ruff_python_parser/libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "af97e694cd1b6029cf396ea0c75f3a80"
+          }
+        }
+      ],
+      "command_reference": "baseline.ruff_python_parser",
+      "log_evidence": {
+        "sha256": "f48afda8969d549b6d936a2b0ed1d7a12d02d6aaf764ac8ed87fd57cf93ecb72",
+        "bytes": 273
+      }
+    },
+    {
+      "case": "ruff_python_parser",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 9,
+      "started": 1788696985.5969143,
+      "elapsed_ns": 1097215665,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "bytes": 997236,
+          "sha256": "8bf2ff6bd995e4a718839e784334039ee1b5d66987a22d181c9f1d7e0ceb2c82"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ruff_python_parser/libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "25c8fca4b45d25fad083c2e22fff72a9"
+          }
+        }
+      ],
+      "command_reference": "sparse-metadata.ruff_python_parser",
+      "log_evidence": {
+        "sha256": "08fcb0d9c25e3684d0d4c8fe9f93729b91837a207edb8c5336af436e48f2cca1",
+        "bytes": 280
+      }
+    },
+    {
+      "case": "ty_python_semantic",
+      "arm": "baseline",
+      "phase": "warmup",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 0,
+      "started": 1788696986.9896407,
+      "elapsed_ns": 26255512814,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libty_python_semantic-22720a772b59c0f1.rmeta",
+          "bytes": 20604209,
+          "sha256": "1c83308057d5c005fba73438ff59bf74e9e9fcf9446b8a005edca2e2cdfe3d36"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ty_python_semantic/libty_python_semantic-22720a772b59c0f1.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "baseline.ty_python_semantic",
+      "log_evidence": {
+        "sha256": "ffeba78e85d847ec412a4126ff906e111638a7edc07ab5e6073e550c309ed334",
+        "bytes": 198
+      }
+    },
+    {
+      "case": "ty_python_semantic",
+      "arm": "sparse-metadata",
+      "phase": "warmup",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 1,
+      "started": 1788697013.558094,
+      "elapsed_ns": 25125876402,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libty_python_semantic-22720a772b59c0f1.rmeta",
+          "bytes": 12707903,
+          "sha256": "7569613bf93ce301783aa726e1baa2448e285225ec2171e4b1ec6dfb94f363d0"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ty_python_semantic/libty_python_semantic-22720a772b59c0f1.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "sparse-metadata.ty_python_semantic",
+      "log_evidence": {
+        "sha256": "fee39e33174a913ed337033966d9d8bf4dde3a2436db362005cbde0f2c0a3909",
+        "bytes": 205
+      }
+    },
+    {
+      "case": "ty_python_semantic",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 2,
+      "started": 1788697038.999523,
+      "elapsed_ns": 25271952692,
+      "quiet_sample": {
+        "idle": 0.9937655860349127,
+        "iowait": 0.003740648379052369,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libty_python_semantic-22720a772b59c0f1.rmeta",
+          "bytes": 20604209,
+          "sha256": "1c83308057d5c005fba73438ff59bf74e9e9fcf9446b8a005edca2e2cdfe3d36"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ty_python_semantic/libty_python_semantic-22720a772b59c0f1.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "baseline.ty_python_semantic",
+      "log_evidence": {
+        "sha256": "ffeba78e85d847ec412a4126ff906e111638a7edc07ab5e6073e550c309ed334",
+        "bytes": 198
+      }
+    },
+    {
+      "case": "ty_python_semantic",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 3,
+      "started": 1788697064.5865068,
+      "elapsed_ns": 25303619943,
+      "quiet_sample": {
+        "idle": 0.99875,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libty_python_semantic-22720a772b59c0f1.rmeta",
+          "bytes": 12707903,
+          "sha256": "7569613bf93ce301783aa726e1baa2448e285225ec2171e4b1ec6dfb94f363d0"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ty_python_semantic/libty_python_semantic-22720a772b59c0f1.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "sparse-metadata.ty_python_semantic",
+      "log_evidence": {
+        "sha256": "fee39e33174a913ed337033966d9d8bf4dde3a2436db362005cbde0f2c0a3909",
+        "bytes": 205
+      }
+    },
+    {
+      "case": "ty_python_semantic",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 4,
+      "started": 1788697090.1971576,
+      "elapsed_ns": 24960369379,
+      "quiet_sample": {
+        "idle": 0.99375,
+        "iowait": 0.005,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libty_python_semantic-22720a772b59c0f1.rmeta",
+          "bytes": 12707903,
+          "sha256": "7569613bf93ce301783aa726e1baa2448e285225ec2171e4b1ec6dfb94f363d0"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ty_python_semantic/libty_python_semantic-22720a772b59c0f1.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "sparse-metadata.ty_python_semantic",
+      "log_evidence": {
+        "sha256": "fee39e33174a913ed337033966d9d8bf4dde3a2436db362005cbde0f2c0a3909",
+        "bytes": 205
+      }
+    },
+    {
+      "case": "ty_python_semantic",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 5,
+      "started": 1788697115.4674714,
+      "elapsed_ns": 25356700743,
+      "quiet_sample": {
+        "idle": 0.9987515605493134,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libty_python_semantic-22720a772b59c0f1.rmeta",
+          "bytes": 20604209,
+          "sha256": "1c83308057d5c005fba73438ff59bf74e9e9fcf9446b8a005edca2e2cdfe3d36"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ty_python_semantic/libty_python_semantic-22720a772b59c0f1.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "baseline.ty_python_semantic",
+      "log_evidence": {
+        "sha256": "ffeba78e85d847ec412a4126ff906e111638a7edc07ab5e6073e550c309ed334",
+        "bytes": 198
+      }
+    },
+    {
+      "case": "ty_python_semantic",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 6,
+      "started": 1788697141.1398625,
+      "elapsed_ns": 25862131833,
+      "quiet_sample": {
+        "idle": 0.9382093316519546,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libty_python_semantic-22720a772b59c0f1.rmeta",
+          "bytes": 12707903,
+          "sha256": "7569613bf93ce301783aa726e1baa2448e285225ec2171e4b1ec6dfb94f363d0"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ty_python_semantic/libty_python_semantic-22720a772b59c0f1.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "sparse-metadata.ty_python_semantic",
+      "log_evidence": {
+        "sha256": "fee39e33174a913ed337033966d9d8bf4dde3a2436db362005cbde0f2c0a3909",
+        "bytes": 205
+      }
+    },
+    {
+      "case": "ty_python_semantic",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 7,
+      "started": 1788697167.3127468,
+      "elapsed_ns": 25253457628,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libty_python_semantic-22720a772b59c0f1.rmeta",
+          "bytes": 20604209,
+          "sha256": "1c83308057d5c005fba73438ff59bf74e9e9fcf9446b8a005edca2e2cdfe3d36"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ty_python_semantic/libty_python_semantic-22720a772b59c0f1.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "baseline.ty_python_semantic",
+      "log_evidence": {
+        "sha256": "ffeba78e85d847ec412a4126ff906e111638a7edc07ab5e6073e550c309ed334",
+        "bytes": 198
+      }
+    },
+    {
+      "case": "ty_python_semantic",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 8,
+      "started": 1788697192.8885624,
+      "elapsed_ns": 25312906075,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libty_python_semantic-22720a772b59c0f1.rmeta",
+          "bytes": 20604209,
+          "sha256": "1c83308057d5c005fba73438ff59bf74e9e9fcf9446b8a005edca2e2cdfe3d36"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ty_python_semantic/libty_python_semantic-22720a772b59c0f1.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "baseline.ty_python_semantic",
+      "log_evidence": {
+        "sha256": "ffeba78e85d847ec412a4126ff906e111638a7edc07ab5e6073e550c309ed334",
+        "bytes": 198
+      }
+    },
+    {
+      "case": "ty_python_semantic",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 9,
+      "started": 1788697218.522418,
+      "elapsed_ns": 24779572835,
+      "quiet_sample": {
+        "idle": 0.9987531172069826,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": false
+      },
+      "metadata": [
+        {
+          "path": "libty_python_semantic-22720a772b59c0f1.rmeta",
+          "bytes": 12707903,
+          "sha256": "7569613bf93ce301783aa726e1baa2448e285225ec2171e4b1ec6dfb94f363d0"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ty_python_semantic/libty_python_semantic-22720a772b59c0f1.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "sparse-metadata.ty_python_semantic",
+      "log_evidence": {
+        "sha256": "fee39e33174a913ed337033966d9d8bf4dde3a2436db362005cbde0f2c0a3909",
+        "bytes": 205
+      }
+    }
+  ],
+  "instructions": [
+    {
+      "case": "syn",
+      "arm": "baseline",
+      "phase": "warmup",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 0,
+      "started": 1788697291.5420818,
+      "elapsed_ns": 1704367399,
+      "quiet_sample": {
+        "idle": 0.985,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libsyn-d52ae8db1ead0d7d.rmeta",
+          "bytes": 1990426,
+          "sha256": "d329b910b18971966b757cb2d492f04af626237befac3238f3e3848a91d1fc5d"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/syn/libsyn-d52ae8db1ead0d7d.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "baseline.syn",
+      "log_evidence": {
+        "sha256": "ccfebf5dd338b77163f16c18828ef5de871c955bc1db738979b7cbc4ba227cff",
+        "bytes": 547495
+      }
+    },
+    {
+      "case": "syn",
+      "arm": "sparse-metadata",
+      "phase": "warmup",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 1,
+      "started": 1788697293.542759,
+      "elapsed_ns": 1262362604,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libsyn-d52ae8db1ead0d7d.rmeta",
+          "bytes": 1428551,
+          "sha256": "6a714f6eadd9abca0803fbc4a8b9aa5374a22c75cdd7a04edacc6b12549e057a"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/syn/libsyn-d52ae8db1ead0d7d.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "sparse-metadata.syn",
+      "log_evidence": {
+        "sha256": "8ee9a8c7ecd58f16223e3d17105d845d89183236aa9d16af56cff470dd05ffc2",
+        "bytes": 547502
+      }
+    },
+    {
+      "case": "syn",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "cachegrind",
+      "cycle": 0,
+      "order": 3,
+      "started": 1788697295.4037805,
+      "elapsed_ns": 51142984299,
+      "quiet_sample": {
+        "idle": 0.8968058968058968,
+        "iowait": 0.009828009828009828,
+        "steal": 0.0,
+        "other_build_processes": [
+          {
+            "pid": "106166",
+            "comm": "cachegrind-amd6"
+          }
+        ],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libsyn-d52ae8db1ead0d7d.rmeta",
+          "bytes": 1428551,
+          "sha256": "6a714f6eadd9abca0803fbc4a8b9aa5374a22c75cdd7a04edacc6b12549e057a"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/syn/libsyn-d52ae8db1ead0d7d.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "instructions": 3480468414,
+      "concurrent_pair": 0,
+      "command_reference": "sparse-metadata.syn",
+      "log_evidence": {
+        "sha256": "4f461d495c41d41c31f5920c3889343a3e67fc890dffdce494097ff9a795aa06",
+        "bytes": 549460
+      },
+      "cachegrind_evidence": {
+        "sha256": "5fe47885ed8b401aaa5281912da53c917c752033d2e92fcd216caf6477436e59",
+        "bytes": 24654349
+      }
+    },
+    {
+      "case": "syn",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "cachegrind",
+      "cycle": 0,
+      "order": 2,
+      "started": 1788697295.1034346,
+      "elapsed_ns": 51583830199,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libsyn-d52ae8db1ead0d7d.rmeta",
+          "bytes": 1990426,
+          "sha256": "d329b910b18971966b757cb2d492f04af626237befac3238f3e3848a91d1fc5d"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/syn/libsyn-d52ae8db1ead0d7d.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "instructions": 3476799990,
+      "concurrent_pair": 0,
+      "command_reference": "baseline.syn",
+      "log_evidence": {
+        "sha256": "97e29d9474fc3ec4d530fe7d426f68b144e5d2de39a9eb0f65434268ea526788",
+        "bytes": 549411
+      },
+      "cachegrind_evidence": {
+        "sha256": "80ff26ff9d0f5f82095dccf54417f30b5e79ff5b3ff957055d6a84140fee574b",
+        "bytes": 24595956
+      }
+    },
+    {
+      "case": "syn",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "cachegrind",
+      "cycle": 0,
+      "order": 4,
+      "started": 1788697347.1564782,
+      "elapsed_ns": 49518985951,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libsyn-d52ae8db1ead0d7d.rmeta",
+          "bytes": 1428551,
+          "sha256": "6a714f6eadd9abca0803fbc4a8b9aa5374a22c75cdd7a04edacc6b12549e057a"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/syn/libsyn-d52ae8db1ead0d7d.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "instructions": 3480497886,
+      "concurrent_pair": 1,
+      "command_reference": "sparse-metadata.syn",
+      "log_evidence": {
+        "sha256": "47b0f0f2271fc8faf5759e05814be03755062c7885b8020becb76beea525fc57",
+        "bytes": 549460
+      },
+      "cachegrind_evidence": {
+        "sha256": "b89ad8a11613ec862bc9cca055ee06ffcebb24e68868e786e91bf7a46b79fce0",
+        "bytes": 24650173
+      }
+    },
+    {
+      "case": "syn",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "cachegrind",
+      "cycle": 0,
+      "order": 5,
+      "started": 1788697347.4488006,
+      "elapsed_ns": 49713455070,
+      "quiet_sample": {
+        "idle": 0.9662921348314607,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [
+          {
+            "pid": "106413",
+            "comm": "cachegrind-amd6"
+          }
+        ],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libsyn-d52ae8db1ead0d7d.rmeta",
+          "bytes": 1990426,
+          "sha256": "d329b910b18971966b757cb2d492f04af626237befac3238f3e3848a91d1fc5d"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/syn/libsyn-d52ae8db1ead0d7d.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "instructions": 3476834697,
+      "concurrent_pair": 1,
+      "command_reference": "baseline.syn",
+      "log_evidence": {
+        "sha256": "5411467616b7c4013eaf8538cdeeb26520c143adf691cdb3c9b728e3d9357eb3",
+        "bytes": 549411
+      },
+      "cachegrind_evidence": {
+        "sha256": "8c6671c480a7e06699d4b7522fdf4316984c4c3128067471285668a159fa7bdb",
+        "bytes": 24597082
+      }
+    },
+    {
+      "case": "ruff_python_ast",
+      "arm": "baseline",
+      "phase": "warmup",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 0,
+      "started": 1788697397.5796142,
+      "elapsed_ns": 4500168960,
+      "quiet_sample": {
+        "idle": 0.9433249370277078,
+        "iowait": 0.0025188916876574307,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_ast-cd1aabe252d96101.rmeta",
+          "bytes": 5255775,
+          "sha256": "9a807ffde887bb36fd9c4c8f252762566161c97db2286a2ff9b18def80c9e34b"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ruff_python_ast/libruff_python_ast-cd1aabe252d96101.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "4d111817bc129c42deaa9cb58da40fa8"
+          }
+        }
+      ],
+      "command_reference": "baseline.ruff_python_ast",
+      "log_evidence": {
+        "sha256": "14855961db27c78ea90aa24c6f7c1d5a92c8d114f90634069c882e26c4b99c62",
+        "bytes": 267
+      }
+    },
+    {
+      "case": "ruff_python_ast",
+      "arm": "sparse-metadata",
+      "phase": "warmup",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 1,
+      "started": 1788697402.3820152,
+      "elapsed_ns": 4332822283,
+      "quiet_sample": {
+        "idle": 0.9987484355444305,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_ast-cd1aabe252d96101.rmeta",
+          "bytes": 4041222,
+          "sha256": "fd71dd12d7c971ff499deb8c17aea543cef2a1abb87c5b8daed93cc337c68570"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ruff_python_ast/libruff_python_ast-cd1aabe252d96101.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "702461450e755f5dd9a887da40c9b445"
+          }
+        }
+      ],
+      "command_reference": "sparse-metadata.ruff_python_ast",
+      "log_evidence": {
+        "sha256": "7a80aacd772ecfa6651a97fad13926af0cd507e80c5b4b4ca503aa12cec33a6c",
+        "bytes": 274
+      }
+    },
+    {
+      "case": "ruff_python_ast",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "cachegrind",
+      "cycle": 0,
+      "order": 3,
+      "started": 1788697407.3174438,
+      "elapsed_ns": 96520193959,
+      "quiet_sample": {
+        "idle": 0.96625,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [
+          {
+            "pid": "107517",
+            "comm": "cachegrind-amd6"
+          }
+        ],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_ast-cd1aabe252d96101.rmeta",
+          "bytes": 4041222,
+          "sha256": "fd71dd12d7c971ff499deb8c17aea543cef2a1abb87c5b8daed93cc337c68570"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ruff_python_ast/libruff_python_ast-cd1aabe252d96101.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "702461450e755f5dd9a887da40c9b445"
+          }
+        }
+      ],
+      "instructions": 10754945781,
+      "concurrent_pair": 0,
+      "command_reference": "sparse-metadata.ruff_python_ast",
+      "log_evidence": {
+        "sha256": "543e289185d6442783caa89ad9460a203e10354a6a619260597113ca52ff17e0",
+        "bytes": 5551
+      },
+      "cachegrind_evidence": {
+        "sha256": "c0cb1e94786d4bece8346b570c53c0e87f4b49f62a3ee1468f4959630afc1216",
+        "bytes": 28226761
+      }
+    },
+    {
+      "case": "ruff_python_ast",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "cachegrind",
+      "cycle": 0,
+      "order": 2,
+      "started": 1788697407.0231183,
+      "elapsed_ns": 96992731574,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_ast-cd1aabe252d96101.rmeta",
+          "bytes": 5255775,
+          "sha256": "9a807ffde887bb36fd9c4c8f252762566161c97db2286a2ff9b18def80c9e34b"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ruff_python_ast/libruff_python_ast-cd1aabe252d96101.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "4d111817bc129c42deaa9cb58da40fa8"
+          }
+        }
+      ],
+      "instructions": 10747498071,
+      "concurrent_pair": 0,
+      "command_reference": "baseline.ruff_python_ast",
+      "log_evidence": {
+        "sha256": "53d08823095799b5f158fa30bd3c2dc0bada6239e2e4e3d8a74912e2547c1f12",
+        "bytes": 5418
+      },
+      "cachegrind_evidence": {
+        "sha256": "aaf0b6437c1762264160453c85ae1d6fd940b1b79cdb2d6834cbe2af6b209d69",
+        "bytes": 28161283
+      }
+    },
+    {
+      "case": "ruff_python_ast",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "cachegrind",
+      "cycle": 0,
+      "order": 5,
+      "started": 1788697504.8178015,
+      "elapsed_ns": 96893222390,
+      "quiet_sample": {
+        "idle": 0.968789013732834,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [
+          {
+            "pid": "108640",
+            "comm": "cachegrind-amd6"
+          }
+        ],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_ast-cd1aabe252d96101.rmeta",
+          "bytes": 5255775,
+          "sha256": "9a807ffde887bb36fd9c4c8f252762566161c97db2286a2ff9b18def80c9e34b"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ruff_python_ast/libruff_python_ast-cd1aabe252d96101.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "4d111817bc129c42deaa9cb58da40fa8"
+          }
+        }
+      ],
+      "instructions": 10747259796,
+      "concurrent_pair": 1,
+      "command_reference": "baseline.ruff_python_ast",
+      "log_evidence": {
+        "sha256": "485a4b79b7a598df5aaf6ba285cdd4c9485c75fd3601360777ab8e777798a3b4",
+        "bytes": 5418
+      },
+      "cachegrind_evidence": {
+        "sha256": "54b13e267eb817aebe7e069e5f815a2ec2b95e767b9e9f3f322bb361f83eaa7b",
+        "bytes": 28159251
+      }
+    },
+    {
+      "case": "ruff_python_ast",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "cachegrind",
+      "cycle": 0,
+      "order": 4,
+      "started": 1788697504.5096726,
+      "elapsed_ns": 97487013081,
+      "quiet_sample": {
+        "idle": 0.9975062344139651,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_ast-cd1aabe252d96101.rmeta",
+          "bytes": 4041222,
+          "sha256": "fd71dd12d7c971ff499deb8c17aea543cef2a1abb87c5b8daed93cc337c68570"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ruff_python_ast/libruff_python_ast-cd1aabe252d96101.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "702461450e755f5dd9a887da40c9b445"
+          }
+        }
+      ],
+      "instructions": 10754501904,
+      "concurrent_pair": 1,
+      "command_reference": "sparse-metadata.ruff_python_ast",
+      "log_evidence": {
+        "sha256": "05813c6bbe6373c5e89a78b69e9cc3a656e9d44a35ae1a21c3d0d9694177c537",
+        "bytes": 5551
+      },
+      "cachegrind_evidence": {
+        "sha256": "7950878df3c7677ea645590c51cb27e4950911e64f134539ad355598b41d1bdb",
+        "bytes": 28228217
+      }
+    },
+    {
+      "case": "ruff_python_parser",
+      "arm": "baseline",
+      "phase": "warmup",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 0,
+      "started": 1788697602.4639392,
+      "elapsed_ns": 1425097079,
+      "quiet_sample": {
+        "idle": 0.9975031210986267,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "bytes": 1271263,
+          "sha256": "10cabbf894f9bf67e8b4e5155d6f707f317e7e0635fd4ab24c7034bbd7915b1b"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ruff_python_parser/libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "af97e694cd1b6029cf396ea0c75f3a80"
+          }
+        }
+      ],
+      "command_reference": "baseline.ruff_python_parser",
+      "log_evidence": {
+        "sha256": "f48afda8969d549b6d936a2b0ed1d7a12d02d6aaf764ac8ed87fd57cf93ecb72",
+        "bytes": 273
+      }
+    },
+    {
+      "case": "ruff_python_parser",
+      "arm": "sparse-metadata",
+      "phase": "warmup",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 1,
+      "started": 1788697604.19964,
+      "elapsed_ns": 1109817972,
+      "quiet_sample": {
+        "idle": 0.9987531172069826,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "bytes": 997236,
+          "sha256": "8bf2ff6bd995e4a718839e784334039ee1b5d66987a22d181c9f1d7e0ceb2c82"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ruff_python_parser/libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "25c8fca4b45d25fad083c2e22fff72a9"
+          }
+        }
+      ],
+      "command_reference": "sparse-metadata.ruff_python_parser",
+      "log_evidence": {
+        "sha256": "08fcb0d9c25e3684d0d4c8fe9f93729b91837a207edb8c5336af436e48f2cca1",
+        "bytes": 280
+      }
+    },
+    {
+      "case": "ruff_python_parser",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "cachegrind",
+      "cycle": 0,
+      "order": 3,
+      "started": 1788697605.9104533,
+      "elapsed_ns": 47390908402,
+      "quiet_sample": {
+        "idle": 0.9612121212121212,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [
+          {
+            "pid": "108811",
+            "comm": "cachegrind-amd6"
+          }
+        ],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "bytes": 997236,
+          "sha256": "8bf2ff6bd995e4a718839e784334039ee1b5d66987a22d181c9f1d7e0ceb2c82"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ruff_python_parser/libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "25c8fca4b45d25fad083c2e22fff72a9"
+          }
+        }
+      ],
+      "instructions": 3021675547,
+      "concurrent_pair": 0,
+      "command_reference": "sparse-metadata.ruff_python_parser",
+      "log_evidence": {
+        "sha256": "15f3983722714c8132d970626b768145219e83d97be2ee04278ce579fe245c61",
+        "bytes": 5673
+      },
+      "cachegrind_evidence": {
+        "sha256": "9d87ee82aa595078a93d1a900c35cf8a236ce4a023d531f1b5fce8d64a58ee3b",
+        "bytes": 25604932
+      }
+    },
+    {
+      "case": "ruff_python_parser",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "cachegrind",
+      "cycle": 0,
+      "order": 2,
+      "started": 1788697605.6036565,
+      "elapsed_ns": 47916837400,
+      "quiet_sample": {
+        "idle": 0.9950124688279302,
+        "iowait": 0.004987531172069825,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "bytes": 1271263,
+          "sha256": "10cabbf894f9bf67e8b4e5155d6f707f317e7e0635fd4ab24c7034bbd7915b1b"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ruff_python_parser/libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "af97e694cd1b6029cf396ea0c75f3a80"
+          }
+        }
+      ],
+      "instructions": 3016965774,
+      "concurrent_pair": 0,
+      "command_reference": "baseline.ruff_python_parser",
+      "log_evidence": {
+        "sha256": "298e4833f983b47369b7c0fe58edce2c0a8fc04ecd9a44a0280ec76b285c06ca",
+        "bytes": 5533
+      },
+      "cachegrind_evidence": {
+        "sha256": "0190a372be22b54f1940b85495cd748a1389f268f273c9c7105f7fbf3130101d",
+        "bytes": 25530706
+      }
+    },
+    {
+      "case": "ruff_python_parser",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "cachegrind",
+      "cycle": 0,
+      "order": 4,
+      "started": 1788697653.9479,
+      "elapsed_ns": 47654770140,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "bytes": 997236,
+          "sha256": "8bf2ff6bd995e4a718839e784334039ee1b5d66987a22d181c9f1d7e0ceb2c82"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ruff_python_parser/libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "25c8fca4b45d25fad083c2e22fff72a9"
+          }
+        }
+      ],
+      "instructions": 3021794343,
+      "concurrent_pair": 1,
+      "command_reference": "sparse-metadata.ruff_python_parser",
+      "log_evidence": {
+        "sha256": "9565489188a103a4bd4eeb3fe36d799b95408521d7f3aa481a49bd05a49a2003",
+        "bytes": 5673
+      },
+      "cachegrind_evidence": {
+        "sha256": "d2dfd8329ee09ddfcbab3a5fc0479ee9ba54a9fc325c3fc6c099fb8a5bf8f40f",
+        "bytes": 25605397
+      }
+    },
+    {
+      "case": "ruff_python_parser",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "cachegrind",
+      "cycle": 0,
+      "order": 5,
+      "started": 1788697654.2768815,
+      "elapsed_ns": 47959722751,
+      "quiet_sample": {
+        "idle": 0.9634285714285714,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [
+          {
+            "pid": "108992",
+            "comm": "cachegrind-amd6"
+          }
+        ],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "bytes": 1271263,
+          "sha256": "10cabbf894f9bf67e8b4e5155d6f707f317e7e0635fd4ab24c7034bbd7915b1b"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ruff_python_parser/libruff_python_parser-355f5756bdf7d9bb.rmeta",
+          "emit": "metadata",
+          "public_api_hash": {
+            "version": 1,
+            "value": "af97e694cd1b6029cf396ea0c75f3a80"
+          }
+        }
+      ],
+      "instructions": 3017070146,
+      "concurrent_pair": 1,
+      "command_reference": "baseline.ruff_python_parser",
+      "log_evidence": {
+        "sha256": "f0a7375fff49b7389ca688151e2b398b981a04e4827a4568d34caaf82a791913",
+        "bytes": 5533
+      },
+      "cachegrind_evidence": {
+        "sha256": "756266e2e0f40a91139b16f46cad6c6b309115374293acc880750f89ea93fab9",
+        "bytes": 25533323
+      }
+    },
+    {
+      "case": "ty_python_semantic",
+      "arm": "baseline",
+      "phase": "warmup",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 0,
+      "started": 1788697702.6505272,
+      "elapsed_ns": 26163339517,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libty_python_semantic-22720a772b59c0f1.rmeta",
+          "bytes": 20604209,
+          "sha256": "1c83308057d5c005fba73438ff59bf74e9e9fcf9446b8a005edca2e2cdfe3d36"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ty_python_semantic/libty_python_semantic-22720a772b59c0f1.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "baseline.ty_python_semantic",
+      "log_evidence": {
+        "sha256": "ffeba78e85d847ec412a4126ff906e111638a7edc07ab5e6073e550c309ed334",
+        "bytes": 198
+      }
+    },
+    {
+      "case": "ty_python_semantic",
+      "arm": "sparse-metadata",
+      "phase": "warmup",
+      "instrumentation": "native",
+      "cycle": 0,
+      "order": 1,
+      "started": 1788697729.1251342,
+      "elapsed_ns": 25860148212,
+      "quiet_sample": {
+        "idle": 1.0,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libty_python_semantic-22720a772b59c0f1.rmeta",
+          "bytes": 12707903,
+          "sha256": "7569613bf93ce301783aa726e1baa2448e285225ec2171e4b1ec6dfb94f363d0"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ty_python_semantic/libty_python_semantic-22720a772b59c0f1.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "command_reference": "sparse-metadata.ty_python_semantic",
+      "log_evidence": {
+        "sha256": "fee39e33174a913ed337033966d9d8bf4dde3a2436db362005cbde0f2c0a3909",
+        "bytes": 205
+      }
+    },
+    {
+      "case": "ty_python_semantic",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "cachegrind",
+      "cycle": 0,
+      "order": 3,
+      "started": 1788697755.5988872,
+      "elapsed_ns": 390395000029,
+      "quiet_sample": {
+        "idle": 0.968789013732834,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [
+          {
+            "pid": "110130",
+            "comm": "cachegrind-amd6"
+          }
+        ],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libty_python_semantic-22720a772b59c0f1.rmeta",
+          "bytes": 12707903,
+          "sha256": "7569613bf93ce301783aa726e1baa2448e285225ec2171e4b1ec6dfb94f363d0"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ty_python_semantic/libty_python_semantic-22720a772b59c0f1.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "instructions": 58748977842,
+      "concurrent_pair": 0,
+      "command_reference": "sparse-metadata.ty_python_semantic",
+      "log_evidence": {
+        "sha256": "13981a77eda8d1e5c3d39ca4de95d13a39bc2c2a62d92b418b71800604de0e2d",
+        "bytes": 9120
+      },
+      "cachegrind_evidence": {
+        "sha256": "41bedfe3622a8bd8ff28e067a6f8889642dddb274022ebaa8adabdbc304b32ce",
+        "bytes": 32053377
+      }
+    },
+    {
+      "case": "ty_python_semantic",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "cachegrind",
+      "cycle": 0,
+      "order": 2,
+      "started": 1788697755.3016057,
+      "elapsed_ns": 390899897193,
+      "quiet_sample": {
+        "idle": 0.9987515605493134,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libty_python_semantic-22720a772b59c0f1.rmeta",
+          "bytes": 20604209,
+          "sha256": "1c83308057d5c005fba73438ff59bf74e9e9fcf9446b8a005edca2e2cdfe3d36"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ty_python_semantic/libty_python_semantic-22720a772b59c0f1.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "instructions": 58735524909,
+      "concurrent_pair": 0,
+      "command_reference": "baseline.ty_python_semantic",
+      "log_evidence": {
+        "sha256": "622dc9bbf79609be1ebf86259b7e6c0410c9d39f99cf0d300d098618ef170842",
+        "bytes": 8847
+      },
+      "cachegrind_evidence": {
+        "sha256": "e16db0820eec4832d4c787d19b90d0f33a5b114ffffd8c126e926c90357015e1",
+        "bytes": 31985684
+      }
+    },
+    {
+      "case": "ty_python_semantic",
+      "arm": "sparse-metadata",
+      "phase": "measured",
+      "instrumentation": "cachegrind",
+      "cycle": 0,
+      "order": 4,
+      "started": 1788698146.6627088,
+      "elapsed_ns": 389603122370,
+      "quiet_sample": {
+        "idle": 0.9409547738693468,
+        "iowait": 0.001256281407035176,
+        "steal": 0.0,
+        "other_build_processes": [],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libty_python_semantic-22720a772b59c0f1.rmeta",
+          "bytes": 12707903,
+          "sha256": "7569613bf93ce301783aa726e1baa2448e285225ec2171e4b1ec6dfb94f363d0"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/sparse-metadata/ty_python_semantic/libty_python_semantic-22720a772b59c0f1.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "instructions": 58748919994,
+      "concurrent_pair": 1,
+      "command_reference": "sparse-metadata.ty_python_semantic",
+      "log_evidence": {
+        "sha256": "3351163f88f1e5f81b4f45cb30c972b2ace161555bbc01c40a8bf3b8fd2ba7fb",
+        "bytes": 9120
+      },
+      "cachegrind_evidence": {
+        "sha256": "04effb0e2a9cdca2f862d334045a6d9f728ddd14f374bf7b6177296a57559849",
+        "bytes": 32052201
+      }
+    },
+    {
+      "case": "ty_python_semantic",
+      "arm": "baseline",
+      "phase": "measured",
+      "instrumentation": "cachegrind",
+      "cycle": 0,
+      "order": 5,
+      "started": 1788698146.96041,
+      "elapsed_ns": 390529078309,
+      "quiet_sample": {
+        "idle": 0.9084065244667503,
+        "iowait": 0.0,
+        "steal": 0.0,
+        "other_build_processes": [
+          {
+            "pid": "113760",
+            "comm": "cachegrind-amd6"
+          }
+        ],
+        "concurrent_instructions_allowed": true
+      },
+      "metadata": [
+        {
+          "path": "libty_python_semantic-22720a772b59c0f1.rmeta",
+          "bytes": 20604209,
+          "sha256": "1c83308057d5c005fba73438ff59bf74e9e9fcf9446b8a005edca2e2cdfe3d36"
+        }
+      ],
+      "artifact_notifications": [
+        {
+          "$message_type": "artifact",
+          "artifact": "/tmp/ohm-target-size-prototypes/shipping-sparse-metadata/outputs/baseline/ty_python_semantic/libty_python_semantic-22720a772b59c0f1.rmeta",
+          "emit": "metadata"
+        }
+      ],
+      "instructions": 58734652906,
+      "concurrent_pair": 1,
+      "command_reference": "baseline.ty_python_semantic",
+      "log_evidence": {
+        "sha256": "74465e738d0eff532087e44ac2a42c3b80dc2e758f713c46f4260d39a0f8ee92",
+        "bytes": 8847
+      },
+      "cachegrind_evidence": {
+        "sha256": "31f3b60cd129b5943d1df0720ab199e79acf4cf15248022efd5e9f57876b138e",
+        "bytes": 31985281
+      }
+    }
+  ]
+}
