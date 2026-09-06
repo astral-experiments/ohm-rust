@@ -45,3 +45,7 @@ Results remain under `sparse-metadata-bench/`: exact commands, preparation logs,
 ordered samples, raw Cachegrind files, and `summary.json`. Native elapsed time and
 Cachegrind `Ir` instructions are reported separately. The size metric is logical
 `.rmeta` bytes; it is not whole-target physical allocation or APFS clone accounting.
+
+Preparation can also run in separate calls with `prepare --arms baseline` and
+`prepare --arms sparse-metadata`. The manifest must match the same Cargo binary and
+source provenance; completed arms and partial arm directories cannot be overwritten.
