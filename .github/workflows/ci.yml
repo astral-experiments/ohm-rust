@@ -175,6 +175,13 @@ jobs:
           tests/incremental/hygiene tests/incremental/derive_macro_expansion
           tests/incremental/promote-cached-query-value.rs
           tests/incremental/forward-cached-query-value.rs
+          tests/incremental/forward-cached-query-value-cloned.rs
+
+      - name: Run cloned query-cache prefix unit tests
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1 compiler/rustc_incremental
+          --test-args persist::file_format::tests
 
       - name: Run retained allocation identity test
         run: >-
@@ -218,6 +225,7 @@ jobs:
             tests/run-make/test-harness-exact-filter
             tests/run-make/parallel-query-depth-limits
             tests/run-make/incremental-lint-visibilities
+            tests/run-make/incremental-cloned-query-cache
             tests/run-make/split-debuginfo-incremental
           )
           selected=()
