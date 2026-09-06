@@ -50,3 +50,6 @@ Cachegrind `Ir` instructions are reported separately. The size metric is logical
 Preparation can also run in separate calls with `prepare --arms baseline` and
 `prepare --arms sparse-metadata`. The manifest must match the same Cargo binary and
 source provenance; completed arms and partial arm directories cannot be overwritten.
+
+`prepare` finishes by validating source and command identities. The `finalize` phase
+can repeat those checks without rebuilding either captured dependency graph.
