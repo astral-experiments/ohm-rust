@@ -1,0 +1,258 @@
+{
+  "manifest": "provenance.json",
+  "cases": {
+    "syn": {
+      "native": {
+        "arms": {
+          "baseline": {
+            "values": [
+              1624181382,
+              1366564537,
+              1327458794,
+              1708469211
+            ],
+            "median": 1495372959.5,
+            "min": 1327458794,
+            "max": 1708469211,
+            "metadata_bytes": 1990426,
+            "public_api_hashes": []
+          },
+          "sparse-metadata": {
+            "values": [
+              1319249752,
+              1761406065,
+              1890265898,
+              1343705212
+            ],
+            "median": 1552555638.5,
+            "min": 1319249752,
+            "max": 1890265898,
+            "metadata_bytes": 1428551,
+            "public_api_hashes": []
+          }
+        },
+        "candidate_delta_percent": 3.823974389581042,
+        "metadata_delta_percent": -28.228881656489612,
+        "public_api_hashes_equal": null
+      },
+      "instructions": {
+        "arms": {
+          "baseline": {
+            "values": [
+              3476572019,
+              3476597079
+            ],
+            "median": 3476584549.0,
+            "min": 3476572019,
+            "max": 3476597079,
+            "metadata_bytes": 1990426,
+            "public_api_hashes": []
+          },
+          "sparse-metadata": {
+            "values": [
+              3479443913,
+              3479511717
+            ],
+            "median": 3479477815.0,
+            "min": 3479443913,
+            "max": 3479511717,
+            "metadata_bytes": 1428551,
+            "public_api_hashes": []
+          }
+        },
+        "candidate_delta_percent": 0.08322150545230222,
+        "metadata_delta_percent": -28.228881656489612,
+        "public_api_hashes_equal": null
+      }
+    },
+    "ruff_python_ast": {
+      "native": {
+        "arms": {
+          "baseline": {
+            "values": [
+              4301657426,
+              4379010252,
+              4301358283,
+              4185453391
+            ],
+            "median": 4301507854.5,
+            "min": 4185453391,
+            "max": 4379010252,
+            "metadata_bytes": 5255775,
+            "public_api_hashes": [
+              "15b58be6b36c666c1ef7a2f9d95841f1"
+            ]
+          },
+          "sparse-metadata": {
+            "values": [
+              4295424390,
+              4225189209,
+              4302614675,
+              4498936470
+            ],
+            "median": 4299019532.5,
+            "min": 4225189209,
+            "max": 4498936470,
+            "metadata_bytes": 4041222,
+            "public_api_hashes": [
+              "423b850f50895ad5a7fafba1477dbbc4"
+            ]
+          }
+        },
+        "candidate_delta_percent": -0.057847668402999375,
+        "metadata_delta_percent": -23.10892304179688,
+        "public_api_hashes_equal": false
+      },
+      "instructions": {
+        "arms": {
+          "baseline": {
+            "values": [
+              10746829210,
+              10746240073
+            ],
+            "median": 10746534641.5,
+            "min": 10746240073,
+            "max": 10746829210,
+            "metadata_bytes": 5255775,
+            "public_api_hashes": [
+              "15b58be6b36c666c1ef7a2f9d95841f1"
+            ]
+          },
+          "sparse-metadata": {
+            "values": [
+              10752234241,
+              10753767803
+            ],
+            "median": 10753001022.0,
+            "min": 10752234241,
+            "max": 10753767803,
+            "metadata_bytes": 4041222,
+            "public_api_hashes": [
+              "423b850f50895ad5a7fafba1477dbbc4"
+            ]
+          }
+        },
+        "candidate_delta_percent": 0.06017177365276183,
+        "metadata_delta_percent": -23.10892304179688,
+        "public_api_hashes_equal": false
+      }
+    },
+    "ruff_python_parser": {
+      "native": {
+        "arms": {
+          "baseline": {
+            "values": [
+              1503455707,
+              1438432479,
+              1427490091,
+              1130753471
+            ],
+            "median": 1432961285.0,
+            "min": 1130753471,
+            "max": 1503455707,
+            "metadata_bytes": 1271263,
+            "public_api_hashes": [
+              "168c598dc2bc54ac900a2a08af9fb9ab"
+            ]
+          },
+          "sparse-metadata": {
+            "values": [
+              1176359687,
+              1461625298,
+              1148641962,
+              1486607759
+            ],
+            "median": 1318992492.5,
+            "min": 1148641962,
+            "max": 1486607759,
+            "metadata_bytes": 997236,
+            "public_api_hashes": [
+              "bb0d00fcb7c9c6eb540f17c8e55d07a4"
+            ]
+          }
+        },
+        "candidate_delta_percent": -7.9533755512452675,
+        "metadata_delta_percent": -21.555492451207968,
+        "public_api_hashes_equal": false
+      },
+      "instructions": {
+        "arms": {
+          "baseline": {
+            "values": [
+              3017338037,
+              3017108622
+            ],
+            "median": 3017223329.5,
+            "min": 3017108622,
+            "max": 3017338037,
+            "metadata_bytes": 1271263,
+            "public_api_hashes": [
+              "168c598dc2bc54ac900a2a08af9fb9ab"
+            ]
+          },
+          "sparse-metadata": {
+            "values": [
+              3020595617,
+              3020377575
+            ],
+            "median": 3020486596.0,
+            "min": 3020377575,
+            "max": 3020595617,
+            "metadata_bytes": 997236,
+            "public_api_hashes": [
+              "bb0d00fcb7c9c6eb540f17c8e55d07a4"
+            ]
+          }
+        },
+        "candidate_delta_percent": 0.10815462243363161,
+        "metadata_delta_percent": -21.555492451207968,
+        "public_api_hashes_equal": false
+      }
+    },
+    "ty_python_semantic": {
+      "native": {
+        "arms": {
+          "baseline": {
+            "values": [
+              26699698560,
+              26205684783,
+              26115092054,
+              26193943229
+            ],
+            "median": 26199814006.0,
+            "min": 26115092054,
+            "max": 26699698560,
+            "metadata_bytes": 20604209,
+            "public_api_hashes": []
+          },
+          "sparse-metadata": {
+            "values": [
+              27125225127,
+              26847913860,
+              26215135025,
+              26450132384
+            ],
+            "median": 26649023122.0,
+            "min": 26215135025,
+            "max": 27125225127,
+            "metadata_bytes": 12707903,
+            "public_api_hashes": []
+          }
+        },
+        "candidate_delta_percent": 1.7145507822961203,
+        "metadata_delta_percent": -38.32375220033926,
+        "public_api_hashes_equal": null
+      }
+    }
+  },
+  "unchanged_sources": {
+    "syn": true,
+    "ruff": true
+  },
+  "limitations": [
+    "Leaf .rmeta logical bytes, not whole-target physical allocation or APFS clone accounting.",
+    "Compiler process instruction counts; no child-process instruction aggregation.",
+    "Nonincremental warm-page-cache checking; no clean-build or incremental latency claim.",
+    "Parser and ty combine dependency metadata reads with their own analysis and encoding."
+  ]
+}
