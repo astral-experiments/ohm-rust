@@ -78,11 +78,19 @@ arm has separate dependency, output, log, and profile paths. Only the coordinato
 writes `samples.json`. This mode reduces the cost of instruction counting for ty;
 it cannot be used for native latency measurements.
 
-After both arms are prepared, `storage` performs separate, nonincremental dev
+Instruction-phase warmups invoke the native compiler, without Cachegrind. Every
+measured instruction sample starts a fresh Cachegrind process; its counts do not
+depend on instrumentation from previous processes. The evidence records both
+warmup and measured instrumentation explicitly.
+
+After both arms are prepared, `storage` performs separate, incremental dev
 builds of syn and `ty_python_semantic`, including their dependencies. These builds
 are untimed preparation and must run outside a native measurement window. The
 phase records every target entry and groups standalone `.rmeta`, `.rlib`, and
-other files. Apparent bytes count every pathname, unique bytes count each inode
+other files, plus a separate subtotal for incremental caches. It explicitly sets
+`CARGO_INCREMENTAL=1` and uses new `incremental-dev-storage/` target directories;
+receipts are under `storage/incremental-dev/`. Apparent bytes count every pathname,
+unique bytes count each inode
 once, and allocated bytes sum `st_blocks * 512` once per inode, including
 directories. Symlinks are counted without following them. The result covers these
 complete dev target directories, excluding the compiler/sysroot and Cargo source
