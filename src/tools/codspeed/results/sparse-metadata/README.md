@@ -124,7 +124,10 @@ contents. It retains preparation logs, exact invocation manifests, native and
 Cachegrind samples and logs, build status receipts, and source/runtime validation
 logs. Decode it with Python's `gzip` and `json` standard-library modules.
 
-The original per-source-line Cachegrind profiles remain on the retained experiment
-disk and are excluded from this compact bundle. Their SHA-256 hashes and sizes are
-in `samples.json`; each compiler's raw `Ir` total is retained in its Valgrind log.
-The bundle hash is recorded in `provenance.json`.
+The original per-source-line Cachegrind profiles were excluded from this compact
+bundle and were lost when the VM reboot cleared its temporary directory. Their
+SHA-256 hashes and sizes remain in `samples.json`; each compiler's raw `Ir` total
+is retained in the exported Valgrind log. The summaries and raw counter receipts
+remain available, while those full profiles cannot be retrieved. The bundle hash
+is recorded in `provenance.json`. Later shipping measurements use persistent,
+home-backed storage for both compiler artifacts and full profiles.
