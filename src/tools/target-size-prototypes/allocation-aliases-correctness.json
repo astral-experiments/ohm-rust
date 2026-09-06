@@ -1,0 +1,1753 @@
+{
+  "candidate": {
+    "compiler": {
+      "version": "rustc 1.98.0-dev (6f2f6c32a1e 2026-09-05) (built from a source tarball)\nbinary: rustc\ncommit-hash: 6f2f6c32a1ead559af7253e9ea8560cc890a32e9\ncommit-date: 2026-09-05\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.0-dev\nLLVM version: 22.1.8\n",
+      "sha256": "40523269ddc9d15974eb9a86ca620a2a3f4253900341ce74c3e4bce4433be0c3",
+      "revision": "6f2f6c32a1ead559af7253e9ea8560cc890a32e9",
+      "patch_sha256": "1fc6bf9ddc9879188e31bbb7f5d7e75e47f4e4c1b98bd7cc0fbd3f426934cad6",
+      "library_sha256": {
+        "lib/librustc_driver-1dd8e7556cfc3c51.so": "eb8feb5d855b4670af574059f92dab6a5a8da0eae88ccef6c8a07dc61eeb3d46",
+        "lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-e855770556130410.rlib": "b3ba2de18e942dd74b3cfbd9d524d86b4ec7cf99fc47cf7b72f614d9c33ddfda"
+      }
+    },
+    "build": {
+      "name": "allocation-aliases",
+      "revision": "6f2f6c32a1ead559af7253e9ea8560cc890a32e9",
+      "requested_revision": "6f2f6c32a1ead559af7253e9ea8560cc890a32e9",
+      "source": "/tmp/ohm-target-size-prototypes/sources/allocation-aliases",
+      "build": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/allocation-aliases",
+      "config": "change-id = \"ignore\"\n[build]\nbuild-dir = \"/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/allocation-aliases\"\nrustc = \"/tmp/ohm-target-size-prototypes/toolchain/bin/rustc\"\ncargo = \"/tmp/ohm-target-size-prototypes/toolchain/bin/cargo\"\njobs = 24\ndocs = false\nlocked-deps = true\nsubmodules = false\n[llvm]\ndownload-ci-llvm = false\nlink-shared = true\n[rust]\nllvm-tools = false\nchannel = \"dev\"\ndownload-rustc = false\noptimize = 3\ndebug-assertions = false\ndebug-logging = false\nincremental = false\ndebuginfo-level = 1\ncodegen-units = 16\ncodegen-units-std = 1\nlto = \"thin-local\"\njemalloc = false\nmimalloc = true\nomit-git-hash = false\n[target.x86_64-unknown-linux-gnu]\nllvm-config = \"/tmp/ohm-target-size-prototypes/llvm/bin/llvm-config\"\n",
+      "started": 1788662224.348395,
+      "patch_sha256": "1fc6bf9ddc9879188e31bbb7f5d7e75e47f4e4c1b98bd7cc0fbd3f426934cad6",
+      "returncode": 0,
+      "finished": 1788662461.0718243
+    },
+    "bootstrap_environment": {
+      "__CARGO_OHM_DEFAULTS": "no",
+      "LD_LIBRARY_PATH": "/tmp/ohm-target-size-prototypes/llvm/lib"
+    },
+    "notes": [
+      "Correctness checks ran while independent compiler variants built; their wall times are excluded from performance claims."
+    ],
+    "real_workloads": [
+      {
+        "fixture": "syn-2.0.101",
+        "profile": "check",
+        "revisions_passed": 7,
+        "verification": true,
+        "command": [
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/allocation-aliases/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+          "-Zpublic-api-hash",
+          "-Zcache-proc-macros",
+          "-Zthreads=8",
+          "-Zpublic-api-hash=no",
+          "-Zremap-cwd-prefix=/ohm-workspace/v6",
+          "--crate-name",
+          "syn",
+          "--edition=2021",
+          "src/lib.rs",
+          "--error-format=json",
+          "--json=diagnostic-rendered-ansi,artifacts,future-incompat",
+          "--crate-type",
+          "lib",
+          "--emit=dep-info,metadata",
+          "-C",
+          "embed-bitcode=no",
+          "-C",
+          "debuginfo=2",
+          "--cfg",
+          "feature=\"clone-impls\"",
+          "--cfg",
+          "feature=\"default\"",
+          "--cfg",
+          "feature=\"derive\"",
+          "--cfg",
+          "feature=\"parsing\"",
+          "--cfg",
+          "feature=\"printing\"",
+          "--cfg",
+          "feature=\"proc-macro\"",
+          "--check-cfg",
+          "cfg(docsrs,test)",
+          "--check-cfg",
+          "cfg(feature, values(\"clone-impls\", \"default\", \"derive\", \"extra-traits\", \"fold\", \"full\", \"parsing\", \"printing\", \"proc-macro\", \"test\", \"visit\", \"visit-mut\"))",
+          "-C",
+          "metadata=0cfb53be173b606c",
+          "-C",
+          "extra-filename=-9f474aaee33e941c",
+          "--out-dir",
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/syn-2.0.101-check/debug/deps",
+          "-L",
+          "dependency=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/syn-2.0.101-check/debug/deps",
+          "--extern",
+          "proc_macro2=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/syn-2.0.101-check/debug/deps/libproc_macro2-418765a0fc3c8349.rmeta",
+          "--extern",
+          "quote=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/syn-2.0.101-check/debug/deps/libquote-06362af6b8a26788.rmeta",
+          "--extern",
+          "unicode_ident=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/syn-2.0.101-check/debug/deps/libunicode_ident-57900181e50e6ddb.rmeta",
+          "-Zthreads=1",
+          "-Z",
+          "checksum-hash-algorithm=blake3",
+          "-C",
+          "incremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/syn-2.0.101-check/measured-incremental",
+          "-Zincremental-verify-ich"
+        ],
+        "receipt_sha256": "6bdff72ee7dcd21bf364f5f2c48dcf192ff9da3c485b3f2001e705ef1b509732",
+        "harness_sha256": "1a4e1e00b6887acbc593b32d69d9b522ca1bfaf430bb1c3c8ad811ebd3d71315"
+      },
+      {
+        "fixture": "syn-2.0.101",
+        "profile": "dev",
+        "revisions_passed": 7,
+        "verification": true,
+        "command": [
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/allocation-aliases/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+          "-Zpublic-api-hash",
+          "-Zcache-proc-macros",
+          "-Zthreads=8",
+          "-Zremap-cwd-prefix=/ohm-workspace/v6",
+          "--crate-name",
+          "syn",
+          "--edition=2021",
+          "src/lib.rs",
+          "--error-format=json",
+          "--json=diagnostic-rendered-ansi,artifacts,future-incompat",
+          "--crate-type",
+          "lib",
+          "--emit=dep-info,metadata,link",
+          "-C",
+          "embed-bitcode=no",
+          "-C",
+          "debuginfo=2",
+          "--cfg",
+          "feature=\"clone-impls\"",
+          "--cfg",
+          "feature=\"default\"",
+          "--cfg",
+          "feature=\"derive\"",
+          "--cfg",
+          "feature=\"parsing\"",
+          "--cfg",
+          "feature=\"printing\"",
+          "--cfg",
+          "feature=\"proc-macro\"",
+          "--check-cfg",
+          "cfg(docsrs,test)",
+          "--check-cfg",
+          "cfg(feature, values(\"clone-impls\", \"default\", \"derive\", \"extra-traits\", \"fold\", \"full\", \"parsing\", \"printing\", \"proc-macro\", \"test\", \"visit\", \"visit-mut\"))",
+          "-C",
+          "metadata=f250be86c5a33f2b",
+          "-C",
+          "extra-filename=-1c81373051127c6b",
+          "--out-dir",
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/syn-2.0.101-dev/debug/deps",
+          "-L",
+          "dependency=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/syn-2.0.101-dev/debug/deps",
+          "--extern",
+          "proc_macro2=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/syn-2.0.101-dev/debug/deps/libproc_macro2-11da13e37bd316e7.rmeta",
+          "--extern",
+          "quote=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/syn-2.0.101-dev/debug/deps/libquote-1cd68f4e8929ec68.rmeta",
+          "--extern",
+          "unicode_ident=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/syn-2.0.101-dev/debug/deps/libunicode_ident-0270b59d088b30c0.rmeta",
+          "-Zthreads=1",
+          "-Z",
+          "checksum-hash-algorithm=blake3",
+          "-C",
+          "incremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/syn-2.0.101-dev/measured-incremental",
+          "-Zincremental-verify-ich"
+        ],
+        "receipt_sha256": "802628536abe4f53fbb0663cc79e4e56e1e28dc15ae6c72452f4ad02f737e24e",
+        "harness_sha256": "1a4e1e00b6887acbc593b32d69d9b522ca1bfaf430bb1c3c8ad811ebd3d71315"
+      },
+      {
+        "fixture": "regex-automata-0.4.8",
+        "profile": "check",
+        "revisions_passed": 7,
+        "verification": true,
+        "command": [
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/allocation-aliases/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+          "-Zpublic-api-hash",
+          "-Zcache-proc-macros",
+          "-Zthreads=8",
+          "-Zpublic-api-hash=no",
+          "-Zremap-cwd-prefix=/ohm-workspace/v6",
+          "--crate-name",
+          "regex_automata",
+          "--edition=2021",
+          "src/lib.rs",
+          "--error-format=json",
+          "--json=diagnostic-rendered-ansi,artifacts,future-incompat",
+          "--crate-type",
+          "lib",
+          "--emit=dep-info,metadata",
+          "-C",
+          "embed-bitcode=no",
+          "-C",
+          "debuginfo=2",
+          "--cfg",
+          "feature=\"alloc\"",
+          "--cfg",
+          "feature=\"default\"",
+          "--cfg",
+          "feature=\"dfa\"",
+          "--cfg",
+          "feature=\"dfa-build\"",
+          "--cfg",
+          "feature=\"dfa-onepass\"",
+          "--cfg",
+          "feature=\"dfa-search\"",
+          "--cfg",
+          "feature=\"hybrid\"",
+          "--cfg",
+          "feature=\"meta\"",
+          "--cfg",
+          "feature=\"nfa\"",
+          "--cfg",
+          "feature=\"nfa-backtrack\"",
+          "--cfg",
+          "feature=\"nfa-pikevm\"",
+          "--cfg",
+          "feature=\"nfa-thompson\"",
+          "--cfg",
+          "feature=\"perf\"",
+          "--cfg",
+          "feature=\"perf-inline\"",
+          "--cfg",
+          "feature=\"perf-literal\"",
+          "--cfg",
+          "feature=\"perf-literal-multisubstring\"",
+          "--cfg",
+          "feature=\"perf-literal-substring\"",
+          "--cfg",
+          "feature=\"std\"",
+          "--cfg",
+          "feature=\"syntax\"",
+          "--cfg",
+          "feature=\"unicode\"",
+          "--cfg",
+          "feature=\"unicode-age\"",
+          "--cfg",
+          "feature=\"unicode-bool\"",
+          "--cfg",
+          "feature=\"unicode-case\"",
+          "--cfg",
+          "feature=\"unicode-gencat\"",
+          "--cfg",
+          "feature=\"unicode-perl\"",
+          "--cfg",
+          "feature=\"unicode-script\"",
+          "--cfg",
+          "feature=\"unicode-segment\"",
+          "--cfg",
+          "feature=\"unicode-word-boundary\"",
+          "--check-cfg",
+          "cfg(docsrs,test)",
+          "--check-cfg",
+          "cfg(feature, values(\"alloc\", \"default\", \"dfa\", \"dfa-build\", \"dfa-onepass\", \"dfa-search\", \"hybrid\", \"internal-instrument\", \"internal-instrument-pikevm\", \"logging\", \"meta\", \"nfa\", \"nfa-backtrack\", \"nfa-pikevm\", \"nfa-thompson\", \"perf\", \"perf-inline\", \"perf-literal\", \"perf-literal-multisubstring\", \"perf-literal-substring\", \"std\", \"syntax\", \"unicode\", \"unicode-age\", \"unicode-bool\", \"unicode-case\", \"unicode-gencat\", \"unicode-perl\", \"unicode-script\", \"unicode-segment\", \"unicode-word-boundary\"))",
+          "-C",
+          "metadata=5c44a95a90b0f0f7",
+          "-C",
+          "extra-filename=-bf10d7b9fb1c81c2",
+          "--out-dir",
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/regex-automata-0.4.8-check/debug/deps",
+          "-L",
+          "dependency=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/regex-automata-0.4.8-check/debug/deps",
+          "--extern",
+          "aho_corasick=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/regex-automata-0.4.8-check/debug/deps/libaho_corasick-8118e5289cbe865d.rmeta",
+          "--extern",
+          "memchr=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/regex-automata-0.4.8-check/debug/deps/libmemchr-8c4c5a85fbd8e508.rmeta",
+          "--extern",
+          "regex_syntax=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/regex-automata-0.4.8-check/debug/deps/libregex_syntax-51407f204c8f8a49.rmeta",
+          "-Zthreads=1",
+          "-Z",
+          "checksum-hash-algorithm=blake3",
+          "-C",
+          "incremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/regex-automata-0.4.8-check/measured-incremental",
+          "-Zincremental-verify-ich"
+        ],
+        "receipt_sha256": "45c30b3a15ae4fbb003ca1b9f50087cc826efe41da81120cdb2ae99eb60808cb",
+        "harness_sha256": "1a4e1e00b6887acbc593b32d69d9b522ca1bfaf430bb1c3c8ad811ebd3d71315"
+      },
+      {
+        "fixture": "regex-automata-0.4.8",
+        "profile": "dev",
+        "revisions_passed": 7,
+        "verification": true,
+        "command": [
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/allocation-aliases/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+          "-Zpublic-api-hash",
+          "-Zcache-proc-macros",
+          "-Zthreads=8",
+          "-Zremap-cwd-prefix=/ohm-workspace/v6",
+          "--crate-name",
+          "regex_automata",
+          "--edition=2021",
+          "src/lib.rs",
+          "--error-format=json",
+          "--json=diagnostic-rendered-ansi,artifacts,future-incompat",
+          "--crate-type",
+          "lib",
+          "--emit=dep-info,metadata,link",
+          "-C",
+          "embed-bitcode=no",
+          "-C",
+          "debuginfo=2",
+          "--cfg",
+          "feature=\"alloc\"",
+          "--cfg",
+          "feature=\"default\"",
+          "--cfg",
+          "feature=\"dfa\"",
+          "--cfg",
+          "feature=\"dfa-build\"",
+          "--cfg",
+          "feature=\"dfa-onepass\"",
+          "--cfg",
+          "feature=\"dfa-search\"",
+          "--cfg",
+          "feature=\"hybrid\"",
+          "--cfg",
+          "feature=\"meta\"",
+          "--cfg",
+          "feature=\"nfa\"",
+          "--cfg",
+          "feature=\"nfa-backtrack\"",
+          "--cfg",
+          "feature=\"nfa-pikevm\"",
+          "--cfg",
+          "feature=\"nfa-thompson\"",
+          "--cfg",
+          "feature=\"perf\"",
+          "--cfg",
+          "feature=\"perf-inline\"",
+          "--cfg",
+          "feature=\"perf-literal\"",
+          "--cfg",
+          "feature=\"perf-literal-multisubstring\"",
+          "--cfg",
+          "feature=\"perf-literal-substring\"",
+          "--cfg",
+          "feature=\"std\"",
+          "--cfg",
+          "feature=\"syntax\"",
+          "--cfg",
+          "feature=\"unicode\"",
+          "--cfg",
+          "feature=\"unicode-age\"",
+          "--cfg",
+          "feature=\"unicode-bool\"",
+          "--cfg",
+          "feature=\"unicode-case\"",
+          "--cfg",
+          "feature=\"unicode-gencat\"",
+          "--cfg",
+          "feature=\"unicode-perl\"",
+          "--cfg",
+          "feature=\"unicode-script\"",
+          "--cfg",
+          "feature=\"unicode-segment\"",
+          "--cfg",
+          "feature=\"unicode-word-boundary\"",
+          "--check-cfg",
+          "cfg(docsrs,test)",
+          "--check-cfg",
+          "cfg(feature, values(\"alloc\", \"default\", \"dfa\", \"dfa-build\", \"dfa-onepass\", \"dfa-search\", \"hybrid\", \"internal-instrument\", \"internal-instrument-pikevm\", \"logging\", \"meta\", \"nfa\", \"nfa-backtrack\", \"nfa-pikevm\", \"nfa-thompson\", \"perf\", \"perf-inline\", \"perf-literal\", \"perf-literal-multisubstring\", \"perf-literal-substring\", \"std\", \"syntax\", \"unicode\", \"unicode-age\", \"unicode-bool\", \"unicode-case\", \"unicode-gencat\", \"unicode-perl\", \"unicode-script\", \"unicode-segment\", \"unicode-word-boundary\"))",
+          "-C",
+          "metadata=411103fc9ff06b85",
+          "-C",
+          "extra-filename=-4b4b0d26667cea2d",
+          "--out-dir",
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/regex-automata-0.4.8-dev/debug/deps",
+          "-L",
+          "dependency=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/regex-automata-0.4.8-dev/debug/deps",
+          "--extern",
+          "aho_corasick=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/regex-automata-0.4.8-dev/debug/deps/libaho_corasick-4ea4799b10c1768d.rmeta",
+          "--extern",
+          "memchr=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/regex-automata-0.4.8-dev/debug/deps/libmemchr-9da9a36a6f9a42f3.rmeta",
+          "--extern",
+          "regex_syntax=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/regex-automata-0.4.8-dev/debug/deps/libregex_syntax-0e254bede376e106.rmeta",
+          "-Zthreads=1",
+          "-Z",
+          "checksum-hash-algorithm=blake3",
+          "-C",
+          "incremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/02/regex-automata-0.4.8-dev/measured-incremental",
+          "-Zincremental-verify-ich"
+        ],
+        "receipt_sha256": "9e2e45fe4531569199b82c945ea2c8505f03268e24e59c650d23e2d183275c31",
+        "harness_sha256": "1a4e1e00b6887acbc593b32d69d9b522ca1bfaf430bb1c3c8ad811ebd3d71315"
+      }
+    ],
+    "regressions": [
+      {
+        "name": "forward-allocation-payload.rs",
+        "revision": 1,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": 0,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 32635,
+            "physical": 32768,
+            "files": 1
+          },
+          ".o": {
+            "logical": 26016,
+            "physical": 28672,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 167075,
+            "physical": 167936,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "16b67976f32940529fde84cabf4c652ca2b73742517f19b412e2e4eb97aa45ef"
+      },
+      {
+        "name": "forward-allocation-payload.rs",
+        "revision": 2,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": 4,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 75477,
+            "physical": 77824,
+            "files": 1
+          },
+          ".o": {
+            "logical": 26376,
+            "physical": 28672,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 173114,
+            "physical": 176128,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "70f5f17c3f5e30bae910de486629f7bc9ec64dc2dbb7792e3cc4df28695851f9"
+      },
+      {
+        "name": "forward-allocation-payload.rs",
+        "revision": 3,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": 4,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 118314,
+            "physical": 118784,
+            "files": 1
+          },
+          ".o": {
+            "logical": 26376,
+            "physical": 28672,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 173114,
+            "physical": 176128,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "70f5f17c3f5e30bae910de486629f7bc9ec64dc2dbb7792e3cc4df28695851f9"
+      },
+      {
+        "name": "forward-allocation-payload.rs",
+        "revision": 4,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": 0,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 52771,
+            "physical": 53248,
+            "files": 1
+          },
+          ".o": {
+            "logical": 26376,
+            "physical": 28672,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 173041,
+            "physical": 176128,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "9ff36781ecd1b23ec2d6207a8d97773e11a8b1031715bfb7d0041ca452a19b2e"
+      },
+      {
+        "name": "forward-allocation-payload.rs",
+        "revision": 5,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": 4,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 95608,
+            "physical": 98304,
+            "files": 1
+          },
+          ".o": {
+            "logical": 26376,
+            "physical": 28672,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 173114,
+            "physical": 176128,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "70f5f17c3f5e30bae910de486629f7bc9ec64dc2dbb7792e3cc4df28695851f9"
+      },
+      {
+        "name": "forward-allocation-payload.rs",
+        "revision": 6,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": 4,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 138445,
+            "physical": 139264,
+            "files": 1
+          },
+          ".o": {
+            "logical": 26376,
+            "physical": 28672,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 173114,
+            "physical": 176128,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "70f5f17c3f5e30bae910de486629f7bc9ec64dc2dbb7792e3cc4df28695851f9"
+      },
+      {
+        "name": "forward-allocation-payload.rs",
+        "revision": 7,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": 0,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 52771,
+            "physical": 53248,
+            "files": 1
+          },
+          ".o": {
+            "logical": 26376,
+            "physical": 28672,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 173114,
+            "physical": 176128,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "9ff36781ecd1b23ec2d6207a8d97773e11a8b1031715bfb7d0041ca452a19b2e"
+      },
+      {
+        "name": "forward-cached-query-value.rs",
+        "revision": 1,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": 0,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 11745,
+            "physical": 12288,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 108294,
+            "physical": 110592,
+            "files": 1
+          },
+          ".o": {
+            "logical": 9240,
+            "physical": 12288,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "929bc79604f69d05e21f8f97e394ebe9dc4f3c25b4aba306a8451e8b9e607cf3"
+      },
+      {
+        "name": "forward-cached-query-value.rs",
+        "revision": 2,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": 0,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 32421,
+            "physical": 32768,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 108326,
+            "physical": 110592,
+            "files": 1
+          },
+          ".o": {
+            "logical": 9240,
+            "physical": 12288,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "09b3e9d28348e16e52fc47b746687ab36e347c668144a8490e65b6ab520e97e2"
+      },
+      {
+        "name": "forward-cached-query-value.rs",
+        "revision": 3,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": 0,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 53176,
+            "physical": 53248,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 108326,
+            "physical": 110592,
+            "files": 1
+          },
+          ".o": {
+            "logical": 9240,
+            "physical": 12288,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "09b3e9d28348e16e52fc47b746687ab36e347c668144a8490e65b6ab520e97e2"
+      },
+      {
+        "name": "forward-cached-query-value.rs",
+        "revision": 4,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": 0,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 27779,
+            "physical": 28672,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 115392,
+            "physical": 118784,
+            "files": 1
+          },
+          ".o": {
+            "logical": 9704,
+            "physical": 12288,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "6795f443141986f10063d9f6cffeb7be4f6c7c4386a87b9c8654fbccf459066d"
+      },
+      {
+        "name": "forward-cached-query-value.rs",
+        "revision": 5,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": 0,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 48534,
+            "physical": 49152,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 113115,
+            "physical": 114688,
+            "files": 1
+          },
+          ".o": {
+            "logical": 9704,
+            "physical": 12288,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "89ec89948e010f3d5e8c51befa6c87d69fb361fa6412c56265b526680a0f0106"
+      },
+      {
+        "name": "forward-cached-query-value.rs",
+        "revision": 6,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": 0,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 69289,
+            "physical": 69632,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 113115,
+            "physical": 114688,
+            "files": 1
+          },
+          ".o": {
+            "logical": 9704,
+            "physical": 12288,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "89ec89948e010f3d5e8c51befa6c87d69fb361fa6412c56265b526680a0f0106"
+      },
+      {
+        "name": "forward-cached-query-value.rs",
+        "revision": 7,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": 0,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 27779,
+            "physical": 28672,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 115614,
+            "physical": 118784,
+            "files": 1
+          },
+          ".o": {
+            "logical": 9704,
+            "physical": 12288,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "84c4688d9ae01ddfe03a517a58043d8a67bf6bb59c6ce380609c9894dd87e633"
+      }
+    ],
+    "regression_receipt_sha256": "ea8b844b5a4a8a1ac0870bb44d2a8e96d9ef2d13ba6ea9d514bcb9b55becfd3b",
+    "unit_test": {
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 598.24\u00b5s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 76 filtered out; finished in 53.65\u00b5s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 26 filtered out; finished in 1.72ms"
+      ],
+      "log_sha256": "3c582e35a99a2dcccd153fa338e5a6a62360c579267c7b127d8bae700f842c6b"
+    }
+  },
+  "baseline": {
+    "compiler": {
+      "version": "rustc 1.98.0-dev (d37229159e5 2026-09-05) (built from a source tarball)\nbinary: rustc\ncommit-hash: d37229159e545bbdec917dd7efdf5d26da40d2bc\ncommit-date: 2026-09-05\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.0-dev\nLLVM version: 22.1.8\n",
+      "sha256": "faf39b0eabc906cc419f8d7cf1cd2d02d9b9ebadcb32c097afae2ff0dac22250",
+      "revision": "d37229159e545bbdec917dd7efdf5d26da40d2bc",
+      "patch_sha256": null,
+      "library_sha256": {
+        "lib/librustc_driver-1dd8e7556cfc3c51.so": "d57c4b6fa406c8c62f1c5bbbd3b03dee449d5be02c9206913dd50d994daaae4b",
+        "lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-e855770556130410.rlib": "c9eeeca560543096d75d73e8ee927dedcd21d3e33f95a337941910155c634442"
+      }
+    },
+    "build": {
+      "name": "baseline",
+      "revision": "d37229159e545bbdec917dd7efdf5d26da40d2bc",
+      "source": "/tmp/ohm-target-size-prototypes/sources/baseline",
+      "build": "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/baseline",
+      "config": "change-id = \"ignore\"\n[build]\nbuild-dir = \"/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/baseline\"\nrustc = \"/tmp/ohm-target-size-prototypes/toolchain/bin/rustc\"\ncargo = \"/tmp/ohm-target-size-prototypes/toolchain/bin/cargo\"\njobs = 24\ndocs = false\nlocked-deps = true\nsubmodules = false\n[llvm]\ndownload-ci-llvm = false\nlink-shared = true\n[rust]\nllvm-tools = false\nchannel = \"dev\"\ndownload-rustc = false\noptimize = 3\ndebug-assertions = false\ndebug-logging = false\nincremental = false\ndebuginfo-level = 1\ncodegen-units = 16\ncodegen-units-std = 1\nlto = \"thin-local\"\njemalloc = false\nmimalloc = true\nomit-git-hash = false\n[target.x86_64-unknown-linux-gnu]\nllvm-config = \"/tmp/ohm-target-size-prototypes/llvm/bin/llvm-config\"\n",
+      "started": 1788661873.8157868,
+      "patch_sha256": null,
+      "returncode": 0,
+      "finished": 1788661978.570489
+    },
+    "bootstrap_environment": {
+      "__CARGO_OHM_DEFAULTS": "no",
+      "LD_LIBRARY_PATH": "/tmp/ohm-target-size-prototypes/llvm/lib"
+    },
+    "notes": [
+      "Correctness checks ran while independent compiler variants built; their wall times are excluded from performance claims."
+    ],
+    "real_workloads": [
+      {
+        "fixture": "syn-2.0.101",
+        "profile": "check",
+        "revisions_passed": 7,
+        "verification": true,
+        "command": [
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/baseline/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+          "-Zpublic-api-hash",
+          "-Zcache-proc-macros",
+          "-Zthreads=8",
+          "-Zpublic-api-hash=no",
+          "-Zremap-cwd-prefix=/ohm-workspace/v6",
+          "--crate-name",
+          "syn",
+          "--edition=2021",
+          "src/lib.rs",
+          "--error-format=json",
+          "--json=diagnostic-rendered-ansi,artifacts,future-incompat",
+          "--crate-type",
+          "lib",
+          "--emit=dep-info,metadata",
+          "-C",
+          "embed-bitcode=no",
+          "-C",
+          "debuginfo=2",
+          "--cfg",
+          "feature=\"clone-impls\"",
+          "--cfg",
+          "feature=\"default\"",
+          "--cfg",
+          "feature=\"derive\"",
+          "--cfg",
+          "feature=\"parsing\"",
+          "--cfg",
+          "feature=\"printing\"",
+          "--cfg",
+          "feature=\"proc-macro\"",
+          "--check-cfg",
+          "cfg(docsrs,test)",
+          "--check-cfg",
+          "cfg(feature, values(\"clone-impls\", \"default\", \"derive\", \"extra-traits\", \"fold\", \"full\", \"parsing\", \"printing\", \"proc-macro\", \"test\", \"visit\", \"visit-mut\"))",
+          "-C",
+          "metadata=0cfb53be173b606c",
+          "-C",
+          "extra-filename=-c793c610bedd8b0b",
+          "--out-dir",
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/syn-2.0.101-check/debug/deps",
+          "-L",
+          "dependency=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/syn-2.0.101-check/debug/deps",
+          "--extern",
+          "proc_macro2=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/syn-2.0.101-check/debug/deps/libproc_macro2-418765a0fc3c8349.rmeta",
+          "--extern",
+          "quote=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/syn-2.0.101-check/debug/deps/libquote-06362af6b8a26788.rmeta",
+          "--extern",
+          "unicode_ident=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/syn-2.0.101-check/debug/deps/libunicode_ident-57900181e50e6ddb.rmeta",
+          "-Zthreads=1",
+          "-Z",
+          "checksum-hash-algorithm=blake3",
+          "-C",
+          "incremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/syn-2.0.101-check/measured-incremental",
+          "-Zincremental-verify-ich"
+        ],
+        "receipt_sha256": "610712ae444b93ba5a1fd25d582031768a8d5e834672509f0afe1678beae5581",
+        "harness_sha256": "fe2745a1f042ca9320d4edf5c91d27f81ef7c5bf8fe3eb92df354e25c3dc6e16"
+      },
+      {
+        "fixture": "syn-2.0.101",
+        "profile": "dev",
+        "revisions_passed": 7,
+        "verification": true,
+        "command": [
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/baseline/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+          "-Zpublic-api-hash",
+          "-Zcache-proc-macros",
+          "-Zthreads=8",
+          "-Zremap-cwd-prefix=/ohm-workspace/v6",
+          "--crate-name",
+          "syn",
+          "--edition=2021",
+          "src/lib.rs",
+          "--error-format=json",
+          "--json=diagnostic-rendered-ansi,artifacts,future-incompat",
+          "--crate-type",
+          "lib",
+          "--emit=dep-info,metadata,link",
+          "-C",
+          "embed-bitcode=no",
+          "-C",
+          "debuginfo=2",
+          "--cfg",
+          "feature=\"clone-impls\"",
+          "--cfg",
+          "feature=\"default\"",
+          "--cfg",
+          "feature=\"derive\"",
+          "--cfg",
+          "feature=\"parsing\"",
+          "--cfg",
+          "feature=\"printing\"",
+          "--cfg",
+          "feature=\"proc-macro\"",
+          "--check-cfg",
+          "cfg(docsrs,test)",
+          "--check-cfg",
+          "cfg(feature, values(\"clone-impls\", \"default\", \"derive\", \"extra-traits\", \"fold\", \"full\", \"parsing\", \"printing\", \"proc-macro\", \"test\", \"visit\", \"visit-mut\"))",
+          "-C",
+          "metadata=f250be86c5a33f2b",
+          "-C",
+          "extra-filename=-d0eb238103e5cac1",
+          "--out-dir",
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/syn-2.0.101-dev/debug/deps",
+          "-L",
+          "dependency=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/syn-2.0.101-dev/debug/deps",
+          "--extern",
+          "proc_macro2=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/syn-2.0.101-dev/debug/deps/libproc_macro2-11da13e37bd316e7.rmeta",
+          "--extern",
+          "quote=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/syn-2.0.101-dev/debug/deps/libquote-1cd68f4e8929ec68.rmeta",
+          "--extern",
+          "unicode_ident=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/syn-2.0.101-dev/debug/deps/libunicode_ident-0270b59d088b30c0.rmeta",
+          "-Zthreads=1",
+          "-Z",
+          "checksum-hash-algorithm=blake3",
+          "-C",
+          "incremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/syn-2.0.101-dev/measured-incremental",
+          "-Zincremental-verify-ich"
+        ],
+        "receipt_sha256": "9ea0e28b0073cccbea8c5930704bfe45a69645406fac75f4f8576581fdd9f0ba",
+        "harness_sha256": "fe2745a1f042ca9320d4edf5c91d27f81ef7c5bf8fe3eb92df354e25c3dc6e16"
+      },
+      {
+        "fixture": "regex-automata-0.4.8",
+        "profile": "check",
+        "revisions_passed": 7,
+        "verification": true,
+        "command": [
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/baseline/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+          "-Zpublic-api-hash",
+          "-Zcache-proc-macros",
+          "-Zthreads=8",
+          "-Zpublic-api-hash=no",
+          "-Zremap-cwd-prefix=/ohm-workspace/v6",
+          "--crate-name",
+          "regex_automata",
+          "--edition=2021",
+          "src/lib.rs",
+          "--error-format=json",
+          "--json=diagnostic-rendered-ansi,artifacts,future-incompat",
+          "--crate-type",
+          "lib",
+          "--emit=dep-info,metadata",
+          "-C",
+          "embed-bitcode=no",
+          "-C",
+          "debuginfo=2",
+          "--cfg",
+          "feature=\"alloc\"",
+          "--cfg",
+          "feature=\"default\"",
+          "--cfg",
+          "feature=\"dfa\"",
+          "--cfg",
+          "feature=\"dfa-build\"",
+          "--cfg",
+          "feature=\"dfa-onepass\"",
+          "--cfg",
+          "feature=\"dfa-search\"",
+          "--cfg",
+          "feature=\"hybrid\"",
+          "--cfg",
+          "feature=\"meta\"",
+          "--cfg",
+          "feature=\"nfa\"",
+          "--cfg",
+          "feature=\"nfa-backtrack\"",
+          "--cfg",
+          "feature=\"nfa-pikevm\"",
+          "--cfg",
+          "feature=\"nfa-thompson\"",
+          "--cfg",
+          "feature=\"perf\"",
+          "--cfg",
+          "feature=\"perf-inline\"",
+          "--cfg",
+          "feature=\"perf-literal\"",
+          "--cfg",
+          "feature=\"perf-literal-multisubstring\"",
+          "--cfg",
+          "feature=\"perf-literal-substring\"",
+          "--cfg",
+          "feature=\"std\"",
+          "--cfg",
+          "feature=\"syntax\"",
+          "--cfg",
+          "feature=\"unicode\"",
+          "--cfg",
+          "feature=\"unicode-age\"",
+          "--cfg",
+          "feature=\"unicode-bool\"",
+          "--cfg",
+          "feature=\"unicode-case\"",
+          "--cfg",
+          "feature=\"unicode-gencat\"",
+          "--cfg",
+          "feature=\"unicode-perl\"",
+          "--cfg",
+          "feature=\"unicode-script\"",
+          "--cfg",
+          "feature=\"unicode-segment\"",
+          "--cfg",
+          "feature=\"unicode-word-boundary\"",
+          "--check-cfg",
+          "cfg(docsrs,test)",
+          "--check-cfg",
+          "cfg(feature, values(\"alloc\", \"default\", \"dfa\", \"dfa-build\", \"dfa-onepass\", \"dfa-search\", \"hybrid\", \"internal-instrument\", \"internal-instrument-pikevm\", \"logging\", \"meta\", \"nfa\", \"nfa-backtrack\", \"nfa-pikevm\", \"nfa-thompson\", \"perf\", \"perf-inline\", \"perf-literal\", \"perf-literal-multisubstring\", \"perf-literal-substring\", \"std\", \"syntax\", \"unicode\", \"unicode-age\", \"unicode-bool\", \"unicode-case\", \"unicode-gencat\", \"unicode-perl\", \"unicode-script\", \"unicode-segment\", \"unicode-word-boundary\"))",
+          "-C",
+          "metadata=5c44a95a90b0f0f7",
+          "-C",
+          "extra-filename=-82be726cd206e705",
+          "--out-dir",
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/regex-automata-0.4.8-check/debug/deps",
+          "-L",
+          "dependency=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/regex-automata-0.4.8-check/debug/deps",
+          "--extern",
+          "aho_corasick=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/regex-automata-0.4.8-check/debug/deps/libaho_corasick-8118e5289cbe865d.rmeta",
+          "--extern",
+          "memchr=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/regex-automata-0.4.8-check/debug/deps/libmemchr-8c4c5a85fbd8e508.rmeta",
+          "--extern",
+          "regex_syntax=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/regex-automata-0.4.8-check/debug/deps/libregex_syntax-51407f204c8f8a49.rmeta",
+          "-Zthreads=1",
+          "-Z",
+          "checksum-hash-algorithm=blake3",
+          "-C",
+          "incremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/regex-automata-0.4.8-check/measured-incremental",
+          "-Zincremental-verify-ich"
+        ],
+        "receipt_sha256": "7ee923900b509c7373caea99b0f8d48bb717bb8fe0f86103ec612c087bbce153",
+        "harness_sha256": "fe2745a1f042ca9320d4edf5c91d27f81ef7c5bf8fe3eb92df354e25c3dc6e16"
+      },
+      {
+        "fixture": "regex-automata-0.4.8",
+        "profile": "dev",
+        "revisions_passed": 7,
+        "verification": true,
+        "command": [
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/baseline/x86_64-unknown-linux-gnu/stage1/bin/rustc",
+          "-Zpublic-api-hash",
+          "-Zcache-proc-macros",
+          "-Zthreads=8",
+          "-Zremap-cwd-prefix=/ohm-workspace/v6",
+          "--crate-name",
+          "regex_automata",
+          "--edition=2021",
+          "src/lib.rs",
+          "--error-format=json",
+          "--json=diagnostic-rendered-ansi,artifacts,future-incompat",
+          "--crate-type",
+          "lib",
+          "--emit=dep-info,metadata,link",
+          "-C",
+          "embed-bitcode=no",
+          "-C",
+          "debuginfo=2",
+          "--cfg",
+          "feature=\"alloc\"",
+          "--cfg",
+          "feature=\"default\"",
+          "--cfg",
+          "feature=\"dfa\"",
+          "--cfg",
+          "feature=\"dfa-build\"",
+          "--cfg",
+          "feature=\"dfa-onepass\"",
+          "--cfg",
+          "feature=\"dfa-search\"",
+          "--cfg",
+          "feature=\"hybrid\"",
+          "--cfg",
+          "feature=\"meta\"",
+          "--cfg",
+          "feature=\"nfa\"",
+          "--cfg",
+          "feature=\"nfa-backtrack\"",
+          "--cfg",
+          "feature=\"nfa-pikevm\"",
+          "--cfg",
+          "feature=\"nfa-thompson\"",
+          "--cfg",
+          "feature=\"perf\"",
+          "--cfg",
+          "feature=\"perf-inline\"",
+          "--cfg",
+          "feature=\"perf-literal\"",
+          "--cfg",
+          "feature=\"perf-literal-multisubstring\"",
+          "--cfg",
+          "feature=\"perf-literal-substring\"",
+          "--cfg",
+          "feature=\"std\"",
+          "--cfg",
+          "feature=\"syntax\"",
+          "--cfg",
+          "feature=\"unicode\"",
+          "--cfg",
+          "feature=\"unicode-age\"",
+          "--cfg",
+          "feature=\"unicode-bool\"",
+          "--cfg",
+          "feature=\"unicode-case\"",
+          "--cfg",
+          "feature=\"unicode-gencat\"",
+          "--cfg",
+          "feature=\"unicode-perl\"",
+          "--cfg",
+          "feature=\"unicode-script\"",
+          "--cfg",
+          "feature=\"unicode-segment\"",
+          "--cfg",
+          "feature=\"unicode-word-boundary\"",
+          "--check-cfg",
+          "cfg(docsrs,test)",
+          "--check-cfg",
+          "cfg(feature, values(\"alloc\", \"default\", \"dfa\", \"dfa-build\", \"dfa-onepass\", \"dfa-search\", \"hybrid\", \"internal-instrument\", \"internal-instrument-pikevm\", \"logging\", \"meta\", \"nfa\", \"nfa-backtrack\", \"nfa-pikevm\", \"nfa-thompson\", \"perf\", \"perf-inline\", \"perf-literal\", \"perf-literal-multisubstring\", \"perf-literal-substring\", \"std\", \"syntax\", \"unicode\", \"unicode-age\", \"unicode-bool\", \"unicode-case\", \"unicode-gencat\", \"unicode-perl\", \"unicode-script\", \"unicode-segment\", \"unicode-word-boundary\"))",
+          "-C",
+          "metadata=411103fc9ff06b85",
+          "-C",
+          "extra-filename=-d5fee18dd887c398",
+          "--out-dir",
+          "/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/regex-automata-0.4.8-dev/debug/deps",
+          "-L",
+          "dependency=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/regex-automata-0.4.8-dev/debug/deps",
+          "--extern",
+          "aho_corasick=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/regex-automata-0.4.8-dev/debug/deps/libaho_corasick-4ea4799b10c1768d.rmeta",
+          "--extern",
+          "memchr=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/regex-automata-0.4.8-dev/debug/deps/libmemchr-9da9a36a6f9a42f3.rmeta",
+          "--extern",
+          "regex_syntax=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/regex-automata-0.4.8-dev/debug/deps/libregex_syntax-0e254bede376e106.rmeta",
+          "-Zthreads=1",
+          "-Z",
+          "checksum-hash-algorithm=blake3",
+          "-C",
+          "incremental=/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes/measurements/00/regex-automata-0.4.8-dev/measured-incremental",
+          "-Zincremental-verify-ich"
+        ],
+        "receipt_sha256": "a1f7a3c6636dee3ab5a3443e4f6e60970d556b5cb2093810de9ab4cd61582ce5",
+        "harness_sha256": "fe2745a1f042ca9320d4edf5c91d27f81ef7c5bf8fe3eb92df354e25c3dc6e16"
+      }
+    ],
+    "regressions": [
+      {
+        "name": "forward-allocation-payload.rs",
+        "revision": 1,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": null,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          ".o": {
+            "logical": 26016,
+            "physical": 28672,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 32635,
+            "physical": 32768,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 167066,
+            "physical": 167936,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "f0f77996a1972f886a43576e7b9741302fc3cfe2a66a239618e42e87a4c4cddc"
+      },
+      {
+        "name": "forward-allocation-payload.rs",
+        "revision": 2,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": null,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          ".o": {
+            "logical": 26376,
+            "physical": 28672,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 84921,
+            "physical": 86016,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 173114,
+            "physical": 176128,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "82fa28d156fd2b88074e9f788815161320445b69287fb82411bfdccaa77e338e"
+      },
+      {
+        "name": "forward-allocation-payload.rs",
+        "revision": 3,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": null,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          ".o": {
+            "logical": 26376,
+            "physical": 28672,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 137202,
+            "physical": 139264,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 173114,
+            "physical": 176128,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "82fa28d156fd2b88074e9f788815161320445b69287fb82411bfdccaa77e338e"
+      },
+      {
+        "name": "forward-allocation-payload.rs",
+        "revision": 4,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": null,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          ".o": {
+            "logical": 26376,
+            "physical": 28672,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 52771,
+            "physical": 53248,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 173114,
+            "physical": 176128,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "82fa28d156fd2b88074e9f788815161320445b69287fb82411bfdccaa77e338e"
+      },
+      {
+        "name": "forward-allocation-payload.rs",
+        "revision": 5,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": null,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          ".o": {
+            "logical": 26376,
+            "physical": 28672,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 105052,
+            "physical": 106496,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 173114,
+            "physical": 176128,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "82fa28d156fd2b88074e9f788815161320445b69287fb82411bfdccaa77e338e"
+      },
+      {
+        "name": "forward-allocation-payload.rs",
+        "revision": 6,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": null,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          ".o": {
+            "logical": 26376,
+            "physical": 28672,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 157333,
+            "physical": 159744,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 173114,
+            "physical": 176128,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "82fa28d156fd2b88074e9f788815161320445b69287fb82411bfdccaa77e338e"
+      },
+      {
+        "name": "forward-allocation-payload.rs",
+        "revision": 7,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": null,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          ".o": {
+            "logical": 26376,
+            "physical": 28672,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 52771,
+            "physical": 53248,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 173041,
+            "physical": 176128,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "82fa28d156fd2b88074e9f788815161320445b69287fb82411bfdccaa77e338e"
+      },
+      {
+        "name": "forward-cached-query-value.rs",
+        "revision": 1,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": null,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 11745,
+            "physical": 12288,
+            "files": 1
+          },
+          ".o": {
+            "logical": 9240,
+            "physical": 12288,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 108294,
+            "physical": 110592,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "c138eb20255fd7b0b5f2a5a568ae63dd754417231de395cdb8fd8926fbadc4ef"
+      },
+      {
+        "name": "forward-cached-query-value.rs",
+        "revision": 2,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": null,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 32421,
+            "physical": 32768,
+            "files": 1
+          },
+          ".o": {
+            "logical": 9240,
+            "physical": 12288,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 108326,
+            "physical": 110592,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "ac08091af838e593df0576e46fbd406ce89d05ec037689d25813fe13ff2bd35a"
+      },
+      {
+        "name": "forward-cached-query-value.rs",
+        "revision": 3,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": null,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 53176,
+            "physical": 53248,
+            "files": 1
+          },
+          ".o": {
+            "logical": 9240,
+            "physical": 12288,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 108326,
+            "physical": 110592,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "ac08091af838e593df0576e46fbd406ce89d05ec037689d25813fe13ff2bd35a"
+      },
+      {
+        "name": "forward-cached-query-value.rs",
+        "revision": 4,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": null,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 27779,
+            "physical": 28672,
+            "files": 1
+          },
+          ".o": {
+            "logical": 9704,
+            "physical": 12288,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 115392,
+            "physical": 118784,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "5f6338f3966664bab67a089230ac2acab4e515ff5cb3915693753f3fd6763bee"
+      },
+      {
+        "name": "forward-cached-query-value.rs",
+        "revision": 5,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": null,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 48534,
+            "physical": 49152,
+            "files": 1
+          },
+          ".o": {
+            "logical": 9704,
+            "physical": 12288,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 113115,
+            "physical": 114688,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "3a63b2c68e264d35f2a826bf9eb293e22a788eda8f6c2b6beb6c976b16563589"
+      },
+      {
+        "name": "forward-cached-query-value.rs",
+        "revision": 6,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": null,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 69289,
+            "physical": 69632,
+            "files": 1
+          },
+          ".o": {
+            "logical": 9704,
+            "physical": 12288,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 113115,
+            "physical": 114688,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "3a63b2c68e264d35f2a826bf9eb293e22a788eda8f6c2b6beb6c976b16563589"
+      },
+      {
+        "name": "forward-cached-query-value.rs",
+        "revision": 7,
+        "compiler_returncode": 0,
+        "executable_returncode": 0,
+        "forwarded_allocation_count": null,
+        "storage": {
+          ".lock": {
+            "logical": 0,
+            "physical": 0,
+            "files": 1
+          },
+          "query-cache.bin": {
+            "logical": 27779,
+            "physical": 28672,
+            "files": 1
+          },
+          ".o": {
+            "logical": 9704,
+            "physical": 12288,
+            "files": 1
+          },
+          "dep-graph.bin": {
+            "logical": 115614,
+            "physical": 118784,
+            "files": 1
+          },
+          ".bin": {
+            "logical": 162,
+            "physical": 4096,
+            "files": 1
+          }
+        },
+        "stderr_sha256": "579a894b26ba05add7864c50cde7ef6be1e7b5245af5ac5114a95e8645df50cc"
+      }
+    ],
+    "regression_receipt_sha256": "48db0418901dc4caa6890d9fc5597794c291167abf0616041a6102e194bb7d36"
+  }
+}
