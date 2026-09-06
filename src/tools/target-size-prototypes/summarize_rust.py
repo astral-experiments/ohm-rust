@@ -46,6 +46,8 @@ def main():
         'fixture': args.fixture,
         'profile': args.profile,
         'verdict': 'PENDING REVIEW',
+        'cachegrind_measured': bool(counts),
+        'host_receipt_sha256': hashlib.sha256((ROOT / 'measurements/host.json').read_bytes()).hexdigest(),
         'measurement_notes': [
             'Dependencies prepared outside measured direct compiler invocations, separately per compiler.',
             'Cycles start empty; revisions are original, original, body patch, body patch, original, original, body patch.',
