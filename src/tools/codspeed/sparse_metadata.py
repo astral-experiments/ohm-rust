@@ -169,6 +169,7 @@ def target_inventory(root):
         row = {
             "path": str(path.relative_to(root)),
             "category": category,
+            "incremental": "incremental" in path.relative_to(root).parts,
             "apparent_bytes": 0 if directory else info.st_size,
             "unique_bytes": info.st_size if first and not directory else 0,
             "allocated_bytes": info.st_blocks * 512 if first else 0,
@@ -201,12 +202,16 @@ def target_inventory(root):
                 "allocated_bytes",
             )
         },
+        "incremental_totals": {
+            metric: sum(item[metric] for item in entries if item["incremental"])
+            for metric in ("apparent_bytes", "unique_bytes", "allocated_bytes")
+        },
         "files": entries,
     }
 
 
 def storage(args):
-    """Measure complete dev build targets, including standalone and embedded metadata."""
+    """Measure complete incremental dev targets, including embedded metadata and caches."""
     evidence = args.root / args.experiment
     manifest = json.loads((evidence / "manifest.json").read_text())
     assert manifest["complete"]
@@ -221,9 +226,15 @@ def storage(args):
                 source_digest(source)
                 == manifest["source_provenance"]["source_digests"][name]
             )
-            output = evidence / "storage" / arm / name
+            output = evidence / "storage" / "incremental-dev" / arm / name
             output.mkdir(parents=True, exist_ok=False)
-            target = args.target_root / args.experiment / "dev-storage" / arm / name
+            target = (
+                args.target_root
+                / args.experiment
+                / "incremental-dev-storage"
+                / arm
+                / name
+            )
             assert not target.exists(), target
             env = environment(args)
             env.update(
@@ -231,6 +242,7 @@ def storage(args):
                 RUSTFLAGS="-Zthreads=1",
                 CARGO_BUILD_JOBS=str(args.jobs),
                 CARGO_TARGET_DIR=str(target),
+                CARGO_INCREMENTAL="1",
             )
             argv = [str(args.cargo), "build", "--locked", "--offline", "--lib"]
             if name == "ruff":
@@ -244,6 +256,7 @@ def storage(args):
                 cwd=str(source),
                 arm=arm,
                 source=name,
+                mode="incremental-dev",
                 started=started,
                 elapsed_ns=elapsed,
                 environment={
@@ -263,7 +276,7 @@ def storage(args):
                     ["stat", "-f", "--format=%T", str(target)], text=True
                 ).strip(),
                 log=str(log),
-                note="Untimed nonincremental dev build; elapsed time is diagnostic only.",
+                note="Untimed incremental dev build; elapsed time is diagnostic only.",
             )
             save(output / "receipt.json", result)
             print(arm, name, result["totals"], flush=True)
@@ -769,7 +782,7 @@ def report(args):
     }
     assert all(result["unchanged_sources"].values())
     result["limitations"] = [
-        "Compiler samples measure leaf .rmeta bytes; dev_storage separately measures full dev targets.",
+        "Leaf compiler samples measure .rmeta; dev_storage separately measures full dev targets.",
         "Allocated bytes count filesystem blocks, not APFS clone sharing.",
         "Compiler process instruction counts; no child-process instruction aggregation.",
         "Nonincremental warm-page-cache checking; no clean-build or incremental latency claim.",
@@ -779,11 +792,20 @@ def report(args):
     for name in sources(args):
         arms = {}
         for arm in ARMS:
-            receipt = evidence / "storage" / arm / name / "receipt.json"
+            receipt = (
+                evidence / "storage" / "incremental-dev" / arm / name / "receipt.json"
+            )
             if receipt.exists():
                 entry = json.loads(receipt.read_text())
                 arms[arm] = {
-                    key: entry[key] for key in ("totals", "categories", "filesystem")
+                    key: entry[key]
+                    for key in (
+                        "mode",
+                        "totals",
+                        "incremental_totals",
+                        "categories",
+                        "filesystem",
+                    )
                 }
         if len(arms) == len(ARMS):
             result["dev_storage"][name] = {
