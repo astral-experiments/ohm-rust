@@ -3798,3 +3798,5 @@ fn is_public_mod_child(
             })
     }
 }
+
+// ignore-tidy-filelength

@@ -1,0 +1,11 @@
+{
+  "failed_head": "2678e440e28c73c27883c779f85745cd8e76f4f8",
+  "job_url": "https://github.com/astral-sh/ohm-rust/actions/runs/34009660369/job/101423134938",
+  "only_failure": "style (compiler): encoder.rs has 3049 non-comment lines, exceeding 3000",
+  "fix": "append the supported ignore-tidy-filelength directive; all preceding bytes remain identical",
+  "measured_implementation": "605ed6327c1a14970ec6e9fa4f7068b75e459ef1",
+  "before_sha256": "8823f32453771c3d619d15ff493547a861666607d975a13116b346ea363471c6",
+  "after_sha256": "27f2424ec0bd6e0a1d5c16987db02f65a60ebdb756fc908ea48a9a2efb5df422",
+  "log_sha256": "0d603fc16bab026556a4dd3478b84de52325c31497098b8a4aa7a2650561ed2f",
+  "validation": "Exact original file bytes preserved; cargo +ohm fmt --check -p rustc_metadata; git diff --check. CI rerun pending."
+}

@@ -80,6 +80,8 @@ Do not enable the prototype broadly in its current form. Query cloning demonstra
 
 The [exact measured harness sources](https://github.com/astral-sh/ohm-rust/tree/b976cd97c0fabe095150dcc7f8409b6049c558af/src/tools/target-size-prototypes/cloned-prefixes) are retained before the final formatting-only line wraps. Those wraps have identical Python ASTs; the remote measured driver is unchanged. Per-result hashes identify the exact executed files.
 
+The final CI-only source change appends the supported file-length directive to `encoder.rs`, which exceeded tidy's 3,000-line limit after this prototype. Every preceding byte is identical to the measured implementation; no compiler logic or source positions moved. The [failure and fix receipt](results/tidy-followup.json) preserves this distinction. Formatting is checked locally; the full CI rerun is separate from the recorded benchmark validation.
+
 ## Evidence files
 
 - `results/summary.json` contains every storage revision and the raw samples, medians, and ranges for native timings and instruction counts.
