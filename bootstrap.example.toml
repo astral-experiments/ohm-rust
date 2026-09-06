@@ -1075,6 +1075,11 @@
 # =============================================================================
 [target.x86_64-unknown-linux-gnu]
 
+# Ohm: optionally bundle a pinned Wild linker with the compiler distribution.
+# The directory must contain `wild`, `LICENSE-APACHE`, and `LICENSE-MIT`.
+# This only changes packaging; it does not select Wild for bootstrap or user builds.
+#ohm-wild-linker = "/path/to/wild-release"
+
 # C compiler to be used to compile C code. Note that the
 # default value is platform specific, and if not specified it may also depend on
 # what platform is crossing to what platform.
