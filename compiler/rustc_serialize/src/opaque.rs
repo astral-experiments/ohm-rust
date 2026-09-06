@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{self, Write};
+use std::io::{self, Seek, SeekFrom, Write};
 use std::marker::PhantomData;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -59,17 +59,32 @@ impl<'a> FileEncoder<'a> {
         let file =
             File::options().read(true).write(true).create(true).truncate(true).open(&path)?;
 
-        Ok(FileEncoder {
+        Ok(Self::from_file(path.as_ref(), file, 0))
+    }
+
+    /// Appends to an independently cloned file without rewriting its immutable prefix.
+    /// The caller must ensure that the file contains exactly the expected prefix bytes.
+    pub fn with_existing_prefix(path: &Path, prefix_len: usize) -> io::Result<Self> {
+        let mut file = File::options().read(true).write(true).open(path)?;
+        if file.metadata()?.len() != prefix_len as u64 {
+            return Err(io::Error::other("incremental cache prefix length changed"));
+        }
+        file.seek(SeekFrom::Start(prefix_len as u64))?;
+        Ok(Self::from_file(path, file, prefix_len))
+    }
+
+    fn from_file(path: &Path, file: File, flushed: usize) -> Self {
+        FileEncoder {
             buf: vec![0u8; BUF_SIZE].into_boxed_slice().try_into().unwrap(),
-            path: path.as_ref().into(),
+            path: path.into(),
             buffered: 0,
-            flushed: 0,
+            flushed,
             file,
             res: Ok(()),
             flush_strategy: None,
             #[cfg(debug_assertions)]
             finished: false,
-        })
+        }
     }
 
     pub fn with_flush_strategy<P: AsRef<Path>>(

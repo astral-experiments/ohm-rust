@@ -137,6 +137,13 @@ pub struct QueryCachePromotion {
     allocation_origins: FxHashMap<interpret::AllocId, (usize, usize)>,
 }
 
+impl QueryCachePromotion {
+    /// The complete, byte-identical previous generation retained by this promotion.
+    pub fn prefix_len(&self) -> usize {
+        self.data.len()
+    }
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, Encodable, Decodable)]
 struct SourceFileIndex(u32);
 
@@ -352,8 +359,12 @@ impl OnDiskCache {
                 if let Some(promotion) = promotion {
                     // Preserve every old byte position, including type and symbol shorthands.
                     // The already-written header belongs to the same compiler version.
-                    assert_eq!(encoder.position(), promotion.start_pos);
-                    encoder.emit_raw_bytes(&promotion.data[promotion.start_pos..]);
+                    if encoder.position() == promotion.start_pos {
+                        encoder.emit_raw_bytes(&promotion.data[promotion.start_pos..]);
+                    } else {
+                        // A separate copy-on-write inode already contains the complete prefix.
+                        assert_eq!(encoder.position(), promotion.data.len());
+                    }
                     (
                         Some(promotion.data.len()),
                         promotion.query_values,

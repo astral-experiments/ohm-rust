@@ -72,15 +72,22 @@ pub(crate) fn save_dep_graph(tcx: TyCtxt<'_>) {
                     //
                     tcx.dep_graph.exec_cache_promotions(tcx);
                     let promotion = on_disk_cache.take_query_cache_promotion();
+                    let prefix_len = promotion.as_ref().map(|promotion| promotion.prefix_len());
 
                     // Drop the memory map so that we can remove the file and write to it.
                     on_disk_cache.close_serialized_data_mmap();
 
-                    file_format::save_in(sess, query_cache_path, "query cache", |encoder| {
-                        tcx.sess.time("incr_comp_serialize_result_cache", || {
-                            on_disk_cache::OnDiskCache::serialize(tcx, encoder, promotion)
-                        })
-                    });
+                    file_format::save_in_with_prefix(
+                        sess,
+                        query_cache_path,
+                        "query cache",
+                        prefix_len,
+                        |encoder| {
+                            tcx.sess.time("incr_comp_serialize_result_cache", || {
+                                on_disk_cache::OnDiskCache::serialize(tcx, encoder, promotion)
+                            })
+                        },
+                    );
                 });
             },
         );

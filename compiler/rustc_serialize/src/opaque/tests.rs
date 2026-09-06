@@ -4,7 +4,30 @@ use std::fs;
 use rustc_macros::{Decodable_NoContext, Encodable_NoContext};
 
 use crate::opaque::{FileEncoder, MAGIC_END_BYTES, MemDecoder};
-use crate::{Decodable, Encodable};
+use crate::{Decodable, Encodable, Encoder};
+
+#[test]
+fn existing_prefix_preserves_bytes_and_absolute_encoder_positions() {
+    let tmpfile = tempfile::NamedTempFile::new().unwrap();
+    let prefix = vec![42; 128 * 1024 + 3];
+    fs::write(tmpfile.path(), &prefix).unwrap();
+    assert!(FileEncoder::with_existing_prefix(tmpfile.path(), prefix.len() - 1).is_err());
+    assert_eq!(fs::read(tmpfile.path()).unwrap(), prefix);
+
+    let mut encoder = FileEncoder::with_existing_prefix(tmpfile.path(), prefix.len()).unwrap();
+    assert_eq!(encoder.position(), prefix.len());
+    encoder.emit_u8(17);
+    let large_value = vec![71; 256 * 1024];
+    encoder.emit_raw_bytes(&large_value);
+    assert_eq!(encoder.position(), prefix.len() + 1 + large_value.len());
+    let final_len = encoder.finish().unwrap();
+    let mut expected = prefix;
+    expected.push(17);
+    expected.extend_from_slice(&large_value);
+    expected.extend_from_slice(MAGIC_END_BYTES);
+    assert_eq!(fs::read(tmpfile.path()).unwrap(), expected);
+    assert_eq!(final_len, expected.len());
+}
 
 #[derive(PartialEq, Clone, Debug, Encodable_NoContext, Decodable_NoContext)]
 struct Struct {
