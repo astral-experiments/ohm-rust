@@ -3318,21 +3318,9 @@ fn try_reuse_metadata_prefix(
         return None;
     }
     let previous_rdr_hashes = previous_root.rdr_hashes.take()?;
-    let table_in_bounds = |position: usize, width: usize, length: usize| {
-        width
-            .checked_mul(length)
-            .and_then(|length| position.checked_add(length))
-            .is_some_and(|end| position >= manifest.prefix_position && end <= metadata.len())
-    };
-    if !table_in_bounds(
-        previous_rdr_hashes.local.position.get(),
-        previous_rdr_hashes.local.width,
-        previous_rdr_hashes.local.len,
-    ) || !table_in_bounds(
-        previous_rdr_hashes.expn.position.get(),
-        previous_rdr_hashes.expn.width,
-        previous_rdr_hashes.expn.len,
-    ) {
+    if previous_rdr_hashes.local.encoded_range(&metadata)?.start < manifest.prefix_position
+        || previous_rdr_hashes.expn.encoded_range(&metadata)?.start < manifest.prefix_position
+    {
         return None;
     }
 
