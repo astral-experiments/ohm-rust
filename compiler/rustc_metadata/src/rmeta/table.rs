@@ -4,6 +4,7 @@ use rustc_hir::def::CtorOf;
 use rustc_hir::def_id::LocalDefId;
 use rustc_index::Idx;
 use rustc_middle::ty::codec::TyEncoder;
+use rustc_serialize::Encoder;
 
 use crate::rmeta::decoder::MetaBlob;
 use crate::rmeta::encoder::MetadataEncoder;
