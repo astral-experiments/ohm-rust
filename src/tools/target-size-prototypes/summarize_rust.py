@@ -27,18 +27,21 @@ def main():
     manifests = {}
     for variant in ['baseline', args.variant]:
         path = ROOT / 'measurements' / VARIANTS[variant] / leaf / 'manifest.json'
-        manifests[variant] = cycles.get('effective_manifests', {}).get(variant) or json.loads(path.read_text())
+        manifests[variant] = (cycles.get('effective_manifests', {}).get(variant)
+                              or json.loads(path.read_text()))
     samples = []
     for cycle in cycles['results']:
         for result in cycle['result']:
             storage = result['storage']
             sample = {key: cycle[key] for key in ['variant', 'round', 'slot']}
-            sample.update({key: result[key] for key in ['revision', 'patched', 'elapsed_ns', 'returncode']})
+            sample.update({key: result[key]
+                           for key in ['revision', 'patched', 'elapsed_ns', 'returncode']})
             sample['dep_graph_counts'] = result.get('dep_graph_counts')
             sample['storage'] = {
                 'total': {kind: sum(group[kind] for group in storage.values())
                           for kind in ['logical', 'physical', 'files']},
-                **{name: storage[name] for name in ['dep-graph.bin', 'query-cache.bin', '.rmeta', '.rlib', '.o']
+                **{name: storage[name]
+                   for name in ['dep-graph.bin', 'query-cache.bin', '.rmeta', '.rlib', '.o']
                    if name in storage},
             }
             samples.append(sample)
@@ -48,7 +51,8 @@ def main():
                   for cycle in cycles['results'] if cycle['variant'] == variant]
         workflow[variant] = {'samples_ns': totals, 'median_ns': statistics.median(totals),
                              'min_ns': min(totals), 'max_ns': max(totals)}
-    workflow['median_ratio'] = workflow[args.variant]['median_ns'] / workflow['baseline']['median_ns']
+    workflow['median_ratio'] = (workflow[args.variant]['median_ns']
+                                / workflow['baseline']['median_ns'])
     instruction_summary = {}
     for revision in sorted({row['revision'] for row in counts}):
         arms = {}
@@ -66,17 +70,27 @@ def main():
         'profile': args.profile,
         'verdict': args.verdict,
         'cachegrind_measured': bool(counts),
-        'host_receipt_sha256': hashlib.sha256((ROOT / 'measurements/host.json').read_bytes()).hexdigest(),
+        'host_receipt_sha256': hashlib.sha256(
+            (ROOT / 'measurements/host.json').read_bytes()).hexdigest(),
         'measurement_notes': [
-            'Dependencies prepared outside measured direct compiler invocations, separately per compiler.',
-            'Cycles start empty; revisions are original, original, body patch, body patch, original, original, body patch.',
-            'Walltime uses warmup and ABBA/BAAB cycles; Cachegrind uses recreated prior state and AB/BA order.',
-            'Cachegrind instruction counts include the complete compiler process; no cache or branch simulation.',
-            'Native timing runs were isolated from other benchmark and compiler work on the dedicated VM.',
-            'Cachegrind may overlap independent fixture jobs after all native timings completed; its elapsed times are diagnostic only.',
-            'Physical bytes count st_blocks once per inode within each private target; reflink sharing is not inferred.',
-            'Compiler binaries and matching standard libraries built without PGO/BOLT; see build configuration.',
-            'Native and Cachegrind commands exclude incremental hash verification; separate correctness cycles include it.',
+            'Dependencies prepared outside measured direct compiler invocations, '
+            'separately per compiler.',
+            'Cycles start empty; revisions are original, original, body patch, '
+            'body patch, original, original, body patch.',
+            'Walltime uses warmup and ABBA/BAAB cycles; Cachegrind uses recreated '
+            'prior state and AB/BA order.',
+            'Cachegrind instruction counts include the complete compiler process; '
+            'no cache or branch simulation.',
+            'Native timing runs were isolated from other benchmark and compiler '
+            'work on the dedicated VM.',
+            'Cachegrind may overlap independent fixture jobs after all native '
+            'timings completed; its elapsed times are diagnostic only.',
+            'Physical bytes count st_blocks once per inode within each private '
+            'target; reflink sharing is not inferred.',
+            'Compiler binaries and matching standard libraries built without '
+            'PGO/BOLT; see build configuration.',
+            'Native and Cachegrind commands exclude incremental hash verification; '
+            'separate correctness cycles include it.',
         ],
         'manifests': manifests,
         'timing_summary': cycles['summary'],
@@ -86,7 +100,8 @@ def main():
         'counter_rows': counts,
         'raw_receipt_hashes': {
             cycle_path.name: hashlib.sha256(cycle_path.read_bytes()).hexdigest(),
-            **({counts_path.name: hashlib.sha256(counts_path.read_bytes()).hexdigest()} if counts_path.exists() else {}),
+            **({counts_path.name: hashlib.sha256(counts_path.read_bytes()).hexdigest()}
+               if counts_path.exists() else {}),
         },
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -63,11 +63,13 @@ def version(variant):
     status = json.loads((ROOT / 'logs' / (variant + '-status.json')).read_text())
     assert status['returncode'] == 0 and status['revision'] in value, value
     libraries = list((sysroot(variant) / 'lib').glob('librustc_driver-*.so'))
-    libraries += list((sysroot(variant) / 'lib/rustlib/x86_64-unknown-linux-gnu/lib').glob('libstd-*.rlib'))
+    libraries += list((sysroot(variant) / 'lib/rustlib/x86_64-unknown-linux-gnu/lib')
+                      .glob('libstd-*.rlib'))
     assert libraries, sysroot(variant)
     return {'version': value, 'sha256': sha(rustc), 'revision': status['revision'],
             'patch_sha256': status['patch_sha256'],
-            'library_sha256': {str(path.relative_to(sysroot(variant))): sha(path) for path in libraries}}
+            'library_sha256': {str(path.relative_to(sysroot(variant))): sha(path)
+                               for path in libraries}}
 
 
 def storage(path):
@@ -170,7 +172,8 @@ def prepare(variant, fixture, profile):
                'inputs': inputs, 'variant': variant, 'fixture': fixture,
                'harness_sha256': sha(Path(__file__)),
                'cargo': {'sha256': sha(cargo),
-                         'version': subprocess.check_output([str(cargo), '-Vv'], env=env, text=True),
+                         'version': subprocess.check_output(
+                             [str(cargo), '-Vv'], env=env, text=True),
                          'ohm_defaults_override': env.get('__CARGO_OHM_DEFAULTS')},
                'profile': profile, 'incremental': str(target / 'measured-incremental'),
                'target': str(target)})
@@ -192,7 +195,8 @@ def invocation(variant, fixture, profile):
     manifest['effective_command'] = command
     manifest['effective_harness_sha256'] = sha(Path(__file__))
     manifest['effective_llvm_library_path'] = env['LD_LIBRARY_PATH']
-    manifest['effective_compile_env'] = manifest['env'] | {'LD_LIBRARY_PATH': env['LD_LIBRARY_PATH']}
+    manifest['effective_compile_env'] = (manifest['env']
+                                         | {'LD_LIBRARY_PATH': env['LD_LIBRARY_PATH']})
     manifest['effective_ohm_defaults_override'] = env.get('__CARGO_OHM_DEFAULTS')
     return manifest, command, env
 
@@ -296,7 +300,8 @@ def cachegrind(candidate, fixture, profile, rounds, revisions):
                                effective_compile_env=manifest['effective_compile_env'],
                                harness_sha256=sha(Path(__file__)))
                 results.append(receipt)
-                write_json(ROOT / 'measurements' / f'{candidate}-{fixture}-{profile}-cachegrind.json', results)
+                write_json(ROOT / 'measurements'
+                           / f'{candidate}-{fixture}-{profile}-cachegrind.json', results)
 
 
 def regression(variant):
@@ -323,7 +328,8 @@ def regression(variant):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['prepare', 'regression', 'verify', 'cycles', 'cachegrind'])
+    parser.add_argument('action',
+                        choices=['prepare', 'regression', 'verify', 'cycles', 'cachegrind'])
     parser.add_argument('--variant', required=True, choices=VARIANTS)
     parser.add_argument('--fixture', choices=FIXTURES, default='syn-2.0.101')
     parser.add_argument('--profile', choices=['check', 'dev'], default='check')

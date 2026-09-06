@@ -19,7 +19,8 @@ def collect(variant):
     result = {'compiler': harness.version(variant), 'build': build,
               'bootstrap_environment': {'__CARGO_OHM_DEFAULTS': 'no',
                                         'LD_LIBRARY_PATH': str(ROOT / 'llvm/lib')},
-              'notes': ['Correctness checks ran while independent compiler variants built; their wall times are excluded from performance claims.'],
+              'notes': ['Correctness checks ran while independent compiler variants built; '
+                        'their wall times are excluded from performance claims.'],
               'real_workloads': []}
     for fixture in harness.FIXTURES:
         for profile in ['check', 'dev']:

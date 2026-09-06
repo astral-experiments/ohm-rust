@@ -26,7 +26,8 @@ patch = ROOT / 'inputs' / (args.name + '.patch')
 if patch.exists():
     run(['git', 'apply', '--check', str(patch)], cwd=source)
     run(['git', 'apply', str(patch)], cwd=source)
-(source / 'git-commit-info').write_text(args.revision + '\n' + args.revision[:11] + '\n2026-09-05\n')
+(source / 'git-commit-info').write_text(
+    args.revision + '\n' + args.revision[:11] + '\n2026-09-05\n')
 build = Path('/tmp/codex-cargo-targets/ohm-rust/isolated/target-size-prototypes') / args.name
 config = f'''change-id = "ignore"
 [build]
@@ -68,7 +69,8 @@ logs = ROOT / 'logs'
 logs.mkdir(exist_ok=True)
 receipt = {'name': args.name, 'revision': args.revision, 'source': str(source),
            'build': str(build), 'config': config, 'started': time.time(),
-           'patch_sha256': hashlib.sha256(patch.read_bytes()).hexdigest() if patch.exists() else None}
+           'patch_sha256': (hashlib.sha256(patch.read_bytes()).hexdigest()
+                            if patch.exists() else None)}
 (logs / (args.name + '-status.json')).write_text(json.dumps(receipt, indent=2))
 with (logs / (args.name + '-build.log')).open('w') as log:
     result = subprocess.run(['python3', 'x.py', 'build', '--stage', '1', '-j', '24',
