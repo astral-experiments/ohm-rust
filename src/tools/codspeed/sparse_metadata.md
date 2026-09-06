@@ -61,3 +61,33 @@ After all native measurements finish, `instructions --allow-concurrent-instructi
 permits independent instruction-count workloads to share the host. It records
 observed co-runners and CPU counters without enforcing the native quiet guard.
 Cachegrind elapsed time is diagnostic only and is never compared as native latency.
+
+## Validating a later compiler candidate
+
+Use `--candidate shipping-sparse --experiment shipping-sparse-metadata` for every
+phase when testing the hardened candidate. This selects its separate compiler
+sysroot and gives it new preparation, output, and evidence directories. Existing
+prototype observations are not overwritten. The source inputs remain the pinned
+archives listed above.
+
+`instructions --allow-concurrent-instructions --paired-instructions` runs each
+baseline/candidate pair concurrently. A single coordinator starts the first
+compiler process before launching the second, reverses launch order for the next
+pair, and waits for both to finish before reusing either output directory. Each
+arm has separate dependency, output, log, and profile paths. Only the coordinator
+writes `samples.json`. This mode reduces the cost of instruction counting for ty;
+it cannot be used for native latency measurements.
+
+After both arms are prepared, `storage` performs separate, nonincremental dev
+builds of syn and `ty_python_semantic`, including their dependencies. These builds
+are untimed preparation and must run outside a native measurement window. The
+phase records every target entry and groups standalone `.rmeta`, `.rlib`, and
+other files. Apparent bytes count every pathname, unique bytes count each inode
+once, and allocated bytes sum `st_blocks * 512` once per inode, including
+directories. Symlinks are counted without following them. The result covers these
+complete dev target directories, excluding the compiler/sysroot and Cargo source
+cache; it does not measure APFS clone sharing.
+
+`test_sparse_metadata.py` checks hard-link/symlink accounting and concurrent arm
+isolation using fake compiler processes. These are harness correctness tests;
+their synthetic instruction totals are not compiler performance measurements.

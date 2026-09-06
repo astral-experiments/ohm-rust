@@ -15,11 +15,14 @@ import hashlib
 import json
 import os
 import re
+import stat
 import statistics
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from threading import Event
 
 RUSTC_PERF_REVISION = "c0301bc44d175b9b2c5442b25049475c39d7700c"
 RUFF_REVISION = "efcffd2178ce62e9951a53d4c50cadc225a0cfec"
@@ -82,15 +85,20 @@ def capture():
     os.execv(command[0], command)
 
 
-def command(argv, cwd, env, log):
+def command(argv, cwd, env, log, on_started=None):
     started = time.perf_counter_ns()
-    with Path(log).open("xb") as stream:
-        result = subprocess.run(
-            argv, cwd=cwd, env=env, stdout=stream, stderr=subprocess.STDOUT, check=False
-        )
+    with (
+        Path(log).open("xb") as stream,
+        subprocess.Popen(
+            argv, cwd=cwd, env=env, stdout=stream, stderr=subprocess.STDOUT
+        ) as process,
+    ):
+        if on_started is not None:
+            on_started()
+        returncode = process.wait()
     elapsed = time.perf_counter_ns() - started
-    if result.returncode:
-        raise RuntimeError(f"command exited {result.returncode}: {argv}; see {log}")
+    if returncode:
+        raise RuntimeError(f"command exited {returncode}: {argv}; see {log}")
     return elapsed
 
 
@@ -109,6 +117,7 @@ def environment(args):
         "CARGO_MAKEFLAGS",
         "MAKEFLAGS",
         "MFLAGS",
+        "__CARGO_OHM_DEFAULTS",
     ):
         env.pop(key, None)
     env.update(
@@ -134,6 +143,130 @@ def inventory(root):
             {"path": str(path), "bytes": stat.st_size, "sha256": digest(path)}
         )
     return result
+
+
+def target_inventory(root):
+    """Count every target entry without following symlinks or double-counting hard links."""
+    entries = []
+    categories = {}
+    seen = set()
+    pending = [Path(root)]
+    while pending:
+        path = pending.pop()
+        info = path.lstat()
+        directory = stat.S_ISDIR(info.st_mode)
+        symlink = stat.S_ISLNK(info.st_mode)
+        category = (
+            "directories"
+            if directory
+            else "symlinks"
+            if symlink
+            else path.suffix or "other"
+        )
+        identity = (info.st_dev, info.st_ino)
+        first = identity not in seen
+        seen.add(identity)
+        row = {
+            "path": str(path.relative_to(root)),
+            "category": category,
+            "apparent_bytes": 0 if directory else info.st_size,
+            "unique_bytes": info.st_size if first and not directory else 0,
+            "allocated_bytes": info.st_blocks * 512 if first else 0,
+            "hardlinks": info.st_nlink if not directory else None,
+        }
+        entries.append(row)
+        totals = categories.setdefault(
+            category,
+            {
+                "entries": 0,
+                "apparent_bytes": 0,
+                "unique_bytes": 0,
+                "allocated_bytes": 0,
+            },
+        )
+        totals["entries"] += 1
+        for metric in ("apparent_bytes", "unique_bytes", "allocated_bytes"):
+            totals[metric] += row[metric]
+        if directory:
+            pending.extend(sorted(path.iterdir(), reverse=True))
+    return {
+        "root": str(root),
+        "categories": categories,
+        "totals": {
+            metric: sum(item[metric] for item in categories.values())
+            for metric in (
+                "entries",
+                "apparent_bytes",
+                "unique_bytes",
+                "allocated_bytes",
+            )
+        },
+        "files": entries,
+    }
+
+
+def storage(args):
+    """Measure complete dev build targets, including standalone and embedded metadata."""
+    evidence = args.root / args.experiment
+    manifest = json.loads((evidence / "manifest.json").read_text())
+    assert manifest["complete"]
+    for arm in args.arms:
+        prepared = manifest["arms"][arm]
+        rustc = Path(prepared["sysroot"]) / "bin/rustc"
+        assert digest(rustc) == prepared["rustc_sha256"]
+        for path, expected in prepared["driver_sha256"].items():
+            assert digest(path) == expected
+        for name, source in sources(args).items():
+            assert (
+                source_digest(source)
+                == manifest["source_provenance"]["source_digests"][name]
+            )
+            output = evidence / "storage" / arm / name
+            output.mkdir(parents=True, exist_ok=False)
+            target = args.target_root / args.experiment / "dev-storage" / arm / name
+            assert not target.exists(), target
+            env = environment(args)
+            env.update(
+                RUSTC=str(rustc),
+                RUSTFLAGS="-Zthreads=1",
+                CARGO_BUILD_JOBS=str(args.jobs),
+                CARGO_TARGET_DIR=str(target),
+            )
+            argv = [str(args.cargo), "build", "--locked", "--offline", "--lib"]
+            if name == "ruff":
+                argv += ["--package", "ty_python_semantic"]
+            log = output / "build.log"
+            started = time.time()
+            elapsed = command(argv, source, env, log)
+            result = target_inventory(target)
+            result.update(
+                command=argv,
+                cwd=str(source),
+                arm=arm,
+                source=name,
+                started=started,
+                elapsed_ns=elapsed,
+                environment={
+                    key: env[key]
+                    for key in (
+                        "RUSTC",
+                        "RUSTFLAGS",
+                        "CARGO_BUILD_JOBS",
+                        "CARGO_TARGET_DIR",
+                        "CARGO_HOME",
+                        "CARGO_INCREMENTAL",
+                        "LD_LIBRARY_PATH",
+                        "RUSTC_FORCE_RUSTC_VERSION",
+                    )
+                },
+                filesystem=subprocess.check_output(
+                    ["stat", "-f", "--format=%T", str(target)], text=True
+                ).strip(),
+                log=str(log),
+                note="Untimed nonincremental dev build; elapsed time is diagnostic only.",
+            )
+            save(output / "receipt.json", result)
+            print(arm, name, result["totals"], flush=True)
 
 
 def source_digest(root):
@@ -194,8 +327,8 @@ def fetch(args):
 
 
 def prepare(args):
-    evidence = args.root / "sparse-metadata-bench"
-    targets = args.target_root / "sparse-metadata-bench"
+    evidence = args.root / args.experiment
+    targets = args.target_root / args.experiment
     identity = {
         "cargo": str(args.cargo),
         "cargo_sha256": digest(args.cargo),
@@ -206,6 +339,8 @@ def prepare(args):
             (args.root / "bench-sources/provenance.json").read_text()
         ),
         "scope": "Nonincremental metadata-only real-crate compiler invocations",
+        "candidate": args.candidate,
+        "experiment": args.experiment,
     }
     if evidence.exists():
         manifest = json.loads((evidence / "manifest.json").read_text())
@@ -217,7 +352,8 @@ def prepare(args):
     assert len(set(args.arms)) == len(args.arms)
     assert not set(args.arms).intersection(manifest["arms"]), "Arm already prepared"
     for arm in args.arms:
-        sysroot = args.target_root / arm / "x86_64-unknown-linux-gnu/stage1"
+        variant = args.candidate if arm == ARMS[1] else arm
+        sysroot = args.target_root / variant / "x86_64-unknown-linux-gnu/stage1"
         rustc = sysroot / "bin/rustc"
         arm_dir = evidence / arm
         arm_dir.mkdir()
@@ -243,7 +379,7 @@ def prepare(args):
             "preparation": [],
             "cases": {},
         }
-        receipt = args.root / "logs" / (arm + "-status.json")
+        receipt = args.root / "logs" / (variant + "-status.json")
         if receipt.exists():
             entry["compiler_build"] = json.loads(receipt.read_text())
             assert entry["compiler_build"]["returncode"] == 0
@@ -297,8 +433,8 @@ def prepare(args):
 
 def finalize(args):
     """Validate source and command identities after both captures are available."""
-    evidence = args.root / "sparse-metadata-bench"
-    targets = args.target_root / "sparse-metadata-bench"
+    evidence = args.root / args.experiment
+    targets = args.target_root / args.experiment
     manifest = json.loads((evidence / "manifest.json").read_text())
     for name, path in sources(args).items():
         assert (
@@ -315,7 +451,7 @@ def finalize(args):
             normalized.append(
                 [
                     arg.replace(str(targets / arm), "<dependencies>")
-                    .replace(str(args.target_root / arm), "<sysroot>")
+                    .replace(str(manifest["arms"][arm]["sysroot"]), "<sysroot>")
                     .replace(str(evidence / "outputs" / arm), "<outputs>")
                     for arg in argv
                 ]
@@ -391,8 +527,75 @@ def quiet(allow_concurrent=False):
     return sample
 
 
+def measure_one(args, manifest, output, case, arm, phase, cycle, index, launched=None):
+    prepared = manifest["arms"][arm]["cases"][case]
+    argv = prepared["command"]
+    assert (
+        Path(argv[argv.index("--out-dir") + 1]).resolve()
+        == Path(prepared["outputs"]).resolve()
+    )
+    env = environment(args)
+    env.update(prepared["env"])
+    for path in Path(prepared["outputs"]).glob("*.rmeta"):
+        path.unlink()
+    sample = quiet(args.allow_concurrent_instructions)
+    stem = f"{case}-{index:02}-{arm}"
+    log = output / (stem + ".log")
+    cg = output / (stem + ".cachegrind")
+    if args.operation == "instructions" and phase == "measured":
+        argv = [
+            args.valgrind,
+            "--tool=cachegrind",
+            "--cache-sim=no",
+            "--branch-sim=no",
+            "--error-exitcode=99",
+            f"--cachegrind-out-file={cg}",
+            *argv,
+        ]
+    started = time.time()
+    elapsed = command(
+        argv, prepared["cwd"], env, log, launched.set if launched is not None else None
+    )
+    row = {
+        "case": case,
+        "arm": arm,
+        "phase": phase,
+        "instrumentation": "cachegrind" if cg.exists() else "native",
+        "cycle": cycle,
+        "order": index,
+        "command": argv,
+        "cwd": prepared["cwd"],
+        "environment": prepared["env"],
+        "started": started,
+        "elapsed_ns": elapsed,
+        "quiet_sample": sample,
+        "log": str(log),
+        "metadata": inventory(prepared["outputs"]),
+    }
+    assert row["metadata"], row
+    notifications = []
+    for line in log.read_text(errors="replace").splitlines():
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict) and item.get("$message_type") == "artifact":
+            notifications.append(item)
+    row["artifact_notifications"] = notifications
+    if cg.exists():
+        lines = cg.read_text().splitlines()
+        events = next(line.split()[1:] for line in lines if line.startswith("events:"))
+        summary = next(
+            line.split()[1:] for line in lines if line.startswith("summary:")
+        )
+        row["instructions"] = int(summary[events.index("Ir")])
+        row["cachegrind"] = str(cg)
+        assert row["instructions"] > 0
+    return row
+
+
 def measure(args):
-    evidence = args.root / "sparse-metadata-bench"
+    evidence = args.root / args.experiment
     manifest = json.loads((evidence / "manifest.json").read_text())
     assert manifest["complete"]
     output = evidence / args.operation
@@ -404,6 +607,14 @@ def measure(args):
         )
         for path, expected in prepared["driver_sha256"].items():
             assert digest(path) == expected
+    if args.paired_instructions:
+        for case in args.cases:
+            paths = [
+                Path(manifest["arms"][arm]["cases"][case]["outputs"]).resolve()
+                for arm in ARMS
+            ]
+            assert not paths[0].is_relative_to(paths[1])
+            assert not paths[1].is_relative_to(paths[0])
     order = ORDERS
     if args.operation == "instructions":
         order = ORDERS[: args.instruction_samples * 2]
@@ -423,6 +634,8 @@ def measure(args):
             "cycles": args.cycles,
             "cases": args.cases,
             "allow_concurrent_instructions": args.allow_concurrent_instructions,
+            "paired_instructions": args.paired_instructions,
+            "warmup_instrumentation": "native",
         },
     )
     records = []
@@ -432,71 +645,64 @@ def measure(args):
         for cycle in range(args.cycles):
             sequence.extend((arm, "measured", cycle) for arm in order)
         for index, (arm, phase, cycle) in enumerate(sequence):
-            prepared = manifest["arms"][arm]["cases"][case]
-            argv = prepared["command"]
-            env = environment(args)
-            env.update(prepared["env"])
-            for path in Path(prepared["outputs"]).glob("*.rmeta"):
-                path.unlink()
-            sample = quiet(args.allow_concurrent_instructions)
-            stem = f"{case}-{index:02}-{arm}"
-            log = output / (stem + ".log")
-            cg = output / (stem + ".cachegrind")
-            if args.operation == "instructions" and phase == "measured":
-                argv = [
-                    args.valgrind,
-                    "--tool=cachegrind",
-                    "--cache-sim=no",
-                    "--branch-sim=no",
-                    "--error-exitcode=99",
-                    f"--cachegrind-out-file={cg}",
-                    *argv,
-                ]
-            started = time.time()
-            elapsed = command(argv, prepared["cwd"], env, log)
-            row = {
-                "case": case,
-                "arm": arm,
-                "phase": phase,
-                "cycle": cycle,
-                "order": index,
-                "command": argv,
-                "cwd": prepared["cwd"],
-                "environment": prepared["env"],
-                "started": started,
-                "elapsed_ns": elapsed,
-                "quiet_sample": sample,
-                "log": str(log),
-                "metadata": inventory(prepared["outputs"]),
-            }
-            assert row["metadata"], row
-            notifications = []
-            for line in log.read_text(errors="replace").splitlines():
-                try:
-                    item = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(item, dict) and item.get("$message_type") == "artifact":
-                    notifications.append(item)
-            row["artifact_notifications"] = notifications
-            if cg.exists():
-                lines = cg.read_text().splitlines()
-                events = next(
-                    line.split()[1:] for line in lines if line.startswith("events:")
-                )
-                summary = next(
-                    line.split()[1:] for line in lines if line.startswith("summary:")
-                )
-                row["instructions"] = int(summary[events.index("Ir")])
-                row["cachegrind"] = str(cg)
-                assert row["instructions"] > 0
+            if args.paired_instructions and phase == "measured":
+                continue
+            row = measure_one(args, manifest, output, case, arm, phase, cycle, index)
             records.append(row)
             save(output / "samples.json", records)
-            print(case, arm, phase, elapsed / 1e9, row.get("instructions"), flush=True)
+            print(
+                case,
+                arm,
+                phase,
+                row["elapsed_ns"] / 1e9,
+                row.get("instructions"),
+                flush=True,
+            )
+        if args.paired_instructions:
+            measured = [
+                (i, item) for i, item in enumerate(sequence) if item[1] == "measured"
+            ]
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                for pair in range(0, len(measured), 2):
+                    batch = measured[pair : pair + 2]
+                    assert {item[1][0] for item in batch} == set(ARMS)
+                    futures = []
+                    launched = Event()
+                    for launch_order, (index, (arm, phase, cycle)) in enumerate(batch):
+                        if launch_order:
+                            while not launched.wait(0.1):
+                                if futures[0].done():
+                                    futures[0].result()
+                        futures.append(
+                            executor.submit(
+                                measure_one,
+                                args,
+                                manifest,
+                                output,
+                                case,
+                                arm,
+                                phase,
+                                cycle,
+                                index,
+                                launched if launch_order == 0 else None,
+                            )
+                        )
+                    for future in as_completed(futures):
+                        row = future.result()
+                        row["concurrent_pair"] = pair // 2
+                        records.append(row)
+                        save(output / "samples.json", records)
+                        print(
+                            case,
+                            row["arm"],
+                            "measured",
+                            row["instructions"],
+                            flush=True,
+                        )
 
 
 def report(args):
-    evidence = args.root / "sparse-metadata-bench"
+    evidence = args.root / args.experiment
     manifest = json.loads((evidence / "manifest.json").read_text())
     result = {"manifest": str(evidence / "manifest.json"), "cases": {}}
     for operation, metric in (
@@ -563,11 +769,35 @@ def report(args):
     }
     assert all(result["unchanged_sources"].values())
     result["limitations"] = [
-        "Leaf .rmeta logical bytes, not whole-target physical allocation or APFS clone accounting.",
+        "Compiler samples measure leaf .rmeta bytes; dev_storage separately measures full dev targets.",
+        "Allocated bytes count filesystem blocks, not APFS clone sharing.",
         "Compiler process instruction counts; no child-process instruction aggregation.",
         "Nonincremental warm-page-cache checking; no clean-build or incremental latency claim.",
         "Parser and ty combine dependency metadata reads with their own analysis and encoding.",
     ]
+    result["dev_storage"] = {}
+    for name in sources(args):
+        arms = {}
+        for arm in ARMS:
+            receipt = evidence / "storage" / arm / name / "receipt.json"
+            if receipt.exists():
+                entry = json.loads(receipt.read_text())
+                arms[arm] = {
+                    key: entry[key] for key in ("totals", "categories", "filesystem")
+                }
+        if len(arms) == len(ARMS):
+            result["dev_storage"][name] = {
+                "arms": arms,
+                "total_delta_percent": {
+                    metric: 100
+                    * (
+                        arms[ARMS[1]]["totals"][metric]
+                        / arms[ARMS[0]]["totals"][metric]
+                        - 1
+                    )
+                    for metric in ("apparent_bytes", "unique_bytes", "allocated_bytes")
+                },
+            }
     save(evidence / "summary.json", result)
     print(json.dumps(result, indent=2))
 
@@ -584,6 +814,7 @@ def main():
             "native",
             "instructions",
             "report",
+            "storage",
         ),
     )
     parser.add_argument(
@@ -601,12 +832,19 @@ def main():
         "--cargo-home", type=Path, default=Path("/tmp/codex-cargo-home")
     )
     parser.add_argument("--jobs", type=int, default=16)
+    parser.add_argument("--experiment", default="sparse-metadata-bench")
+    parser.add_argument("--candidate", default="sparse-metadata")
+    parser.add_argument(
+        "--paired-instructions",
+        action="store_true",
+        help="Run the two independent arms concurrently, reversing launch order for pair two",
+    )
     parser.add_argument(
         "--arms",
         nargs="+",
         choices=ARMS,
         default=list(ARMS),
-        help="Arms to prepare; separate calls may add each arm once",
+        help="Arms to prepare or build for storage; separate calls may add each arm once",
     )
     parser.add_argument(
         "--cycles",
@@ -632,6 +870,9 @@ def main():
     parser.add_argument("--valgrind", default="valgrind")
     args = parser.parse_args()
     args.cargo = args.cargo or args.root / "toolchain/bin/cargo"
+    assert re.fullmatch(r"[A-Za-z0-9_-]+", args.experiment)
+    assert re.fullmatch(r"[A-Za-z0-9_-]+", args.candidate)
+    assert not args.paired_instructions or args.allow_concurrent_instructions
     assert args.cycles > 0
     assert not args.allow_concurrent_instructions or args.operation == "instructions"
     if args.operation in ("native", "instructions"):
