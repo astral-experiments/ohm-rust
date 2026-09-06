@@ -3265,7 +3265,7 @@ fn try_reuse_metadata_prefix(
     let dependencies =
         tcx.dep_graph.previous_dependencies_except_red(&metadata_dep_node, &changed_dep_node)?;
     let manifest = MetadataPrefixManifest::load(&manifest_path)?;
-    let file = File::open(metadata_path).ok()?;
+    let file = File::open(&metadata_path).ok()?;
     // SAFETY: The previous work-product remains immutable; replacement metadata is written to a
     // freshly created inode and atomically renamed only after encoding completes.
     let previous_metadata = unsafe { Mmap::map(file).ok()? };
@@ -3347,14 +3347,42 @@ fn try_reuse_metadata_prefix(
     let temporary_file = tempfile::Builder::new()
         .prefix(".ohm-metadata-prefix-")
         .tempfile_in(output_directory)
-        .ok()?;
+        .ok()?
+        .into_temp_path();
     let prefix_position = manifest.prefix_position;
-    with_encode_metadata_header::<DefPathHashDefIdEncoder<'_>>(
+    let preserved = if std::env::var_os("RUSTC_EXPERIMENTAL_CLONED_METADATA_PREFIX")
+        .is_some_and(|value| value == "1")
+    {
+        // The old work product can have hard links in finalized sessions. Only
+        // truncate an independent clone, never the original inode.
+        std::fs::remove_file(&temporary_file).ok()?;
+        let cloned = rustc_fs_util::clone_file(&metadata_path, &temporary_file).and_then(|()| {
+            let file = File::options().read(true).write(true).open(&temporary_file)?;
+            file.set_len(prefix_position as u64)?;
+            Ok(file)
+        });
+        match cloned {
+            Ok(file) => Some((file, prefix_position)),
+            Err(_) => {
+                // A successful clone can retain read-only permissions even if
+                // opening it for append fails. Recreate our temporary output
+                // before falling back to the ordinary encoder.
+                let _ = std::fs::remove_file(&temporary_file);
+                None
+            }
+        }
+    } else {
+        None
+    };
+    with_encode_metadata_prefix::<DefPathHashDefIdEncoder<'_>>(
         tcx,
-        temporary_file.path(),
+        &temporary_file,
+        preserved,
         move |ecx| {
             let preamble = ecx.position();
-            ecx.emit_raw_bytes(&metadata[preamble..prefix_position]);
+            if preamble != prefix_position {
+                ecx.emit_raw_bytes(&metadata[preamble..prefix_position]);
+            }
             ecx.required_source_files = Some(required_source_files);
             ecx.metadata_prefix_manifest = Some(MetadataPrefixManifestBuilder {
                 manifest,
@@ -3494,12 +3522,43 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
     path: &Path,
     f: impl FnOnce(&mut EncodeContext<'_, 'tcx, M>) -> usize,
 ) {
-    let mut encoder = opaque::FileEncoder::new(path)
-        .unwrap_or_else(|err| tcx.dcx().emit_fatal(FailCreateFileEncoder { err }));
-    encoder.emit_raw_bytes(METADATA_HEADER);
+    with_encode_metadata_prefix(tcx, path, None, f)
+}
 
-    // Will be filled with the root position after encoding everything.
-    encoder.emit_raw_bytes(&0u64.to_le_bytes());
+/// Appends new metadata to an already validated prefix when cloning succeeded.
+fn with_encode_metadata_prefix<'tcx, M: MetadataEncoder<'tcx>>(
+    tcx: TyCtxt<'tcx>,
+    path: &Path,
+    prefix: Option<(File, usize)>,
+    f: impl FnOnce(&mut EncodeContext<'_, 'tcx, M>) -> usize,
+) {
+    let preserved =
+        prefix.and_then(|(file, len)| {
+            match opaque::FileEncoder::with_existing_prefix(path, file, len) {
+                Ok(encoder) => Some(encoder),
+                Err(_) => {
+                    let _ = std::fs::remove_file(path);
+                    None
+                }
+            }
+        });
+    let has_prefix = preserved.is_some();
+    let mut encoder = preserved.unwrap_or_else(|| {
+        opaque::FileEncoder::new(path)
+            .unwrap_or_else(|err| tcx.dcx().emit_fatal(FailCreateFileEncoder { err }))
+    });
+    if has_prefix && tcx.sess.opts.unstable_opts.incremental_info {
+        eprintln!(
+            "[incremental] metadata preserved {} copy-on-write prefix bytes",
+            encoder.position()
+        );
+    }
+    if !has_prefix {
+        encoder.emit_raw_bytes(METADATA_HEADER);
+
+        // Will be filled with the root position after encoding everything.
+        encoder.emit_raw_bytes(&0u64.to_le_bytes());
+    }
 
     let source_map_files = tcx.sess.source_map().files();
     let source_file_cache = (Arc::clone(&source_map_files[0]), 0);
@@ -3529,7 +3588,9 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
     };
 
     // Encode the rustc version string in a predictable location.
-    rustc_version(tcx.sess.cfg_version).encode(&mut ecx);
+    if !has_prefix {
+        rustc_version(tcx.sess.cfg_version).encode(&mut ecx);
+    }
 
     let root_position = f(&mut ecx);
 
@@ -3741,3 +3802,5 @@ fn is_public_mod_child(
             })
     }
 }
+
+// ignore-tidy-filelength

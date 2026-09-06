@@ -226,6 +226,7 @@ jobs:
             tests/run-make/parallel-query-depth-limits
             tests/run-make/incremental-lint-visibilities
             tests/run-make/incremental-cloned-query-cache
+            tests/run-make/cloned-metadata-prefix
             tests/run-make/split-debuginfo-incremental
           )
           selected=()
