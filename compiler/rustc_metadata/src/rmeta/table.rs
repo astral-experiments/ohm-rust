@@ -12,6 +12,12 @@ use crate::rmeta::encoder::public_api_hasher::{
 };
 use crate::rmeta::*;
 
+// The fixed-size encodings below use at most 17 bytes. Keep dense widths unchanged so dense
+// tables retain their existing representation, and use the next varint bit for sparse tables.
+const SPARSE_TABLE: usize = 128;
+const SPARSE_BUCKET_LEN: usize = 64;
+const SPARSE_BUCKET_BYTES: usize = 12;
+
 pub(super) trait IsDefault: Default {
     fn is_default(&self) -> bool;
 }
@@ -625,11 +631,6 @@ impl<H: TablePublicApiHasher<I>, I: Idx, const N: usize, T: FixedSizeEncoding<By
             );
         }
         if !value.is_default() {
-            // FIXME(eddyb) investigate more compact encodings for sparse tables.
-            // On the PR @michaelwoerister mentioned:
-            // > Space requirements could perhaps be optimized by using the HAMT `popcnt`
-            // > trick (i.e. divide things into buckets of 32 or 64 items and then
-            // > store bit-masks of which item in each bucket is actually serialized).
             let block = self.blocks.ensure_contains_elem(i, || [0; N]);
             value.write_to_bytes(block);
             if self.width != N {
@@ -646,7 +647,16 @@ impl<H: TablePublicApiHasher<I>, I: Idx, const N: usize, T: FixedSizeEncoding<By
         let pos = buf.position();
 
         let width = self.width;
+        let sparse_index = sparse_table_index(self.blocks.raw.as_slice(), width);
+        if let Some(index) = &sparse_index {
+            for bucket in index {
+                buf.emit_raw_bytes(bucket);
+            }
+        }
         for block in &self.blocks {
+            if sparse_index.is_some() && *block == [0; N] {
+                continue;
+            }
             buf.write_with(|dest| {
                 *dest = *block;
                 width
@@ -654,14 +664,73 @@ impl<H: TablePublicApiHasher<I>, I: Idx, const N: usize, T: FixedSizeEncoding<By
         }
         GraphHashed(LazyTable::from_position_and_encoded_size(
             NonZero::new(pos).unwrap(),
-            width,
+            width | if sparse_index.is_some() { SPARSE_TABLE } else { 0 },
             self.blocks.len(),
         ))
     }
 }
 
+/// Indexes nonzero entries in groups of 64, if that saves space over the dense table.
+///
+/// Each bucket stores its occupancy bitmap and the number of nonzero entries before it. A lookup
+/// needs only one bucket and a population count; values follow the complete index in order.
+fn sparse_table_index<const N: usize>(blocks: &[[u8; N]], width: usize) -> Option<Vec<[u8; 12]>> {
+    const { assert!(N < SPARSE_TABLE) };
+    if width == 0 || blocks.len() > u32::MAX as usize {
+        return None;
+    }
+
+    let index_bytes = blocks.len().div_ceil(SPARSE_BUCKET_LEN) * SPARSE_BUCKET_BYTES;
+    let dense_bytes = blocks.len() * width;
+    // A sparse width needs one extra varint byte.
+    if index_bytes + 1 >= dense_bytes {
+        return None;
+    }
+
+    let mut index = Vec::with_capacity(blocks.len().div_ceil(SPARSE_BUCKET_LEN));
+    let mut present = 0u32;
+    for bucket in blocks.chunks(SPARSE_BUCKET_LEN) {
+        let mut bitmap = 0u64;
+        for (i, block) in bucket.iter().enumerate() {
+            if *block != [0; N] {
+                bitmap |= 1 << i;
+            }
+        }
+        let mut entry = [0; SPARSE_BUCKET_BYTES];
+        entry[..8].copy_from_slice(&bitmap.to_le_bytes());
+        entry[8..].copy_from_slice(&present.to_le_bytes());
+        index.push(entry);
+        present += bitmap.count_ones();
+    }
+
+    (index_bytes + present as usize * width + 1 < dense_bytes).then_some(index)
+}
+
 fn trailing_zeros(x: &[u8]) -> usize {
     x.iter().rev().take_while(|b| **b == 0).count()
+}
+
+impl<I, T> LazyTable<I, T> {
+    /// Locates the complete table representation, including a sparse table's index.
+    /// Metadata-prefix reuse needs this range when validating and relocating suffix tables.
+    pub(super) fn encoded_range(&self, metadata: &[u8]) -> Option<std::ops::Range<usize>> {
+        let width = self.width & !SPARSE_TABLE;
+        let length = if self.width & SPARSE_TABLE != 0 {
+            let index_bytes =
+                self.len.div_ceil(SPARSE_BUCKET_LEN).checked_mul(SPARSE_BUCKET_BYTES)?;
+            let index_end = self.position.get().checked_add(index_bytes)?;
+            let last_bucket =
+                metadata.get(index_end.checked_sub(SPARSE_BUCKET_BYTES)?..index_end)?;
+            let bitmap = u64::from_le_bytes(last_bucket[..8].try_into().unwrap());
+            let preceding = u32::from_le_bytes(last_bucket[8..].try_into().unwrap());
+            let entries = (preceding as usize).checked_add(bitmap.count_ones() as usize)?;
+            index_bytes.checked_add(entries.checked_mul(width)?)?
+        } else {
+            self.len.checked_mul(width)?
+        };
+        let end = self.position.get().checked_add(length)?;
+        (end <= metadata.len()).then_some(self.position.get()..end)
+    }
 }
 
 impl<I: Idx, const N: usize, T: FixedSizeEncoding<ByteArray = [u8; N]> + ParameterizedOverTcx>
@@ -676,8 +745,24 @@ where
             return Default::default();
         }
 
-        let width = self.width;
-        let start = self.position.get() + (width * i.index());
+        let width = self.width & !SPARSE_TABLE;
+        let start = if self.width & SPARSE_TABLE != 0 {
+            let bucket_start =
+                self.position.get() + (i.index() / SPARSE_BUCKET_LEN) * SPARSE_BUCKET_BYTES;
+            let bucket = &metadata.blob()[bucket_start..bucket_start + SPARSE_BUCKET_BYTES];
+            let bitmap = u64::from_le_bytes(bucket[..8].try_into().unwrap());
+            let bit = 1u64 << (i.index() % SPARSE_BUCKET_LEN);
+            if bitmap & bit == 0 {
+                return Default::default();
+            }
+            let preceding = u32::from_le_bytes(bucket[8..].try_into().unwrap());
+            let index = preceding as usize + (bitmap & (bit - 1)).count_ones() as usize;
+            self.position.get()
+                + self.len.div_ceil(SPARSE_BUCKET_LEN) * SPARSE_BUCKET_BYTES
+                + width * index
+        } else {
+            self.position.get() + width * i.index()
+        };
         let end = start + width;
         let bytes = &metadata.blob()[start..end];
 
@@ -693,5 +778,63 @@ where
     /// Size of the table in entries, including possible gaps.
     pub(super) fn size(&self) -> usize {
         self.len
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rustc_data_structures::owned_slice::slice_owned;
+    use rustc_serialize::opaque::MAGIC_END_BYTES;
+
+    use super::*;
+
+    #[test]
+    fn sparse_and_dense_tables() {
+        for width in [1, 2, 8] {
+            for len in [0, 1, 63, 64, 65, 127, 128, 129, 257] {
+                for sparse in [false, true] {
+                    let blocks: Vec<_> = (0..len)
+                        .map(|i| {
+                            let value = if !sparse || [0, 63, 64, 127, 128, 256].contains(&i) {
+                                1u64 << ((width - 1) * 8)
+                            } else {
+                                0
+                            };
+                            value.to_le_bytes()
+                        })
+                        .collect();
+                    let index = sparse_table_index(&blocks, width);
+                    if !sparse {
+                        assert!(index.is_none());
+                    } else if len == 257 {
+                        assert!(index.is_some());
+                    }
+                    let mut encoded = vec![0];
+                    if let Some(index) = &index {
+                        encoded.extend(index.iter().flatten());
+                    }
+                    for block in &blocks {
+                        if index.is_none() || *block != [0; 8] {
+                            encoded.extend_from_slice(&block[..width]);
+                        }
+                    }
+                    let encoded_end = encoded.len();
+                    encoded.extend_from_slice(MAGIC_END_BYTES);
+                    let blob = MetadataBlob::new(slice_owned(encoded, |bytes| &bytes[..])).unwrap();
+                    let table = LazyTable::<usize, u64>::from_position_and_encoded_size(
+                        NonZero::new(1).unwrap(),
+                        width | if index.is_some() { SPARSE_TABLE } else { 0 },
+                        len,
+                    );
+                    assert_eq!(table.encoded_range(&blob), Some(1..encoded_end));
+                    assert_eq!(table.encoded_range(&blob[..encoded_end - 1]), None);
+                    for (i, expected) in blocks.iter().enumerate() {
+                        assert_eq!(table.get(&blob, i), u64::from_le_bytes(*expected));
+                    }
+                    assert_eq!(table.get(&blob, len), 0);
+                    assert_eq!(table.get(&blob, len + 100), 0);
+                }
+            }
+        }
     }
 }
