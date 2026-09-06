@@ -195,9 +195,8 @@ def fetch(args):
 
 def prepare(args):
     evidence = args.root / "sparse-metadata-bench"
-    evidence.mkdir(exist_ok=False)
     targets = args.target_root / "sparse-metadata-bench"
-    manifest = {
+    identity = {
         "cargo": str(args.cargo),
         "cargo_sha256": digest(args.cargo),
         "cargo_version": subprocess.check_output(
@@ -206,10 +205,18 @@ def prepare(args):
         "source_provenance": json.loads(
             (args.root / "bench-sources/provenance.json").read_text()
         ),
-        "arms": {},
         "scope": "Nonincremental metadata-only real-crate compiler invocations",
     }
-    for arm in ARMS:
+    if evidence.exists():
+        manifest = json.loads((evidence / "manifest.json").read_text())
+        assert all(manifest[key] == value for key, value in identity.items())
+    else:
+        evidence.mkdir()
+        manifest = {**identity, "arms": {}, "complete": False}
+        save(evidence / "manifest.json", manifest)
+    assert len(set(args.arms)) == len(args.arms)
+    assert not set(args.arms).intersection(manifest["arms"]), "Arm already prepared"
+    for arm in args.arms:
         sysroot = args.target_root / arm / "x86_64-unknown-linux-gnu/stage1"
         rustc = sysroot / "bin/rustc"
         arm_dir = evidence / arm
@@ -289,6 +296,9 @@ def prepare(args):
         assert (
             source_digest(path) == manifest["source_provenance"]["source_digests"][name]
         )
+    if set(manifest["arms"]) != set(ARMS):
+        save(evidence / "manifest.json", manifest)
+        return
     # The compiler and dependency locations differ. All other options must match.
     for case in CASES:
         normalized = []
@@ -567,6 +577,13 @@ def main():
         "--cargo-home", type=Path, default=Path("/tmp/codex-cargo-home")
     )
     parser.add_argument("--jobs", type=int, default=16)
+    parser.add_argument(
+        "--arms",
+        nargs="+",
+        choices=ARMS,
+        default=list(ARMS),
+        help="Arms to prepare; separate calls may add each arm once",
+    )
     parser.add_argument(
         "--cycles",
         type=int,
