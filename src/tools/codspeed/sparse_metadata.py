@@ -348,7 +348,7 @@ def cpu_counters():
     return [int(value) for value in fields]
 
 
-def quiet():
+def quiet(allow_concurrent=False):
     busy = []
     for entry in Path("/proc").iterdir():
         if not entry.name.isdigit():
@@ -370,7 +370,7 @@ def quiet():
             "cmake",
         } or name.startswith(("cachegrind", "callgrind")):
             busy.append({"pid": entry.name, "comm": name})
-    if busy:
+    if busy and not allow_concurrent:
         raise RuntimeError(f"Unrelated build process exists: {busy}")
     before = cpu_counters()
     time.sleep(0.25)
@@ -381,8 +381,12 @@ def quiet():
         "idle": delta[3] / total,
         "iowait": delta[4] / total,
         "steal": delta[7] / total,
+        "other_build_processes": busy,
+        "concurrent_instructions_allowed": allow_concurrent,
     }
-    if sample["idle"] < 0.90 or sample["iowait"] > 0.02 or sample["steal"] > 0.01:
+    if not allow_concurrent and (
+        sample["idle"] < 0.90 or sample["iowait"] > 0.02 or sample["steal"] > 0.01
+    ):
         raise RuntimeError(f"Host is not quiet: {sample}")
     return sample
 
@@ -418,6 +422,7 @@ def measure(args):
             "order": order,
             "cycles": args.cycles,
             "cases": args.cases,
+            "allow_concurrent_instructions": args.allow_concurrent_instructions,
         },
     )
     records = []
@@ -433,7 +438,7 @@ def measure(args):
             env.update(prepared["env"])
             for path in Path(prepared["outputs"]).glob("*.rmeta"):
                 path.unlink()
-            sample = quiet()
+            sample = quiet(args.allow_concurrent_instructions)
             stem = f"{case}-{index:02}-{arm}"
             log = output / (stem + ".log")
             cg = output / (stem + ".cachegrind")
@@ -617,10 +622,16 @@ def main():
         default=2,
         help="Samples per arm per cycle in the instruction phase (ABBA or ABBA+BAAB)",
     )
+    parser.add_argument(
+        "--allow-concurrent-instructions",
+        action="store_true",
+        help="Permit co-running instruction counters; CG elapsed time is never a performance metric",
+    )
     parser.add_argument("--valgrind", default="valgrind")
     args = parser.parse_args()
     args.cargo = args.cargo or args.root / "toolchain/bin/cargo"
     assert args.cycles > 0
+    assert not args.allow_concurrent_instructions or args.operation == "instructions"
     if args.operation in ("native", "instructions"):
         measure(args)
     else:
