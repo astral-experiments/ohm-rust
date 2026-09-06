@@ -1,0 +1,11 @@
+{
+  "revision": "c0301bc44d175b9b2c5442b25049475c39d7700c",
+  "fixtures": [
+    "syn-2.0.101",
+    "regex-automata-0.4.8"
+  ],
+  "archive_sha256": "ff846ccf3f0b7046e7b0c098e2cec55183dece7b1723caa83f2992e031b90228",
+  "archive_bytes": 933622,
+  "source_archive_sha256": "95f5c094a63bf46dbc052c7f93c9ad603b42a924cb0422026063cc0a2ec5f9bb",
+  "contents_sha256": "85d3983450b9abb3c44d8dc199136649a03a1d41b2b3e22140ae2bf7907f4aa9"
+}

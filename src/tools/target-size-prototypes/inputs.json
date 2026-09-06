@@ -1,0 +1,24 @@
+{
+  "rust-base.tar.gz": {
+    "sha256": "0c741bf22ca1fcef65e14adb9b6e2423fbf45084354b4d278f553f9b1fe9f016",
+    "bytes": 49062135,
+    "revision": "d37229159e545bbdec917dd7efdf5d26da40d2bc",
+    "repository": "https://github.com/astral-sh/ohm-rust"
+  },
+  "backtrace-base.tar.gz": {
+    "sha256": "e59ca8483bbd98a9ad945661e5ab98566b3dac6929b0b1943cc4996e16016a61",
+    "bytes": 99379,
+    "repository": "https://github.com/rust-lang/backtrace-rs",
+    "revision": "d902726a1dcdc1e1c66f73d1162181b5423c645b"
+  },
+  "ohm-1.98.0-9-x86_64-unknown-linux-gnu.tar.gz": {
+    "sha256": "dd59d6ff3afcdbae1c27d009b2f76a06a544cbe01b3708e9bc8a6675cf3b4757",
+    "bytes": 301502723,
+    "url": "https://github.com/astral-sh/ohm/releases/download/ohm-1.98.0-9/ohm-1.98.0-9-x86_64-unknown-linux-gnu.tar.gz"
+  },
+  "rust-dev-beta-x86_64-unknown-linux-gnu.tar.xz": {
+    "sha256": "4520b5c0ba0ad3b23b5a043c373be4937c4f42f55af9e53adb0257febbb1a5d2",
+    "bytes": 115942832,
+    "url": "https://ci-artifacts.rust-lang.org/rustc-builds/1afd73112f4ad9cad106573a830d2f9c4ffb89e9/rust-dev-beta-x86_64-unknown-linux-gnu.tar.xz"
+  }
+}
