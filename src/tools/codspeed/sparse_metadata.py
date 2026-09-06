@@ -625,7 +625,9 @@ def main():
     parser.add_argument(
         "--allow-concurrent-instructions",
         action="store_true",
-        help="Permit co-running instruction counters; CG elapsed time is never a performance metric",
+        help=(
+            "Permit co-running instruction counters; CG elapsed time is never a performance metric"
+        ),
     )
     parser.add_argument("--valgrind", default="valgrind")
     args = parser.parse_args()
