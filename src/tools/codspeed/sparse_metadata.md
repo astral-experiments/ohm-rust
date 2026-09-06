@@ -1,5 +1,8 @@
 # Sparse metadata prototype measurements
 
+See the [recorded results](results/sparse-metadata/README.md) for measurements,
+their scope, raw evidence, and the prototype's current verdict.
+
 [`sparse_metadata.py`](sparse_metadata.py) measures complete compiler invocations for
 syn, Ruff's AST, Ruff's parser, and ty's semantic library. The parser and ty read
 dependency metadata as well as producing metadata. Results do not isolate codec
