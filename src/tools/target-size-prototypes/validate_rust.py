@@ -264,9 +264,9 @@ def cycles(candidate, fixture, profile, rounds):
                                         for variant in ['baseline', candidate]}})
 
 
-def cachegrind(candidate, fixture, profile, rounds):
+def cachegrind(candidate, fixture, profile, rounds, revisions):
     results = []
-    for revision in [2, 3, 4]:
+    for revision in revisions:
         for round in range(rounds):
             order = ['baseline', candidate] if round % 2 == 0 else [candidate, 'baseline']
             for variant in order:
@@ -328,6 +328,8 @@ def main():
     parser.add_argument('--fixture', choices=FIXTURES, default='syn-2.0.101')
     parser.add_argument('--profile', choices=['check', 'dev'], default='check')
     parser.add_argument('--rounds', type=int, default=2)
+    parser.add_argument('--revisions', type=int, nargs='+', choices=[2, 3, 4], default=[2, 3, 4],
+                        help='Cachegrind revisions to measure (default: 2 3 4)')
     args = parser.parse_args()
     # All variants restore the same fixture directory. Serialize preparation and
     # measurement even when different callers submit jobs concurrently.
@@ -342,7 +344,7 @@ def main():
         elif args.action == 'cycles':
             cycles(args.variant, args.fixture, args.profile, args.rounds)
         else:
-            cachegrind(args.variant, args.fixture, args.profile, args.rounds)
+            cachegrind(args.variant, args.fixture, args.profile, args.rounds, args.revisions)
 
 
 if __name__ == '__main__':
