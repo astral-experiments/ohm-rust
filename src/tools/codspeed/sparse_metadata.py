@@ -150,6 +150,8 @@ def target_inventory(root):
     entries = []
     categories = {}
     seen = set()
+    incremental_seen = set()
+    incremental_totals = {"apparent_bytes": 0, "unique_bytes": 0, "allocated_bytes": 0}
     pending = [Path(root)]
     while pending:
         path = pending.pop()
@@ -166,10 +168,19 @@ def target_inventory(root):
         identity = (info.st_dev, info.st_ino)
         first = identity not in seen
         seen.add(identity)
+        incremental = "incremental" in path.relative_to(root).parts
+        if incremental:
+            incremental_totals["apparent_bytes"] += 0 if directory else info.st_size
+            if identity not in incremental_seen:
+                incremental_seen.add(identity)
+                incremental_totals["unique_bytes"] += 0 if directory else info.st_size
+                incremental_totals["allocated_bytes"] += info.st_blocks * 512
         row = {
             "path": str(path.relative_to(root)),
             "category": category,
-            "incremental": "incremental" in path.relative_to(root).parts,
+            "incremental": incremental,
+            "inode": list(identity),
+            "entry_allocated_bytes": info.st_blocks * 512,
             "apparent_bytes": 0 if directory else info.st_size,
             "unique_bytes": info.st_size if first and not directory else 0,
             "allocated_bytes": info.st_blocks * 512 if first else 0,
@@ -202,10 +213,7 @@ def target_inventory(root):
                 "allocated_bytes",
             )
         },
-        "incremental_totals": {
-            metric: sum(item[metric] for item in entries if item["incremental"])
-            for metric in ("apparent_bytes", "unique_bytes", "allocated_bytes")
-        },
+        "incremental_totals": incremental_totals,
         "files": entries,
     }
 
@@ -714,6 +722,38 @@ def measure(args):
                         )
 
 
+def validate_samples(rows, environment, operation):
+    """Reject partial or duplicated runs before reporting a compiler comparison."""
+    cases = environment["cases"]
+    cycles = environment["cycles"]
+    order = tuple(environment["order"])
+    assert cases and len(set(cases)) == len(cases) and set(cases) <= set(CASES)
+    assert isinstance(cycles, int) and cycles > 0
+    assert order == ORDERS or (operation == "instructions" and order == ORDERS[:4])
+    sequence = [(arm, "warmup", 0) for arm in ARMS]
+    for cycle in range(cycles):
+        sequence.extend((arm, "measured", cycle) for arm in order)
+    expected = [
+        (case, arm, phase, cycle, index)
+        for case in cases
+        for index, (arm, phase, cycle) in enumerate(sequence)
+    ]
+    actual = [
+        tuple(row[key] for key in ("case", "arm", "phase", "cycle", "order"))
+        for row in rows
+    ]
+    if len(actual) != len(set(actual)) or set(actual) != set(expected):
+        raise ValueError(f"Incomplete or duplicated {operation} samples")
+    if not environment["paired_instructions"] and actual != expected:
+        raise ValueError(f"Unexpected {operation} sample order")
+    for row in rows:
+        instrumented = operation == "instructions" and row["phase"] == "measured"
+        assert row["instrumentation"] == ("cachegrind" if instrumented else "native")
+        assert row["instructions" if instrumented else "elapsed_ns"] > 0
+        if environment["paired_instructions"] and row["phase"] == "measured":
+            assert row["concurrent_pair"] == (row["order"] - len(ARMS)) // 2
+
+
 def report(args):
     evidence = args.root / args.experiment
     manifest = json.loads((evidence / "manifest.json").read_text())
@@ -722,10 +762,13 @@ def report(args):
         ("native", "elapsed_ns"),
         ("instructions", "instructions"),
     ):
-        path = evidence / operation / "samples.json"
-        if not path.exists():
+        folder = evidence / operation
+        if not folder.exists():
             continue
+        path = folder / "samples.json"
         rows = json.loads(path.read_text())
+        environment = json.loads((folder / "environment.json").read_text())
+        validate_samples(rows, environment, operation)
         for case in CASES:
             arms = {}
             for arm in ARMS:
