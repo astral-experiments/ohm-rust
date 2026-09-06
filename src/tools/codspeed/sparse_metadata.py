@@ -94,7 +94,7 @@ def command(argv, cwd, env, log):
     return elapsed
 
 
-def environment(cargo_home):
+def environment(args):
     env = dict(os.environ)
     for key in (
         "CARGO_TARGET_DIR",
@@ -112,11 +112,16 @@ def environment(cargo_home):
     ):
         env.pop(key, None)
     env.update(
-        CARGO_HOME=str(cargo_home),
+        CARGO_HOME=str(args.cargo_home),
         CARGO_INCREMENTAL="0",
         CARGO_TERM_COLOR="never",
         RUSTC_BOOTSTRAP="1",
         RUSTC_FORCE_RUSTC_VERSION="rustc-perf",
+        LD_LIBRARY_PATH=os.pathsep.join(
+            part
+            for part in (str(args.root / "llvm/lib"), env.get("LD_LIBRARY_PATH"))
+            if part
+        ),
     )
     return env
 
@@ -180,7 +185,7 @@ def unpack(args):
 
 def fetch(args):
     # This optional, explicitly separate step is the only one permitting network access.
-    env = environment(args.cargo_home)
+    env = environment(args)
     env["RUSTC"] = str(args.root / "toolchain/bin/rustc")
     for path in sources(args).values():
         subprocess.run(
@@ -196,7 +201,7 @@ def prepare(args):
         "cargo": str(args.cargo),
         "cargo_sha256": digest(args.cargo),
         "cargo_version": subprocess.check_output(
-            [str(args.cargo), "--version"], text=True
+            [str(args.cargo), "--version"], text=True, env=environment(args)
         ),
         "source_provenance": json.loads(
             (args.root / "bench-sources/provenance.json").read_text()
@@ -209,7 +214,7 @@ def prepare(args):
         rustc = sysroot / "bin/rustc"
         arm_dir = evidence / arm
         arm_dir.mkdir()
-        env = environment(args.cargo_home)
+        env = environment(args)
         env.update(
             RUSTC=str(rustc),
             RUSTFLAGS="-Zthreads=1",
@@ -224,7 +229,10 @@ def prepare(args):
                 str(p): digest(p)
                 for p in sorted((sysroot / "lib").glob("librustc_driver-*.so"))
             },
-            "rustc_version": subprocess.check_output([str(rustc), "-vV"], text=True),
+            "rustc_version": subprocess.check_output(
+                [str(rustc), "-vV"], text=True, env=env
+            ),
+            "llvm_runtime_path": str(args.root / "llvm/lib"),
             "preparation": [],
             "cases": {},
         }
@@ -400,7 +408,7 @@ def measure(args):
         for index, (arm, phase, cycle) in enumerate(sequence):
             prepared = manifest["arms"][arm]["cases"][case]
             argv = prepared["command"]
-            env = environment(args.cargo_home)
+            env = environment(args)
             env.update(prepared["env"])
             for path in Path(prepared["outputs"]).glob("*.rmeta"):
                 path.unlink()
@@ -436,6 +444,15 @@ def measure(args):
                 "metadata": inventory(prepared["outputs"]),
             }
             assert row["metadata"], row
+            notifications = []
+            for line in log.read_text(errors="replace").splitlines():
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(item, dict) and item.get("$message_type") == "artifact":
+                    notifications.append(item)
+            row["artifact_notifications"] = notifications
             if cg.exists():
                 lines = cg.read_text().splitlines()
                 events = next(
@@ -485,6 +502,14 @@ def report(args):
                     "min": min(values),
                     "max": max(values),
                     "metadata_bytes": sizes[0],
+                    "public_api_hashes": sorted(
+                        {
+                            item["public_api_hash"]["value"]
+                            for row in selected
+                            for item in row["artifact_notifications"]
+                            if item.get("public_api_hash")
+                        }
+                    ),
                 }
             if len(arms) == 2:
                 result["cases"].setdefault(case, {})[operation] = {
@@ -496,6 +521,13 @@ def report(args):
                         arms[ARMS[1]]["metadata_bytes"]
                         / arms[ARMS[0]]["metadata_bytes"]
                         - 1
+                    ),
+                    "public_api_hashes_equal": (
+                        arms[ARMS[0]]["public_api_hashes"]
+                        == arms[ARMS[1]]["public_api_hashes"]
+                        if arms[ARMS[0]]["public_api_hashes"]
+                        and arms[ARMS[1]]["public_api_hashes"]
+                        else None
                     ),
                 }
     result["unchanged_sources"] = {
