@@ -1,4 +1,9 @@
-# Sparse metadata tables
+# Sparse metadata tables: original prototype
+
+These observations describe the original prototype at `91a57411`. Later compiler
+hardening starts at `54d6de980917d03fd2a003b6b7f6d3d46ad3d63e` and requires separate
+measurements. The results below must not be presented as measurements of that
+new implementation.
 
 ## Conclusion
 
@@ -46,9 +51,9 @@ do not cover dependency decoding performed later during code generation.
 
 The measured compiler implementation is commit
 `91a57411c676e6c4b6962967c0209716ecd43541`, compared with
-`d37229159e545bbdec917dd7efdf5d26da40d2bc` (Ohm release-9 base). Later commits on
-this branch change only the measurement driver, tests, and this evidence; they do
-not change the compiler implementation. The expanded run-make test is from
+`d37229159e545bbdec917dd7efdf5d26da40d2bc` (Ohm release-9 base). Commits through
+`bb7b1ec27748021dee04562597b386391a8a5adc` changed only the measurement driver,
+tests, and this evidence after the measured compiler revision. The expanded run-make test is from
 `11dd58244cb59b493538cba93113f7320eb5d9ab` and was run with that same built
 candidate compiler.
 
