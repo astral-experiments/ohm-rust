@@ -3457,8 +3457,10 @@ fn try_reuse_metadata_prefix(
         return None;
     }
     let previous_rdr_hashes = previous_root.rdr_hashes.take()?;
-    if previous_rdr_hashes.local.encoded_range(&metadata)?.start < manifest.prefix_position
-        || previous_rdr_hashes.expn.encoded_range(&metadata)?.start < manifest.prefix_position
+    let local_hashes_range = previous_rdr_hashes.local.encoded_range(&metadata)?;
+    let expn_hashes_range = previous_rdr_hashes.expn.encoded_range(&metadata)?;
+    if local_hashes_range.start < manifest.prefix_position
+        || expn_hashes_range.start < manifest.prefix_position
     {
         return None;
     }
@@ -3497,8 +3499,18 @@ fn try_reuse_metadata_prefix(
                     ecx.encode_enabled_denied_partial_mitigations(&mut hcx).value;
             });
             previous_root.rdr_hashes = Some(ItemPublicHashes {
-                local: relocate_metadata_table(ecx, &metadata, previous_rdr_hashes.local),
-                expn: relocate_metadata_table(ecx, &metadata, previous_rdr_hashes.expn),
+                local: relocate_metadata_table(
+                    ecx,
+                    &metadata,
+                    previous_rdr_hashes.local,
+                    local_hashes_range,
+                ),
+                expn: relocate_metadata_table(
+                    ecx,
+                    &metadata,
+                    previous_rdr_hashes.expn,
+                    expn_hashes_range,
+                ),
                 public_global_hash: previous_rdr_hashes.public_global_hash,
             });
             let root: LazyValue<CrateRoot> = ecx.lazy(previous_root);
