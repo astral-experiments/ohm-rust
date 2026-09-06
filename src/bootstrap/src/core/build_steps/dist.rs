@@ -588,6 +588,29 @@ impl CommandLineStep for Rustc {
             let dst_dir = image.join("lib/rustlib").join(target).join("bin");
             t!(fs::create_dir_all(&dst_dir));
 
+            // A private ld.bfd name lets both GCC and Clang select Wild through
+            // -B and -fuse-ld=bfd, including GCC versions without -fuse-ld=wild.
+            if let Some(wild) =
+                builder.config.target_config.get(&target).and_then(|t| t.ohm_wild_linker.as_ref())
+            {
+                let wild_bin = dst_dir.join("wild-ld");
+                t!(fs::create_dir_all(&wild_bin));
+                builder.copy_link(
+                    &wild.join("wild"),
+                    &wild_bin.join("ld.bfd"),
+                    FileType::Executable,
+                );
+                let licenses = image.join("share/doc/rust/licenses");
+                t!(fs::create_dir_all(&licenses));
+                for license in ["LICENSE-APACHE", "LICENSE-MIT"] {
+                    builder.copy_link(
+                        &wild.join(license),
+                        &licenses.join(format!("wild-{license}")),
+                        FileType::Regular,
+                    );
+                }
+            }
+
             // Copy over lld if it's there
             if builder.config.lld_enabled {
                 let src_dir = builder.sysroot_target_bindir(target_compiler, target);
