@@ -3,8 +3,11 @@
 The `Compiler performance` workflow measures an optimized stage-1 compiler from each
 PR and each push to `ohm-1.98.0` using Walltime on a dedicated ARM64 CodSpeed Macro
 runner. It builds the compiler and matching standard library once, then shares
-that artifact with six benchmark jobs. Each job verifies the compiler's source
-revision before benchmarking one crate or workspace.
+that artifact with six compiler benchmark jobs and two development-workflow jobs.
+Each job verifies the compiler's source revision before benchmarking one crate or
+workspace.
+
+## Compiler cases
 
 We reuse `bitmaps-3.2.1`, `syn-2.0.101`, `serde-1.0.219`, and
 `regex-automata-0.4.8` from the pinned `src/tools/rustc-perf` submodule. These cover
@@ -40,7 +43,7 @@ the individual timing statistics. The exported `total_time` includes setup and
 teardown, so it is not used as the compiler timing metric.
 
 CI checks each job's assigned cases for the expected sampling counts and positive,
-finite minimum and mean timings, in nanoseconds. The six jobs cover all 22 cases,
+finite minimum and mean timings, in nanoseconds. The six compiler jobs cover all 22 cases,
 and CodSpeed combines their measurements into one report. Each job retains its
 result documents and preparation manifest for fourteen days in a
 `codspeed-walltime-evidence-<shard>` artifact. The manifest identifies the compiler,
@@ -53,6 +56,56 @@ The fixed configuration in `bootstrap.toml` measures leaf compilation with one
 frontend thread, without release PGO or BOLT. Dependencies are prepared separately
 for each crate and profile. Ohm's development-session replays cover full parallel
 builds and Cargo cache reuse.
+
+## Development workflows
+
+Eight additional cases run complete Cargo commands on the same pinned Ruff and uv
+workspaces. They measure `ty_python_semantic` and `uv-resolver` with the workspace's
+normal development profile, incremental compilation, eight Cargo jobs, and Ohm's
+default compiler flags, including eight frontend threads.
+
+| Scenario | Prepared state | Measured commands after the edit |
+| --- | --- | --- |
+| `DependencyEditCheck` | Warm check | Check the target after an implementation-only dependency edit |
+| `DirectEditCheck` | Warm check | Check the directly edited target |
+| `DirectEditTest` | Warm test build and check | Rebuild the edited target's library test executable |
+| `CheckTestCheck` | Warm test build and check | Check, rebuild the library test executable, then check again |
+
+The uv dependency edit changes `uv-normalize`; the Ruff dependency edit changes
+`ruff_python_trivia`. Direct edits change private implementations in `uv-resolver`
+and `ty_python_semantic`. Each edit preserves behavior and public signatures.
+Test builds use `cargo test --lib --no-run`: compilation and linking are measured,
+but test execution is excluded.
+
+These cases use the candidate rustc with a fixed Ohm Cargo, built from the
+`CARGO_REVISION` pin in `workflows.py` with the `ohm-defaults` feature. CI builds
+that Cargo with bootstrap's compiler and packages it alongside the candidate.
+This holds Cargo constant across compiler comparisons while allowing its rebuild
+decisions to affect the result. It does not benchmark changes to Cargo itself.
+
+The workflow requires `OHM_CARGO_READ_TOKEN` with read-only Contents access to the
+private `astral-sh/ohm-cargo` repository. The default workflow token only grants
+access to this repository. Checkout does not persist the credential.
+
+Preparation fetches dependencies, warms each command sequence, and snapshots its
+target directory. Before every sample, including the unmeasured warmup and final
+call, the harness restores the original source and the matching build snapshot,
+then applies the edit. Mutable outputs are never hard-linked to the snapshot.
+Copies use filesystem cloning where available. Restoration and verification are
+outside measurement; Cargo execution, compiler subprocesses, and linking are
+inside. Each case uses ten measured rounds with one invocation of the sequence
+per round. Warmups and measurements use `--locked --offline`.
+
+Cargo runs with verbose output retained in a separate log for every sample. The
+harness rejects samples without a compiler command for the edited crate and
+rejects failed commands. The manifest records the exact compiler and Cargo
+versions, source pins, edits, commands, and environment. Credentials and proxy
+settings are not included. Workflow result verification requires all four cases
+for the assigned workspace; these cases have separate names from compiler cases.
+
+The workflow lane covers warm local edit/build loops. It does not measure release
+PGO/BOLT, Clippy, formatting, concurrent worktrees, shared-build caches, disk usage,
+or complete recorded sessions. Use Ohm's session and disk studies for those claims.
 
 ## Run locally
 
@@ -77,7 +130,8 @@ src/tools/codspeed/.venv/bin/python src/tools/codspeed/prepare.py \
   --rustc build/host/stage1/bin/rustc --cargo build/host/stage0/bin/cargo
 src/tools/codspeed/.venv/bin/python -m pytest \
   src/tools/codspeed/test_harness.py \
-  src/tools/codspeed/test_walltime_results.py
+  src/tools/codspeed/test_walltime_results.py \
+  src/tools/codspeed/test_workflows.py
 src/tools/codspeed/.venv/bin/python -m pytest src/tools/codspeed/test_compiler_walltime.py
 ```
 
@@ -95,6 +149,25 @@ To run one CI shard locally, pass the same `--shard` value to `prepare.py` and
 `verify_walltime.py`, and select it with pytest's `-k` option. For example,
 `--shard syn-2.0.101` and `-k syn-2.0.101` cover syn's four checking scenarios and
 its debug build. Omitting the shard runs the complete suite.
+
+For development workflows, supply Cargo built from the pinned revision with
+`ohm-defaults`, or the Cargo executable from Ohm 1.98.0-9. Preparation rejects a
+different Cargo revision. Keep `CARGO_TARGET_DIR` stable and private to this
+benchmark checkout; the runner creates workflow targets and snapshots beneath it.
+
+```sh
+src/tools/codspeed/.venv/bin/python src/tools/codspeed/workflows.py \
+  --rustc build/host/stage1/bin/rustc --cargo /path/to/pinned-ohm-cargo \
+  --shard uv-resolver
+src/tools/codspeed/.venv/bin/python -m pytest \
+  src/tools/codspeed/test_workflow_walltime.py -k uv-resolver
+```
+
+Omit `--shard` and `-k` to prepare and smoke-test both workspaces. Custom output
+directories require `RUSTC_CODSPEED_WORKFLOWS=/path/to/manifest.json`. As with the
+compiler cases, native pytest runs validate execution without producing CodSpeed
+measurements. CI verifies exported results with
+`verify_walltime.py build/codspeed --workflows --shard uv-resolver`.
 
 To update the hash-pinned Python dependencies after changing `pyproject.toml`, run
 from this directory:

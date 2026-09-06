@@ -17,7 +17,7 @@ jobs:
   compiler:
     name: Build benchmark compiler
     runs-on: codspeed-macro
-    timeout-minutes: 50
+    timeout-minutes: 70
     outputs:
       shards: ${{ steps.shards.outputs.value }}
     steps:
@@ -35,7 +35,9 @@ jobs:
         id: shards
         working-directory: src/tools/codspeed
         run: >-
-          python3 -c 'import json; from benchmarks import SHARDS; print("value=" + json.dumps(SHARDS))'
+          python3 -c 'import json; from benchmarks import SHARDS, WORKSPACES;
+          print("value=" + json.dumps([{"shard": name, "kind": "compiler"} for name in SHARDS]
+          + [{"shard": name, "kind": "workflow"} for name in WORKSPACES]))'
           >> "$GITHUB_OUTPUT"
 
       - name: Build candidate compiler and matching standard library
@@ -43,13 +45,31 @@ jobs:
           python3 x.py --ci false --config src/tools/codspeed/bootstrap.toml
           build --stage 1 library
 
+      - name: Checkout fixed Ohm Cargo for development workflows
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: astral-sh/ohm-cargo
+          ref: 49a7295fc6b46da600c6dca91d188a972d6abcc7
+          path: build/codspeed-cargo
+          token: ${{ secrets.OHM_CARGO_READ_TOKEN }}
+          persist-credentials: false
+
+      - name: Build workflow Cargo with Ohm defaults
+        shell: bash
+        run: |
+          RUSTC="$PWD/build/host/stage0/bin/rustc" CFG_RELEASE_CHANNEL=dev \
+            build/host/stage0/bin/cargo build --release --locked \
+            --manifest-path build/codspeed-cargo/Cargo.toml \
+            --target-dir build/codspeed-cargo-target --features ohm-defaults,all-static
+          cp build/codspeed-cargo-target/release/cargo build/host/workflow-cargo
+
       - name: Package compiler and pinned Cargo
         # Bootstrap links these source directories back to the checkout, including build/.
         run: >-
           tar --dereference -czf build/codspeed-toolchain.tar.gz
           --exclude=stage1/lib/rustlib/src
           --exclude=stage1/lib/rustlib/rustc-src
-          -C build/host stage1 stage0/bin/cargo
+          -C build/host stage1 stage0/bin/cargo workflow-cargo
 
       - name: Retain benchmark compiler
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -61,14 +81,17 @@ jobs:
           if-no-files-found: error
 
   codspeed:
-    name: Compiler Walltime benchmarks (${{ matrix.shard }})
+    name: ${{ matrix.kind == 'workflow' && 'Development workflows' || 'Compiler Walltime benchmarks' }} (${{ matrix.shard }})
     needs: compiler
     runs-on: codspeed-macro
-    timeout-minutes: 50
+    timeout-minutes: 70
+    env:
+      BENCHMARK_KIND: ${{ matrix.kind }}
+      RUSTC_CODSPEED_WORKFLOWS: build/codspeed/manifest.json
     strategy:
       fail-fast: false
       matrix:
-        shard: ${{ fromJSON(needs.compiler.outputs.shards) }}
+        include: ${{ fromJSON(needs.compiler.outputs.shards) }}
     permissions:
       contents: read
       id-token: write
@@ -128,6 +151,7 @@ jobs:
           src/tools/codspeed/.venv/bin/python -m pytest
           src/tools/codspeed/test_harness.py
           src/tools/codspeed/test_walltime_results.py
+          src/tools/codspeed/test_workflows.py
 
       - name: Verify compiler revision
         shell: bash
@@ -141,36 +165,55 @@ jobs:
           fi
 
       - name: Prepare dependencies and capture compiler invocations
+        if: matrix.kind == 'compiler'
         run: >-
           src/tools/codspeed/.venv/bin/python src/tools/codspeed/prepare.py
           --rustc build/codspeed-toolchain/stage1/bin/rustc
           --cargo build/codspeed-toolchain/stage0/bin/cargo
           --shard '${{ matrix.shard }}'
 
+      - name: Prepare development workflow snapshots
+        if: matrix.kind == 'workflow'
+        run: >-
+          src/tools/codspeed/.venv/bin/python src/tools/codspeed/workflows.py
+          --rustc build/codspeed-toolchain/stage1/bin/rustc
+          --cargo build/codspeed-toolchain/workflow-cargo
+          --output build/codspeed --shard '${{ matrix.shard }}'
+
       - name: Measure compiler performance
-        timeout-minutes: 35
+        timeout-minutes: 50
         uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
         with:
           mode: walltime
           runner-version: "5.2.1"
           run: |
             set -e
-            src/tools/codspeed/.venv/bin/python -m pytest \
-              src/tools/codspeed/test_compiler_walltime.py --codspeed -k '${{ matrix.shard }}'
+            if [ "$BENCHMARK_KIND" = workflow ]; then
+              suite=src/tools/codspeed/test_workflow_walltime.py
+            else
+              suite=src/tools/codspeed/test_compiler_walltime.py
+            fi
+            src/tools/codspeed/.venv/bin/python -m pytest "$suite" --codspeed -k '${{ matrix.shard }}'
             cp -r "$CODSPEED_PROFILE_FOLDER/results" build/codspeed/results
 
       - name: Verify compiler Walltime measurements
-        run: >-
-          src/tools/codspeed/.venv/bin/python src/tools/codspeed/verify_walltime.py
-          build/codspeed --shard '${{ matrix.shard }}'
+        shell: bash
+        run: |
+          mode=()
+          if [ "$BENCHMARK_KIND" = workflow ]; then
+            mode=(--workflows)
+          fi
+          src/tools/codspeed/.venv/bin/python src/tools/codspeed/verify_walltime.py \
+            build/codspeed --shard '${{ matrix.shard }}' "${mode[@]}"
 
       - name: Retain compiler measurement evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: codspeed-walltime-evidence-${{ matrix.shard }}
+          name: codspeed-walltime-evidence-${{ matrix.kind == 'workflow' && 'workflow-' || '' }}${{ matrix.shard }}
           path: |
             build/codspeed/manifest.json
             build/codspeed/results/
+            build/codspeed/*/*.log
           if-no-files-found: ignore
           retention-days: 14
