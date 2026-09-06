@@ -25,6 +25,9 @@ class MeasurementTests(unittest.TestCase):
             artifact.write_bytes(b"x" * 5000)
             os.link(artifact, root / "second.rlib")
             (root / "alias").symlink_to("first.rlib")
+            cache = root / "debug/incremental"
+            cache.mkdir(parents=True)
+            (cache / "query-cache.bin").write_bytes(b"cache")
             result = driver.target_inventory(root)
             libraries = result["categories"][".rlib"]
             self.assertEqual(libraries["apparent_bytes"], 10000)
@@ -33,6 +36,8 @@ class MeasurementTests(unittest.TestCase):
                 libraries["allocated_bytes"], artifact.stat().st_blocks * 512
             )
             self.assertEqual(result["categories"]["symlinks"]["entries"], 1)
+            self.assertEqual(result["incremental_totals"]["unique_bytes"], 5)
+            self.assertEqual(result["totals"]["unique_bytes"], 5005 + len("first.rlib"))
 
     def test_paired_instruction_isolation_and_launch_order(self):
         with tempfile.TemporaryDirectory() as temporary:
