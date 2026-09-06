@@ -30,6 +30,7 @@ define_config! {
         default_linker: Option<PathBuf> = "default-linker",
         default_linker_linux_override: Option<DefaultLinuxLinkerOverride> = "default-linker-linux-override",
         linker: Option<String> = "linker",
+        ohm_wild_linker: Option<PathBuf> = "ohm-wild-linker",
         split_debuginfo: Option<String> = "split-debuginfo",
         llvm_config: Option<String> = "llvm-config",
         llvm_has_rust_patches: Option<bool> = "llvm-has-rust-patches",
@@ -68,6 +69,8 @@ pub struct Target {
     pub default_linker: Option<PathBuf>,
     pub default_linker_linux_override: DefaultLinuxLinkerOverride,
     pub linker: Option<PathBuf>,
+    /// Directory containing the pinned Wild executable and its license files.
+    pub ohm_wild_linker: Option<PathBuf>,
     pub split_debuginfo: Option<SplitDebuginfo>,
     pub compress_debuginfo: Option<CompressDebuginfo>,
     pub sanitizers: Option<bool>,
