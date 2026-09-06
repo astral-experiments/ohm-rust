@@ -3,11 +3,13 @@
 // Exercise table lookups across several sparse-table buckets through both standalone metadata
 // and an rlib. The generic function bodies also make codegen decode metadata from the dependency.
 
-use run_make_support::{rfs, run, rustc};
+use run_make_support::{rfs, run, rustc, serde_json};
 
 fn main() {
     let mut library = String::from(
         r#"
+        fn private_value() -> u32 { 7 }
+        pub fn value() -> u32 { private_value() }
         pub trait Value {
             const VALUE: u32;
             fn get(&self) -> u32;
@@ -49,12 +51,48 @@ fn main() {
             "#,
         ));
     }
-    consumer.push_str("}");
-    rfs::write("tables.rs", library);
+    consumer.push_str("println!(\"{}\", tables::value()); }");
+    rfs::write("tables.rs", &library);
     rfs::write("main.rs", consumer);
 
     rustc().input("tables.rs").crate_type("rlib").emit("metadata,link").run();
     rustc().input("main.rs").extern_("tables", "libtables.rmeta").emit("metadata").run();
     rustc().input("main.rs").extern_("tables", "libtables.rlib").run();
-    run("main");
+    assert_eq!(run("main").stdout_utf8(), "7\n");
+
+    // Public hashing enables metadata-prefix reuse. Keep public items and source spans fixed
+    // while changing a private implementation, then check sparse tables through each revision.
+    let mut public_hash = None;
+    for value in [7, 8, 8, 7] {
+        rfs::write(
+            "tables.rs",
+            library.replace(
+                "fn private_value() -> u32 { 7 }",
+                &format!("fn private_value() -> u32 {{ {value} }}"),
+            ),
+        );
+        let output = rustc()
+            .input("tables.rs")
+            .crate_type("rlib")
+            .emit("metadata,link")
+            .incremental("incremental")
+            .arg("-Zpublic-api-hash")
+            .arg("-Zincremental-verify-ich")
+            .json("artifacts")
+            .error_format("json")
+            .run();
+        let hash = output
+            .stderr_utf8()
+            .lines()
+            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+            .find(|item| item["$message_type"] == "artifact" && item["emit"] == "metadata")
+            .expect("missing metadata artifact")["public_api_hash"]["value"]
+            .as_str()
+            .expect("missing public API hash")
+            .to_owned();
+        assert_eq!(public_hash.get_or_insert_with(|| hash.clone()), &hash);
+        rustc().input("main.rs").extern_("tables", "libtables.rmeta").emit("metadata").run();
+        rustc().input("main.rs").extern_("tables", "libtables.rlib").run();
+        assert_eq!(run("main").stdout_utf8(), format!("{value}\n"));
+    }
 }
