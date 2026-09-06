@@ -52,6 +52,13 @@ not change the compiler implementation. The expanded run-make test is from
 `11dd58244cb59b493538cba93113f7320eb5d9ab` and was run with that same built
 candidate compiler.
 
+CI at evidence commit `78d7d80f77c` passed formatting but rejected the inline
+unit test: compiler unit tests must live in a `tests.rs` file or `tests` directory.
+The follow-up moves the unchanged test body to `rmeta/table/tests.rs` behind
+`#[cfg(test)] mod tests`. Production table code remains byte-for-byte identical
+to the measured implementation. The relocated unit test was rerun; its receipt
+and full log are retained in [test-relocation.json](test-relocation.json).
+
 Use [the committed driver](../../sparse_metadata.py) and its
 [procedure](../../sparse_metadata.md). The source identities are rustc-perf
 `c0301bc44d175b9b2c5442b25049475c39d7700c` and Ruff
