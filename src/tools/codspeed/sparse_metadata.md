@@ -78,6 +78,10 @@ arm has separate dependency, output, log, and profile paths. Only the coordinato
 writes `samples.json`. This mode reduces the cost of instruction counting for ty;
 it cannot be used for native latency measurements.
 
+The report checks every sample against the recorded cases, cycles, arm order,
+and instrumentation. Missing or duplicated samples cause reporting to fail;
+an interrupted measurement cannot produce a completed comparison.
+
 Instruction-phase warmups invoke the native compiler, without Cachegrind. Every
 measured instruction sample starts a fresh Cachegrind process; its counts do not
 depend on instrumentation from previous processes. The evidence records both
@@ -95,6 +99,11 @@ once, and allocated bytes sum `st_blocks * 512` once per inode, including
 directories. Symlinks are counted without following them. The result covers these
 complete dev target directories, excluding the compiler/sysroot and Cargo source
 cache; it does not measure APFS clone sharing.
+
+The incremental subtotal deduplicates inodes within that subtree independently.
+A file hard-linked both inside and outside the cache therefore counts toward the
+cache subtotal and once in the whole-target total. Per-extension allocation uses
+the first visited pathname when hard links cross extension groups.
 
 `test_sparse_metadata.py` checks hard-link/symlink accounting and concurrent arm
 isolation using fake compiler processes. These are harness correctness tests;

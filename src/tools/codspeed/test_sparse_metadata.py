@@ -28,6 +28,11 @@ class MeasurementTests(unittest.TestCase):
             cache = root / "debug/incremental"
             cache.mkdir(parents=True)
             (cache / "query-cache.bin").write_bytes(b"cache")
+            deps = root / "debug/deps"
+            deps.mkdir()
+            metadata = deps / "library.rmeta"
+            metadata.write_bytes(b"metadata")
+            os.link(metadata, cache / "metadata.rmeta")
             result = driver.target_inventory(root)
             libraries = result["categories"][".rlib"]
             self.assertEqual(libraries["apparent_bytes"], 10000)
@@ -36,8 +41,12 @@ class MeasurementTests(unittest.TestCase):
                 libraries["allocated_bytes"], artifact.stat().st_blocks * 512
             )
             self.assertEqual(result["categories"]["symlinks"]["entries"], 1)
-            self.assertEqual(result["incremental_totals"]["unique_bytes"], 5)
-            self.assertEqual(result["totals"]["unique_bytes"], 5005 + len("first.rlib"))
+            self.assertEqual(result["incremental_totals"]["unique_bytes"], 13)
+            self.assertEqual(
+                result["incremental_totals"]["allocated_bytes"],
+                sum(path.stat().st_blocks * 512 for path in [cache, *cache.iterdir()]),
+            )
+            self.assertEqual(result["totals"]["unique_bytes"], 5013 + len("first.rlib"))
 
     def test_paired_instruction_isolation_and_launch_order(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -120,6 +129,16 @@ else:
             ):
                 driver.measure(args)
             rows = json.loads((evidence / "instructions/samples.json").read_text())
+            environment = json.loads(
+                (evidence / "instructions/environment.json").read_text()
+            )
+            driver.validate_samples(rows, environment, "instructions")
+            for incomplete in (rows[:-1], rows[:4], rows + [rows[-1]]):
+                with self.assertRaisesRegex(ValueError, "Incomplete or duplicated"):
+                    driver.validate_samples(incomplete, environment, "instructions")
+            invalid_plan = dict(environment, cycles=2)
+            with self.assertRaisesRegex(ValueError, "Incomplete or duplicated"):
+                driver.validate_samples(rows, invalid_plan, "instructions")
             self.assertTrue(
                 all(
                     row["instrumentation"]
