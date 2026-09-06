@@ -149,8 +149,13 @@ impl<I, T> LazyTable<I, T> {
         position: NonZero<usize>,
         width: usize,
         len: usize,
-    ) -> LazyTable<I, T> {
-        LazyTable { position, width, len, _marker: PhantomData }
+    ) -> LazyTable<I, T>
+    where
+        T: table::FixedSizeEncoding,
+    {
+        let table = LazyTable { position, width, len, _marker: PhantomData };
+        assert!(table.checked_layout().is_some(), "invalid metadata table layout");
+        table
     }
 }
 

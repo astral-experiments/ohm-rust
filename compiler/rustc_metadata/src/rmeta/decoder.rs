@@ -42,7 +42,7 @@ use tracing::debug;
 
 use crate::creader::CStore;
 use crate::eii::EiiMapEncodedKeyValue;
-use crate::rmeta::table::IsDefault;
+use crate::rmeta::table::{FixedSizeEncoding, IsDefault};
 use crate::rmeta::*;
 
 mod cstore_impl;
@@ -202,7 +202,11 @@ pub(super) trait LazyDecoder: BlobDecoder {
         self.read_lazy_offset_then(|pos| LazyArray::from_position_and_num_elems(pos, len))
     }
 
-    fn read_lazy_table<I, T>(&mut self, width: usize, len: usize) -> LazyTable<I, T> {
+    fn read_lazy_table<I, T: FixedSizeEncoding>(
+        &mut self,
+        width: usize,
+        len: usize,
+    ) -> LazyTable<I, T> {
         self.read_lazy_offset_then(|pos| LazyTable::from_position_and_encoded_size(pos, width, len))
     }
 
@@ -703,7 +707,7 @@ impl<D: LazyDecoder, T> Decodable<D> for LazyArray<T> {
     }
 }
 
-impl<I: Idx, D: LazyDecoder, T> Decodable<D> for LazyTable<I, T> {
+impl<I: Idx, D: LazyDecoder, T: FixedSizeEncoding> Decodable<D> for LazyTable<I, T> {
     fn decode(decoder: &mut D) -> Self {
         let width = decoder.read_usize();
         let len = decoder.read_usize();
