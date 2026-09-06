@@ -4,7 +4,7 @@ use std::{fs, io};
 
 use tempfile::TempDir;
 
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
 mod tests;
 
 // Unfortunately, on windows, it looks like msvcrt.dll is silently translating
@@ -104,6 +104,45 @@ pub fn clone_directory(src: &Path, dst: &Path) -> io::Result<()> {
         Ok(())
     } else {
         Err(io::Error::last_os_error())
+    }
+}
+
+/// Clones immutable file extents into an independent inode, without copying fallback.
+/// The destination must not exist; callers retain their ordinary write path on failure.
+pub fn clone_file(src: &Path, dst: &Path) -> io::Result<()> {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    if !fs::metadata(src)?.is_file() {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "clone source is not a file"));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        clone_directory(src, dst)
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::fd::AsRawFd;
+
+        let source = fs::File::open(src)?;
+        let destination = fs::File::options().write(true).create_new(true).open(dst)?;
+        // SAFETY: Both descriptors remain live, and FICLONE takes an input descriptor.
+        if unsafe { libc::ioctl(destination.as_raw_fd(), libc::FICLONE, source.as_raw_fd()) } == 0 {
+            Ok(())
+        } else {
+            let error = io::Error::last_os_error();
+            drop(destination);
+            let _ = fs::remove_file(dst);
+            // Some filesystems reject unknown ioctls with ENOTTY instead of EOPNOTSUPP.
+            Err(if error.raw_os_error() == Some(libc::ENOTTY) {
+                io::Error::new(io::ErrorKind::Unsupported, error)
+            } else {
+                error
+            })
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = (src, dst);
+        Err(io::ErrorKind::Unsupported.into())
     }
 }
 

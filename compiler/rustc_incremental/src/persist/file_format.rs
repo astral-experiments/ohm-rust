@@ -43,29 +43,65 @@ pub(crate) fn save_in<F>(sess: &Session, path_buf: PathBuf, name: &str, encode: 
 where
     F: FnOnce(FileEncoder<'static>) -> FileEncodeResult,
 {
+    save_in_with_prefix(sess, path_buf, name, None, encode)
+}
+
+/// Retains a query generation with a separate copy-on-write inode when available.
+pub(crate) fn save_in_with_prefix<F>(
+    sess: &Session,
+    path_buf: PathBuf,
+    name: &str,
+    prefix_len: Option<usize>,
+    encode: F,
+) where
+    F: FnOnce(FileEncoder<'static>) -> FileEncodeResult,
+{
     debug!("save: storing data in {}", path_buf.display());
 
-    // Delete the old file, if any.
-    // Note: It's important that we actually delete the old file and not just
-    // truncate and overwrite it, since it might be a shared hard-link, the
-    // underlying data of which we don't want to modify.
-    //
-    // We have to ensure we have dropped the memory maps to this file
-    // before performing this removal.
-    match fs::remove_file(&path_buf) {
-        Ok(()) => {
-            debug!("save: remove old file");
+    let preserved = prefix_len
+        .filter(|_| sess.opts.unstable_opts.ohm_cloned_query_cache_prefix)
+        .and_then(|len| match cloned_prefix_encoder(&path_buf, len) {
+            Ok(encoder) => Some(encoder),
+            Err(error) => {
+                if sess.opts.unstable_opts.incremental_info {
+                    eprintln!("[incremental] query cache rewriting {len} prefix bytes after clone failure: {error}");
+                }
+                None
+            }
+        });
+
+    let encoder = if let Some(encoder) = preserved {
+        if sess.opts.unstable_opts.incremental_info {
+            eprintln!(
+                "[incremental] query cache preserved {} copy-on-write prefix bytes",
+                encoder.position()
+            );
         }
-        Err(err) if err.kind() == io::ErrorKind::NotFound => (),
-        Err(err) => sess.dcx().emit_fatal(diagnostics::DeleteOld { name, path: path_buf, err }),
-    }
+        encoder
+    } else {
+        // Delete the old file, if any.
+        // Note: It's important that we actually delete the old file and not just
+        // truncate and overwrite it, since it might be a shared hard-link, the
+        // underlying data of which we don't want to modify.
+        //
+        // We have to ensure we have dropped the memory maps to this file
+        // before performing this removal.
+        match fs::remove_file(&path_buf) {
+            Ok(()) => {
+                debug!("save: remove old file");
+            }
+            Err(err) if err.kind() == io::ErrorKind::NotFound => (),
+            Err(err) => sess.dcx().emit_fatal(diagnostics::DeleteOld { name, path: path_buf, err }),
+        }
 
-    let mut encoder = match FileEncoder::new(&path_buf) {
-        Ok(encoder) => encoder,
-        Err(err) => sess.dcx().emit_fatal(diagnostics::CreateNew { name, path: path_buf, err }),
+        let mut encoder = match FileEncoder::new(&path_buf) {
+            Ok(encoder) => encoder,
+            Err(err) => sess.dcx().emit_fatal(diagnostics::CreateNew { name, path: path_buf, err }),
+        };
+
+        write_file_header(&mut encoder, sess);
+        encoder
     };
-
-    write_file_header(&mut encoder, sess);
 
     match encode(encoder) {
         Ok(position) => {
@@ -77,6 +113,68 @@ where
             debug!("save: data written to disk successfully");
         }
         Err((path, err)) => sess.dcx().emit_fatal(diagnostics::WriteNew { name, path, err }),
+    }
+}
+
+/// Replaces a working session's hard link with an independent clone before appending.
+///
+/// The previous session remains immutable. All temporary files live inside the working
+/// session, which cannot be reused until the entire compilation succeeds and finalizes it.
+fn cloned_prefix_encoder(path: &Path, prefix_len: usize) -> io::Result<FileEncoder<'static>> {
+    let temp = rustc_fs_util::TempDirBuilder::new()
+        .prefix("query-prefix-")
+        .tempdir_in(path.parent().unwrap())?;
+    let cloned = temp.path().join("query-cache.bin");
+    rustc_fs_util::clone_file(path, &cloned)?;
+    // Open only the newly cloned inode for writing, never the shared session hard link.
+    // Keep the handle across the rename so the encoder cannot reopen a different inode.
+    let file = fs::File::options().read(true).write(true).open(&cloned)?;
+    if file.metadata()?.len() != prefix_len as u64 {
+        return Err(io::Error::other("incremental cache prefix length changed"));
+    }
+    fs::rename(&cloned, path)?;
+    FileEncoder::with_existing_prefix(path, file, prefix_len)
+}
+
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
+mod tests {
+    use std::os::unix::fs::MetadataExt;
+
+    use super::*;
+
+    #[test]
+    fn cloned_prefix_keeps_previous_session_immutable() {
+        let temp = rustc_fs_util::TempDirBuilder::new().tempdir_in(env::temp_dir()).unwrap();
+        let path = temp.path().join("query-cache.bin");
+        let donor = temp.path().join("previous-session.bin");
+        let prefix = vec![42; 128 * 1024 + 3];
+        fs::write(&donor, &prefix).unwrap();
+        fs::hard_link(&donor, &path).unwrap();
+
+        let mut encoder = match cloned_prefix_encoder(&path, prefix.len()) {
+            Err(err) if err.kind() == io::ErrorKind::Unsupported => return,
+            result => result.unwrap(),
+        };
+        assert_ne!(fs::metadata(&path).unwrap().ino(), fs::metadata(&donor).unwrap().ino());
+        encoder.emit_raw_bytes(b"next generation");
+        encoder.finish().unwrap();
+        assert_eq!(fs::read(&donor).unwrap(), prefix);
+        assert_eq!(&fs::read(&path).unwrap()[..prefix.len()], prefix);
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn failed_prefix_setup_preserves_previous_session_and_cleans_temporary_files() {
+        let temp = rustc_fs_util::TempDirBuilder::new().tempdir_in(env::temp_dir()).unwrap();
+        let path = temp.path().join("query-cache.bin");
+        let donor = temp.path().join("previous-session.bin");
+        fs::write(&donor, b"prefix").unwrap();
+        fs::hard_link(&donor, &path).unwrap();
+        assert!(cloned_prefix_encoder(&path, 1).is_err());
+        assert_eq!(fs::read(&donor).unwrap(), b"prefix");
+        assert_eq!(fs::read(&path).unwrap(), b"prefix");
+        assert_eq!(fs::metadata(&path).unwrap().ino(), fs::metadata(&donor).unwrap().ino());
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 2);
     }
 }
 

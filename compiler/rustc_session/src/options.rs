@@ -2614,6 +2614,8 @@ options! {
         Currently the only option available"),
     ohm_caller_local_cgus: bool = (false, parse_bool, [TRACKED],
         "place upstream generics containing local closures in caller-local codegen units"),
+    ohm_cloned_query_cache_prefix: bool = (false, parse_bool, [UNTRACKED],
+        "clone retained incremental query-cache bytes before appending (default: no)"),
     ohm_incremental_mono_partitions: bool = (false, parse_bool, [TRACKED],
         "reuse unchanged incremental monomorphization partitions without public API hashing"),
     ohm_stable_cgu_merging: bool = (false, parse_bool, [TRACKED],

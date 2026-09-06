@@ -4,7 +4,57 @@ use std::fs;
 use rustc_macros::{Decodable_NoContext, Encodable_NoContext};
 
 use crate::opaque::{FileEncoder, MAGIC_END_BYTES, MemDecoder};
-use crate::{Decodable, Encodable};
+use crate::{Decodable, Encodable, Encoder};
+
+#[test]
+fn existing_prefix_preserves_bytes_and_absolute_encoder_positions() {
+    let tmpfile = tempfile::NamedTempFile::new().unwrap();
+    let prefix = vec![42; 128 * 1024 + 3];
+    fs::write(tmpfile.path(), &prefix).unwrap();
+    assert!(
+        FileEncoder::with_existing_prefix(
+            tmpfile.path(),
+            tmpfile.reopen().unwrap(),
+            prefix.len() - 1
+        )
+        .is_err()
+    );
+    assert_eq!(fs::read(tmpfile.path()).unwrap(), prefix);
+
+    let mut encoder =
+        FileEncoder::with_existing_prefix(tmpfile.path(), tmpfile.reopen().unwrap(), prefix.len())
+            .unwrap();
+    assert_eq!(encoder.position(), prefix.len());
+    encoder.emit_u8(17);
+    let large_value = vec![71; 256 * 1024];
+    encoder.emit_raw_bytes(&large_value);
+    assert_eq!(encoder.position(), prefix.len() + 1 + large_value.len());
+    let final_len = encoder.finish().unwrap();
+    let mut expected = prefix;
+    expected.push(17);
+    expected.extend_from_slice(&large_value);
+    expected.extend_from_slice(MAGIC_END_BYTES);
+    assert_eq!(fs::read(tmpfile.path()).unwrap(), expected);
+    assert_eq!(final_len, expected.len());
+}
+
+#[test]
+fn existing_prefix_reports_buffered_and_direct_write_failures() {
+    let tmpfile = tempfile::NamedTempFile::new().unwrap();
+    let prefix = b"immutable prefix";
+    fs::write(tmpfile.path(), prefix).unwrap();
+    for len in [1, 256 * 1024] {
+        // A read-only handle deterministically fails writes without changing global process
+        // limits or relying on a particular filesystem's disk-full behavior.
+        let file = fs::File::open(tmpfile.path()).unwrap();
+        let mut encoder =
+            FileEncoder::with_existing_prefix(tmpfile.path(), file, prefix.len()).unwrap();
+        encoder.emit_raw_bytes(&vec![17; len]);
+        let (path, _) = encoder.finish().unwrap_err();
+        assert_eq!(path, tmpfile.path());
+        assert_eq!(fs::read(tmpfile.path()).unwrap(), prefix);
+    }
+}
 
 #[derive(PartialEq, Clone, Debug, Encodable_NoContext, Decodable_NoContext)]
 struct Struct {
