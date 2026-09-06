@@ -1,8 +1,8 @@
 //! The data that we will serialize and deserialize.
 //!
 //! Notionally, the dep-graph is a sequence of NodeInfo with the dependencies
-//! specified inline. The total number of nodes and edges are stored as the last
-//! 16 bytes of the file, so we can find them easily at decoding time.
+//! specified inline. Node, edge, and compact-header counts are stored at the end
+//! of the file, so we can find them easily at decoding time.
 //!
 //! The serialisation is performed on-demand when each node is emitted. Using this
 //! scheme, we do not need to keep the current graph in memory.
@@ -29,7 +29,8 @@
 //!
 //! We also encode and decode the entire rest of each node using [`SerializedNodeHeader`]
 //! to let this encoding and decoding be done in one fixed-size operation. These headers contain
-//! two [`Fingerprint`]s along with the serialized [`DepKind`], and the number of edge indices
+//! two [`Fingerprint`]s (omitting a zero value fingerprint), the serialized [`DepKind`],
+//! and the number of edge indices
 //! in the node and the number of bytes used to encode the edge indices for this node. The
 //! [`DepKind`], number of edges, and bytes per edge are all bit-packed together, if they fit.
 //! If the number of edges in this node does not fit in the bits available in the header, we
@@ -297,24 +298,25 @@ fn mask(bits: usize) -> usize {
 impl SerializedDepGraph {
     #[instrument(level = "debug", skip(d, profiler))]
     pub fn decode(d: &mut MemDecoder<'_>, profiler: &SelfProfilerRef) -> Arc<SerializedDepGraph> {
-        // The last 16 bytes are the node count and edge count.
+        // The final counts include compact headers so we can reserve the edge buffer precisely.
         debug!("position: {:?}", d.position());
 
         // `node_max` is the number of indices including empty nodes while `node_count`
         // is the number of actually encoded nodes.
-        let (node_max, node_count, edge_count) =
-            d.with_position(d.len() - 3 * IntEncodedWithFixedSize::ENCODED_SIZE, |d| {
+        let (node_max, node_count, edge_count, zero_value_count) =
+            d.with_position(d.len() - 4 * IntEncodedWithFixedSize::ENCODED_SIZE, |d| {
                 debug!("position: {:?}", d.position());
                 let node_max = IntEncodedWithFixedSize::decode(d).0 as usize;
                 let node_count = IntEncodedWithFixedSize::decode(d).0 as usize;
                 let edge_count = IntEncodedWithFixedSize::decode(d).0 as usize;
-                (node_max, node_count, edge_count)
+                let zero_value_count = IntEncodedWithFixedSize::decode(d).0 as usize;
+                (node_max, node_count, edge_count, zero_value_count)
             });
         debug!("position: {:?}", d.position());
 
         debug!(?node_count, ?edge_count);
 
-        let graph_bytes = d.len() - (3 * IntEncodedWithFixedSize::ENCODED_SIZE) - d.position();
+        let graph_bytes = d.len() - (4 * IntEncodedWithFixedSize::ENCODED_SIZE) - d.position();
 
         let mut nodes = IndexVec::from_elem_n(
             DepNode {
@@ -336,13 +338,13 @@ impl SerializedDepGraph {
         // for a node with length 64, which means the spilled 1-byte leb128 length is 1 byte of at
         // least (34 byte header + 1 byte len + 64 bytes edge data), which is ~1%. A 2-byte leb128
         // length is about the same fractional overhead and it amortizes for yet greater lengths.
-        let mut edge_list_data =
-            Vec::with_capacity(graph_bytes - node_count * size_of::<SerializedNodeHeader>());
+        let header_bytes = node_count * size_of::<SerializedNodeHeader>() - zero_value_count * 16;
+        let mut edge_list_data = Vec::with_capacity(graph_bytes - header_bytes);
 
         for _ in 0..node_count {
             // Decode the header for this edge; the header packs together as many of the fixed-size
             // fields as possible to limit the number of times we update decoder state.
-            let node_header = SerializedNodeHeader { bytes: d.read_array() };
+            let node_header = SerializedNodeHeader::decode(d);
 
             let index = node_header.index();
 
@@ -455,6 +457,9 @@ struct Unpacked {
 // M..M+N  bytes per index
 // M+N..16 kind
 impl SerializedNodeHeader {
+    // Node indices leave their high bit unused. Use it to omit a zero value fingerprint
+    // without increasing the size of other headers or reducing the inline edge count.
+    const ZERO_VALUE: u32 = 1 << 31;
     const TOTAL_BITS: usize = size_of::<DepKind>() * 8;
     const LEN_BITS: usize = Self::TOTAL_BITS - Self::KIND_BITS - Self::WIDTH_BITS;
     const WIDTH_BITS: usize = DEP_NODE_WIDTH_BITS;
@@ -488,7 +493,9 @@ impl SerializedNodeHeader {
         // Using half-open ranges ensures an unconditional panic if we get the magic numbers wrong.
         let mut bytes = [0u8; 38];
         bytes[..2].copy_from_slice(&head.to_le_bytes());
-        bytes[2..6].copy_from_slice(&index.as_u32().to_le_bytes());
+        let index = SerializedDepNodeIndex::from_curr_for_serialization(index).as_u32()
+            | if value_fingerprint == Fingerprint::ZERO { Self::ZERO_VALUE } else { 0 };
+        bytes[2..6].copy_from_slice(&index.to_le_bytes());
         bytes[6..22].copy_from_slice(&hash.to_le_bytes());
         bytes[22..].copy_from_slice(&value_fingerprint.to_le_bytes());
 
@@ -505,9 +512,24 @@ impl SerializedNodeHeader {
     }
 
     #[inline]
+    fn encoded_len(&self) -> usize {
+        if self.bytes[5] & 0x80 != 0 { 22 } else { 38 }
+    }
+
+    #[inline]
+    fn decode(decoder: &mut MemDecoder<'_>) -> Self {
+        let mut header = Self { bytes: [0; 38] };
+        header.bytes[..22].copy_from_slice(&decoder.read_array::<22>());
+        if header.encoded_len() == 38 {
+            header.bytes[22..].copy_from_slice(&decoder.read_array::<16>());
+        }
+        header
+    }
+
+    #[inline]
     fn unpack(&self) -> Unpacked {
         let head = u16::from_le_bytes(self.bytes[..2].try_into().unwrap());
-        let index = u32::from_le_bytes(self.bytes[2..6].try_into().unwrap());
+        let index = u32::from_le_bytes(self.bytes[2..6].try_into().unwrap()) & !Self::ZERO_VALUE;
         let key_fingerprint = self.bytes[6..22].try_into().unwrap();
         let value_fingerprint = self.bytes[22..].try_into().unwrap();
 
@@ -560,6 +582,52 @@ impl SerializedNodeHeader {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compact_headers_preserve_indices_fingerprints_and_edge_layout() {
+        let node = DepNode {
+            kind: DepKind::SideEffect,
+            key_fingerprint: Fingerprint::from_le_bytes([0xab; 16]).into(),
+        };
+        for index in [0, 255, 0x7fff_fffe] {
+            for fingerprint in [Fingerprint::ZERO, Fingerprint::from_le_bytes([0xcd; 16])] {
+                for (edge_max, edge_count) in [
+                    (0, 0),
+                    (255, SerializedNodeHeader::MAX_INLINE_LEN),
+                    (256, SerializedNodeHeader::MAX_INLINE_LEN + 1),
+                    (0x10000, 1000),
+                    (0x1000000, 1000),
+                ] {
+                    let header = SerializedNodeHeader::new(
+                        &node,
+                        DepNodeIndex::from_u32(index),
+                        fingerprint,
+                        edge_max,
+                        edge_count,
+                    );
+                    let expected_len = if fingerprint == Fingerprint::ZERO { 22 } else { 38 };
+                    assert_eq!(header.encoded_len(), expected_len);
+                    let mut encoder = MemEncoder::new();
+                    encoder.emit_raw_bytes(&header.bytes[..header.encoded_len()]);
+                    encoder.emit_u8(0x5a);
+                    encoder.emit_raw_bytes(rustc_serialize::opaque::MAGIC_END_BYTES);
+                    let mut decoder = MemDecoder::new(&encoder.data, 0).unwrap();
+                    let decoded = SerializedNodeHeader::decode(&mut decoder);
+                    assert_eq!(decoded.index().as_u32(), index);
+                    assert_eq!(decoded.node(), node);
+                    assert_eq!(decoded.value_fingerprint(), fingerprint);
+                    assert_eq!(decoded.len(), header.len());
+                    assert_eq!(decoded.bytes_per_index(), header.bytes_per_index());
+                    assert_eq!(decoder.read_u8(), 0x5a);
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 struct NodeInfo<'a> {
     node: DepNode,
@@ -574,7 +642,10 @@ impl NodeInfo<'_> {
         let edge_max = edges.iter().map(|e| e.as_u32()).max().unwrap_or(0);
         let header =
             SerializedNodeHeader::new(node, index, value_fingerprint, edge_max, edges.len());
-        e.write_array(header.bytes);
+        e.write_with(|dest| {
+            *dest = header.bytes;
+            header.encoded_len()
+        });
 
         if header.len().is_none() {
             // The edges are all unique and the number of unique indices is less than u32::MAX.
@@ -603,6 +674,7 @@ struct LocalEncoderState {
     encoder: MemEncoder,
     node_count: usize,
     edge_count: usize,
+    zero_value_count: usize,
 
     /// Stores the number of times we've encoded each dep kind.
     kind_stats: Vec<u32>,
@@ -612,6 +684,7 @@ struct LocalEncoderResult {
     node_max: u32,
     node_count: usize,
     edge_count: usize,
+    zero_value_count: usize,
 
     /// Stores the number of times we've encoded each dep kind.
     kind_stats: Vec<u32>,
@@ -641,6 +714,7 @@ impl EncoderState {
                     next_node_index: 0,
                     remaining_node_index: 0,
                     edge_count: 0,
+                    zero_value_count: 0,
                     node_count: 0,
                     encoder: MemEncoder::new(),
                     kind_stats: iter::repeat_n(0, DepKind::MAX as usize + 1).collect(),
@@ -734,6 +808,7 @@ impl EncoderState {
         local: &mut LocalEncoderState,
     ) {
         node.encode(&mut local.encoder, index);
+        local.zero_value_count += usize::from(node.value_fingerprint == Fingerprint::ZERO);
         self.flush_mem_encoder(&mut *local);
         self.record(&node.node, index, node.edges.len(), node.edges, retained_graph, &mut *local);
     }
@@ -776,6 +851,7 @@ impl EncoderState {
                 node_max: local.next_node_index,
                 node_count: local.node_count,
                 edge_count: local.edge_count,
+                zero_value_count: local.zero_value_count,
             }
         });
 
@@ -786,11 +862,13 @@ impl EncoderState {
         let mut node_max = 0;
         let mut node_count = 0;
         let mut edge_count = 0;
+        let mut zero_value_count = 0;
 
         for result in results {
             node_max = max(node_max, result.node_max);
             node_count += result.node_count;
             edge_count += result.edge_count;
+            zero_value_count += result.zero_value_count;
             for (i, stat) in result.kind_stats.iter().enumerate() {
                 kind_stats[i] += stat;
             }
@@ -808,6 +886,7 @@ impl EncoderState {
         IntEncodedWithFixedSize(node_max.try_into().unwrap()).encode(&mut encoder);
         IntEncodedWithFixedSize(node_count.try_into().unwrap()).encode(&mut encoder);
         IntEncodedWithFixedSize(edge_count.try_into().unwrap()).encode(&mut encoder);
+        IntEncodedWithFixedSize(zero_value_count.try_into().unwrap()).encode(&mut encoder);
         debug!("position: {:?}", encoder.position());
         // Drop the encoder so that nothing is written after the counts.
         let result = encoder.finish();
