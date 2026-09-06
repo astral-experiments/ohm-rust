@@ -53,3 +53,8 @@ source provenance; completed arms and partial arm directories cannot be overwrit
 
 `prepare` finishes by validating source and command identities. The `finalize` phase
 can repeat those checks without rebuilding either captured dependency graph.
+
+After all native measurements finish, `instructions --allow-concurrent-instructions`
+permits independent instruction-count workloads to share the host. It records
+observed co-runners and CPU counters without enforcing the native quiet guard.
+Cachegrind elapsed time is diagnostic only and is never compared as native latency.
