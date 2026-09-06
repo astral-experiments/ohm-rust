@@ -3357,11 +3357,10 @@ fn try_reuse_metadata_prefix(
         // truncate an independent clone, never the original inode.
         std::fs::remove_file(&temporary_file).ok()?;
         let cloned = rustc_fs_util::clone_file(&metadata_path, &temporary_file).and_then(|()| {
-            File::options().write(true).open(&temporary_file)?.set_len(prefix_position as u64)?;
-            opaque::FileEncoder::with_existing_prefix(&temporary_file, prefix_position)
+            File::options().write(true).open(&temporary_file)?.set_len(prefix_position as u64)
         });
         match cloned {
-            Ok(encoder) => Some(encoder),
+            Ok(()) => Some(prefix_position),
             Err(_) => {
                 // A successful clone can retain read-only permissions even if
                 // opening it for append fails. Recreate our temporary output
@@ -3373,9 +3372,6 @@ fn try_reuse_metadata_prefix(
     } else {
         None
     };
-    if preserved.is_some() && tcx.sess.opts.unstable_opts.incremental_info {
-        eprintln!("[incremental] metadata preserved {prefix_position} copy-on-write prefix bytes");
-    }
     with_encode_metadata_prefix::<DefPathHashDefIdEncoder<'_>>(
         tcx,
         &temporary_file,
@@ -3531,14 +3527,28 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
 fn with_encode_metadata_prefix<'tcx, M: MetadataEncoder<'tcx>>(
     tcx: TyCtxt<'tcx>,
     path: &Path,
-    preserved: Option<opaque::FileEncoder<'static>>,
+    prefix_len: Option<usize>,
     f: impl FnOnce(&mut EncodeContext<'_, 'tcx, M>) -> usize,
 ) {
+    let preserved =
+        prefix_len.and_then(|len| match opaque::FileEncoder::with_existing_prefix(path, len) {
+            Ok(encoder) => Some(encoder),
+            Err(_) => {
+                let _ = std::fs::remove_file(path);
+                None
+            }
+        });
     let has_prefix = preserved.is_some();
     let mut encoder = preserved.unwrap_or_else(|| {
         opaque::FileEncoder::new(path)
             .unwrap_or_else(|err| tcx.dcx().emit_fatal(FailCreateFileEncoder { err }))
     });
+    if has_prefix && tcx.sess.opts.unstable_opts.incremental_info {
+        eprintln!(
+            "[incremental] metadata preserved {} copy-on-write prefix bytes",
+            encoder.position()
+        );
+    }
     if !has_prefix {
         encoder.emit_raw_bytes(METADATA_HEADER);
 
