@@ -89,3 +89,6 @@ fn main() {
 fn _zzz() {
     ()
 }
+
+//@ revisions: default locations
+//@[locations] compile-flags: -Zdebug-info-type-line-numbers=true
