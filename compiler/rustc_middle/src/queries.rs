@@ -1447,6 +1447,15 @@ rustc_queries! {
         cache_on_disk
     }
 
+    /// Complete debug names, memoized only within this type context.
+    query cached_debuginfo_type_name(key: (Ty<'tcx>, bool)) -> ty::SymbolName<'tcx> {
+        desc { "rendering debug type name for `{}`", key.0 }
+    }
+
+    query cached_debuginfo_generic_args(key: GenericArgsRef<'tcx>) -> ty::SymbolName<'tcx> {
+        desc { "rendering debug generic arguments" }
+    }
+
     query def_kind(def_id: DefId) -> DefKind {
         desc { "looking up definition kind of `{}`", tcx.def_path_str(def_id) }
         separate_provide_extern

@@ -21,6 +21,7 @@ use rustc_hir::def_id::DefId;
 use rustc_hir::definitions::{DefPathData, DefPathDataName, DisambiguatedDefPathData};
 use rustc_hir::{CoroutineDesugaring, CoroutineKind, CoroutineSource, Mutability};
 use rustc_middle::bug;
+use rustc_middle::query::Providers;
 use rustc_middle::ty::layout::{IntegerExt, TyAndLayout};
 use rustc_middle::ty::{
     self, ExistentialProjection, GenericArgKind, GenericArgsRef, Ty, TyCtxt, Unnormalized,
@@ -29,9 +30,9 @@ use smallvec::SmallVec;
 
 use crate::debuginfo::wants_c_like_enum_debuginfo;
 
-/// Compute the name of the type as it should be stored in debuginfo. Does not do
-/// any caching, i.e., calling the function twice with the same type will also do
-/// the work twice. The `qualified` parameter only affects the first level of the
+/// Compute the name of the type as it should be stored in debuginfo, reusing a
+/// complete rendered name from this type context. The returned String belongs
+/// to the caller. `qualified` affects only the first level of the
 /// type name, further levels (i.e., type parameters) are always fully qualified.
 pub fn compute_debuginfo_type_name<'tcx>(
     tcx: TyCtxt<'tcx>,
@@ -39,7 +40,10 @@ pub fn compute_debuginfo_type_name<'tcx>(
     qualified: bool,
 ) -> String {
     let _prof = tcx.prof.generic_activity("compute_debuginfo_type_name");
+    tcx.cached_debuginfo_type_name((t, qualified)).name.to_owned()
+}
 
+fn render_type_name<'tcx>(tcx: TyCtxt<'tcx>, t: Ty<'tcx>, qualified: bool) -> String {
     let mut result = String::with_capacity(64);
     let mut visited = FxHashSet::default();
     push_debuginfo_type_name(tcx, t, qualified, &mut result, &mut visited);
@@ -649,8 +653,14 @@ fn push_unqualified_item_name(
 
 pub fn push_generic_args<'tcx>(tcx: TyCtxt<'tcx>, args: GenericArgsRef<'tcx>, output: &mut String) {
     let _prof = tcx.prof.generic_activity("compute_debuginfo_type_name");
+    output.push_str(tcx.cached_debuginfo_generic_args(args).name);
+}
+
+fn render_generic_args<'tcx>(tcx: TyCtxt<'tcx>, args: GenericArgsRef<'tcx>) -> String {
+    let mut output = String::new();
     let mut visited = FxHashSet::default();
-    push_generic_args_internal(tcx, args, output, &mut visited);
+    push_generic_args_internal(tcx, args, &mut output, &mut visited);
+    output
 }
 
 fn push_generic_args_internal<'tcx>(
@@ -833,4 +843,13 @@ fn pop_arg_separator(output: &mut String) {
 /// Check if we should generate C++ like names and debug information.
 pub fn cpp_like_debuginfo(tcx: TyCtxt<'_>) -> bool {
     tcx.sess.target.is_like_msvc
+}
+
+// Ordinary queries preserve dependencies even when another codegen unit first
+// rendered the name. Recursive formatting remains inside each complete result.
+pub(crate) fn provide(providers: &mut Providers) {
+    providers.cached_debuginfo_type_name =
+        |tcx, (t, qualified)| ty::SymbolName::new(tcx, &render_type_name(tcx, t, qualified));
+    providers.cached_debuginfo_generic_args =
+        |tcx, args| ty::SymbolName::new(tcx, &render_generic_args(tcx, args));
 }

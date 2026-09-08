@@ -284,6 +284,12 @@ impl<'tcx> QueryKey for Ty<'tcx> {
     }
 }
 
+impl<'tcx> QueryKey for (Ty<'tcx>, bool) {
+    fn default_span(&self, tcx: TyCtxt<'_>) -> Span {
+        self.0.default_span(tcx)
+    }
+}
+
 impl<'tcx> QueryKey for (Ty<'tcx>, Ty<'tcx>) {
     fn default_span(&self, _: TyCtxt<'_>) -> Span {
         DUMMY_SP
