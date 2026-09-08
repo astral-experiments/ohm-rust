@@ -719,7 +719,10 @@ fn build_union_fields_for_direct_tag_coroutine<'ll, 'tcx>(
         _ => unreachable!(),
     };
 
-    let coroutine_layout = cx.tcx.coroutine_layout(coroutine_def_id, coroutine_args.args).unwrap();
+    let coroutine_layout =
+        cx.tcx.coroutine_codegen_layout(coroutine_def_id, coroutine_args.args).unwrap();
+    let coroutine_debug_info =
+        cx.tcx.coroutine_debug_info(coroutine_def_id, coroutine_args.args).unwrap();
 
     let common_upvar_names = cx.tcx.closure_saved_names_of_captured_variables(coroutine_def_id);
     let variant_range = coroutine_args.variant_range(coroutine_def_id, cx.tcx);
@@ -761,10 +764,11 @@ fn build_union_fields_for_direct_tag_coroutine<'ll, 'tcx>(
                 coroutine_type_and_layout,
                 coroutine_type_di_node,
                 coroutine_layout,
+                coroutine_debug_info,
                 common_upvar_names,
             );
 
-            let span = coroutine_layout.variant_source_info[variant_index].span;
+            let span = coroutine_debug_info.variant_spans[variant_index];
             let source_info = if !span.is_dummy() {
                 let loc = cx.lookup_debug_loc(span.lo());
                 Some((file_metadata(cx, &loc.file), loc.line as c_uint))
