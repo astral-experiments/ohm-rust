@@ -15,6 +15,7 @@ use rustc_hir as hir;
 use rustc_hir::find_attr;
 use rustc_index::{Idx as _, IndexVec};
 use rustc_middle::bug;
+use rustc_middle::mir::{CoroutineCodegenLayout, CoroutineDebugInfo};
 use rustc_middle::query::Providers;
 use rustc_middle::traits::ObligationCause;
 use rustc_middle::ty::layout::{
@@ -34,7 +35,27 @@ use crate::diagnostics::NonPrimitiveSimdType;
 mod invariant;
 
 pub(crate) fn provide(providers: &mut Providers) {
-    *providers = Providers { layout_of, ..*providers };
+    *providers = Providers {
+        layout_of,
+        mir_coroutine_codegen_layout,
+        mir_coroutine_debug_info,
+        ..*providers
+    };
+}
+
+fn mir_coroutine_codegen_layout<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_id: DefId,
+) -> Option<CoroutineCodegenLayout<'tcx>> {
+    tcx.mir_coroutine_runtime_info(def_id)
+        .map(|info| CoroutineCodegenLayout::new(tcx, &info.layout))
+}
+
+fn mir_coroutine_debug_info<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_id: DefId,
+) -> Option<CoroutineDebugInfo<'tcx>> {
+    tcx.mir_coroutine_runtime_info(def_id).map(|info| CoroutineDebugInfo::new(tcx, &info.layout))
 }
 
 #[instrument(skip(tcx, query), level = "debug")]
@@ -565,16 +586,20 @@ fn layout_of_uncached<'tcx>(
 
             use rustc_middle::ty::layout::PrimitiveExt as _;
 
-            let info = tcx.coroutine_layout(def_id, args)?;
+            let info = tcx.coroutine_codegen_layout(def_id, args)?;
+            // Retain the original spans for layout diagnostics and query-stack
+            // locations. This read stays inside the existing `layout_of` query,
+            // whose successful result hashes only the type and computed ABI.
+            let source_info = tcx.coroutine_layout(def_id, args)?;
 
             let local_layouts = info
                 .field_tys
-                .iter()
-                .map(|local| {
-                    let field_ty = EarlyBinder::bind(tcx, local.ty);
+                .iter_enumerated()
+                .map(|(field, &ty)| {
+                    let field_ty = EarlyBinder::bind(tcx, ty);
                     let uninit_ty =
                         Ty::new_maybe_uninit(tcx, field_ty.instantiate(tcx, args).skip_norm_wip());
-                    cx.spanned_layout_of(uninit_ty, local.source_info.span)
+                    cx.spanned_layout_of(uninit_ty, source_info.field_tys[field].source_info.span)
                 })
                 .try_collect::<IndexVec<_, _>>()?;
 
@@ -590,8 +615,8 @@ fn layout_of_uncached<'tcx>(
                 .coroutine(
                     &local_layouts,
                     prefix_layouts,
-                    &info.variant_fields,
-                    &info.storage_conflicts,
+                    info.variant_fields,
+                    info.storage_conflicts,
                     |tag| TyAndLayout {
                         ty: tag.primitive().to_ty(tcx),
                         layout: tcx.mk_layout(LayoutData::scalar(cx, tag)),
