@@ -178,6 +178,8 @@ impl_erasable_for_types_with_no_type_params! {
     Option<&'_ [rustc_hir::PreciseCapturingArgKind<rustc_span::Symbol, rustc_span::Symbol>]>,
     Option<(mir::ConstValue, Ty<'_>)>,
     Option<(rustc_span::def_id::DefId, rustc_session::config::EntryFnType)>,
+    Option<mir::CoroutineCodegenLayout<'_>>,
+    Option<mir::CoroutineDebugInfo<'_>>,
     Option<rustc_abi::Align>,
     Option<rustc_ast::expand::allocator::AllocatorKind>,
     Option<rustc_data_structures::svh::Svh>,
