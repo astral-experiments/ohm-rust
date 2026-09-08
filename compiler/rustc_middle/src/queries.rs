@@ -707,6 +707,16 @@ rustc_queries! {
         separate_provide_extern
     }
 
+    /// Projects the state representation without debug names or source locations.
+    query mir_coroutine_codegen_layout(key: DefId) -> Option<mir::CoroutineCodegenLayout<'tcx>> {
+        desc { "projecting the codegen layout of coroutine `{}`", tcx.def_path_str(key) }
+    }
+
+    /// Projects state names and the declaration locations enabled by the debug policy.
+    query mir_coroutine_debug_info(key: DefId) -> Option<mir::CoroutineDebugInfo<'tcx>> {
+        desc { "projecting the debug information of coroutine `{}`", tcx.def_path_str(key) }
+    }
+
     query check_coroutine_obligations(key: LocalDefId) -> Result<(), ErrorGuaranteed> {
         desc { "verify auto trait bounds for coroutine interior type `{}`", tcx.def_path_str(key) }
     }
