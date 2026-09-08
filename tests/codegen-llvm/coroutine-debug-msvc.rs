@@ -1,5 +1,5 @@
 // Verify debuginfo for coroutines:
-//  - Each variant points to the file and line of its yield point
+//  - Variant declaration locations are opt-in; states and fields remain available
 //  - The discriminants are marked artificial
 //  - Other fields are not marked artificial
 //
@@ -24,23 +24,28 @@ fn coroutine_test() -> impl Coroutine<Yield = i32, Return = ()> {
 // CHECK-DAG:  [[GEN:!.*]] = !DICompositeType(tag: DW_TAG_union_type, name: "enum2$<coroutine_debug_msvc::coroutine_test::coroutine_env$0>"
 // CHECK:      {{!.*}} = !DIDerivedType(tag: DW_TAG_member, name: "variant0", scope: [[GEN]],
 // For brevity, we only check the struct name and members of the last variant.
-// CHECK-SAME: file: [[FILE:![0-9]*]], line: 15,
+// locations-SAME: file: [[FILE:![0-9]*]], line: 15,
+// default-NOT: line:
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: )
 // CHECK:      {{!.*}} = !DIDerivedType(tag: DW_TAG_member, name: "variant1", scope: [[GEN]],
-// CHECK-SAME: file: [[FILE]], line: 19,
+// locations-SAME: file: [[FILE]], line: 19,
+// default-NOT: line:
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: )
 // CHECK:      {{!.*}} = !DIDerivedType(tag: DW_TAG_member, name: "variant2", scope: [[GEN]],
-// CHECK-SAME: file: [[FILE]], line: 19,
+// locations-SAME: file: [[FILE]], line: 19,
+// default-NOT: line:
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: )
 // CHECK:      {{!.*}} = !DIDerivedType(tag: DW_TAG_member, name: "variant3", scope: [[GEN]],
-// CHECK-SAME: file: [[FILE]], line: 16,
+// locations-SAME: file: [[FILE]], line: 16,
+// default-NOT: line:
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: )
 // CHECK:      {{!.*}} = !DIDerivedType(tag: DW_TAG_member, name: "variant4", scope: [[GEN]],
-// CHECK-SAME: file: [[FILE]], line: 18,
+// locations-SAME: file: [[FILE]], line: 18,
+// default-NOT: line:
 // CHECK-SAME: baseType: [[VARIANT_WRAPPER:![0-9]*]]
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: )
@@ -58,3 +63,6 @@ fn coroutine_test() -> impl Coroutine<Yield = i32, Return = ()> {
 fn main() {
     let _dummy = coroutine_test();
 }
+
+//@ revisions: default locations
+//@[locations] compile-flags: -Zdebug-info-type-line-numbers=true
