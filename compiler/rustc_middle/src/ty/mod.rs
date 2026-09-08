@@ -109,7 +109,10 @@ pub use self::typeck_results::{
     UserTypeKind,
 };
 use crate::diagnostics::{OpaqueHiddenTypeMismatch, TypeMismatchReason};
-use crate::mir::{Body, CoroutineLayout, CoroutineSavedLocal, MirPhase, SourceInfo};
+use crate::mir::{
+    Body, CoroutineCodegenLayout, CoroutineDebugInfo, CoroutineLayout, CoroutineSavedLocal,
+    MirPhase, SourceInfo,
+};
 use crate::query::{IntoQueryKey, Providers};
 use crate::ty;
 use crate::ty::codec::{TyDecoder, TyEncoder};
@@ -1946,13 +1949,14 @@ impl<'tcx> TyCtxt<'tcx> {
     ///
     /// Takes `coroutine_kind` which can be acquired from the `CoroutineArgs::kind_ty`,
     /// e.g. `args.as_coroutine().kind_ty()`.
-    fn ordinary_coroutine_layout(
+    fn ordinary_coroutine_layout<T>(
         self,
         def_id: DefId,
         args: GenericArgsRef<'tcx>,
-    ) -> Result<&'tcx CoroutineLayout<'tcx>, &'tcx LayoutError<'tcx>> {
+        get_layout: impl Fn(DefId) -> Option<T>,
+    ) -> Result<T, &'tcx LayoutError<'tcx>> {
         let coroutine_kind_ty = args.as_coroutine().kind_ty();
-        let layout = self.mir_coroutine_runtime_info(def_id).map(|info| &info.layout);
+        let layout = get_layout(def_id);
         let ty = || Ty::new_coroutine(self, def_id, args);
         // Regular coroutine
         if coroutine_kind_ty.is_unit() {
@@ -1976,8 +1980,7 @@ impl<'tcx> TyCtxt<'tcx> {
                     identity_kind_ty.to_opt_closure_kind(),
                     Some(ClosureKind::Fn | ClosureKind::FnMut)
                 );
-                self.mir_coroutine_runtime_info(self.coroutine_by_move_body_def_id(def_id))
-                    .map(|info| &info.layout)
+                get_layout(self.coroutine_by_move_body_def_id(def_id))
                     .ok_or_else(|| self.layout_error(LayoutError::Unknown(ty())))
             }
         }
@@ -2033,7 +2036,42 @@ impl<'tcx> TyCtxt<'tcx> {
                 self.async_drop_coroutine_layout(def_id, args)
             }
         } else {
-            self.ordinary_coroutine_layout(def_id, args)
+            self.ordinary_coroutine_layout(def_id, args, |def_id| {
+                self.mir_coroutine_runtime_info(def_id).map(|info| &info.layout)
+            })
+        }
+    }
+
+    /// Returns the state representation without depending on its debug locations.
+    pub fn coroutine_codegen_layout(
+        self,
+        def_id: DefId,
+        args: GenericArgsRef<'tcx>,
+    ) -> Result<CoroutineCodegenLayout<'tcx>, &'tcx LayoutError<'tcx>> {
+        if self.is_async_drop_in_place_coroutine(def_id) {
+            // These shims depend on type arguments, so a DefId-only query is not
+            // sufficient. Retain the original dependency and error behavior.
+            self.coroutine_layout(def_id, args)
+                .map(|layout| CoroutineCodegenLayout::new(self, layout))
+        } else {
+            self.ordinary_coroutine_layout(def_id, args, |def_id| {
+                self.mir_coroutine_codegen_layout(def_id)
+            })
+        }
+    }
+
+    /// Returns state names and the declaration locations enabled by the debug policy.
+    pub fn coroutine_debug_info(
+        self,
+        def_id: DefId,
+        args: GenericArgsRef<'tcx>,
+    ) -> Result<CoroutineDebugInfo<'tcx>, &'tcx LayoutError<'tcx>> {
+        if self.is_async_drop_in_place_coroutine(def_id) {
+            self.coroutine_layout(def_id, args).map(|layout| CoroutineDebugInfo::new(self, layout))
+        } else {
+            self.ordinary_coroutine_layout(def_id, args, |def_id| {
+                self.mir_coroutine_debug_info(def_id)
+            })
         }
     }
 
