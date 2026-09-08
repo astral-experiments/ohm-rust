@@ -306,29 +306,89 @@ impl<'tcx> UsageMap<'tcx> {
     }
 }
 
-struct MonoItems<'tcx> {
-    // We want a set of MonoItem + Span where trying to re-insert a MonoItem with a different Span
-    // is ignored. Map does that, but it looks odd.
-    items: FxIndexMap<MonoItem<'tcx>, Span>,
+const INLINE_MONO_ITEMS: usize = 4;
+
+enum MonoItems<'tcx> {
+    Inline([Option<Spanned<MonoItem<'tcx>>>; INLINE_MONO_ITEMS]),
+    Map(FxIndexMap<MonoItem<'tcx>, Span>),
 }
 
 impl<'tcx> MonoItems<'tcx> {
     fn new() -> Self {
-        Self { items: FxIndexMap::default() }
+        Self::Inline([None; INLINE_MONO_ITEMS])
     }
 
     fn is_empty(&self) -> bool {
-        self.items.is_empty()
+        match self {
+            Self::Inline(items) => items[0].is_none(),
+            Self::Map(items) => items.is_empty(),
+        }
+    }
+
+    fn retain(&mut self, mut predicate: impl FnMut(&MonoItem<'tcx>) -> bool) {
+        match self {
+            Self::Inline(items) => {
+                // Evaluate first so a panicking predicate cannot leave holes in the prefix.
+                let mut retained = [false; INLINE_MONO_ITEMS];
+                for (item, keep) in items.iter().zip(&mut retained) {
+                    *keep = item.as_ref().is_some_and(|item| predicate(&item.node));
+                }
+                let mut next = 0;
+                for (index, keep) in retained.into_iter().enumerate() {
+                    let item = items[index].take();
+                    if keep {
+                        items[next] = item;
+                        next += 1;
+                    }
+                }
+            }
+            Self::Map(items) => items.retain(|item, _| predicate(item)),
+        }
     }
 
     fn push(&mut self, item: Spanned<MonoItem<'tcx>>) {
-        // Insert only if the entry does not exist. A normal insert would stomp the first span that
-        // got inserted.
-        self.items.entry(item.node).or_insert(item.span);
+        match self {
+            Self::Inline(items) => {
+                for slot in items.iter_mut() {
+                    match slot {
+                        Some(previous) if previous.node == item.node => return,
+                        None => {
+                            *slot = Some(item);
+                            return;
+                        }
+                        Some(_) => {}
+                    }
+                }
+
+                // The inline prefix is unique and ordered. Promote only for a new item, keeping
+                // each original span and inserting the new edge after the existing prefix.
+                let mut map =
+                    FxIndexMap::with_capacity_and_hasher(INLINE_MONO_ITEMS + 1, Default::default());
+                for previous in
+                    std::mem::replace(items, [None; INLINE_MONO_ITEMS]).into_iter().flatten()
+                {
+                    map.insert(previous.node, previous.span);
+                }
+                map.insert(item.node, item.span);
+                *self = Self::Map(map);
+            }
+            Self::Map(items) => {
+                // Repeated edges retain the first span, just as in the inline representation.
+                items.entry(item.node).or_insert(item.span);
+            }
+        }
     }
 
     fn items(&self) -> impl Iterator<Item = MonoItem<'tcx>> {
-        self.items.keys().cloned()
+        let (inline, map): (&[Option<Spanned<MonoItem<'tcx>>>], _) = match self {
+            Self::Inline(items) => (items, None),
+            Self::Map(items) => (&[], Some(items)),
+        };
+        inline
+            .iter()
+            .flatten()
+            .map(|item| item.node)
+            .chain(map.into_iter().flat_map(|items| items.keys().copied()))
     }
 }
 
@@ -337,7 +397,14 @@ impl<'tcx> IntoIterator for MonoItems<'tcx> {
     type IntoIter = impl Iterator<Item = Spanned<MonoItem<'tcx>>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.items.into_iter().map(|(item, span)| respan(span, item))
+        let (inline, map) = match self {
+            Self::Inline(items) => (items, None),
+            Self::Map(items) => ([None; INLINE_MONO_ITEMS], Some(items)),
+        };
+        inline
+            .into_iter()
+            .flatten()
+            .chain(map.into_iter().flatten().map(|(item, span)| respan(span, item)))
     }
 }
 
@@ -351,6 +418,9 @@ impl<'tcx> Extend<Spanned<MonoItem<'tcx>>> for MonoItems<'tcx> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
 
 fn collect_items_root<'tcx>(
     tcx: TyCtxt<'tcx>,
@@ -574,13 +644,11 @@ fn collect_items_rec<'tcx>(
     {
         let mut visited = OnceCell::default();
         if mode == CollectionMode::UsedItems {
-            used_items
-                .items
-                .retain(|k, _| visited.get_mut_or_init(|| state.visited.lock()).insert(*k));
+            used_items.retain(|k| visited.get_mut_or_init(|| state.visited.lock()).insert(*k));
         }
 
         let mut mentioned = OnceCell::default();
-        mentioned_items.items.retain(|k, _| {
+        mentioned_items.retain(|k| {
             !visited.get_or_init(|| state.visited.lock()).contains(k)
                 && mentioned.get_mut_or_init(|| state.mentioned.lock()).insert(*k)
         });
