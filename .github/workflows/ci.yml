@@ -132,6 +132,15 @@ jobs:
           tests/ui/async-await/async-drop/metadata-only-layout.rs
           tests/ui/pattern/non-structural-match-types-cycle-err.rs
           tests/incremental/coroutine-runtime-layout.rs
+          tests/codegen-llvm/async-fn-debug.rs
+          tests/codegen-llvm/coroutine-debug.rs
+          tests/codegen-llvm/async-fn-debug-awaitee-field.rs
+
+      - name: Run external coroutine layout dependency regression
+        if: matrix.os == 'depot-ubuntu-24.04-16'
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 2 tests/ui-fulldeps/coroutine-layout-projection.rs
 
       - name: Run unused-dependency JSON UI tests
         run: >-
