@@ -1,5 +1,5 @@
 // Verify debuginfo for coroutines:
-//  - Each variant points to the file and line of its yield point
+//  - Variant declaration locations are opt-in; states and fields remain available
 //  - The discriminants are marked artificial
 //  - Other fields are not marked artificial
 //
@@ -28,26 +28,31 @@ fn coroutine_test() -> impl Coroutine<Yield = i32, Return = ()> {
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: discriminator: [[DISC:![0-9]*]]
 // CHECK:      {{!.*}} = !DIDerivedType(tag: DW_TAG_member, name: "0", scope: [[VARIANT]],
-// CHECK-SAME: file: [[FILE:![0-9]*]], line: 16,
+// locations-SAME: file: [[FILE:![0-9]*]], line: 16,
+// default-NOT: line:
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: )
 // CHECK:      {{!.*}} = !DICompositeType(tag: DW_TAG_structure_type, name: "Unresumed", scope: [[GEN]],
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: )
 // CHECK:      {{!.*}} = !DIDerivedType(tag: DW_TAG_member, name: "1", scope: [[VARIANT]],
-// CHECK-SAME: file: [[FILE]], line: 20,
+// locations-SAME: file: [[FILE]], line: 20,
+// default-NOT: line:
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: )
 // CHECK:      {{!.*}} = !DIDerivedType(tag: DW_TAG_member, name: "2", scope: [[VARIANT]],
-// CHECK-SAME: file: [[FILE]], line: 20,
+// locations-SAME: file: [[FILE]], line: 20,
+// default-NOT: line:
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: )
 // CHECK:      {{!.*}} = !DIDerivedType(tag: DW_TAG_member, name: "3", scope: [[VARIANT]],
-// CHECK-SAME: file: [[FILE]], line: 17,
+// locations-SAME: file: [[FILE]], line: 17,
+// default-NOT: line:
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: )
 // CHECK:      {{!.*}} = !DIDerivedType(tag: DW_TAG_member, name: "4", scope: [[VARIANT]],
-// CHECK-SAME: file: [[FILE]], line: 19,
+// locations-SAME: file: [[FILE]], line: 19,
+// default-NOT: line:
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: )
 // CHECK:      [[S1:!.*]] = !DICompositeType(tag: DW_TAG_structure_type, name: "Suspend1", scope: [[GEN]],
@@ -62,3 +67,6 @@ fn coroutine_test() -> impl Coroutine<Yield = i32, Return = ()> {
 fn main() {
     let _dummy = coroutine_test();
 }
+
+//@ revisions: default locations
+//@[locations] compile-flags: -Zdebug-info-type-line-numbers=true

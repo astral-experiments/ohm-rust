@@ -7,7 +7,7 @@ use rustc_codegen_ssa::traits::MiscCodegenMethods;
 use rustc_hir::def::CtorKind;
 use rustc_index::IndexSlice;
 use rustc_middle::bug;
-use rustc_middle::mir::CoroutineLayout;
+use rustc_middle::mir::{CoroutineCodegenLayout, CoroutineDebugInfo};
 use rustc_middle::ty::layout::{LayoutOf, TyAndLayout};
 use rustc_middle::ty::{self, AdtDef, CoroutineArgs, CoroutineArgsExt, Ty, VariantDef};
 use rustc_span::{Span, Symbol};
@@ -293,7 +293,8 @@ fn build_coroutine_variant_struct_type_di_node<'ll, 'tcx>(
     variant_index: VariantIdx,
     coroutine_type_and_layout: TyAndLayout<'tcx>,
     coroutine_type_di_node: &'ll DIType,
-    coroutine_layout: &CoroutineLayout<'tcx>,
+    coroutine_layout: CoroutineCodegenLayout<'tcx>,
+    coroutine_debug_info: CoroutineDebugInfo<'tcx>,
     common_upvar_names: &IndexSlice<FieldIdx, Symbol>,
 ) -> &'ll DIType {
     let variant_name = CoroutineArgs::variant_name(variant_index);
@@ -328,8 +329,7 @@ fn build_coroutine_variant_struct_type_di_node<'ll, 'tcx>(
                 .map(|field_index| {
                     let coroutine_saved_local = coroutine_layout.variant_fields[variant_index]
                         [FieldIdx::from_usize(field_index)];
-                    let field_name_maybe =
-                        coroutine_layout.field_tys[coroutine_saved_local].debuginfo_name;
+                    let field_name_maybe = coroutine_debug_info.field_names[coroutine_saved_local];
                     let field_name = field_name_maybe
                         .as_ref()
                         .map(|s| Cow::from(s.as_str()))
