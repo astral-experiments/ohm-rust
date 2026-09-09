@@ -223,7 +223,6 @@ use rustc_data_structures::memmap::Mmap;
 use rustc_data_structures::owned_slice::{OwnedSlice, slice_owned};
 use rustc_data_structures::svh::Svh;
 use rustc_errors::{DiagArgValue, IntoDiagArg};
-use rustc_fs_util::try_canonicalize;
 use rustc_proc_macro::bridge::client::Client as ProcMacroClient;
 use rustc_session::cstore::CrateSource;
 use rustc_session::filesearch::FileSearch;
@@ -448,8 +447,7 @@ impl<'a> CrateLocator<'a> {
                             // ones we've already seen. This allows us to ignore crates
                             // we know are exactual equal to ones we've already found.
                             // Going to the same crate through different symlinks does not change the result.
-                            let path =
-                                try_canonicalize(&spf_path).unwrap_or_else(|_| spf_path.clone());
+                            let path = search_path.canonicalized_path(spf);
                             if seen_paths.contains(&path) {
                                 continue;
                             };

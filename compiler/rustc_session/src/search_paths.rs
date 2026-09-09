@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
+use rustc_fs_util::try_canonicalize;
 use rustc_macros::{Decodable, Encodable, StableHash};
 use rustc_target::spec::TargetTuple;
 
@@ -12,6 +13,7 @@ pub struct SearchPath {
     pub kind: PathKind,
     pub dir: PathBuf,
     pub files: FilesIndex,
+    canonicalized_dir: OnceLock<Option<PathBuf>>,
 }
 
 /// [FilesIndex] contains paths that can be efficiently looked up with (prefix, suffix) pairs.
@@ -62,6 +64,7 @@ impl FilesIndex {
 #[derive(Clone, Debug)]
 pub struct SearchPathFile {
     file_name_str: Arc<str>,
+    resolve_symlinks: bool,
 }
 
 impl SearchPathFile {
@@ -90,6 +93,19 @@ impl PathKind {
 }
 
 impl SearchPath {
+    /// Reuse the resolved directory for ordinary entries in the search-path snapshot.
+    /// File symlinks and entries with an unknown file type still need full resolution.
+    pub fn canonicalized_path(&self, file: &SearchPathFile) -> PathBuf {
+        if !file.resolve_symlinks
+            && let Some(dir) =
+                self.canonicalized_dir.get_or_init(|| std::fs::canonicalize(&self.dir).ok())
+        {
+            return file.path(dir);
+        }
+        let path = file.path(&self.dir);
+        try_canonicalize(&path).unwrap_or(path)
+    }
+
     pub fn from_cli_opt(
         sysroot: &Path,
         triple: &TargetTuple,
@@ -143,7 +159,12 @@ impl SearchPath {
                         e.file_name()
                             .to_str()
                             .filter(|file_name| Self::should_index_file(kind, file_name))
-                            .map(|file_name| SearchPathFile { file_name_str: file_name.into() })
+                            .map(|file_name| SearchPathFile {
+                                file_name_str: file_name.into(),
+                                resolve_symlinks: e
+                                    .file_type()
+                                    .map_or(true, |kind| kind.is_symlink()),
+                            })
                     })
                 })
                 .collect::<Vec<SearchPathFile>>(),
@@ -152,7 +173,7 @@ impl SearchPath {
         };
         files.sort_unstable_by(|lhs, rhs| lhs.file_name_str.cmp(&rhs.file_name_str));
         let files = FilesIndex(files);
-        SearchPath { kind, dir, files }
+        SearchPath { kind, dir, files, canonicalized_dir: OnceLock::new() }
     }
 
     fn should_index_file(kind: PathKind, file_name: &str) -> bool {

@@ -879,18 +879,15 @@ impl CStore {
         // against a hash, we could load a crate which has the same hash
         // as an already loaded crate. If this is the case prevent
         // duplicates by just using the first crate.
-        let root = library.metadata.get_root();
-        let mut result = LoadResult::Loaded(library);
-        for (cnum, data) in self.iter_crate_data() {
-            if data.name() == root.name() && root.public_hash() == data.public_hash() {
-                assert!(root.private_hash() == data.private_hash());
-                assert!(locator.hash.is_none());
-                info!("load success, going to previous cnum: {}", cnum);
-                result = LoadResult::Previous(cnum);
-                break;
-            }
+        let header = library.metadata.get_header();
+        if let Some(cnum) = self.existing_match(header.name, Some(header.hashes.public_hash)) {
+            assert!(header.hashes.private_hash == self.get_crate_data(cnum).private_hash());
+            assert!(locator.hash.is_none());
+            info!("load success, going to previous cnum: {}", cnum);
+            Ok(Some(LoadResult::Previous(cnum)))
+        } else {
+            Ok(Some(LoadResult::Loaded(library)))
         }
-        Ok(Some(result))
     }
 
     /// Go through the crate metadata and load any crates that it references.
