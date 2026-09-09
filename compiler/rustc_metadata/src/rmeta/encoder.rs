@@ -1,3 +1,5 @@
+// ignore-tidy-filelength
+
 use core::default::Default;
 use std::borrow::Borrow;
 use std::cell::RefCell;
