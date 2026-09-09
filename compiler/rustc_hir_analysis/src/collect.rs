@@ -71,6 +71,7 @@ pub(crate) fn provide(providers: &mut Providers) {
         item_non_self_bounds: item_bounds::item_non_self_bounds,
         impl_super_outlives: item_bounds::impl_super_outlives,
         generics_of: generics_of::generics_of,
+        late_bound_regions_span: generics_of::late_bound_regions_span,
         predicates_of: predicates_of::predicates_of,
         explicit_predicates_of: predicates_of::explicit_predicates_of,
         explicit_super_predicates_of: predicates_of::explicit_super_predicates_of,

@@ -416,6 +416,14 @@ rustc_queries! {
         feedable
     }
 
+    /// The first late-bound lifetime declared by this definition's signature.
+    /// Inherited generics retain the original definition in `late_bound_region_source`.
+    query late_bound_regions_span(key: DefId) -> Option<Span> {
+        desc { "finding the late-bound lifetime span of `{}`", tcx.def_path_str(key) }
+        cache_on_disk
+        separate_provide_extern
+    }
+
     /// Returns the (elaborated) *predicates* of the definition given by `DefId`
     /// that must be proven true at usage sites (and which can be assumed at definition site).
     ///

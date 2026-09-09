@@ -358,7 +358,7 @@ fn associated_type_for_impl_trait_in_impl(
             own_params,
             param_def_id_to_index,
             has_self: false,
-            has_late_bound_regions: trait_assoc_generics.has_late_bound_regions,
+            late_bound_region_source: trait_assoc_generics.late_bound_region_source,
         }
     });
 

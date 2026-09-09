@@ -644,8 +644,8 @@ pub(crate) fn prohibit_explicit_late_bound_lifetimes(
 
     let param_counts = def.own_counts();
 
-    if let Some(span_late) = def.has_late_bound_regions
-        && args.has_lifetime_args()
+    if args.has_lifetime_args()
+        && let Some(span_late) = def.late_bound_regions_span(cx.tcx())
     {
         let msg = "cannot specify lifetime arguments explicitly \
                        if late bound lifetime parameters are present";
