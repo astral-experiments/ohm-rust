@@ -121,6 +121,7 @@ jobs:
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/ui/rmeta
+          tests/ui/attributes/dump_generics.rs
 
       - name: Run LLVM prelink function-merging regression
         run: >-
@@ -242,6 +243,11 @@ jobs:
             tests/run-make/public-api-hash*
             tests/run-make/rdr-public-hash*
             tests/run-make/caller-local-codegen
+            tests/run-make/coroutine-layout-spans
+            tests/run-make/coroutine-generics-spans
+            tests/run-make/upstream-monomorphization-reuse
+            tests/run-make/share-generics-dylib
+            tests/run-make/share-generics-export-again
             tests/run-make/unused-externs-transparent
             tests/run-make/reset-codegen-1
             tests/run-make/stable-cgu-merging
