@@ -1867,9 +1867,11 @@ fn spawn_work<'a, B: WriteBackendMethods>(
     let cgcx = cgcx.clone();
     let prof = prof.clone();
 
+    let cached = matches!(&work, WorkItem::CopyPostLtoArtifacts(_));
     let name = work.short_description();
     let f = move || {
-        let _profiler = if cgcx.time_trace { B::thread_profiler() } else { Box::new(()) };
+        let _profiler =
+            if cgcx.time_trace && !cached { B::thread_profiler() } else { Box::new(()) };
 
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| match work {
             WorkItem::Optimize(m) => execute_optimize_work_item(&cgcx, &prof, shared_emitter, m),
@@ -1892,7 +1894,13 @@ fn spawn_work<'a, B: WriteBackendMethods>(
         };
         drop(coordinator_send.send(msg));
     };
-    std::thread::Builder::new().name(name).spawn(f).expect("failed to spawn work thread");
+    if cached {
+        // Cache hits only restore files. Use the scheduler's assigned jobserver slot on
+        // the coordinator instead of creating a thread for each cached codegen unit.
+        f();
+    } else {
+        std::thread::Builder::new().name(name).spawn(f).expect("failed to spawn work thread");
+    }
 }
 
 fn spawn_thin_lto_work<B: WriteBackendMethods>(
@@ -1906,9 +1914,11 @@ fn spawn_thin_lto_work<B: WriteBackendMethods>(
     let cgcx = cgcx.clone();
     let prof = prof.clone();
 
+    let cached = matches!(&work, ThinLtoWorkItem::CopyPostLtoArtifacts(_));
     let name = work.short_description();
     let f = move || {
-        let _profiler = if cgcx.time_trace { B::thread_profiler() } else { Box::new(()) };
+        let _profiler =
+            if cgcx.time_trace && !cached { B::thread_profiler() } else { Box::new(()) };
 
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| match work {
             ThinLtoWorkItem::CopyPostLtoArtifacts(m) => {
@@ -1934,7 +1944,11 @@ fn spawn_thin_lto_work<B: WriteBackendMethods>(
         };
         drop(coordinator_send.send(msg));
     };
-    std::thread::Builder::new().name(name).spawn(f).expect("failed to spawn work thread");
+    if cached {
+        f();
+    } else {
+        std::thread::Builder::new().name(name).spawn(f).expect("failed to spawn work thread");
+    }
 }
 
 enum SharedEmitterMessage {
