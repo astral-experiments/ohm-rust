@@ -1,6 +1,9 @@
+use std::sync::Arc;
+
 use rustc_ast as ast;
 use rustc_ast::tokenstream::TokenStream;
 use rustc_data_structures::profiling::TimingGuard;
+use rustc_data_structures::sync::{DynSend, DynSync};
 use rustc_errors::ErrorGuaranteed;
 use rustc_middle::ty::{self, TyCtxt};
 use rustc_parse::parser::{AllowConstBlockItems, ForceCollect, Parser};
@@ -30,8 +33,25 @@ fn record_expand_proc_macro<'a>(
     })
 }
 
+/// Supplies executable macro code only when expansion cannot be reused.
+pub trait ProcMacroClient {
+    fn get(
+        &self,
+        sess: &Session,
+        span: Span,
+    ) -> Result<pm::bridge::client::Client, ErrorGuaranteed>;
+}
+
+impl ProcMacroClient for pm::bridge::client::Client {
+    fn get(&self, _sess: &Session, _span: Span) -> Result<Self, ErrorGuaranteed> {
+        Ok(*self)
+    }
+}
+
+type Client = Arc<dyn ProcMacroClient + DynSend + DynSync>;
+
 pub struct BangProcMacro {
-    pub client: pm::bridge::client::Client,
+    pub client: Client,
 }
 
 impl base::BangProcMacro for BangProcMacro {
@@ -43,10 +63,11 @@ impl base::BangProcMacro for BangProcMacro {
     ) -> Result<TokenStream, ErrorGuaranteed> {
         let _timer = record_expand_proc_macro(ecx, "expand_proc_macro", span);
 
+        let client = self.client.get(ecx.sess, span)?;
         let proc_macro_backtrace = ecx.ecfg.proc_macro_backtrace;
         let strategy = exec_strategy(ecx.sess);
         let server = proc_macro_server::Rustc::new(ecx);
-        self.client.run1(&strategy, server, input, proc_macro_backtrace).map_err(|e| {
+        client.run1(&strategy, server, input, proc_macro_backtrace).map_err(|e| {
             ecx.dcx().emit_err(diagnostics::ProcMacroPanicked {
                 span,
                 message: e
@@ -58,7 +79,7 @@ impl base::BangProcMacro for BangProcMacro {
 }
 
 pub struct AttrProcMacro {
-    pub client: pm::bridge::client::Client,
+    pub client: Client,
 }
 
 impl base::AttrProcMacro for AttrProcMacro {
@@ -71,19 +92,18 @@ impl base::AttrProcMacro for AttrProcMacro {
     ) -> Result<TokenStream, ErrorGuaranteed> {
         let _timer = record_expand_proc_macro(ecx, "expand_proc_macro", span);
 
+        let client = self.client.get(ecx.sess, span)?;
         let proc_macro_backtrace = ecx.ecfg.proc_macro_backtrace;
         let strategy = exec_strategy(ecx.sess);
         let server = proc_macro_server::Rustc::new(ecx);
-        self.client.run2(&strategy, server, annotation, annotated, proc_macro_backtrace).map_err(
-            |e| {
-                ecx.dcx().emit_err(diagnostics::CustomAttributePanicked {
-                    span,
-                    message: e
-                        .into_string()
-                        .map(|message| diagnostics::CustomAttributePanickedHelp { message }),
-                })
-            },
-        )
+        client.run2(&strategy, server, annotation, annotated, proc_macro_backtrace).map_err(|e| {
+            ecx.dcx().emit_err(diagnostics::CustomAttributePanicked {
+                span,
+                message: e
+                    .into_string()
+                    .map(|message| diagnostics::CustomAttributePanickedHelp { message }),
+            })
+        })
     }
 }
 
@@ -117,12 +137,12 @@ impl MultiItemModifier for DeriveProcMacro {
                 let input = &*tcx.arena.alloc(input);
                 let key: (LocalExpnId, &TokenStream) = (invoc_id, input);
 
-                QueryDeriveExpandCtx::enter(ecx, self.client, move || {
+                QueryDeriveExpandCtx::enter(ecx, self.client.clone(), move || {
                     tcx.derive_macro_expansion(key).cloned()
                 })
             })
         } else {
-            expand_derive_macro(invoc_id, input, ecx, self.client)
+            expand_derive_macro(invoc_id, input, ecx, &self.client)
         };
 
         let Ok(output) = res else {
@@ -178,13 +198,13 @@ pub(super) fn provide_derive_macro_expansion<'tcx>(
     })
 }
 
-type DeriveClient = pm::bridge::client::Client;
+type DeriveClient = Client;
 
 fn expand_derive_macro(
     invoc_id: LocalExpnId,
     input: TokenStream,
     ecx: &mut ExtCtxt<'_>,
-    client: DeriveClient,
+    client: &DeriveClient,
 ) -> Result<TokenStream, ()> {
     let _timer =
         ecx.sess.prof.generic_activity_with_arg_recorder("expand_proc_macro", |recorder| {
@@ -194,6 +214,7 @@ fn expand_derive_macro(
             recorder.record_arg_with_span(ecx.sess.source_map(), event_arg, span);
         });
 
+    let client = client.get(ecx.sess, invoc_id.expn_data().call_site).map_err(|_| ())?;
     let proc_macro_backtrace = ecx.ecfg.proc_macro_backtrace;
     let strategy = exec_strategy(ecx.sess);
     let server = proc_macro_server::Rustc::new(ecx);
@@ -239,7 +260,7 @@ impl QueryDeriveExpandCtx {
     /// Must be called while the `enter` function is active.
     fn with<F, R>(f: F) -> R
     where
-        F: for<'a, 'b> FnOnce(&'b mut ExtCtxt<'a>, DeriveClient) -> R,
+        F: for<'a, 'b> FnOnce(&'b mut ExtCtxt<'a>, &'b DeriveClient) -> R,
     {
         DERIVE_EXPAND_CTX.with(|ctx| {
             let ectx = {
@@ -252,7 +273,7 @@ impl QueryDeriveExpandCtx {
                 unsafe { casted.as_mut().unwrap() }
             };
 
-            f(ectx, ctx.client)
+            f(ectx, &ctx.client)
         })
     }
 }

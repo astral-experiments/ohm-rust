@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::{cmp, env, iter};
 
 use rustc_ast::expand::allocator::{ALLOC_ERROR_HANDLER, AllocatorKind, global_fn_name};
@@ -14,13 +15,12 @@ use rustc_data_structures::sync::{self, FreezeReadGuard, FreezeWriteGuard};
 use rustc_data_structures::unord::UnordMap;
 use rustc_expand::base::SyntaxExtension;
 use rustc_hir as hir;
-use rustc_hir::def_id::{CrateNum, LOCAL_CRATE, LocalDefId, StableCrateId};
+use rustc_hir::def_id::{CrateNum, LOCAL_CRATE, LocalDefId};
 use rustc_hir::definitions::Definitions;
 use rustc_index::IndexVec;
 use rustc_middle::bug;
 use rustc_middle::ty::data_structures::IndexSet;
 use rustc_middle::ty::{TyCtxt, TyCtxtFeed};
-use rustc_proc_macro::bridge::client::Client as ProcMacroClient;
 use rustc_session::config::mitigation_coverage::DeniedPartialMitigationLevel;
 use rustc_session::config::{
     CrateType, ExtendedTargetModifierInfo, ExternLocation, Externs, OptionsTargetModifiers,
@@ -37,6 +37,7 @@ use rustc_target::spec::{PanicStrategy, Target};
 use tracing::{debug, info};
 
 use crate::diagnostics;
+use crate::host_dylib::ProcMacroDylib;
 use crate::locator::{CrateError, CrateLocator, CratePaths, CrateRejections};
 use crate::rmeta::{
     CrateDep, CrateMetadata, CrateNumMap, CrateRoot, MetadataBlob, TargetModifiers,
@@ -645,7 +646,7 @@ impl CStore {
             private_dep,
         )?;
 
-        let raw_proc_macros = if crate_root.is_proc_macro_crate() {
+        let proc_macro_dylib = if crate_root.is_proc_macro_crate() {
             let temp_root;
             let (dlsym_source, dlsym_root) = match &host_lib {
                 Some(host_lib) => (&host_lib.source, {
@@ -655,7 +656,7 @@ impl CStore {
                 None => (&source, &crate_root),
             };
             let dlsym_dylib = dlsym_source.dylib.as_ref().expect("no dylib for a proc-macro crate");
-            Some(self.dlsym_proc_macros(dlsym_dylib, dlsym_root.stable_crate_id())?)
+            Some(Arc::new(ProcMacroDylib::new(dlsym_dylib.clone(), dlsym_root.stable_crate_id())))
         } else {
             None
         };
@@ -664,7 +665,7 @@ impl CStore {
             tcx,
             metadata,
             crate_root,
-            raw_proc_macros,
+            proc_macro_dylib,
             cnum,
             cnum_map,
             dep_kind,
@@ -947,14 +948,6 @@ impl CStore {
 
         debug!("resolve_crate_deps: cnum_map for {:?} is {:?}", krate, crate_num_map);
         Ok(crate_num_map)
-    }
-
-    fn dlsym_proc_macros(
-        &self,
-        path: &Path,
-        stable_crate_id: StableCrateId,
-    ) -> Result<&'static [ProcMacroClient], CrateError> {
-        Ok(crate::host_dylib::dlsym_proc_macros(path, stable_crate_id)?)
     }
 
     fn inject_panic_runtime(&mut self, tcx: TyCtxt<'_>, krate: &ast::Crate) {

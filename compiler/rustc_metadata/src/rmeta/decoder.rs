@@ -27,7 +27,6 @@ use rustc_middle::mir::interpret::{AllocDecodingSession, AllocDecodingState};
 use rustc_middle::ty::Visibility;
 use rustc_middle::ty::codec::TyDecoder;
 use rustc_middle::{bug, implement_ty_decoder};
-use rustc_proc_macro::bridge::client::Client as ProcMacroClient;
 use rustc_serialize::opaque::MemDecoder;
 use rustc_serialize::{Decodable, Decoder};
 use rustc_session::config::TargetModifier;
@@ -42,6 +41,7 @@ use tracing::debug;
 
 use crate::creader::CStore;
 use crate::eii::EiiMapEncodedKeyValue;
+use crate::host_dylib::{LazyProcMacroClient, ProcMacroDylib};
 use crate::rmeta::table::{FixedSizeEncoding, IsDefault};
 use crate::rmeta::*;
 
@@ -119,8 +119,8 @@ pub(crate) struct CrateMetadata {
     /// These can be introduced using either `#![rustc_coherence_is_core]`
     /// or `#[rustc_allow_incoherent_impl]`.
     incoherent_impls: FxIndexMap<SimplifiedType, LazyArray<DefIndex>>,
-    /// Proc macro function pointers for this crate, if it's a proc macro crate.
-    raw_proc_macros: Option<&'static [ProcMacroClient]>,
+    /// Executable macro code is unnecessary for name resolution and cached derives.
+    proc_macro_dylib: Option<Arc<ProcMacroDylib>>,
     /// Source maps for code from the crate.
     source_map_import_info: Lock<Vec<Option<ImportedSourceFile>>>,
     /// For every definition in this crate, maps its `DefPathHash` to its `DefIndex`.
@@ -1044,9 +1044,13 @@ impl CrateMetadata {
         bug!("missing `{descr}` for {:?}", self.local_def_id(id))
     }
 
-    fn raw_proc_macro(&self, tcx: TyCtxt<'_>, id: DefIndex) -> (ProcMacroClient, ProcMacroKind) {
+    fn proc_macro_client(
+        &self,
+        tcx: TyCtxt<'_>,
+        id: DefIndex,
+    ) -> (LazyProcMacroClient, ProcMacroKind) {
         // DefIndex's in root.proc_macro_data have a one-to-one correspondence
-        // with items in 'raw_proc_macros'.
+        // with clients in the dylib's declaration slice.
         let (pos, (_id, kind)) = self
             .root
             .proc_macro_data
@@ -1057,7 +1061,11 @@ impl CrateMetadata {
             .enumerate()
             .find(|(_pos, (i, _))| *i == id)
             .unwrap();
-        (self.raw_proc_macros.unwrap()[pos], kind.decode((self, tcx)))
+        let client = LazyProcMacroClient {
+            dylib: self.proc_macro_dylib.as_ref().unwrap().clone(),
+            index: pos,
+        };
+        (client, kind.decode((self, tcx)))
     }
 
     fn opt_item_name(&self, item_index: DefIndex) -> Option<Symbol> {
@@ -1115,8 +1123,10 @@ impl CrateMetadata {
     }
 
     fn load_proc_macro<'tcx>(&self, tcx: TyCtxt<'tcx>, id: DefIndex) -> SyntaxExtension {
-        let (name, kind, helper_attrs) = match self.raw_proc_macro(tcx, id) {
-            (client, ProcMacroKind::CustomDerive { trait_name, attributes }) => {
+        let (client, kind) = self.proc_macro_client(tcx, id);
+        let client = Arc::new(client);
+        let (name, kind, helper_attrs) = match kind {
+            ProcMacroKind::CustomDerive { trait_name, attributes } => {
                 let helper_attrs =
                     attributes.into_iter().map(|attr| Symbol::intern(&attr)).collect();
                 (
@@ -1125,10 +1135,10 @@ impl CrateMetadata {
                     helper_attrs,
                 )
             }
-            (client, ProcMacroKind::Attr { name }) => {
+            ProcMacroKind::Attr { name } => {
                 (name, SyntaxExtensionKind::Attr(Arc::new(AttrProcMacro { client })), Vec::new())
             }
-            (client, ProcMacroKind::Bang { name }) => {
+            ProcMacroKind::Bang { name } => {
                 (name, SyntaxExtensionKind::Bang(Arc::new(BangProcMacro { client })), Vec::new())
             }
         };
@@ -1949,7 +1959,7 @@ impl CrateMetadata {
         tcx: TyCtxt<'_>,
         blob: MetadataBlob,
         root: CrateRoot,
-        raw_proc_macros: Option<&'static [ProcMacroClient]>,
+        proc_macro_dylib: Option<Arc<ProcMacroDylib>>,
         cnum: CrateNum,
         cnum_map: CrateNumMap,
         dep_kind: CrateDepKind,
@@ -1983,7 +1993,7 @@ impl CrateMetadata {
             root,
             trait_impls,
             incoherent_impls: Default::default(),
-            raw_proc_macros,
+            proc_macro_dylib,
             source_map_import_info: Lock::new(Vec::new()),
             def_path_hash_map,
             expn_hash_map: Default::default(),

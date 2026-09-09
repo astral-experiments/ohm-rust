@@ -246,6 +246,8 @@ jobs:
             tests/run-make/coroutine-layout-spans
             tests/run-make/coroutine-generics-spans
             tests/run-make/upstream-monomorphization-reuse
+            tests/run-make/lazy-proc-macro-load
+            tests/run-make/proc-macro-load-error
             tests/run-make/share-generics-dylib
             tests/run-make/share-generics-export-again
             tests/run-make/unused-externs-transparent

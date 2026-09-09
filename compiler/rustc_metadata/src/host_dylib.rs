@@ -1,13 +1,47 @@
 use std::error::Error;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
+use rustc_errors::ErrorGuaranteed;
 use rustc_fs_util::try_canonicalize;
 use rustc_proc_macro::bridge::client::Client as ProcMacroClient;
-use rustc_session::StableCrateId;
+use rustc_session::{Session, StableCrateId};
+use rustc_span::Span;
 use tracing::debug;
 
 use crate::locator::CrateError;
+
+/// A host library shared by its macros, loaded only for uncached execution.
+pub(crate) struct ProcMacroDylib {
+    path: PathBuf,
+    stable_crate_id: StableCrateId,
+    clients: OnceLock<Result<&'static [ProcMacroClient], ErrorGuaranteed>>,
+}
+
+impl ProcMacroDylib {
+    pub(crate) fn new(path: PathBuf, stable_crate_id: StableCrateId) -> Self {
+        Self { path, stable_crate_id, clients: OnceLock::new() }
+    }
+}
+
+pub(crate) struct LazyProcMacroClient {
+    pub(crate) dylib: Arc<ProcMacroDylib>,
+    pub(crate) index: usize,
+}
+
+impl rustc_expand::proc_macro::ProcMacroClient for LazyProcMacroClient {
+    fn get(&self, sess: &Session, span: Span) -> Result<ProcMacroClient, ErrorGuaranteed> {
+        let clients = *self.dylib.clients.get_or_init(|| {
+            dlsym_proc_macros(&self.dylib.path, self.dylib.stable_crate_id).map_err(|err| {
+                let (DylibError::DlOpen(path, err) | DylibError::DlSym(path, err)) = err;
+                sess.dcx().emit_err(crate::diagnostics::DlError { span, path, err })
+            })
+        });
+        // Metadata and the loaded declaration slice use the same macro ordering.
+        Ok(clients?[self.index])
+    }
+}
 
 fn format_dlopen_err(e: &(dyn std::error::Error + 'static)) -> String {
     e.sources().map(|e| format!(": {e}")).collect()
