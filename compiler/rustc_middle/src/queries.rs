@@ -2004,6 +2004,15 @@ rustc_queries! {
         separate_provide_extern
     }
 
+    /// Selects the upstream provider of one generic function instance.
+    /// Changes to other instantiations of that function do not change this result.
+    query upstream_monomorphization_for(key: (DefId, GenericArgsRef<'tcx>)) -> Option<CrateNum> {
+        desc {
+            "finding an upstream monomorphization for `{}` with arguments `{:?}`",
+            tcx.def_path_str(key.0), key.1,
+        }
+    }
+
     /// Returns the upstream crate that exports drop-glue for the given
     /// type (`args` is expected to be a single-item list containing the
     /// type one wants drop-glue for).
