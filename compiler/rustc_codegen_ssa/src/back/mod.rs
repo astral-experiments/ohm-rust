@@ -4,6 +4,7 @@ use rustc_session::Session;
 
 pub mod apple;
 pub mod archive;
+mod cached_work;
 pub(crate) mod command;
 pub mod link;
 pub(crate) mod linker;
