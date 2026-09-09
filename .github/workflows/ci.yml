@@ -110,6 +110,17 @@ jobs:
             compiler/rustc_codegen_cranelift/build_system/main.rs -o build/cranelift-directory-copy-tests
           build/cranelift-directory-copy-tests utils::copy_tests
 
+      - name: Run cached codegen worker unit tests
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1 compiler/rustc_codegen_ssa --test-args cached_work
+
+      - name: Run cached codegen incremental tests
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1 tests/incremental/split_debuginfo_cached.rs
+          tests/incremental/rlib-lto.rs tests/incremental/lto.rs tests/incremental/thinlto
+
       - name: Run Rust 1.98.1 trait-solver regressions
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
@@ -249,6 +260,7 @@ jobs:
             tests/run-make/parallel-query-depth-limits
             tests/run-make/incremental-lint-visibilities
             tests/run-make/split-debuginfo-incremental
+            tests/run-make/fat-then-thin-lto
           )
           selected=()
 
