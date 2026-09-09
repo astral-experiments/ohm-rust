@@ -581,10 +581,12 @@ fn layout_of_uncached<'tcx>(
             use rustc_middle::ty::layout::PrimitiveExt as _;
 
             let info = tcx.coroutine_codegen_layout(def_id, args)?;
-            // Retain the original spans for layout diagnostics and query-stack
-            // locations. This read stays inside the existing `layout_of` query,
-            // whose successful result hashes only the type and computed ABI.
-            let source_info = tcx.coroutine_layout(def_id, args)?;
+            // Keep original spans for diagnostics and query-stack locations without making
+            // successful layouts depend on them. `layout_of` has an opaque key, so a changed
+            // location prevents reuse before we can recompute and compare the layout.
+            // The projected query above already tracks the state representation.
+            // Read only diagnostic spans from `source_info`; layout inputs must stay tracked.
+            let source_info = tcx.dep_graph.with_ignore(|| tcx.coroutine_layout(def_id, args))?;
 
             let local_layouts = info
                 .field_tys

@@ -62,7 +62,7 @@ pub(super) fn generics_of(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::Generics {
             own_params,
             param_def_id_to_index,
             has_self: opaque_ty_generics.has_self,
-            has_late_bound_regions: opaque_ty_generics.has_late_bound_regions,
+            late_bound_region_source: opaque_ty_generics.late_bound_region_source,
         };
     }
 
@@ -156,7 +156,7 @@ pub(super) fn generics_of(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::Generics {
                         own_params,
                         param_def_id_to_index,
                         has_self: generics.has_self,
-                        has_late_bound_regions: generics.has_late_bound_regions,
+                        late_bound_region_source: generics.late_bound_region_source,
                     };
                 }
                 ty::AnonConstKind::GCE => Some(parent_did),
@@ -379,7 +379,7 @@ pub(super) fn generics_of(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::Generics {
         own_params,
         param_def_id_to_index,
         has_self: has_self || parent_has_self,
-        has_late_bound_regions: has_late_bound_regions(tcx, node),
+        late_bound_region_source: has_late_bound_regions(tcx, node).map(|_| def_id.to_def_id()),
     }
 }
 
@@ -423,6 +423,11 @@ fn param_default_policy(node: Node<'_>) -> Option<ParamDefaultPolicy> {
         Node::OpaqueTy(..) => ParamDefaultPolicy::Allowed,
         _ => return None,
     })
+}
+
+/// Returns a diagnostic location from the signature of a lifetime's source definition.
+pub(super) fn late_bound_regions_span(tcx: TyCtxt<'_>, def_id: LocalDefId) -> Option<Span> {
+    has_late_bound_regions(tcx, tcx.hir_node_by_def_id(def_id))
 }
 
 fn has_late_bound_regions<'tcx>(tcx: TyCtxt<'tcx>, node: Node<'tcx>) -> Option<Span> {

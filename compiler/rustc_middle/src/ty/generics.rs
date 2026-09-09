@@ -125,7 +125,10 @@ pub struct Generics {
     pub param_def_id_to_index: FxHashMap<DefId, u32>,
 
     pub has_self: bool,
-    pub has_late_bound_regions: Option<Span>,
+    /// The definition whose signature supplies a late-bound lifetime, if any.
+    /// Keep its diagnostic span in a separate query so moving the declaration
+    /// does not change the generic parameters used by codegen.
+    pub late_bound_region_source: Option<DefId>,
 }
 
 impl std::fmt::Debug for Generics {
@@ -140,7 +143,7 @@ impl std::fmt::Debug for Generics {
             .field("own_params", &self.own_params)
             .field("param_def_id_to_index", &stabilized_hashmap)
             .field("has_self", &self.has_self)
-            .field("has_late_bound_regions", &self.has_late_bound_regions)
+            .field("late_bound_region_source", &self.late_bound_region_source)
             .finish()
     }
 }
@@ -152,6 +155,15 @@ impl<'tcx> rustc_type_ir::inherent::GenericsOf<TyCtxt<'tcx>> for &'tcx Generics 
 }
 
 impl<'tcx> Generics {
+    /// Returns the original diagnostic span, including for inherited generics.
+    /// A source is recorded only when that definition has a late-bound lifetime.
+    pub fn late_bound_regions_span(&self, tcx: TyCtxt<'tcx>) -> Option<Span> {
+        self.late_bound_region_source.map(|source| {
+            tcx.late_bound_regions_span(source)
+                .unwrap_or_else(|| bug!("missing late-bound lifetime span for {source:?}"))
+        })
+    }
+
     /// Looks through the generics and all parents to find the index of the
     /// given param def-id. This is in comparison to the `param_def_id_to_index`
     /// struct member, which only stores information about this item's own

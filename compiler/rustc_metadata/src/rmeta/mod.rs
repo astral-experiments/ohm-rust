@@ -503,6 +503,7 @@ define_tables! {
     lookup_deprecation_entry: Table<RDRHashAll, DefIndex, LazyValue<attrs::Deprecation>>,
     explicit_predicates_of: Table<RDRHashAll, DefIndex, LazyValue<ty::GenericPredicates<'static>>>,
     generics_of: Table<RDRHashAll, DefIndex, LazyValue<ty::Generics>>,
+    late_bound_regions_span: Table<RDRHashAll, DefIndex, LazyValue<Span>>,
     type_of: Table<RDRHashAll, DefIndex, LazyValue<ty::EarlyBinder<'static, Ty<'static>>>>,
     variances_of: Table<RDRHashAll, DefIndex, LazyArray<ty::Variance>>,
     fn_sig: Table<RDRHashAll, DefIndex, LazyValue<ty::EarlyBinder<'static, ty::PolyFnSig<'static>>>>,
