@@ -31,6 +31,7 @@ use rustc_span::{FileName, InnerSpan, Span, SpanData};
 use rustc_target::spec::{MergeFunctions, SanitizerSet};
 use tracing::debug;
 
+use crate::back::cached_work::CachedWorkers;
 use crate::back::link::{ensure_removed, preserve_objects_for_their_debuginfo};
 use crate::back::lto::{self, SerializedModule, check_lto_allowed};
 use crate::errors::ErrorCreatingRemarkDir;
@@ -1066,6 +1067,7 @@ fn do_thin_lto<B: WriteBackendMethods>(
     let mut used_token_count = 0;
 
     let mut compiled_modules = vec![];
+    let mut cached_workers = CachedWorkers::new(coordinator_send.clone());
 
     // Run the message loop while there's still anything that needs message
     // processing. Note that as soon as codegen is aborted we simply want to
@@ -1090,6 +1092,7 @@ fn do_thin_lto<B: WriteBackendMethods>(
                     shared_emitter.clone(),
                     Arc::clone(&tm_factory),
                     coordinator_send.clone(),
+                    &mut cached_workers,
                     item,
                 );
                 used_token_count += 1;
@@ -1465,6 +1468,7 @@ fn start_executing_work<B: WriteBackendMethods>(
 
         // This is the queue of LLVM work items that still need processing.
         let mut work_items = Vec::<(WorkItem<B>, u64)>::new();
+        let mut cached_workers = CachedWorkers::new(coordinator_send.clone());
 
         // This are the Jobserver Tokens we currently hold. Does not include
         // the implicit Token the compiler process owns no matter what.
@@ -1529,6 +1533,7 @@ fn start_executing_work<B: WriteBackendMethods>(
                             &prof,
                             shared_emitter.clone(),
                             coordinator_send.clone(),
+                            &mut cached_workers,
                             &mut llvm_start_time,
                             item,
                         );
@@ -1554,6 +1559,7 @@ fn start_executing_work<B: WriteBackendMethods>(
                                 &prof,
                                 shared_emitter.clone(),
                                 coordinator_send.clone(),
+                                &mut cached_workers,
                                 &mut llvm_start_time,
                                 item,
                             );
@@ -1597,6 +1603,7 @@ fn start_executing_work<B: WriteBackendMethods>(
                         &prof,
                         shared_emitter.clone(),
                         coordinator_send.clone(),
+                        &mut cached_workers,
                         &mut llvm_start_time,
                         item,
                     );
@@ -1857,6 +1864,7 @@ fn spawn_work<'a, B: WriteBackendMethods>(
     prof: &'a SelfProfilerRef,
     shared_emitter: SharedEmitter,
     coordinator_send: Sender<Message<B>>,
+    cached_workers: &mut CachedWorkers<Message<B>>,
     llvm_start_time: &mut Option<VerboseTimingGuard<'a>>,
     work: WorkItem<B>,
 ) {
@@ -1867,9 +1875,11 @@ fn spawn_work<'a, B: WriteBackendMethods>(
     let cgcx = cgcx.clone();
     let prof = prof.clone();
 
+    let cached = matches!(&work, WorkItem::CopyPostLtoArtifacts(_));
     let name = work.short_description();
     let f = move || {
-        let _profiler = if cgcx.time_trace { B::thread_profiler() } else { Box::new(()) };
+        let _profiler =
+            if cgcx.time_trace && !cached { B::thread_profiler() } else { Box::new(()) };
 
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| match work {
             WorkItem::Optimize(m) => execute_optimize_work_item(&cgcx, &prof, shared_emitter, m),
@@ -1878,7 +1888,7 @@ fn spawn_work<'a, B: WriteBackendMethods>(
             ),
         }));
 
-        let msg = match result {
+        match result {
             Ok(result) => Message::WorkItem::<B> { result: Ok(result) },
 
             // We ignore any `FatalError` coming out of `execute_work_item`, as a
@@ -1889,10 +1899,16 @@ fn spawn_work<'a, B: WriteBackendMethods>(
             }
 
             Err(_) => Message::WorkItem::<B> { result: Err(None) },
-        };
-        drop(coordinator_send.send(msg));
+        }
     };
-    std::thread::Builder::new().name(name).spawn(f).expect("failed to spawn work thread");
+    if cached {
+        cached_workers.execute(f);
+    } else {
+        std::thread::Builder::new()
+            .name(name)
+            .spawn(move || drop(coordinator_send.send(f())))
+            .expect("failed to spawn work thread");
+    }
 }
 
 fn spawn_thin_lto_work<B: WriteBackendMethods>(
@@ -1901,14 +1917,17 @@ fn spawn_thin_lto_work<B: WriteBackendMethods>(
     shared_emitter: SharedEmitter,
     tm_factory: TargetMachineFactoryFn<B>,
     coordinator_send: Sender<ThinLtoMessage>,
+    cached_workers: &mut CachedWorkers<ThinLtoMessage>,
     work: ThinLtoWorkItem<B>,
 ) {
     let cgcx = cgcx.clone();
     let prof = prof.clone();
 
+    let cached = matches!(&work, ThinLtoWorkItem::CopyPostLtoArtifacts(_));
     let name = work.short_description();
     let f = move || {
-        let _profiler = if cgcx.time_trace { B::thread_profiler() } else { Box::new(()) };
+        let _profiler =
+            if cgcx.time_trace && !cached { B::thread_profiler() } else { Box::new(()) };
 
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| match work {
             ThinLtoWorkItem::CopyPostLtoArtifacts(m) => {
@@ -1920,7 +1939,7 @@ fn spawn_thin_lto_work<B: WriteBackendMethods>(
             }
         }));
 
-        let msg = match result {
+        match result {
             Ok(result) => ThinLtoMessage::WorkItem { result: Ok(result) },
 
             // We ignore any `FatalError` coming out of `execute_work_item`, as a
@@ -1931,10 +1950,16 @@ fn spawn_thin_lto_work<B: WriteBackendMethods>(
             }
 
             Err(_) => ThinLtoMessage::WorkItem { result: Err(None) },
-        };
-        drop(coordinator_send.send(msg));
+        }
     };
-    std::thread::Builder::new().name(name).spawn(f).expect("failed to spawn work thread");
+    if cached {
+        cached_workers.execute(f);
+    } else {
+        std::thread::Builder::new()
+            .name(name)
+            .spawn(move || drop(coordinator_send.send(f())))
+            .expect("failed to spawn work thread");
+    }
 }
 
 enum SharedEmitterMessage {
