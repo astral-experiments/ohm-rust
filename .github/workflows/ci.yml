@@ -249,6 +249,7 @@ jobs:
             tests/run-make/parallel-query-depth-limits
             tests/run-make/incremental-lint-visibilities
             tests/run-make/split-debuginfo-incremental
+            tests/run-make/symlinked-rlib
           )
           selected=()
 
