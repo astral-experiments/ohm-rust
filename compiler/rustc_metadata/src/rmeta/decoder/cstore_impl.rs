@@ -252,6 +252,7 @@ provide! { tcx, def_id, other, cdata,
     explicit_item_self_bounds => { table_defaulted_array }
     explicit_predicates_of => { table }
     generics_of => { table }
+    late_bound_regions_span => { table }
     inferred_outlives_of => { table_defaulted_array }
     explicit_super_predicates_of => { table_defaulted_array }
     explicit_implied_predicates_of => { table_defaulted_array }

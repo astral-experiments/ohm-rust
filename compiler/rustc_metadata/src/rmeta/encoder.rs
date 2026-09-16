@@ -1,3 +1,5 @@
+// ignore-tidy-filelength
+
 use core::default::Default;
 use std::borrow::Borrow;
 use std::cell::RefCell;
@@ -2000,6 +2002,14 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             if should_encode_generics(def_kind) {
                 let g = tcx.generics_of(def_id);
                 record!(self.tables.generics_of[def_id] <- g, hcx);
+                // Sources are functions or methods, whose generics are always encoded
+                // even when private. Inherited generics retain that original source,
+                // including when it belongs to another crate.
+                if g.late_bound_region_source == Some(def_id)
+                    && let Some(span) = g.late_bound_regions_span(tcx)
+                {
+                    record!(self.tables.late_bound_regions_span[def_id] <- span, hcx);
+                }
                 record!(self.tables.explicit_predicates_of[def_id] <- self.tcx.explicit_predicates_of(def_id), hcx);
                 let inferred_outlives = self.tcx.inferred_outlives_of(def_id);
                 record_defaulted_array!(self.tables.inferred_outlives_of[def_id] <- inferred_outlives, hcx);

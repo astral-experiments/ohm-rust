@@ -416,6 +416,14 @@ rustc_queries! {
         feedable
     }
 
+    /// The first late-bound lifetime declared by this definition's signature.
+    /// Inherited generics retain the original definition in `late_bound_region_source`.
+    query late_bound_regions_span(key: DefId) -> Option<Span> {
+        desc { "finding the late-bound lifetime span of `{}`", tcx.def_path_str(key) }
+        cache_on_disk
+        separate_provide_extern
+    }
+
     /// Returns the (elaborated) *predicates* of the definition given by `DefId`
     /// that must be proven true at usage sites (and which can be assumed at definition site).
     ///
@@ -1994,6 +2002,15 @@ rustc_queries! {
             tcx.def_path_str(def_id),
         }
         separate_provide_extern
+    }
+
+    /// Selects the upstream provider of one generic function instance.
+    /// Changes to other instantiations of that function do not change this result.
+    query upstream_monomorphization_for(key: (DefId, GenericArgsRef<'tcx>)) -> Option<CrateNum> {
+        desc {
+            "finding an upstream monomorphization for `{}` with arguments `{:?}`",
+            tcx.def_path_str(key.0), key.1,
+        }
     }
 
     /// Returns the upstream crate that exports drop-glue for the given
