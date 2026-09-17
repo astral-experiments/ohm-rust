@@ -3,6 +3,9 @@ use std::thread::{self, ThreadId};
 
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_data_structures::sync::Lock;
+use rustc_errors::{DiagInner, MultiSpan};
+use rustc_hir::HirId;
+use rustc_lint_defs::LintId;
 use rustc_span::def_id::{DefId, LocalDefId};
 
 use super::QueryJobId;
@@ -19,12 +22,27 @@ use crate::ty::{self, TyCtxt, tls};
 pub struct ResidentQueryGraph<'tcx> {
     graph: Lock<Graph<ResidentQueryKey<'tcx>, QueryJobId>>,
     trait_tasks: Lock<FxHashMap<ThreadId, Vec<TraitTask<'tcx>>>>,
+    delayed_attribute_lints: Lock<Option<Vec<ResidentDelayedAttributeLint>>>,
 }
 
 impl Default for ResidentQueryGraph<'_> {
     fn default() -> Self {
-        Self { graph: Lock::new(Graph::default()), trait_tasks: Default::default() }
+        Self {
+            graph: Lock::new(Graph::default()),
+            trait_tasks: Default::default(),
+            delayed_attribute_lints: Default::default(),
+        }
     }
+}
+
+/// A delayed AST-attribute lint whose one-shot diagnostic decorator has already been evaluated.
+/// Supported resident body edits cannot change the attributes that originally produced it.
+#[derive(Clone)]
+pub struct ResidentDelayedAttributeLint {
+    pub lint: LintId,
+    pub hir_id: HirId,
+    pub span: MultiSpan,
+    pub diagnostic: DiagInner,
 }
 
 struct TraitTask<'tcx> {
@@ -113,6 +131,22 @@ pub struct ResidentGraphStats {
 // ordered data from this experimental sidecar contributes to a rustc query result.
 #[expect(rustc::potential_query_instability)]
 impl<'tcx> ResidentQueryGraph<'tcx> {
+    /// Whether an embedding driver has started a new resident revision after the original crate.
+    /// Unlike graph inspection, this can be read by the running crate analysis provider.
+    pub fn is_rechecking(&self) -> bool {
+        self.graph.lock().revision() != 0
+    }
+
+    /// Retrieve templates for replaying immutable AST-attribute lints in a later full analysis.
+    pub fn delayed_attribute_lints(&self) -> Option<Vec<ResidentDelayedAttributeLint>> {
+        self.delayed_attribute_lints.lock().clone()
+    }
+
+    /// Retain the templates after the crate's original one-shot HIR lint buffers were drained.
+    pub fn store_delayed_attribute_lints(&self, lints: Vec<ResidentDelayedAttributeLint>) {
+        assert!(self.delayed_attribute_lints.lock().replace(lints).is_none());
+    }
+
     #[inline]
     pub(crate) fn read(&self, key: TaggedQueryKey<'tcx>) {
         self.read_trait_task(key.into());

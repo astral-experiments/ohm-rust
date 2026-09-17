@@ -60,6 +60,7 @@ fn overlapping_jobs_record_their_own_reads() {
     let mut graph = Graph::default();
     graph.begin(1, 'a');
     graph.begin(2, 'b');
+    assert_eq!(graph.revision(), 0);
     assert_eq!(graph.running_key(1), Some('a'));
     assert_eq!(graph.running_key(2), Some('b'));
     graph.read(1, 'x');
@@ -69,6 +70,10 @@ fn overlapping_jobs_record_their_own_reads() {
     assert_eq!(graph.running_key(1), None);
     assert_eq!(graph.closure(['x']), set(&['a', 'x']));
     assert_eq!(graph.closure(['y']), set(&['b', 'y']));
+    graph.advance(['x']);
+    graph.begin(3, 'a');
+    assert_eq!(graph.revision(), 1);
+    graph.end(3, true);
 }
 
 #[test]

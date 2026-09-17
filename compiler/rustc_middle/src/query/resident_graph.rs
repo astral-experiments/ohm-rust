@@ -1,8 +1,5 @@
-#[cfg(test)]
-use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
-#[cfg(not(test))]
 use rustc_data_structures::fx::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 struct Running<K> {
@@ -33,8 +30,12 @@ impl<K, J> Default for Graph<K, J> {
 
 // These sets represent a conservative mathematical closure; traversal and update ordering cannot
 // change its membership or the number of edges. The external API documents that order is absent.
-#[cfg_attr(not(test), expect(rustc::potential_query_instability))]
+#[expect(rustc::potential_query_instability)]
 impl<K: Copy + Eq + Hash, J: Copy + Eq + Hash> Graph<K, J> {
+    pub(crate) fn revision(&self) -> u64 {
+        self.revision
+    }
+
     pub(crate) fn running_key(&self, job: J) -> Option<K> {
         self.running.get(&job).map(|running| running.key)
     }

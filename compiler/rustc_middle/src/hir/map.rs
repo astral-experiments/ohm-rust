@@ -60,6 +60,70 @@ pub struct OhmResidentStatementIds {
     pub initializer: HirId,
 }
 
+/// An opaque one-use checkpoint for restoring a temporary resident scalar-tail edit.
+pub struct OhmResidentScalarTailSnapshot<'tcx> {
+    owner: LocalDefId,
+    original: ProjectedOwnerInfo<'tcx>,
+    edited: &'tcx OwnerNodes<'tcx>,
+}
+
+struct OhmResidentScalarTail {
+    span: Span,
+    supported: bool,
+}
+
+impl OhmResidentScalarTail {
+    fn source_span(&self, span: Span) -> bool {
+        !span.from_expansion() && span.eq_ctxt(self.span) && self.span.contains(span)
+    }
+
+    fn segment(&self, segment: &PathSegment<'_>) -> bool {
+        segment.args.is_none() && self.source_span(segment.ident.span)
+    }
+
+    fn path(&self, path: &QPath<'_>) -> bool {
+        match path {
+            QPath::Resolved(None, path) => {
+                self.source_span(path.span)
+                    && path.segments.iter().all(|segment| self.segment(segment))
+            }
+            QPath::TypeRelative(ty, segment) => {
+                self.source_span(ty.span)
+                    && matches!(ty.kind, TyKind::Path(ref path) if self.path(path))
+                    && self.segment(segment)
+            }
+            _ => false,
+        }
+    }
+}
+
+impl<'tcx> Visitor<'tcx> for OhmResidentScalarTail {
+    fn visit_expr(&mut self, expression: &'tcx Expr<'tcx>) {
+        if !self.source_span(expression.span) {
+            self.supported = false;
+            return;
+        }
+        match expression.kind {
+            ExprKind::Lit(_) => {}
+            ExprKind::Path(ref path) => self.supported &= self.path(path),
+            ExprKind::Call(callee, arguments) => {
+                self.visit_expr(callee);
+                for argument in arguments {
+                    self.visit_expr(argument);
+                }
+            }
+            ExprKind::MethodCall(segment, receiver, arguments, _) => {
+                self.supported &= self.segment(segment);
+                self.visit_expr(receiver);
+                for argument in arguments {
+                    self.visit_expr(argument);
+                }
+            }
+            _ => self.supported = false,
+        }
+    }
+}
+
 enum OhmResidentIntegerAncestor<'tcx> {
     Expr(&'tcx Expr<'tcx>),
     Block(&'tcx Block<'tcx>),
@@ -216,6 +280,218 @@ impl<'tcx> Iterator for ParentOwnerIterator<'tcx> {
 }
 
 impl<'tcx> TyCtxt<'tcx> {
+    /// Temporarily replaces a directly written call, path, or literal tail with a scalar literal.
+    ///
+    /// This can check edits to private functions without declared generics, including private
+    /// inherent methods whose implementation has only lifetime parameters. Calls may contain only
+    /// source-written calls, paths without generic arguments, or literals; macros, closures, and
+    /// declarations are rejected. The edit preserves the original span and requires the caller to
+    /// present edited source in diagnostics.
+    /// The returned checkpoint restores the exact original owner and is rejected after another edit
+    /// to that same owner. The driver must re-request the desired diagnostic roots after each edit.
+    ///
+    /// # Safety
+    /// The caller must own the sole compiler thread between completed queries, and disk incremental
+    /// compilation must be disabled. Previously borrowed query values belong to the old revision.
+    pub unsafe fn ohm_override_private_scalar_tail(
+        self,
+        def_id: LocalDefId,
+        replacement: rustc_ast::LitKind,
+    ) -> Result<
+        (OhmResidentScalarTailSnapshot<'tcx>, crate::query::resident::ResidentEviction<'tcx>),
+        &'static str,
+    > {
+        if self.query_system.resident.is_none()
+            || self.dep_graph.is_fully_enabled()
+            || self.sess.threads().is_some()
+        {
+            return Err(
+                "requires resident tracking in a single-threaded, non-incremental compiler",
+            );
+        }
+        if crate::ty::tls::with_context(|context| context.query.is_some()) {
+            return Err("cannot edit HIR from inside an active query");
+        }
+        if !matches!(
+            replacement,
+            rustc_ast::LitKind::Bool(_) | rustc_ast::LitKind::Char(_) | rustc_ast::LitKind::Int(..)
+        ) {
+            return Err("replacement must be a boolean, character, or integer literal");
+        }
+        let ProjectedMaybeOwner::Owner(original) = self.hir_owner(def_id) else {
+            return Err("requires a HIR owner");
+        };
+        let (signature, generics, body_id) = match original.nodes.node() {
+            OwnerNode::Item(item) => {
+                let ItemKind::Fn { sig, generics, body, has_body: true, .. } = item.kind else {
+                    return Err("requires a private free function with a body");
+                };
+                (sig, generics, body)
+            }
+            OwnerNode::ImplItem(item) => {
+                let ImplItemKind::Fn(sig, body) = item.kind else {
+                    return Err("requires a private inherent function with a body");
+                };
+                if !matches!(item.impl_kind, ImplItemImplKind::Inherent { .. }) {
+                    return Err("requires an inherent implementation");
+                }
+                let owner = OwnerId { def_id: self.local_parent(def_id) };
+                let OwnerNode::Item(Item { kind: ItemKind::Impl(parent), .. }) =
+                    self.hir_owner_node(owner)
+                else {
+                    return Err("requires an inherent implementation");
+                };
+                if parent.of_trait.is_some()
+                    || parent.generics.params.iter().any(|parameter| {
+                        !matches!(parameter.kind, GenericParamKind::Lifetime { .. })
+                    })
+                    || !parent.generics.predicates.is_empty()
+                {
+                    return Err(
+                        "requires an inherent implementation with only simple lifetime parameters",
+                    );
+                }
+                (sig, item.generics, body)
+            }
+            _ => return Err("requires a private free or inherent function"),
+        };
+        if signature.header.is_async()
+            || generics.params.iter().any(|parameter| {
+                !matches!(
+                    parameter.kind,
+                    GenericParamKind::Lifetime { kind: LifetimeParamKind::Elided(_) }
+                )
+            })
+            || !generics.predicates.is_empty()
+            || self.visibility(def_id)
+                != ty::Visibility::Restricted(self.parent_module_from_def_id(def_id).to_def_id())
+        {
+            return Err(
+                "requires a private non-async function without declared generic parameters",
+            );
+        }
+        let old_body = original.nodes.bodies[&body_id.hir_id.local_id];
+        let ExprKind::Block(block, None) = old_body.value.kind else {
+            return Err("requires an ordinary source function block");
+        };
+        if old_body.value.span.from_expansion()
+            || block.span.from_expansion()
+            || block.rules != BlockCheckMode::DefaultBlock
+            || block.targeted_by_break
+        {
+            return Err("requires an ordinary source function block");
+        }
+        let tail = block.expr.ok_or("requires a tail expression")?;
+        if tail.span.from_expansion()
+            || !tail.span.eq_ctxt(block.span)
+            || !block.span.contains(tail.span)
+        {
+            return Err("requires a directly written source tail");
+        }
+        let source = self.sess.source_map();
+        let text = source
+            .span_to_snippet(block.span)
+            .map_err(|_| "source for the function block is unavailable")?;
+        if !text.starts_with('{') || !text.ends_with('}') {
+            return Err("cannot establish the source function block boundaries");
+        }
+        let start = block
+            .stmts
+            .last()
+            .map_or(block.span.lo() + rustc_span::BytePos(1), |statement| statement.span.hi());
+        let end = block.span.hi() - rustc_span::BytePos(1);
+        if start > tail.span.lo() || end < tail.span.hi() {
+            return Err("cannot establish the source tail boundaries");
+        }
+        let before = source
+            .span_to_snippet(block.span.with_lo(start).with_hi(tail.span.lo()))
+            .map_err(|_| "source before the tail is unavailable")?;
+        let after = source
+            .span_to_snippet(block.span.with_lo(tail.span.hi()).with_hi(end))
+            .map_err(|_| "source after the tail is unavailable")?;
+        if !before.chars().all(char::is_whitespace) || !after.chars().all(char::is_whitespace) {
+            return Err("tail is not the complete directly written source expression");
+        }
+        let mut supported = OhmResidentScalarTail { span: tail.span, supported: true };
+        supported.visit_expr(tail);
+        if !supported.supported {
+            return Err(
+                "tail must contain only source calls, paths without generic arguments, and literals",
+            );
+        }
+
+        let mut nodes = original.nodes.nodes.clone();
+        for (id, _) in original.nodes.nodes.iter_enumerated() {
+            if id == tail.hir_id.local_id {
+                continue;
+            }
+            let mut current = id;
+            while current != ItemLocalId::ZERO {
+                let parent = original.nodes.nodes[current].parent;
+                if parent == tail.hir_id.local_id {
+                    nodes[id].node = Node::Err(tail.span);
+                    break;
+                }
+                if parent == current {
+                    break;
+                }
+                current = parent;
+            }
+        }
+        let new_tail = &*self.hir_arena.alloc(Expr {
+            kind: ExprKind::Lit(rustc_span::Spanned { node: replacement, span: tail.span }),
+            ..*tail
+        });
+        let new_block = &*self.hir_arena.alloc(Block { expr: Some(new_tail), ..*block });
+        let new_value = &*self
+            .hir_arena
+            .alloc(Expr { kind: ExprKind::Block(new_block, None), ..*old_body.value });
+        let new_body = &*self.hir_arena.alloc(Body { value: new_value, ..*old_body });
+        nodes[new_tail.hir_id.local_id].node = Node::Expr(new_tail);
+        nodes[new_block.hir_id.local_id].node = Node::Block(new_block);
+        nodes[new_value.hir_id.local_id].node = Node::Expr(new_value);
+        let mut bodies = original.nodes.bodies.clone();
+        assert!(bodies.insert(body_id.hir_id.local_id, new_body).is_some());
+        let edited = &*self.arena.alloc(OwnerNodes { opt_hash: None, nodes, bodies });
+        let replacement =
+            ProjectedMaybeOwner::Owner(ProjectedOwnerInfo { nodes: edited, ..original });
+        // SAFETY: The embedding driver guarantees the quiescent single-threaded interval.
+        let eviction = unsafe { self.ohm_feed_resident_body_owner(def_id, replacement) }
+            .expect("resident tracking was checked above");
+        Ok((OhmResidentScalarTailSnapshot { owner: def_id, original, edited }, eviction))
+    }
+
+    /// Restores the precise owner captured by a scalar tail edit, unless that owner changed again.
+    ///
+    /// # Safety
+    /// The same quiescence and old-query-value requirements as the override method apply.
+    pub unsafe fn ohm_restore_private_scalar_tail(
+        self,
+        checkpoint: OhmResidentScalarTailSnapshot<'tcx>,
+    ) -> Result<crate::query::resident::ResidentEviction<'tcx>, &'static str> {
+        if self.query_system.resident.is_none()
+            || self.dep_graph.is_fully_enabled()
+            || self.sess.threads().is_some()
+            || crate::ty::tls::with_context(|context| context.query.is_some())
+        {
+            return Err("requires a quiescent single-threaded resident compiler");
+        }
+        let ProjectedMaybeOwner::Owner(current) = self.hir_owner(checkpoint.owner) else {
+            return Err("edited HIR owner no longer exists");
+        };
+        if !std::ptr::eq(current.nodes, checkpoint.edited) {
+            return Err("the HIR owner changed after the scalar-tail checkpoint");
+        }
+        // SAFETY: The embedding driver guarantees the quiescent single-threaded interval.
+        Ok(unsafe {
+            self.ohm_feed_resident_body_owner(
+                checkpoint.owner,
+                ProjectedMaybeOwner::Owner(checkpoint.original),
+            )
+        }
+        .expect("resident tracking was checked above"))
+    }
+
     /// Replaces the tail expression of an already lowered private free function.
     ///
     /// This is an embedding experiment for a resident checker, not a general HIR mutation API.
