@@ -106,6 +106,18 @@ fn invalidated_borrower_restores_consumed_prerequisites_and_their_other_readers(
 }
 
 #[test]
+fn ensuring_linear_queries_does_not_restore_all_of_an_orchestrators_inputs() {
+    let mut graph = Graph::default();
+    // The global orchestrator `o` ensures `p` and `q` without accessing their one-use values.
+    // The actual borrower `a` reads `p`'s value and separately depends on changed input `x`.
+    record(&mut graph, 1, 'o', &['p', 'q'], &[]);
+    record(&mut graph, 2, 'a', &['p', 'x'], &['p']);
+    record(&mut graph, 3, 'b', &['q'], &['q']);
+    assert_eq!(graph.closure(['x']), set(&['a', 'o', 'p', 'x']));
+    assert_eq!(graph.closure(['q']), set(&['b', 'o', 'q']));
+}
+
+#[test]
 #[should_panic(expected = "between query jobs")]
 fn revisions_are_quiescent() {
     let mut graph = Graph::default();

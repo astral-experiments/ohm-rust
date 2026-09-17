@@ -148,7 +148,7 @@ impl<'tcx> ResidentQueryGraph<'tcx> {
     }
 
     #[inline]
-    pub(crate) fn read(&self, key: TaggedQueryKey<'tcx>) {
+    pub(crate) fn read(&self, key: TaggedQueryKey<'tcx>, accesses_value: bool) {
         self.read_trait_task(key.into());
         if let Some(parent) = tls::with_context(|icx| icx.query) {
             let mut graph = self.graph.lock();
@@ -156,16 +156,20 @@ impl<'tcx> ResidentQueryGraph<'tcx> {
             // A previous reader can consume these body-level `Steal` values. If any other reader
             // is invalidated via an independent input, it cannot safely reuse the cached producer:
             // its value may already be gone. Restore the producer (and therefore its other readers)
-            // whenever a recorded reader is invalidated. The crate-level AST `Steal` queries are
-            // outside the supported body-edit boundary.
-            if matches!(
-                key,
-                TaggedQueryKey::thir_body(_)
-                    | TaggedQueryKey::mir_built(_)
-                    | TaggedQueryKey::mir_promoted(_)
-                    | TaggedQueryKey::mir_drops_elaborated_and_const_checked(_)
-                    | TaggedQueryKey::mir_coroutine_layout_prepared(_)
-            ) {
+            // whenever a recorded value reader is invalidated. `ensure_ok` and `ensure_result`
+            // discard the value, so they can safely reuse a previously consumed producer and must
+            // not force it merely because the orchestrating query is rerunning. The crate-level
+            // AST `Steal` queries are outside the supported body-edit boundary.
+            if accesses_value
+                && matches!(
+                    key,
+                    TaggedQueryKey::thir_body(_)
+                        | TaggedQueryKey::mir_built(_)
+                        | TaggedQueryKey::mir_promoted(_)
+                        | TaggedQueryKey::mir_drops_elaborated_and_const_checked(_)
+                        | TaggedQueryKey::mir_coroutine_layout_prepared(_)
+                )
+            {
                 graph.feed(parent, key.into());
             }
         }

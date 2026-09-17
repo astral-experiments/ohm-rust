@@ -41,7 +41,7 @@ where
     C: QueryCache,
 {
     if let Some(resident) = &tcx.query_system.resident {
-        resident.read((query.create_tagged_key)(key));
+        resident.read((query.create_tagged_key)(key), true);
     }
     match try_get_cached(tcx, &query.cache, key) {
         Some(value) => value,
@@ -59,7 +59,7 @@ pub(crate) fn query_ensure_ok<'tcx, C>(
     C: QueryCache,
 {
     if let Some(resident) = &tcx.query_system.resident {
-        resident.read((query.create_tagged_key)(key));
+        resident.read((query.create_tagged_key)(key), false);
     }
     match try_get_cached(tcx, &query.cache, key) {
         Some(_value) => {}
@@ -82,7 +82,7 @@ where
     Result<T, ErrorGuaranteed>: Erasable,
 {
     if let Some(resident) = &tcx.query_system.resident {
-        resident.read((query.create_tagged_key)(key));
+        resident.read((query.create_tagged_key)(key), false);
     }
     let convert = |value: Erased<Result<T, ErrorGuaranteed>>| -> Result<(), ErrorGuaranteed> {
         match erase::restore_val(value) {
