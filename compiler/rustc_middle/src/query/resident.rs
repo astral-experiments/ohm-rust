@@ -1,0 +1,343 @@
+use std::cell::Cell;
+use std::thread::{self, ThreadId};
+
+use rustc_data_structures::fx::{FxHashMap, FxHashSet};
+use rustc_data_structures::sync::Lock;
+use rustc_span::def_id::{DefId, LocalDefId};
+
+use super::QueryJobId;
+use super::resident_graph::Graph;
+use crate::queries::TaggedQueryKey;
+use crate::ty::{self, TyCtxt, tls};
+
+/// Current-process query dependencies for the experimental, non-disk resident checker.
+///
+/// Reads are recorded even when they hit rustc's ordinary in-memory query caches. Completed
+/// providers replace their previous dependencies; query feeding contributes a conservative
+/// fed-query-to-feeder edge. This deliberately does not change rustc's disk dep graph or evict
+/// query values. Consumers must apply a returned invalidation plan to caches at quiescence.
+pub struct ResidentQueryGraph<'tcx> {
+    graph: Lock<Graph<ResidentQueryKey<'tcx>, QueryJobId>>,
+    trait_tasks: Lock<FxHashMap<ThreadId, Vec<TraitTask<'tcx>>>>,
+}
+
+impl Default for ResidentQueryGraph<'_> {
+    fn default() -> Self {
+        Self { graph: Lock::new(Graph::default()), trait_tasks: Default::default() }
+    }
+}
+
+struct TraitTask<'tcx> {
+    key: ResidentQueryKey<'tcx>,
+    reads: FxHashSet<ResidentQueryKey<'tcx>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ResidentOldTraitKey<'tcx> {
+    Selection(ty::TypingEnv<'tcx>, ty::TraitPredicate<'tcx>),
+    Evaluation(ty::TypingEnv<'tcx>, ty::PolyTraitPredicate<'tcx>),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ResidentQueryKey<'tcx> {
+    Query(TaggedQueryKey<'tcx>),
+    /// Bodies and interior HIR nodes belonging to this owner, independently of its signature.
+    HirBody(LocalDefId),
+    /// Structural body properties: item/attribute topology and lifetime/generic binders.
+    /// Current literal and simple-local edits preserve this independent input.
+    HirStructure(LocalDefId),
+    /// A keyed entry in the legacy trait solver's global in-memory caches.
+    OldTraitSolver(ResidentOldTraitKey<'tcx>),
+    /// The next trait solver's global, otherwise untracked, in-memory cache.
+    TraitSolver,
+}
+
+impl<'tcx> From<TaggedQueryKey<'tcx>> for ResidentQueryKey<'tcx> {
+    fn from(value: TaggedQueryKey<'tcx>) -> Self {
+        Self::Query(value)
+    }
+}
+
+impl ResidentQueryKey<'_> {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Query(query) => query.query_name(),
+            Self::HirBody(_) => "resident_hir_body",
+            Self::HirStructure(_) => "resident_hir_structure",
+            Self::OldTraitSolver(ResidentOldTraitKey::Selection(..)) => "resident_trait_selection",
+            Self::OldTraitSolver(ResidentOldTraitKey::Evaluation(..)) => {
+                "resident_trait_evaluation"
+            }
+            Self::TraitSolver => "resident_trait_solver",
+        }
+    }
+
+    pub fn def_id(&self) -> Option<DefId> {
+        match self {
+            Self::Query(query) => query.resident_key_def_id(),
+            Self::HirBody(def_id) | Self::HirStructure(def_id) => Some(def_id.to_def_id()),
+            Self::OldTraitSolver(_) | Self::TraitSolver => None,
+        }
+    }
+}
+
+pub struct ResidentInvalidation<'tcx> {
+    pub revision: u64,
+    /// Includes each requested input and all currently recorded transitive readers.
+    /// Ordering is unspecified.
+    pub queries: Vec<ResidentQueryKey<'tcx>>,
+}
+
+/// The result of applying a resident revision to rustc's real in-memory caches.
+pub struct ResidentEviction<'tcx> {
+    pub revision: u64,
+    /// Changed non-query inputs, which do not have an entry in a rustc query cache.
+    pub inputs: Vec<LocalDefId>,
+    /// Changed structural HIR inputs, which are independent of ordinary body values.
+    pub structural_inputs: Vec<LocalDefId>,
+    /// Query keys that had a completed value, which is now evicted.
+    pub removed: Vec<TaggedQueryKey<'tcx>>,
+    /// Recorded keys without a cached value when the plan was applied.
+    pub uncached: Vec<TaggedQueryKey<'tcx>>,
+    /// True when non-query trait caches were reset and their recorded readers were invalidated.
+    pub trait_solver_caches_reset: bool,
+}
+
+pub struct ResidentGraphStats {
+    pub revision: u64,
+    pub completed_providers: usize,
+    pub edges: usize,
+}
+
+// Invalidation is a set: the public inspection API explicitly gives no traversal order, and no
+// ordered data from this experimental sidecar contributes to a rustc query result.
+#[expect(rustc::potential_query_instability)]
+impl<'tcx> ResidentQueryGraph<'tcx> {
+    #[inline]
+    pub(crate) fn read(&self, key: TaggedQueryKey<'tcx>) {
+        self.read_trait_task(key.into());
+        if let Some(parent) = tls::with_context(|icx| icx.query) {
+            let mut graph = self.graph.lock();
+            graph.read(parent, key.into());
+            // A previous reader can consume these body-level `Steal` values. If any other reader
+            // is invalidated via an independent input, it cannot safely reuse the cached producer:
+            // its value may already be gone. Restore the producer (and therefore its other readers)
+            // whenever a recorded reader is invalidated. The crate-level AST `Steal` queries are
+            // outside the supported body-edit boundary.
+            if matches!(
+                key,
+                TaggedQueryKey::thir_body(_)
+                    | TaggedQueryKey::mir_built(_)
+                    | TaggedQueryKey::mir_promoted(_)
+                    | TaggedQueryKey::mir_drops_elaborated_and_const_checked(_)
+                    | TaggedQueryKey::mir_coroutine_layout_prepared(_)
+            ) {
+                graph.feed(parent, key.into());
+            }
+        }
+    }
+
+    /// Mark access to actual body/interior HIR, separately from the containing owner's signature.
+    #[inline]
+    pub(crate) fn read_hir_body(&self, owner: LocalDefId) {
+        let key = if let Some(parent) = tls::with_context(|icx| icx.query) {
+            let mut graph = self.graph.lock();
+            let key = match graph.running_key(parent) {
+                // These providers traverse bodies to collect structural information. The editing
+                // API only changes literals/simple locals and rejects macros, nested items,
+                // closures, anonymous constants, generics and added type/lifetime binders.
+                // A future edit that can alter any of these must invalidate HirStructure as well.
+                Some(ResidentQueryKey::Query(
+                    TaggedQueryKey::hir_crate_items(_) | TaggedQueryKey::resolve_bound_vars(_),
+                )) => ResidentQueryKey::HirStructure(owner),
+                _ => ResidentQueryKey::HirBody(owner),
+            };
+            graph.read(parent, key);
+            key
+        } else {
+            ResidentQueryKey::HirBody(owner)
+        };
+        self.read_trait_task(key);
+    }
+
+    /// Mark access to solver-global caches whose entries are not represented as rustc queries.
+    #[inline]
+    pub(crate) fn read_trait_solver(&self) {
+        self.read_trait_task(ResidentQueryKey::TraitSolver);
+        if let Some(parent) = tls::with_context(|icx| icx.query) {
+            self.graph.lock().read(parent, ResidentQueryKey::TraitSolver);
+        }
+    }
+
+    fn read_trait_task(&self, key: ResidentQueryKey<'tcx>) {
+        if let Some(task) =
+            self.trait_tasks.lock().get_mut(&thread::current().id()).and_then(|s| s.last_mut())
+            && key != task.key
+        {
+            task.reads.insert(key);
+        }
+    }
+
+    /// Record a global legacy solver lookup even when it hits an existing answer.
+    pub fn read_old_trait_solver(&self, key: ResidentOldTraitKey<'tcx>) {
+        let key = ResidentQueryKey::OldTraitSolver(key);
+        self.read_trait_task(key);
+        if let Some(parent) = tls::with_context(|icx| icx.query) {
+            self.graph.lock().read(parent, key);
+        }
+    }
+
+    /// Capture real query reads and nested global solver lookups on a legacy cache miss.
+    pub fn with_old_trait_solver<R>(
+        &self,
+        key: ResidentOldTraitKey<'tcx>,
+        compute: impl FnOnce() -> R,
+    ) -> R {
+        let key = ResidentQueryKey::OldTraitSolver(key);
+        let thread = thread::current().id();
+        self.trait_tasks
+            .lock()
+            .entry(thread)
+            .or_default()
+            .push(TraitTask { key, reads: FxHashSet::default() });
+        let finished = Cell::new(false);
+        let _end = rustc_data_structures::defer(|| {
+            let task = self.trait_tasks.lock().get_mut(&thread).unwrap().pop().unwrap();
+            if finished.get() {
+                self.graph.lock().record_external(task.key, task.reads);
+            }
+        });
+        let result = compute();
+        finished.set(true);
+        result
+    }
+
+    #[inline]
+    pub(crate) fn feed(&self, key: TaggedQueryKey<'tcx>) {
+        if let Some(parent) = tls::with_context(|icx| icx.query) {
+            self.graph.lock().feed(parent, key.into());
+        }
+    }
+
+    /// Run a real query provider, replacing its previous read set only if it returns normally.
+    #[inline]
+    pub fn with_provider<R>(
+        &self,
+        job: QueryJobId,
+        key: TaggedQueryKey<'tcx>,
+        provider: impl FnOnce() -> R,
+    ) -> R {
+        self.graph.lock().begin(job, key.into());
+        let finished = Cell::new(false);
+        let _end = rustc_data_structures::defer(|| self.graph.lock().end(job, finished.get()));
+        let result = provider();
+        finished.set(true);
+        result
+    }
+
+    /// Plan a new revision from changed query inputs. No query provider may still be running.
+    /// This plans eager invalidation; it does not implement Salsa's unchanged-value backdating.
+    pub fn advance(
+        &self,
+        inputs: impl IntoIterator<Item = ResidentQueryKey<'tcx>>,
+    ) -> ResidentInvalidation<'tcx> {
+        let (revision, queries) = self.graph.lock().advance(inputs);
+        ResidentInvalidation { revision, queries: queries.into_iter().collect() }
+    }
+
+    /// Inspect all currently recorded transitive readers without advancing the revision.
+    pub fn affected(
+        &self,
+        inputs: impl IntoIterator<Item = ResidentQueryKey<'tcx>>,
+    ) -> Vec<ResidentQueryKey<'tcx>> {
+        self.graph.lock().closure(inputs).into_iter().collect()
+    }
+
+    /// Inspect the direct query inputs most recently recorded for this query, if any.
+    pub fn dependencies(&self, key: ResidentQueryKey<'tcx>) -> Vec<ResidentQueryKey<'tcx>> {
+        self.graph.lock().dependencies(key).into_iter().collect()
+    }
+
+    pub fn stats(&self) -> ResidentGraphStats {
+        let (revision, completed_providers, edges) = self.graph.lock().stats();
+        ResidentGraphStats { revision, completed_providers, edges }
+    }
+}
+
+impl<'tcx> TyCtxt<'tcx> {
+    /// Advances the live revision and removes all currently known readers of the changed inputs.
+    ///
+    /// This never runs providers. An embedding driver must re-request the diagnostic roots it
+    /// wants to report, and must reset/isolate diagnostics at each revision. Query values already
+    /// handed to the driver still refer to the old revision and must no longer be consulted.
+    ///
+    /// # Safety
+    /// The embedding driver must own the only compiler thread, with all previous query/cache
+    /// accesses completed and no access started until this call returns.
+    pub unsafe fn ohm_invalidate_resident_queries(
+        self,
+        inputs: impl IntoIterator<Item = ResidentQueryKey<'tcx>>,
+    ) -> Result<ResidentEviction<'tcx>, &'static str> {
+        if self.dep_graph.is_fully_enabled() || self.sess.threads().is_some() {
+            return Err(
+                "requires a single-threaded compiler with incremental compilation disabled",
+            );
+        }
+        if tls::with_context(|context| context.query.is_some()) {
+            return Err("cannot invalidate from inside an active query");
+        }
+        let graph =
+            self.query_system.resident.as_ref().ok_or("resident query graph is disabled")?;
+        let mut inputs: Vec<_> = inputs.into_iter().collect();
+        // The next trait solver does not yet provide individually keyed resident dependencies.
+        // Legacy solver answers are reached through the real queries and nested solver goals that
+        // produced them, including when a later query uses an already cached solver answer.
+        if graph.affected(inputs.iter().copied()).iter().any(|key| {
+            matches!(
+                key,
+                ResidentQueryKey::Query(
+                    TaggedQueryKey::type_of_opaque(_)
+                        | TaggedQueryKey::type_of_opaque_hir_typeck(_)
+                )
+            )
+        }) {
+            inputs.push(ResidentQueryKey::TraitSolver);
+        }
+        let plan = graph.advance(inputs);
+        let mut eviction = ResidentEviction {
+            revision: plan.revision,
+            inputs: Vec::new(),
+            structural_inputs: Vec::new(),
+            removed: Vec::new(),
+            uncached: Vec::new(),
+            trait_solver_caches_reset: false,
+        };
+        for key in plan.queries {
+            match key {
+                ResidentQueryKey::HirBody(owner) => eviction.inputs.push(owner),
+                ResidentQueryKey::HirStructure(owner) => eviction.structural_inputs.push(owner),
+                ResidentQueryKey::OldTraitSolver(ResidentOldTraitKey::Selection(env, pred)) => {
+                    eviction.trait_solver_caches_reset |=
+                        self.selection_cache.remove_resident(&(env, pred));
+                }
+                ResidentQueryKey::OldTraitSolver(ResidentOldTraitKey::Evaluation(env, pred)) => {
+                    eviction.trait_solver_caches_reset |=
+                        self.evaluation_cache.remove_resident(&(env, pred));
+                }
+                ResidentQueryKey::TraitSolver => {
+                    *self.new_solver_evaluation_cache.lock() = Default::default();
+                    eviction.trait_solver_caches_reset = true;
+                }
+                ResidentQueryKey::Query(query) => {
+                    // SAFETY: The caller owns the only compiler thread between query requests.
+                    if unsafe { query.resident_invalidate_quiescent(self) } {
+                        eviction.removed.push(query);
+                    } else {
+                        eviction.uncached.push(query);
+                    }
+                }
+            }
+        }
+        Ok(eviction)
+    }
+}

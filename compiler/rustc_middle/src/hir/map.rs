@@ -16,14 +16,126 @@ use rustc_hir::intravisit::Visitor;
 use rustc_hir::lints::DelayedLints;
 use rustc_hir::*;
 use rustc_hir_pretty as pprust_hir;
+use rustc_index::IndexVec;
 use rustc_session::config::CrateType;
 use rustc_span::def_id::StableCrateId;
-use rustc_span::{ErrorGuaranteed, Ident, Span, Symbol, kw, with_metavar_spans};
+use rustc_span::{ErrorGuaranteed, Ident, Span, Symbol, kw, sym, with_metavar_spans};
 
-use crate::hir::{ModuleItems, ProjectedMaybeOwner, nested_filter};
+use crate::hir::{ModuleItems, ProjectedMaybeOwner, ProjectedOwnerInfo, nested_filter};
 use crate::middle::debugger_visualizer::DebuggerVisualizerFile;
 use crate::query::{IntoQueryKey, LocalCrate};
 use crate::ty::{self, TyCtxt};
+
+/// The only replacement expressions accepted by the resident-body experiment.
+#[derive(Clone, Copy, Debug)]
+pub enum OhmResidentTailExpr {
+    Literal(rustc_ast::LitKind, Span),
+    /// The HIR ID must denote the canonical, directly visible binding in the same function.
+    Local(HirId, Span),
+}
+
+/// An experimental edit to a top-level local in a resident function body.
+#[derive(Clone, Copy, Debug)]
+pub enum OhmResidentStatementEdit {
+    /// Replace the initializer of an existing simple top-level local. The binding is unchanged.
+    ReplaceInitializer { statement: HirId, replacement: OhmResidentTailExpr },
+    /// Append a previously undeclared local before the existing tail, then return the new local.
+    /// The caller must reserve space for the new statement in the unchanged source map.
+    AppendBinding {
+        ident: Ident,
+        statement_span: Span,
+        initializer: OhmResidentTailExpr,
+        tail_span: Span,
+    },
+    /// Remove the final untyped simple local and replace the tail with an earlier local or literal.
+    RemoveLastBinding { statement: HirId, replacement_tail: OhmResidentTailExpr },
+}
+
+/// The owner-local identities of the edited, inserted, or removed statement.
+#[derive(Clone, Copy, Debug)]
+pub struct OhmResidentStatementIds {
+    pub statement: HirId,
+    pub local: HirId,
+    pub binding: HirId,
+    pub initializer: HirId,
+}
+
+enum OhmResidentIntegerAncestor<'tcx> {
+    Expr(&'tcx Expr<'tcx>),
+    Block(&'tcx Block<'tcx>),
+    Statement(Stmt<'tcx>),
+}
+
+struct OhmResidentAssertMessage {
+    invocation: Span,
+    found: bool,
+}
+
+impl<'tcx> Visitor<'tcx> for OhmResidentAssertMessage {
+    fn visit_expr(&mut self, expr: &'tcx Expr<'tcx>) {
+        if let ExprKind::Lit(literal) = expr.kind
+            && matches!(literal.node, rustc_ast::LitKind::Str(..))
+            && !literal.span.from_expansion()
+            && literal.span.eq_ctxt(self.invocation)
+            && self.invocation.contains(literal.span)
+        {
+            self.found = true;
+        } else if !self.found {
+            rustc_hir::intravisit::walk_expr(self, expr);
+        }
+    }
+}
+
+fn ohm_resident_atom_span(atom: OhmResidentTailExpr) -> Span {
+    match atom {
+        OhmResidentTailExpr::Literal(_, span) | OhmResidentTailExpr::Local(_, span) => span,
+    }
+}
+
+fn ohm_resident_reserve_node<'tcx>(
+    nodes: &mut IndexVec<ItemLocalId, ParentedNode<'tcx>>,
+    owner: OwnerId,
+    parent: ItemLocalId,
+    span: Span,
+) -> HirId {
+    let local_id = nodes.push(ParentedNode { parent, node: Node::Err(span) });
+    HirId { owner, local_id }
+}
+
+struct OhmResidentEligibility {
+    supported: bool,
+    allow_opaque: bool,
+}
+
+impl<'tcx> Visitor<'tcx> for OhmResidentEligibility {
+    fn visit_expr(&mut self, expr: &'tcx Expr<'tcx>) {
+        if expr.span.from_expansion()
+            || matches!(expr.kind, ExprKind::Closure(..) | ExprKind::ConstBlock(..))
+        {
+            self.supported = false;
+        } else {
+            rustc_hir::intravisit::walk_expr(self, expr);
+        }
+    }
+
+    fn visit_stmt(&mut self, stmt: &'tcx Stmt<'tcx>) {
+        if stmt.span.from_expansion() || matches!(stmt.kind, StmtKind::Item(_)) {
+            self.supported = false;
+        } else {
+            rustc_hir::intravisit::walk_stmt(self, stmt);
+        }
+    }
+
+    fn visit_ty(&mut self, ty: &'tcx Ty<'tcx, AmbigArg>) {
+        if ty.span.from_expansion()
+            || (!self.allow_opaque && matches!(ty.kind, TyKind::OpaqueDef(_)))
+        {
+            self.supported = false;
+        } else {
+            rustc_hir::intravisit::walk_ty(self, ty);
+        }
+    }
+}
 
 /// An iterator that walks up the ancestor tree of a given `HirId`.
 /// Constructed using `tcx.hir_parent_iter(hir_id)`.
@@ -104,6 +216,983 @@ impl<'tcx> Iterator for ParentOwnerIterator<'tcx> {
 }
 
 impl<'tcx> TyCtxt<'tcx> {
+    /// Replaces the tail expression of an already lowered private free function.
+    ///
+    /// This is an embedding experiment for a resident checker, not a general HIR mutation API.
+    /// The caller is responsible for mapping diagnostics from the existing source map to its
+    /// edited source and for isolating/resetting diagnostics between requests. The new span must
+    /// start where the previous expression did and fit within the original body. Inputs that add
+    /// bindings, unresolved names, macros, closures, or anonymous constants cannot be represented
+    /// by this entrypoint. Without resident dependency tracking, only the target's type and borrow
+    /// queries may be rerun. With tracking, the driver can re-request affected diagnostic roots.
+    ///
+    /// # Safety
+    ///
+    /// The compiler must be quiescent: the caller must own the single compiler thread, all
+    /// earlier query calls must have returned, and no query may start until this method returns.
+    pub unsafe fn ohm_replace_private_body_tail(
+        self,
+        def_id: LocalDefId,
+        replacement: OhmResidentTailExpr,
+    ) -> Result<(), &'static str> {
+        // SAFETY: The embedding driver provides the same quiescence guarantee.
+        unsafe { self.ohm_replace_private_body_tail_with_invalidation(def_id, replacement) }
+            .map(|_| ())
+    }
+
+    /// Replaces a supported tail and reports any dependency-driven typed cache eviction.
+    ///
+    /// Unlike the historical single-owner path, opt-in resident dependency tracking permits
+    /// const functions and opaque return types. Drivers must re-request affected diagnostic roots.
+    ///
+    /// # Safety
+    /// The same quiescence requirements as [`Self::ohm_replace_private_body_tail`] apply.
+    pub unsafe fn ohm_replace_private_body_tail_with_invalidation(
+        self,
+        def_id: LocalDefId,
+        replacement: OhmResidentTailExpr,
+    ) -> Result<Option<crate::query::resident::ResidentEviction<'tcx>>, &'static str> {
+        if self.dep_graph.is_fully_enabled() || self.sess.threads().is_some() {
+            return Err(
+                "requires a single-threaded compiler with incremental compilation disabled",
+            );
+        }
+        if crate::ty::tls::with_context(|context| context.query.is_some()) {
+            return Err("cannot edit HIR from inside an active query");
+        }
+        if matches!(replacement, OhmResidentTailExpr::Literal(rustc_ast::LitKind::Err(_), _)) {
+            return Err("requires a well-formed literal");
+        }
+
+        let ProjectedMaybeOwner::Owner(original) = self.hir_owner(def_id) else {
+            return Err("requires a HIR owner");
+        };
+        let OwnerNode::Item(item) = original.nodes.node() else {
+            return Err("requires a free function");
+        };
+        let ItemKind::Fn { sig, generics, body: body_id, has_body: true, .. } = item.kind else {
+            return Err("requires a free function with a body");
+        };
+        let dependencies = self.query_system.resident.is_some();
+        if sig.header.is_async()
+            || (!dependencies && sig.header.constness != Constness::NotConst)
+            || !generics.params.is_empty()
+            || !generics.predicates.is_empty()
+            || self.visibility(def_id)
+                != ty::Visibility::Restricted(self.local_parent(def_id).to_def_id())
+        {
+            return Err(
+                "requires a private non-async, non-generic free function; const requires tracked dependencies",
+            );
+        }
+
+        let old_body = original.nodes.bodies[&body_id.hir_id.local_id];
+        let ExprKind::Block(old_block, None) = old_body.value.kind else {
+            return Err("requires an ordinary function block");
+        };
+        let Some(old_tail) = old_block.expr else {
+            return Err("requires a tail expression");
+        };
+        if old_block.rules != BlockCheckMode::DefaultBlock || old_block.targeted_by_break {
+            return Err("requires an ordinary block");
+        }
+        match old_tail.kind {
+            ExprKind::Lit(_) => {}
+            ExprKind::Path(QPath::Resolved(None, path))
+                if matches!(path.res, Res::Local(binding) if binding.owner.def_id == def_id)
+                    && path.segments.len() == 1
+                    && path.segments[0].args.is_none() => {}
+            _ => return Err("requires an existing literal or resolved local tail expression"),
+        }
+        let mut eligibility =
+            OhmResidentEligibility { supported: true, allow_opaque: dependencies };
+        eligibility.visit_fn_decl(sig.decl);
+        eligibility.visit_expr(old_body.value);
+        if !eligibility.supported {
+            return Err(
+                "macros, closures, local items, anonymous constants, and untracked opaque types are unsupported",
+            );
+        }
+        let span = match replacement {
+            OhmResidentTailExpr::Literal(_, span) | OhmResidentTailExpr::Local(_, span) => span,
+        };
+        if span.from_expansion()
+            || !span.eq_ctxt(old_tail.span)
+            || span.lo() != old_tail.span.lo()
+            || !old_body.value.span.contains(span)
+        {
+            return Err("replacement span must start at the old tail in the original body");
+        }
+
+        let mut nodes = original.nodes.nodes.clone();
+        let segment_slot = nodes.iter_enumerated().find_map(|(id, entry)| {
+            (entry.parent == old_tail.hir_id.local_id
+                && matches!(entry.node, Node::PathSegment(_) | Node::Err(_)))
+            .then_some(id)
+        });
+        let new_kind = match replacement {
+            OhmResidentTailExpr::Literal(literal, _) => {
+                if let Some(slot) = segment_slot {
+                    // The old path segment is no longer in the body tree. Retain its index for
+                    // a later local-path edit while making accidental lookup explicitly inert.
+                    nodes[slot].node = Node::Err(span);
+                }
+                ExprKind::Lit(rustc_span::Spanned { node: literal, span })
+            }
+            OhmResidentTailExpr::Local(binding, _) => {
+                if binding.owner.def_id != def_id {
+                    return Err("replacement binding must belong to the target function");
+                }
+                let Some(ParentedNode {
+                    node: Node::Pat(Pat { kind: PatKind::Binding(_, canonical, ident, None), .. }),
+                    ..
+                }) = nodes.get(binding.local_id)
+                else {
+                    return Err("replacement binding must be a simple local or parameter");
+                };
+                if *canonical != binding || ident.span.from_expansion() {
+                    return Err("replacement must use the canonical, non-macro binding");
+                }
+                let ident = *ident;
+                let mut visible_binding = None;
+                for pat in old_body.params.iter().map(|param| param.pat).chain(
+                    old_block.stmts.iter().filter_map(|stmt| match stmt.kind {
+                        StmtKind::Let(local) => Some(local.pat),
+                        _ => None,
+                    }),
+                ) {
+                    match pat.kind {
+                        PatKind::Wild => {}
+                        PatKind::Binding(_, candidate, candidate_ident, None) => {
+                            if candidate_ident.name == ident.name
+                                && candidate_ident.span.eq_ctxt(ident.span)
+                            {
+                                visible_binding = Some(candidate);
+                            }
+                        }
+                        _ => {
+                            return Err(
+                                "destructured parameters or top-level bindings are unsupported",
+                            );
+                        }
+                    }
+                }
+                if visible_binding != Some(binding) {
+                    return Err(
+                        "replacement binding is nested, shadowed, or not visible at the tail",
+                    );
+                }
+                let local_id = segment_slot.unwrap_or_else(|| nodes.next_index());
+                let segment_id = HirId { owner: old_tail.hir_id.owner, local_id };
+                let segments = self.hir_arena.alloc_slice(&[PathSegment::new(
+                    Ident::new(ident.name, span),
+                    segment_id,
+                    Res::Local(binding),
+                )]);
+                if segment_slot.is_some() {
+                    nodes[local_id].node = Node::PathSegment(&segments[0]);
+                } else {
+                    assert_eq!(
+                        nodes.push(ParentedNode {
+                            parent: old_tail.hir_id.local_id,
+                            node: Node::PathSegment(&segments[0]),
+                        }),
+                        local_id,
+                    );
+                }
+                let path = self.hir_arena.alloc(Path { span, res: Res::Local(binding), segments });
+                ExprKind::Path(QPath::Resolved(None, path))
+            }
+        };
+        let new_tail = &*self.hir_arena.alloc(Expr { kind: new_kind, span, ..*old_tail });
+        let new_block = &*self.hir_arena.alloc(Block { expr: Some(new_tail), ..*old_block });
+        let new_value = &*self
+            .hir_arena
+            .alloc(Expr { kind: ExprKind::Block(new_block, None), ..*old_body.value });
+        let new_body = &*self.hir_arena.alloc(Body { value: new_value, ..*old_body });
+        nodes[new_tail.hir_id.local_id].node = Node::Expr(new_tail);
+        nodes[new_block.hir_id.local_id].node = Node::Block(new_block);
+        nodes[new_value.hir_id.local_id].node = Node::Expr(new_value);
+        let mut bodies = original.nodes.bodies.clone();
+        assert!(bodies.insert(body_id.hir_id.local_id, new_body).is_some());
+        let new_nodes = self.arena.alloc(OwnerNodes { opt_hash: None, nodes, bodies });
+        let replacement =
+            ProjectedMaybeOwner::Owner(ProjectedOwnerInfo { nodes: new_nodes, ..original });
+
+        // SAFETY: The caller owns the single compiler thread between queries.
+        Ok(unsafe { self.ohm_feed_resident_body_owner(def_id, replacement) })
+    }
+
+    /// Replaces a source-authored integer in a private free or inherent function body.
+    ///
+    /// This opt-in embedding experiment preserves the literal's suffix, HIR identity, and original
+    /// span. It accepts an immediate literal operand in the source-authored binary condition of a
+    /// directly written built-in `assert!(...)` with an explicit string message. It does not accept
+    /// arbitrary macro expansions, other body owners, generic functions/impls, or trait items. The
+    /// driver must translate diagnostics from the unchanged source-map allocation and re-request
+    /// affected diagnostic roots.
+    ///
+    /// # Safety
+    /// The caller must own the only compiler thread, all earlier queries must have returned, and
+    /// no query may start until this method returns. Incremental compilation must be disabled.
+    pub unsafe fn ohm_replace_private_body_integer_literal_with_invalidation(
+        self,
+        def_id: LocalDefId,
+        expression: HirId,
+        replacement: rustc_ast::LitKind,
+    ) -> Result<Option<crate::query::resident::ResidentEviction<'tcx>>, &'static str> {
+        if self.query_system.resident.is_none()
+            || self.dep_graph.is_fully_enabled()
+            || self.sess.threads().is_some()
+        {
+            return Err(
+                "requires resident tracking in a single-threaded, non-incremental compiler",
+            );
+        }
+        if crate::ty::tls::with_context(|context| context.query.is_some()) {
+            return Err("cannot edit HIR from inside an active query");
+        }
+        let rustc_ast::LitKind::Int(_, replacement_type) = replacement else {
+            return Err("replacement must be an integer literal");
+        };
+        if expression.owner.def_id != def_id {
+            return Err("replacement must belong to the target function body");
+        }
+        let ProjectedMaybeOwner::Owner(original) = self.hir_owner(def_id) else {
+            return Err("requires a HIR owner");
+        };
+        let (sig, generics, body_id) = match original.nodes.node() {
+            OwnerNode::Item(item) => {
+                let ItemKind::Fn { sig, generics, body, has_body: true, .. } = item.kind else {
+                    return Err("requires a private free function with a body");
+                };
+                (sig, generics, body)
+            }
+            OwnerNode::ImplItem(item) => {
+                let ImplItemKind::Fn(sig, body) = item.kind else {
+                    return Err("requires a private inherent function with a body");
+                };
+                if !matches!(item.impl_kind, ImplItemImplKind::Inherent { .. }) {
+                    return Err("requires an inherent implementation");
+                }
+                let owner = OwnerId { def_id: self.local_parent(def_id) };
+                let OwnerNode::Item(Item { kind: ItemKind::Impl(parent), .. }) =
+                    self.hir_owner_node(owner)
+                else {
+                    return Err("requires an inherent implementation");
+                };
+                if parent.of_trait.is_some()
+                    || !parent.generics.params.is_empty()
+                    || !parent.generics.predicates.is_empty()
+                {
+                    return Err("requires a non-generic inherent implementation");
+                }
+                (sig, item.generics, body)
+            }
+            _ => return Err("requires a private free or inherent function with a body"),
+        };
+        if sig.header.is_async()
+            || !generics.params.is_empty()
+            || !generics.predicates.is_empty()
+            || self.visibility(def_id)
+                != ty::Visibility::Restricted(self.parent_module_from_def_id(def_id).to_def_id())
+        {
+            return Err("requires a private non-async, non-generic free or inherent function");
+        }
+        let old_body = original.nodes.bodies[&body_id.hir_id.local_id];
+        let ExprKind::Block(old_block, None) = old_body.value.kind else {
+            return Err("requires an ordinary function block");
+        };
+        if old_body.value.span.from_expansion()
+            || old_block.rules != BlockCheckMode::DefaultBlock
+            || old_block.targeted_by_break
+        {
+            return Err("requires an ordinary source-authored function block");
+        }
+        let Some(ParentedNode { node: Node::Expr(old_literal), .. }) =
+            original.nodes.nodes.get(expression.local_id)
+        else {
+            return Err("replacement must select an integer expression");
+        };
+        let ExprKind::Lit(old_value) = old_literal.kind else {
+            return Err("replacement must select an integer literal");
+        };
+        let rustc_ast::LitKind::Int(_, old_type) = old_value.node else {
+            return Err("replacement must select an integer literal");
+        };
+        if old_type != replacement_type {
+            return Err("replacement must preserve the original integer suffix");
+        }
+        if old_literal.span.from_expansion()
+            || old_value.span.from_expansion()
+            || !old_literal.span.eq_ctxt(old_body.value.span)
+            || !old_value.span.eq_ctxt(old_literal.span)
+            || !old_body.value.span.contains(old_literal.span)
+        {
+            return Err("the integer must be written directly in the original function source");
+        }
+
+        let mut nodes = original.nodes.nodes.clone();
+        let new_literal = &*self.hir_arena.alloc(Expr {
+            kind: ExprKind::Lit(rustc_span::Spanned { node: replacement, ..old_value }),
+            ..**old_literal
+        });
+        nodes[expression.local_id].node = Node::Expr(new_literal);
+        let mut current = expression;
+        let mut changed = OhmResidentIntegerAncestor::Expr(new_literal);
+        let mut condition = None;
+        let mut direct_assert = false;
+        while current != old_body.value.hir_id {
+            let parent_id = original.nodes.nodes[current.local_id].parent;
+            let parent = HirId { owner: expression.owner, local_id: parent_id };
+            let old_parent = original.nodes.nodes[parent_id].node;
+            let span = match old_parent {
+                Node::Expr(expr) => expr.span,
+                Node::Stmt(statement) => statement.span,
+                Node::Block(block) => block.span,
+                _ => return Err("integer expression is outside the supported function body path"),
+            };
+            if !self.ohm_resident_integer_ancestor_span(span, old_body.value.span) {
+                return Err(
+                    "integer edits support only source expressions and built-in assert conditions",
+                );
+            }
+            changed = match (old_parent, changed) {
+                (Node::Expr(old), OhmResidentIntegerAncestor::Expr(new)) => {
+                    let kind = match old.kind {
+                        ExprKind::Binary(op, left, right) if left.hir_id == current => {
+                            if current == expression && !old.span.from_expansion() {
+                                condition = Some(old.span);
+                            }
+                            ExprKind::Binary(op, new, right)
+                        }
+                        ExprKind::Binary(op, left, right) if right.hir_id == current => {
+                            if current == expression && !old.span.from_expansion() {
+                                condition = Some(old.span);
+                            }
+                            ExprKind::Binary(op, left, new)
+                        }
+                        ExprKind::Unary(op, operand) if operand.hir_id == current => {
+                            if self.ohm_resident_is_assert_expansion(old.span) {
+                                if condition != Some(operand.span)
+                                    || !self.ohm_resident_direct_assert_condition(
+                                        old.span.source_callsite(),
+                                        operand.span,
+                                    )
+                                {
+                                    return Err(
+                                        "integer must be a direct operand in the written assert condition",
+                                    );
+                                }
+                                direct_assert = true;
+                            }
+                            ExprKind::Unary(op, new)
+                        }
+                        ExprKind::If(condition, then, otherwise) if condition.hir_id == current => {
+                            if self.ohm_resident_is_assert_expansion(old.span) {
+                                let mut message = OhmResidentAssertMessage {
+                                    invocation: old.span.source_callsite(),
+                                    found: false,
+                                };
+                                message.visit_expr(then);
+                                if !message.found {
+                                    // The no-message expansion stores a generated string containing
+                                    // the condition's original source. Keeping it would give stale
+                                    // diagnostics after a resident edit.
+                                    return Err(
+                                        "resident assert edits require an explicit string message",
+                                    );
+                                }
+                            }
+                            ExprKind::If(new, then, otherwise)
+                        }
+                        ExprKind::DropTemps(operand) if operand.hir_id == current => {
+                            ExprKind::DropTemps(new)
+                        }
+                        _ => return Err("integer expression has an unsupported parent expression"),
+                    };
+                    let new = &*self.hir_arena.alloc(Expr { kind, ..*old });
+                    nodes[parent_id].node = Node::Expr(new);
+                    OhmResidentIntegerAncestor::Expr(new)
+                }
+                (Node::Expr(old), OhmResidentIntegerAncestor::Block(new)) => {
+                    let ExprKind::Block(old_block, None) = old.kind else {
+                        return Err(
+                            "integer expression has an unsupported parent block expression",
+                        );
+                    };
+                    if old_block.hir_id != current {
+                        return Err(
+                            "integer expression does not belong to its parent block expression",
+                        );
+                    }
+                    let new =
+                        &*self.hir_arena.alloc(Expr { kind: ExprKind::Block(new, None), ..*old });
+                    nodes[parent_id].node = Node::Expr(new);
+                    OhmResidentIntegerAncestor::Expr(new)
+                }
+                (Node::Stmt(old), OhmResidentIntegerAncestor::Expr(new)) => {
+                    let kind = match old.kind {
+                        StmtKind::Expr(expr) if expr.hir_id == current => StmtKind::Expr(new),
+                        StmtKind::Semi(expr) if expr.hir_id == current => StmtKind::Semi(new),
+                        _ => return Err("integer expression has an unsupported parent statement"),
+                    };
+                    OhmResidentIntegerAncestor::Statement(Stmt { kind, ..*old })
+                }
+                (Node::Block(old), OhmResidentIntegerAncestor::Statement(new)) => {
+                    if old.rules != BlockCheckMode::DefaultBlock || old.targeted_by_break {
+                        return Err("integer expression requires ordinary untargeted blocks");
+                    }
+                    let mut statements = old.stmts.to_vec();
+                    let Some(statement) = statements.iter_mut().find(|stmt| stmt.hir_id == current)
+                    else {
+                        return Err("integer expression does not belong to its parent block");
+                    };
+                    *statement = new;
+                    let statements = self.hir_arena.alloc_slice(&statements);
+                    for statement in &*statements {
+                        nodes[statement.hir_id.local_id].node = Node::Stmt(statement);
+                    }
+                    let new = &*self.hir_arena.alloc(Block { stmts: statements, ..*old });
+                    nodes[parent_id].node = Node::Block(new);
+                    OhmResidentIntegerAncestor::Block(new)
+                }
+                (Node::Block(old), OhmResidentIntegerAncestor::Expr(new)) => {
+                    if old.rules != BlockCheckMode::DefaultBlock || old.targeted_by_break {
+                        return Err("integer expression requires ordinary untargeted blocks");
+                    }
+                    if old.expr.is_none_or(|expr| expr.hir_id != current) {
+                        return Err("integer expression does not belong to its parent block");
+                    }
+                    let new = &*self.hir_arena.alloc(Block { expr: Some(new), ..*old });
+                    nodes[parent_id].node = Node::Block(new);
+                    OhmResidentIntegerAncestor::Block(new)
+                }
+                _ => return Err("integer expression is outside the supported function body path"),
+            };
+            current = parent;
+        }
+        let OhmResidentIntegerAncestor::Expr(new_value) = changed else {
+            return Err("integer expression did not reach the original function body");
+        };
+        if !direct_assert {
+            return Err("integer edit requires a directly written built-in assert condition");
+        }
+        let new_body = &*self.hir_arena.alloc(Body { value: new_value, ..*old_body });
+        let mut bodies = original.nodes.bodies.clone();
+        assert!(bodies.insert(body_id.hir_id.local_id, new_body).is_some());
+        let new_nodes = self.arena.alloc(OwnerNodes { opt_hash: None, nodes, bodies });
+        let replacement =
+            ProjectedMaybeOwner::Owner(ProjectedOwnerInfo { nodes: new_nodes, ..original });
+        // SAFETY: The caller owns the single compiler thread between queries.
+        Ok(unsafe { self.ohm_feed_resident_body_owner(def_id, replacement) })
+    }
+
+    fn ohm_resident_integer_ancestor_span(self, span: Span, body: Span) -> bool {
+        if !span.from_expansion() {
+            return span.eq_ctxt(body) && body.contains(span);
+        }
+        self.ohm_resident_is_assert_expansion(span) && body.contains(span.source_callsite())
+    }
+
+    fn ohm_resident_is_assert_expansion(self, span: Span) -> bool {
+        span.from_expansion()
+            && span
+                .ctxt()
+                .outer_expn_data()
+                .macro_def_id
+                .is_some_and(|id| self.get_diagnostic_name(id) == Some(sym::assert_macro))
+    }
+
+    fn ohm_resident_direct_assert_condition(self, invocation: Span, condition: Span) -> bool {
+        if !invocation.eq_ctxt(condition) || !invocation.contains(condition) {
+            return false;
+        }
+        let Ok(prefix) = self.sess.source_map().span_to_snippet(invocation.with_hi(condition.lo()))
+        else {
+            return false;
+        };
+        prefix.chars().filter(|character| !character.is_whitespace()).eq("assert!(".chars())
+    }
+
+    unsafe fn ohm_feed_resident_body_owner(
+        self,
+        def_id: LocalDefId,
+        replacement: ProjectedMaybeOwner<'tcx>,
+    ) -> Option<crate::query::resident::ResidentEviction<'tcx>> {
+        let eviction = self.query_system.resident.as_ref().map(|_| {
+            // SAFETY: The caller owns the single compiler thread between queries, and the body
+            // replacement is not published until all its cached readers have been removed.
+            unsafe {
+                self.ohm_invalidate_resident_queries([
+                    crate::query::resident::ResidentQueryKey::HirBody(def_id),
+                ])
+            }
+            .expect("resident HIR eligibility already verified the compiler is quiescent")
+        });
+        let queries = &self.query_system.query_vtables;
+        macro_rules! invalidate {
+            ($($name:ident),+ $(,)?) => {$(
+                // SAFETY: The caller owns the only compiler thread and is between queries.
+                unsafe { queries.$name.cache.ohm_invalidate_quiescent(def_id) };
+            )+};
+        }
+        invalidate!(
+            typeck_root,
+            used_trait_imports,
+            region_scope_tree,
+            thir_body,
+            check_match,
+            check_unsafety,
+            check_liveness,
+            check_transmutes,
+            check_coroutine_obligations,
+            has_ffi_unwind_calls,
+            mir_built,
+            mir_promoted,
+            mir_borrowck,
+        );
+        // The MIR promotion provider also eagerly or conditionally requests these DefId queries.
+        // SAFETY: The caller owns the only compiler thread and is between queries.
+        unsafe {
+            queries.trivial_const.cache.ohm_invalidate_local_quiescent(def_id);
+            queries.mir_const_qualif.cache.ohm_invalidate_local_quiescent(def_id);
+            queries.coroutine_by_move_body_def_id.cache.ohm_invalidate_local_quiescent(def_id);
+        }
+        // SAFETY: The caller owns the only compiler thread and is between queries.
+        unsafe { queries.hir_owner.cache.ohm_invalidate_quiescent(def_id) };
+        crate::query::inner::query_feed(
+            self,
+            &queries.hir_owner,
+            def_id,
+            crate::query::erase::erase_val(replacement),
+        );
+        eviction
+    }
+
+    fn ohm_resident_visible_binding(
+        self,
+        body: &'tcx Body<'tcx>,
+        statements: &[Stmt<'tcx>],
+        ident: Ident,
+    ) -> Result<Option<HirId>, &'static str> {
+        let mut visible = None;
+        for pat in
+            body.params.iter().map(|param| param.pat).chain(statements.iter().filter_map(|stmt| {
+                match stmt.kind {
+                    StmtKind::Let(local) => Some(local.pat),
+                    _ => None,
+                }
+            }))
+        {
+            match pat.kind {
+                PatKind::Wild => {}
+                PatKind::Binding(_, candidate, candidate_ident, None) => {
+                    if candidate_ident.span.from_expansion() {
+                        return Err("macro-generated bindings are unsupported");
+                    }
+                    if candidate_ident.name == ident.name
+                        && candidate_ident.span.eq_ctxt(ident.span)
+                    {
+                        visible = Some(candidate);
+                    }
+                }
+                _ => return Err("destructured parameters or top-level bindings are unsupported"),
+            }
+        }
+        Ok(visible)
+    }
+
+    fn ohm_resident_atom(
+        self,
+        def_id: LocalDefId,
+        nodes: &mut IndexVec<ItemLocalId, ParentedNode<'tcx>>,
+        body: &'tcx Body<'tcx>,
+        preceding_statements: &[Stmt<'tcx>],
+        old_expr: Option<&'tcx Expr<'tcx>>,
+        expr_id: HirId,
+        container: Span,
+        replacement: OhmResidentTailExpr,
+    ) -> Result<&'tcx Expr<'tcx>, &'static str> {
+        if let Some(old) = old_expr {
+            match old.kind {
+                ExprKind::Lit(_) => {}
+                ExprKind::Path(QPath::Resolved(None, path))
+                    if matches!(path.res, Res::Local(binding) if binding.owner.def_id == def_id)
+                        && path.segments.len() == 1
+                        && path.segments[0].args.is_none() => {}
+                _ => {
+                    return Err("requires an existing literal or resolved simple local expression");
+                }
+            }
+        }
+        let span = ohm_resident_atom_span(replacement);
+        if span.from_expansion()
+            || !span.eq_ctxt(container)
+            || !container.contains(span)
+            || old_expr.is_some_and(|old| span.lo() != old.span.lo())
+        {
+            return Err(
+                "replacement expression must start at the old site in its original source span",
+            );
+        }
+        let segment_slot = nodes.iter_enumerated().find_map(|(id, entry)| {
+            (entry.parent == expr_id.local_id
+                && matches!(entry.node, Node::PathSegment(_) | Node::Err(_)))
+            .then_some(id)
+        });
+        let kind = match replacement {
+            OhmResidentTailExpr::Literal(rustc_ast::LitKind::Err(_), _) => {
+                return Err("requires a well-formed literal");
+            }
+            OhmResidentTailExpr::Literal(literal, _) => {
+                if let Some(slot) = segment_slot {
+                    nodes[slot].node = Node::Err(span);
+                }
+                ExprKind::Lit(rustc_span::Spanned { node: literal, span })
+            }
+            OhmResidentTailExpr::Local(binding, _) => {
+                if binding.owner.def_id != def_id {
+                    return Err("replacement binding must belong to the target function");
+                }
+                let Some(ParentedNode {
+                    node: Node::Pat(Pat { kind: PatKind::Binding(_, canonical, ident, None), .. }),
+                    ..
+                }) = nodes.get(binding.local_id)
+                else {
+                    return Err("replacement binding must be a simple local or parameter");
+                };
+                if *canonical != binding || ident.span.from_expansion() {
+                    return Err("replacement must use the canonical, non-macro binding");
+                }
+                let ident = *ident;
+                if self.ohm_resident_visible_binding(body, preceding_statements, ident)?
+                    != Some(binding)
+                {
+                    return Err(
+                        "replacement binding is nested, shadowed, or not visible at this site",
+                    );
+                }
+                let segment_id = segment_slot.map_or_else(
+                    || ohm_resident_reserve_node(nodes, expr_id.owner, expr_id.local_id, span),
+                    |local_id| HirId { owner: expr_id.owner, local_id },
+                );
+                let segments = self.hir_arena.alloc_slice(&[PathSegment::new(
+                    Ident::new(ident.name, span),
+                    segment_id,
+                    Res::Local(binding),
+                )]);
+                nodes[segment_id.local_id].node = Node::PathSegment(&segments[0]);
+                let path = self.hir_arena.alloc(Path { span, res: Res::Local(binding), segments });
+                ExprKind::Path(QPath::Resolved(None, path))
+            }
+        };
+        let new_expr = &*self.hir_arena.alloc(Expr { hir_id: expr_id, kind, span });
+        nodes[expr_id.local_id].node = Node::Expr(new_expr);
+        Ok(new_expr)
+    }
+
+    /// Edits a single existing initializer, introduces an actual previously undeclared binding,
+    /// or removes the final simple binding in the same already-lowered private function. Any new
+    /// HIR IDs are allocated beneath the original owner. The API deliberately accepts only literal
+    /// or previously resolved local expressions and requires caller-supplied spans in the original
+    /// source-map allocation.
+    ///
+    /// # Safety
+    ///
+    /// The caller must own the single compiler thread and call only between completed queries.
+    /// Without resident dependency tracking, only the target's type and borrow checks may be
+    /// rerun; with tracking, the driver may re-request affected diagnostic roots. The driver is
+    /// responsible for isolating diagnostics and translating them to the actual edited source.
+    pub unsafe fn ohm_edit_private_body_statement(
+        self,
+        def_id: LocalDefId,
+        edit: OhmResidentStatementEdit,
+    ) -> Result<OhmResidentStatementIds, &'static str> {
+        if self.dep_graph.is_fully_enabled() || self.sess.threads().is_some() {
+            return Err("requires a single-threaded, non-incremental compiler");
+        }
+        if crate::ty::tls::with_context(|context| context.query.is_some()) {
+            return Err("cannot edit HIR from inside an active query");
+        }
+        let ProjectedMaybeOwner::Owner(original) = self.hir_owner(def_id) else {
+            return Err("requires a HIR owner");
+        };
+        let OwnerNode::Item(item) = original.nodes.node() else {
+            return Err("requires a free function");
+        };
+        let ItemKind::Fn { sig, generics, body: body_id, has_body: true, .. } = item.kind else {
+            return Err("requires a free function with a body");
+        };
+        let dependencies = self.query_system.resident.is_some();
+        if sig.header.is_async()
+            || (!dependencies && sig.header.constness != Constness::NotConst)
+            || !generics.params.is_empty()
+            || !generics.predicates.is_empty()
+            || self.visibility(def_id)
+                != ty::Visibility::Restricted(self.local_parent(def_id).to_def_id())
+        {
+            return Err(
+                "requires a private non-async, non-generic free function; const requires tracked dependencies",
+            );
+        }
+        let old_body = original.nodes.bodies[&body_id.hir_id.local_id];
+        let ExprKind::Block(old_block, None) = old_body.value.kind else {
+            return Err("requires an ordinary function block");
+        };
+        if old_block.rules != BlockCheckMode::DefaultBlock || old_block.targeted_by_break {
+            return Err("requires an ordinary function block");
+        }
+        let mut eligibility =
+            OhmResidentEligibility { supported: true, allow_opaque: dependencies };
+        eligibility.visit_fn_decl(sig.decl);
+        eligibility.visit_expr(old_body.value);
+        if !eligibility.supported {
+            return Err(
+                "macros, closures, local items, anonymous constants, and untracked opaque types are unsupported",
+            );
+        }
+
+        let mut nodes = original.nodes.nodes.clone();
+        let mut statements = old_block.stmts.to_vec();
+        let mut tail = old_block.expr;
+        let owner = old_block.hir_id.owner;
+        let ids = match edit {
+            OhmResidentStatementEdit::ReplaceInitializer { statement, replacement } => {
+                if statement.owner != owner {
+                    return Err("replacement statement must belong to this function");
+                }
+                let Some(position) = statements.iter().position(|stmt| stmt.hir_id == statement)
+                else {
+                    return Err("replacement statement must be in the top-level body block");
+                };
+                let old_stmt = statements[position];
+                let StmtKind::Let(old_local) = old_stmt.kind else {
+                    return Err("replacement statement must be a local binding");
+                };
+                if old_local.super_.is_some()
+                    || old_local.els.is_some()
+                    || !matches!(old_local.source, LocalSource::Normal)
+                {
+                    return Err("replacement statement must be an ordinary let binding");
+                }
+                let PatKind::Binding(_, binding, _, None) = old_local.pat.kind else {
+                    return Err("replacement statement must use a simple binding");
+                };
+                let Some(old_init) = old_local.init else {
+                    return Err("replacement statement must already have an initializer");
+                };
+                let new_init = self.ohm_resident_atom(
+                    def_id,
+                    &mut nodes,
+                    old_body,
+                    &statements[..position],
+                    Some(old_init),
+                    old_init.hir_id,
+                    old_local.span,
+                    replacement,
+                )?;
+                let new_local =
+                    &*self.hir_arena.alloc(LetStmt { init: Some(new_init), ..*old_local });
+                nodes[new_local.hir_id.local_id].node = Node::LetStmt(new_local);
+                statements[position].kind = StmtKind::Let(new_local);
+                OhmResidentStatementIds {
+                    statement,
+                    local: new_local.hir_id,
+                    binding,
+                    initializer: new_init.hir_id,
+                }
+            }
+            OhmResidentStatementEdit::AppendBinding {
+                ident,
+                statement_span,
+                initializer,
+                tail_span,
+            } => {
+                let Some(old_tail) = tail else {
+                    return Err("appending a binding currently requires an existing tail");
+                };
+                let initializer_span = ohm_resident_atom_span(initializer);
+                if ident.is_reserved()
+                    || ident.name == kw::Underscore
+                    || ident.span.from_expansion()
+                    || statement_span.from_expansion()
+                    || !statement_span.eq_ctxt(old_block.span)
+                    || !ident.span.eq_ctxt(statement_span)
+                    || !old_block.span.contains(statement_span)
+                    || !statement_span.contains(ident.span)
+                    || !statement_span.contains(initializer_span)
+                    || ident.span.hi() > initializer_span.lo()
+                    || statements.last().is_some_and(|stmt| stmt.span.hi() > statement_span.lo())
+                    || statement_span.hi() > old_tail.span.lo()
+                {
+                    return Err(
+                        "new binding requires disjoint caller-reserved source spans before the tail",
+                    );
+                }
+                if self.ohm_resident_visible_binding(old_body, &statements, ident)?.is_some() {
+                    return Err("new binding name must not already be visible in this function");
+                }
+
+                let stmt_id = ohm_resident_reserve_node(
+                    &mut nodes,
+                    owner,
+                    old_block.hir_id.local_id,
+                    statement_span,
+                );
+                let local_id =
+                    ohm_resident_reserve_node(&mut nodes, owner, stmt_id.local_id, statement_span);
+                let pat_id =
+                    ohm_resident_reserve_node(&mut nodes, owner, local_id.local_id, ident.span);
+                let init_id = ohm_resident_reserve_node(
+                    &mut nodes,
+                    owner,
+                    local_id.local_id,
+                    initializer_span,
+                );
+                let init = self.ohm_resident_atom(
+                    def_id,
+                    &mut nodes,
+                    old_body,
+                    &statements,
+                    None,
+                    init_id,
+                    statement_span,
+                    initializer,
+                )?;
+                let pat = &*self.hir_arena.alloc(Pat {
+                    hir_id: pat_id,
+                    kind: PatKind::Binding(BindingMode::NONE, pat_id, ident, None),
+                    span: ident.span,
+                    default_binding_modes: true,
+                });
+                nodes[pat_id.local_id].node = Node::Pat(pat);
+                let local = &*self.hir_arena.alloc(LetStmt {
+                    super_: None,
+                    pat,
+                    ty: None,
+                    init: Some(init),
+                    els: None,
+                    hir_id: local_id,
+                    span: statement_span,
+                    source: LocalSource::Normal,
+                });
+                nodes[local_id.local_id].node = Node::LetStmt(local);
+                statements.push(Stmt {
+                    hir_id: stmt_id,
+                    kind: StmtKind::Let(local),
+                    span: statement_span,
+                });
+                tail = Some(self.ohm_resident_atom(
+                    def_id,
+                    &mut nodes,
+                    old_body,
+                    &statements,
+                    Some(old_tail),
+                    old_tail.hir_id,
+                    old_body.value.span,
+                    OhmResidentTailExpr::Local(pat_id, tail_span),
+                )?);
+                OhmResidentStatementIds {
+                    statement: stmt_id,
+                    local: local_id,
+                    binding: pat_id,
+                    initializer: init_id,
+                }
+            }
+            OhmResidentStatementEdit::RemoveLastBinding { statement, replacement_tail } => {
+                if statement.owner != owner {
+                    return Err("removal statement must belong to this function");
+                }
+                let Some(old_stmt) = statements.pop() else {
+                    return Err("removal requires a final top-level statement");
+                };
+                if old_stmt.hir_id != statement {
+                    return Err("only the final top-level statement can be removed");
+                }
+                let StmtKind::Let(old_local) = old_stmt.kind else {
+                    return Err("the removed final statement must be a local binding");
+                };
+                if old_local.super_.is_some()
+                    || old_local.els.is_some()
+                    || old_local.ty.is_some()
+                    || !matches!(old_local.source, LocalSource::Normal)
+                {
+                    return Err("only a final ordinary untyped let binding can be removed");
+                }
+                let PatKind::Binding(_, binding, _, None) = old_local.pat.kind else {
+                    return Err("only a final simple binding can be removed");
+                };
+                let Some(old_init) = old_local.init else {
+                    return Err("removal requires an existing atomic initializer");
+                };
+                match old_init.kind {
+                    ExprKind::Lit(_) => {}
+                    ExprKind::Path(QPath::Resolved(None, path))
+                        if matches!(path.res, Res::Local(binding) if binding.owner.def_id == def_id)
+                            && path.segments.len() == 1
+                            && path.segments[0].args.is_none() => {}
+                    _ => {
+                        return Err(
+                            "only a final literal or simple local initializer can be removed",
+                        );
+                    }
+                }
+                let Some(old_tail) = tail else {
+                    return Err("removal currently requires an existing tail expression");
+                };
+                tail = Some(self.ohm_resident_atom(
+                    def_id,
+                    &mut nodes,
+                    old_body,
+                    &statements,
+                    Some(old_tail),
+                    old_tail.hir_id,
+                    old_body.value.span,
+                    replacement_tail,
+                )?);
+                for (_, entry) in nodes.iter_enumerated_mut() {
+                    if entry.parent == old_init.hir_id.local_id
+                        && matches!(entry.node, Node::PathSegment(_) | Node::Err(_))
+                    {
+                        entry.node = Node::Err(old_init.span);
+                    }
+                }
+                for id in [old_stmt.hir_id, old_local.hir_id, old_local.pat.hir_id, old_init.hir_id]
+                {
+                    nodes[id.local_id].node = Node::Err(old_stmt.span);
+                }
+                OhmResidentStatementIds {
+                    statement,
+                    local: old_local.hir_id,
+                    binding,
+                    initializer: old_init.hir_id,
+                }
+            }
+        };
+
+        let new_stmts = self.hir_arena.alloc_slice(&statements);
+        for stmt in &*new_stmts {
+            nodes[stmt.hir_id.local_id].node = Node::Stmt(stmt);
+        }
+        let new_block =
+            &*self.hir_arena.alloc(Block { stmts: new_stmts, expr: tail, ..*old_block });
+        let new_value = &*self
+            .hir_arena
+            .alloc(Expr { kind: ExprKind::Block(new_block, None), ..*old_body.value });
+        let new_body = &*self.hir_arena.alloc(Body { value: new_value, ..*old_body });
+        nodes[new_block.hir_id.local_id].node = Node::Block(new_block);
+        nodes[new_value.hir_id.local_id].node = Node::Expr(new_value);
+        let mut bodies = original.nodes.bodies.clone();
+        assert!(bodies.insert(body_id.hir_id.local_id, new_body).is_some());
+        let new_nodes = self.arena.alloc(OwnerNodes { opt_hash: None, nodes, bodies });
+        let replacement =
+            ProjectedMaybeOwner::Owner(ProjectedOwnerInfo { nodes: new_nodes, ..original });
+        // SAFETY: The caller owns the single compiler thread between queries.
+        let _ = unsafe { self.ohm_feed_resident_body_owner(def_id, replacement) };
+        Ok(ids)
+    }
+
     #[inline]
     pub fn local_def_id_to_hir_id(self, def_id: impl IntoQueryKey<LocalDefId>) -> HirId {
         let def_id = def_id.into_query_key();
@@ -132,23 +1221,33 @@ impl<'tcx> TyCtxt<'tcx> {
 
     #[inline]
     pub fn opt_hir_owner_nodes(self, def_id: LocalDefId) -> Option<&'tcx OwnerNodes<'tcx>> {
+        self.record_resident_hir_body(def_id);
+        self.opt_hir_owner_nodes_without_resident_body(def_id)
+    }
+
+    #[inline]
+    fn opt_hir_owner_nodes_without_resident_body(
+        self,
+        def_id: LocalDefId,
+    ) -> Option<&'tcx OwnerNodes<'tcx>> {
         self.hir_owner(def_id).as_owner().map(|o| o.nodes)
     }
 
     #[inline]
     fn expect_hir_owner_nodes(self, def_id: LocalDefId) -> &'tcx OwnerNodes<'tcx> {
-        self.opt_hir_owner_nodes(def_id)
+        self.opt_hir_owner_nodes_without_resident_body(def_id)
             .unwrap_or_else(|| span_bug!(self.def_span(def_id), "{def_id:?} is not an owner"))
     }
 
     #[inline]
     pub fn hir_owner_nodes(self, owner_id: OwnerId) -> &'tcx OwnerNodes<'tcx> {
+        self.record_resident_hir_body(owner_id.def_id);
         self.expect_hir_owner_nodes(owner_id.def_id)
     }
 
     #[inline]
     fn opt_hir_owner_node(self, def_id: LocalDefId) -> Option<OwnerNode<'tcx>> {
-        self.opt_hir_owner_nodes(def_id).map(|nodes| nodes.node())
+        self.opt_hir_owner_nodes_without_resident_body(def_id).map(|nodes| nodes.node())
     }
 
     #[inline]
@@ -158,12 +1257,22 @@ impl<'tcx> TyCtxt<'tcx> {
 
     #[inline]
     pub fn hir_owner_node(self, owner_id: OwnerId) -> OwnerNode<'tcx> {
-        self.hir_owner_nodes(owner_id).node()
+        self.expect_hir_owner_nodes(owner_id.def_id).node()
     }
 
     /// Retrieves the `hir::Node` corresponding to `id`.
     pub fn hir_node(self, id: HirId) -> Node<'tcx> {
-        self.hir_owner_nodes(id.owner).nodes[id.local_id].node
+        if id.local_id != ItemLocalId::ZERO {
+            self.record_resident_hir_body(id.owner.def_id);
+        }
+        self.expect_hir_owner_nodes(id.owner.def_id).nodes[id.local_id].node
+    }
+
+    #[inline]
+    fn record_resident_hir_body(self, def_id: LocalDefId) {
+        if let Some(resident) = &self.query_system.resident {
+            resident.read_hir_body(def_id);
+        }
     }
 
     /// Retrieves the `hir::Node` corresponding to `id`.

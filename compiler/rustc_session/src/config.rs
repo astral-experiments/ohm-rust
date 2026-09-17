@@ -2750,6 +2750,10 @@ pub fn build_session_options(early_dcx: &mut EarlyDiagCtxt, matches: &getopts::M
         early_dcx.early_fatal("can't dump dependency graph without `-Z query-dep-graph`");
     }
 
+    if unstable_opts.ohm_resident_query_graph && cg.incremental.is_some() {
+        early_dcx.early_fatal("`-Zohm-resident-query-graph` cannot be used with `-Cincremental`");
+    }
+
     let logical_env = parse_logical_env(early_dcx, matches);
 
     let sysroot = Sysroot::new(matches.opt_str("sysroot").map(PathBuf::from));

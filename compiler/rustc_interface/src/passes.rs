@@ -1009,6 +1009,7 @@ pub fn create_and_enter_global_ctxt<T, F: for<'tcx> FnOnce(TyCtxt<'tcx>) -> T>(
             incremental,
             compiler.sess.opts.unstable_opts.public_api_hash,
             compiler.sess.opts.unstable_opts.ohm_incremental_mono_partitions,
+            compiler.sess.opts.unstable_opts.ohm_resident_query_graph,
         ),
         providers.hooks,
         compiler.current_gcx.clone(),
