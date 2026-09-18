@@ -11,8 +11,10 @@ use rustc_ast::expand::allocator::{
 };
 use rustc_data_structures::fx::{FxHashMap, FxIndexSet};
 use rustc_data_structures::profiling::{get_resident_set_size, print_time_passes_entry};
+use rustc_data_structures::stable_hash::{StableHash, StableHasher};
 use rustc_data_structures::sync::{IntoDynSyncSend, par_map};
 use rustc_data_structures::unord::UnordMap;
+use rustc_hashes::Hash128;
 use rustc_hir::attrs::{DebuggerVisualizerType, OptimizeAttr};
 use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_hir::lang_items::LangItem;
@@ -30,7 +32,7 @@ use rustc_middle::ty::layout::{HasTyCtxt, HasTypingEnv, LayoutOf, TyAndLayout};
 use rustc_middle::ty::{self, Instance, PatternKind, Ty, TyCtxt, Unnormalized};
 use rustc_middle::{bug, span_bug};
 use rustc_session::Session;
-use rustc_session::config::{self, CrateType, EntryFnType};
+use rustc_session::config::{self, CrateType, DebugInfo, EntryFnType, OutputType};
 use rustc_span::{DUMMY_SP, Symbol};
 use rustc_symbol_mangling::mangle_internal_symbol;
 use rustc_target::spec::{Arch, Os};
@@ -43,6 +45,7 @@ use crate::back::link::are_upstream_rust_objects_already_included;
 use crate::back::write::{
     ComputedLtoType, OngoingCodegen, compute_per_cgu_lto_type, start_async_codegen,
     submit_codegened_module_to_llvm, submit_post_lto_module_to_llvm, submit_pre_lto_module_to_llvm,
+    submit_resident_module_to_llvm,
 };
 use crate::common::{self, IntPredicate, RealPredicate, TypeKind};
 use crate::meth::load_vtable;
@@ -710,14 +713,49 @@ pub fn codegen_crate<
 
     // Run the monomorphization collector and partition the collected items into
     // codegen units.
-    let MonoItemPartitions { codegen_units, .. } = tcx.collect_and_partition_mono_items(());
+    let MonoItemPartitions { codegen_units, all_mono_items } =
+        tcx.collect_and_partition_mono_items(());
+
+    let resident_cache =
+        tcx.query_system.resident.as_ref().and_then(|resident| resident.codegen_cache()).filter(
+            |_| {
+                !tcx.dep_graph.is_fully_enabled()
+                    && tcx.sess.threads().is_none()
+                    && tcx.sess.opts.debuginfo == DebugInfo::None
+                    && !tcx.sess.instrument_coverage()
+                    && !tcx.sess.opts.cg.profile_generate.enabled()
+                    && tcx.sess.opts.cg.profile_use.is_none()
+                    && tcx.sess.opts.unstable_opts.profile_sample_use.is_none()
+                    && tcx.sess.opts.unstable_opts.llvm_plugins.is_empty()
+                    && tcx.sess.opts.unstable_opts.offload.is_empty()
+                    && !tcx.sess.opts.cg.save_temps
+                    && !tcx.sess.opts.cg.linker_plugin_lto.enabled()
+                    && matches!(
+                        compute_per_cgu_lto_type(&tcx.sess.lto(), false, tcx.crate_types()),
+                        ComputedLtoType::No
+                    )
+                    && tcx.sess.opts.output_types.contains_key(&OutputType::Exe)
+                    && tcx.sess.opts.output_types.keys().all(|kind| {
+                        matches!(
+                            kind,
+                            OutputType::Exe
+                                | OutputType::Object
+                                | OutputType::Metadata
+                                | OutputType::DepInfo
+                        )
+                    })
+            },
+        );
+    if let Some(cache) = &resident_cache {
+        cache.begin(all_mono_items);
+    }
 
     // Force all codegen_unit queries so they are already either red or green
     // when compile_codegen_unit accesses them. We are not able to re-execute
     // the codegen_unit query from just the DepNode, so an unknown color would
     // lead to having to re-execute compile_codegen_unit, possibly
     // unnecessarily.
-    if tcx.dep_graph.is_fully_enabled() {
+    if tcx.dep_graph.is_fully_enabled() || resident_cache.is_some() {
         for cgu in codegen_units {
             tcx.ensure_ok().codegen_unit(cgu.name());
         }
@@ -737,7 +775,8 @@ pub fn codegen_crate<
         None
     };
 
-    let ongoing_codegen = start_async_codegen(backend.clone(), tcx, allocator_module);
+    let ongoing_codegen =
+        start_async_codegen(backend.clone(), tcx, allocator_module, resident_cache.clone());
 
     // For better throughput during parallel processing by LLVM, we used to sort
     // CGUs largest to smallest. This would lead to better thread utilization
@@ -762,6 +801,17 @@ pub fn codegen_crate<
     let cgu_reuse = tcx.sess.time("find_cgu_reuse", || {
         codegen_units.iter().map(|cgu| determine_cgu_reuse(tcx, cgu)).collect::<Vec<_>>()
     });
+    let resident_reuse: Vec<_> = codegen_units
+        .iter()
+        .map(|cgu| {
+            resident_cache.as_ref().and_then(|cache| {
+                let mut hasher = StableHasher::new();
+                tcx.with_stable_hashing_context(|mut hcx| cgu.stable_hash(&mut hcx, &mut hasher));
+                let partition: Hash128 = hasher.finish();
+                cache.lookup(cgu.name().as_str(), format!("{:032x}", partition.as_u128()))
+            })
+        })
+        .collect();
 
     crate::assert_module_sources::assert_module_sources(tcx, &|cgu_reuse_tracker| {
         for (i, cgu) in codegen_units.iter().enumerate() {
@@ -789,7 +839,7 @@ pub fn codegen_crate<
             let cgus: Vec<_> = cgu_reuse
                 .iter()
                 .enumerate()
-                .filter(|&(_, reuse)| reuse == &CguReuse::No)
+                .filter(|&(i, reuse)| reuse == &CguReuse::No && resident_reuse[i].is_none())
                 .take(threads)
                 .collect();
 
@@ -812,6 +862,15 @@ pub fn codegen_crate<
     for (i, cgu) in codegen_units.iter().enumerate() {
         ongoing_codegen.wait_for_signal_to_codegen_item();
         ongoing_codegen.check_for_errors(tcx.sess);
+
+        if let Some(artifacts) = &resident_reuse[i] {
+            submit_resident_module_to_llvm(
+                &ongoing_codegen.coordinator,
+                cgu.name().to_string(),
+                artifacts.clone(),
+            );
+            continue;
+        }
 
         let cgu_reuse = cgu_reuse[i];
 

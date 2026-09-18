@@ -1,12 +1,15 @@
 use std::cell::Cell;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::thread::{self, ThreadId};
 
-use rustc_data_structures::fx::{FxHashMap, FxHashSet};
+use rustc_data_structures::fx::{FxHashMap, FxHashSet, FxIndexSet};
 use rustc_data_structures::sync::Lock;
 use rustc_errors::{DiagInner, MultiSpan};
 use rustc_hir::HirId;
 use rustc_lint_defs::LintId;
-use rustc_span::def_id::{DefId, LocalDefId};
+use rustc_span::Symbol;
+use rustc_span::def_id::{DefId, DefIdSet, LocalDefId};
 
 use super::QueryJobId;
 use super::resident_graph::Graph;
@@ -23,6 +26,7 @@ pub struct ResidentQueryGraph<'tcx> {
     graph: Lock<Graph<ResidentQueryKey<'tcx>, QueryJobId>>,
     trait_tasks: Lock<FxHashMap<ThreadId, Vec<TraitTask<'tcx>>>>,
     delayed_attribute_lints: Lock<Option<Vec<ResidentDelayedAttributeLint>>>,
+    codegen_cache: Lock<Option<Arc<ResidentCodegenCache>>>,
 }
 
 impl Default for ResidentQueryGraph<'_> {
@@ -31,7 +35,143 @@ impl Default for ResidentQueryGraph<'_> {
             graph: Lock::new(Graph::default()),
             trait_tasks: Default::default(),
             delayed_attribute_lints: Default::default(),
+            codegen_cache: Default::default(),
         }
+    }
+}
+
+/// Private artifacts retained after a successful LLVM build and before the linker may remove them.
+#[derive(Clone)]
+pub struct ResidentCodegenArtifacts {
+    pub object: PathBuf,
+    pub global_asm_object: Option<PathBuf>,
+    pub dwarf_object: Option<PathBuf>,
+    pub fingerprint: String,
+}
+
+#[derive(Clone)]
+pub struct ResidentCodegenOutcome {
+    pub name: String,
+    pub reused: bool,
+    pub fingerprint: String,
+}
+
+struct ResidentCodegenEntry {
+    partition: String,
+    clean: bool,
+    artifacts: ResidentCodegenArtifacts,
+    membership_answers: Vec<(DefId, bool)>,
+}
+
+struct ResidentPendingCodegen {
+    partition: String,
+    reused: bool,
+    membership: Option<FxIndexSet<DefId>>,
+}
+
+#[derive(Default)]
+struct ResidentCodegenState {
+    entries: FxHashMap<String, ResidentCodegenEntry>,
+    pending: FxHashMap<String, ResidentPendingCodegen>,
+    membership: DefIdSet,
+    report: Vec<ResidentCodegenOutcome>,
+}
+
+/// An explicitly enabled, session-private object cache. Query dependencies, not object equality,
+/// decide whether an artifact is reusable; the fingerprint is exposed as supporting evidence.
+pub struct ResidentCodegenCache {
+    directory: PathBuf,
+    state: Lock<ResidentCodegenState>,
+}
+
+impl ResidentCodegenCache {
+    pub fn directory(&self) -> &Path {
+        &self.directory
+    }
+
+    pub fn begin(&self, membership: &DefIdSet) {
+        let mut state = self.state.lock();
+        state.pending.clear();
+        state.report.clear();
+        state.membership = membership.clone();
+    }
+
+    pub fn lookup(&self, name: &str, partition: String) -> Option<ResidentCodegenArtifacts> {
+        let mut state = self.state.lock();
+        let artifact = state.entries.get(name).and_then(|entry| {
+            (entry.clean
+                && entry.partition == partition
+                && entry
+                    .membership_answers
+                    .iter()
+                    .all(|(def_id, answer)| state.membership.contains(def_id) == *answer)
+                && entry.artifacts.object.is_file()
+                && entry.artifacts.global_asm_object.as_deref().is_none_or(Path::is_file)
+                && entry.artifacts.dwarf_object.as_deref().is_none_or(Path::is_file))
+            .then(|| entry.artifacts.clone())
+        });
+        state.pending.insert(
+            name.to_owned(),
+            ResidentPendingCodegen { partition, reused: artifact.is_some(), membership: None },
+        );
+        artifact
+    }
+
+    fn record_membership(&self, name: Symbol, membership: FxIndexSet<DefId>) {
+        if let Some(pending) = self.state.lock().pending.get_mut(name.as_str()) {
+            pending.membership = Some(membership);
+        }
+    }
+
+    pub fn publish(&self, name: &str, artifacts: ResidentCodegenArtifacts) {
+        let mut state = self.state.lock();
+        let Some(ResidentPendingCodegen { partition, reused, membership }) =
+            state.pending.remove(name)
+        else {
+            return;
+        };
+        state.report.push(ResidentCodegenOutcome {
+            name: name.to_owned(),
+            reused,
+            fingerprint: artifacts.fingerprint.clone(),
+        });
+        let membership_answers = if reused {
+            state.entries.get(name).unwrap().membership_answers.clone()
+        } else if let Some(membership) = membership {
+            membership
+                .into_iter()
+                .map(|def_id| (def_id, state.membership.contains(&def_id)))
+                .collect()
+        } else {
+            // The backend did not report complete actual dependencies; never reuse its output.
+            state.entries.remove(name);
+            return;
+        };
+        state.entries.insert(
+            name.to_owned(),
+            ResidentCodegenEntry { partition, clean: true, artifacts, membership_answers },
+        );
+    }
+
+    pub fn reused(&self, name: &str) -> Option<ResidentCodegenArtifacts> {
+        let state = self.state.lock();
+        state
+            .pending
+            .get(name)
+            .filter(|pending| pending.reused)
+            .and_then(|_| state.entries.get(name).map(|entry| entry.artifacts.clone()))
+    }
+
+    fn invalidate(&self, name: Symbol) {
+        if let Some(entry) = self.state.lock().entries.get_mut(name.as_str()) {
+            entry.clean = false;
+        }
+    }
+
+    fn report(&self) -> Vec<ResidentCodegenOutcome> {
+        let mut report = self.state.lock().report.clone();
+        report.sort_by(|left, right| left.name.cmp(&right.name));
+        report
     }
 }
 
@@ -48,6 +188,7 @@ pub struct ResidentDelayedAttributeLint {
 struct TraitTask<'tcx> {
     key: ResidentQueryKey<'tcx>,
     reads: FxHashSet<ResidentQueryKey<'tcx>>,
+    codegen_membership: FxIndexSet<DefId>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -68,6 +209,8 @@ pub enum ResidentQueryKey<'tcx> {
     OldTraitSolver(ResidentOldTraitKey<'tcx>),
     /// The next trait solver's global, otherwise untracked, in-memory cache.
     TraitSolver,
+    /// Real rustc queries and HIR inputs accessed while lowering one LLVM module.
+    CodegenUnit(Symbol),
 }
 
 impl<'tcx> From<TaggedQueryKey<'tcx>> for ResidentQueryKey<'tcx> {
@@ -87,6 +230,7 @@ impl ResidentQueryKey<'_> {
                 "resident_trait_evaluation"
             }
             Self::TraitSolver => "resident_trait_solver",
+            Self::CodegenUnit(_) => "resident_codegen_unit",
         }
     }
 
@@ -94,7 +238,7 @@ impl ResidentQueryKey<'_> {
         match self {
             Self::Query(query) => query.resident_key_def_id(),
             Self::HirBody(def_id) | Self::HirStructure(def_id) => Some(def_id.to_def_id()),
-            Self::OldTraitSolver(_) | Self::TraitSolver => None,
+            Self::OldTraitSolver(_) | Self::TraitSolver | Self::CodegenUnit(_) => None,
         }
     }
 }
@@ -131,6 +275,29 @@ pub struct ResidentGraphStats {
 // ordered data from this experimental sidecar contributes to a rustc query result.
 #[expect(rustc::potential_query_instability)]
 impl<'tcx> ResidentQueryGraph<'tcx> {
+    /// Opts a single-threaded embedding driver into process-local object reuse. The directory must
+    /// already exist and must be private to this compiler session.
+    pub fn configure_codegen_cache(&self, directory: PathBuf) -> Result<(), &'static str> {
+        if !directory.is_dir() {
+            return Err("resident codegen cache directory does not exist");
+        }
+        let mut cache = self.codegen_cache.lock();
+        if cache.is_some() {
+            return Err("resident codegen cache already configured");
+        }
+        *cache = Some(Arc::new(ResidentCodegenCache { directory, state: Default::default() }));
+        Ok(())
+    }
+
+    pub fn codegen_cache(&self) -> Option<Arc<ResidentCodegenCache>> {
+        self.codegen_cache.lock().clone()
+    }
+
+    /// Built/reused CGUs and the fingerprints of their actual regular object files, in name order.
+    pub fn codegen_cache_report(&self) -> Vec<ResidentCodegenOutcome> {
+        self.codegen_cache().map_or_else(Vec::new, |cache| cache.report())
+    }
+
     /// Whether an embedding driver has started a new resident revision after the original crate.
     /// Unlike graph inspection, this can be read by the running crate analysis provider.
     pub fn is_rechecking(&self) -> bool {
@@ -184,9 +351,12 @@ impl<'tcx> ResidentQueryGraph<'tcx> {
                 // These providers traverse bodies to collect structural information. The editing
                 // API only changes literals/simple locals and rejects macros, nested items,
                 // closures, anonymous constants, generics and added type/lifetime binders.
+                // `fn_arg_idents` inspects only the body's unchanged parameter names and spans.
                 // A future edit that can alter any of these must invalidate HirStructure as well.
                 Some(ResidentQueryKey::Query(
-                    TaggedQueryKey::hir_crate_items(_) | TaggedQueryKey::resolve_bound_vars(_),
+                    TaggedQueryKey::hir_crate_items(_)
+                    | TaggedQueryKey::resolve_bound_vars(_)
+                    | TaggedQueryKey::fn_arg_idents(_),
                 )) => ResidentQueryKey::HirStructure(owner),
                 _ => ResidentQueryKey::HirBody(owner),
             };
@@ -212,6 +382,23 @@ impl<'tcx> ResidentQueryGraph<'tcx> {
             self.trait_tasks.lock().get_mut(&thread::current().id()).and_then(|s| s.last_mut())
             && key != task.key
         {
+            if matches!(task.key, ResidentQueryKey::CodegenUnit(_)) {
+                match key {
+                    // Each build independently compares its full current CGU partition (membership,
+                    // linkage, visibility), instead of the broad crate-wide collector dependency.
+                    ResidentQueryKey::Query(
+                        TaggedQueryKey::codegen_unit(_)
+                        | TaggedQueryKey::collect_and_partition_mono_items(_),
+                    ) => return,
+                    // The provider is exactly membership in the independently recomputed mono set.
+                    // Retain only the keys this CGU actually observed and check their current answers.
+                    ResidentQueryKey::Query(TaggedQueryKey::is_codegened_item(def_id)) => {
+                        task.codegen_membership.insert(def_id);
+                        return;
+                    }
+                    _ => {}
+                }
+            }
             task.reads.insert(key);
         }
     }
@@ -232,17 +419,34 @@ impl<'tcx> ResidentQueryGraph<'tcx> {
         compute: impl FnOnce() -> R,
     ) -> R {
         let key = ResidentQueryKey::OldTraitSolver(key);
+        self.with_external(key, compute)
+    }
+
+    /// Record all real query/HIR dependencies accessed while LLVM lowers a CGU.
+    pub fn with_codegen_unit<R>(&self, name: Symbol, compute: impl FnOnce() -> R) -> R {
+        if self.codegen_cache.lock().is_none() {
+            return compute();
+        }
+        self.with_external(ResidentQueryKey::CodegenUnit(name), compute)
+    }
+
+    fn with_external<R>(&self, key: ResidentQueryKey<'tcx>, compute: impl FnOnce() -> R) -> R {
         let thread = thread::current().id();
-        self.trait_tasks
-            .lock()
-            .entry(thread)
-            .or_default()
-            .push(TraitTask { key, reads: FxHashSet::default() });
+        self.trait_tasks.lock().entry(thread).or_default().push(TraitTask {
+            key,
+            reads: FxHashSet::default(),
+            codegen_membership: FxIndexSet::default(),
+        });
         let finished = Cell::new(false);
         let _end = rustc_data_structures::defer(|| {
             let task = self.trait_tasks.lock().get_mut(&thread).unwrap().pop().unwrap();
             if finished.get() {
                 self.graph.lock().record_external(task.key, task.reads);
+                if let ResidentQueryKey::CodegenUnit(name) = task.key
+                    && let Some(cache) = self.codegen_cache()
+                {
+                    cache.record_membership(name, task.codegen_membership);
+                }
             }
         });
         let result = compute();
@@ -365,6 +569,11 @@ impl<'tcx> TyCtxt<'tcx> {
                 ResidentQueryKey::TraitSolver => {
                     *self.new_solver_evaluation_cache.lock() = Default::default();
                     eviction.trait_solver_caches_reset = true;
+                }
+                ResidentQueryKey::CodegenUnit(name) => {
+                    if let Some(cache) = graph.codegen_cache() {
+                        cache.invalidate(name);
+                    }
                 }
                 ResidentQueryKey::Query(query) => {
                     // SAFETY: The caller owns the only compiler thread between query requests.
