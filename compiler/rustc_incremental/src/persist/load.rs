@@ -1,9 +1,10 @@
 //! Code to load the dep-graph from files.
 
-use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::{env, fs, io};
 
+use rustc_data_structures::memmap::Mmap;
 use rustc_data_structures::unord::UnordMap;
 use rustc_hashes::Hash64;
 use rustc_middle::dep_graph::{DepGraph, SerializedDepGraph, WorkProductMap};
@@ -35,6 +36,57 @@ enum LoadResult {
 fn delete_dirty_work_product(sess: &Session, swp: SerializedWorkProduct) {
     debug!("delete_dirty_work_product({:?})", swp);
     work_product::delete_workproduct_files(sess, &swp.work_product);
+}
+
+pub(super) fn flat_dep_graph_enabled() -> bool {
+    env::var_os("RUSTC_OHM_FLAT_DEP_GRAPH").is_some_and(|value| value == "1")
+}
+
+fn flat_dep_graph_trace(event: &str) {
+    if env::var_os("RUSTC_OHM_FLAT_DEP_GRAPH_TRACE").is_some_and(|value| value == "1") {
+        eprintln!("ohm-flat-dep-graph\t{event}");
+    }
+}
+
+/// Produces the next generation's optional shareable representation without changing the stock
+/// files. Snapshot errors are deliberately non-fatal; a later compiler still has its stock graph.
+pub(super) fn write_flat_dep_graph(sess: &Session) {
+    let result = (|| {
+        let path = dep_graph_path(sess);
+        let OpenFile { mmap, start_pos } = file_format::open_incremental_file(sess, &path).ok()?;
+        let generation = SerializedDepGraph::snapshot_generation(&mmap);
+        let mut decoder = MemDecoder::new(&mmap, start_pos).ok()?;
+        if Hash64::decode(&mut decoder) != sess.opts.dep_tracking_hash(false) {
+            return None;
+        }
+        let graph = SerializedDepGraph::decode(&mut decoder, &sess.prof);
+        let staging = staging_flat_dep_graph_path(sess);
+        let destination = flat_dep_graph_path(sess);
+        if let Err(error) = fs::remove_file(&staging)
+            && error.kind() != io::ErrorKind::NotFound
+        {
+            return None;
+        }
+        let mut output = fs::OpenOptions::new().write(true).create_new(true).open(&staging).ok()?;
+        graph.write_snapshot(generation, &mut output).ok()?;
+        drop(output);
+        // The destination may be cloned or linked from the previous completed session. Never
+        // modify it in place: readers of either generation must see immutable backing storage.
+        #[cfg(windows)]
+        if let Err(error) = fs::remove_file(&destination)
+            && error.kind() != io::ErrorKind::NotFound
+        {
+            return None;
+        }
+        fs::rename(&staging, &destination).ok()?;
+        Some(())
+    })();
+    if result.is_some() {
+        flat_dep_graph_trace("written");
+    } else {
+        let _ = fs::remove_file(staging_flat_dep_graph_path(sess));
+        flat_dep_graph_trace("write-failed");
+    }
 }
 
 fn load_dep_graph(sess: &Session) -> LoadResult {
@@ -112,7 +164,27 @@ fn load_dep_graph(sess: &Session) -> LoadResult {
                 return LoadResult::DataOutOfDate;
             }
 
-            let prev_graph = SerializedDepGraph::decode(&mut decoder, &sess.prof);
+            let prev_graph = if flat_dep_graph_enabled() {
+                let _timer = sess.prof.generic_activity("incr_comp_load_flat_dep_graph");
+                let snapshot = fs::File::open(flat_dep_graph_path(sess))
+                    .ok()
+                    // SAFETY: Completed generations are immutable, and stock save uses a new
+                    // file rather than overwriting an earlier generation's mapped inode.
+                    .and_then(|file| unsafe { Mmap::map(file) }.ok())
+                    .and_then(|snapshot| {
+                        let generation = SerializedDepGraph::snapshot_generation(&mmap);
+                        SerializedDepGraph::from_snapshot(snapshot, generation, &sess.prof)
+                    });
+                if let Some(graph) = snapshot {
+                    flat_dep_graph_trace("loaded");
+                    graph
+                } else {
+                    flat_dep_graph_trace("fallback");
+                    SerializedDepGraph::decode(&mut decoder, &sess.prof)
+                }
+            } else {
+                SerializedDepGraph::decode(&mut decoder, &sess.prof)
+            };
 
             LoadResult::Ok { prev_graph, prev_work_products }
         }
