@@ -130,6 +130,8 @@ const DEP_GRAPH_FILENAME: &str = "dep-graph.bin";
 const STAGING_DEP_GRAPH_FILENAME: &str = "dep-graph.part.bin";
 const WORK_PRODUCTS_FILENAME: &str = "work-products.bin";
 const QUERY_CACHE_FILENAME: &str = "query-cache.bin";
+const FLAT_DEP_GRAPH_FILENAME: &str = "ohm-flat-dep-graph.bin";
+const STAGING_FLAT_DEP_GRAPH_FILENAME: &str = "ohm-flat-dep-graph.part.bin";
 
 // We encode integers using the following base, so they are shorter than decimal
 // or hexadecimal numbers (we want short file and directory names). Since these
@@ -148,6 +150,14 @@ pub(crate) fn dep_graph_path(sess: &Session) -> PathBuf {
 /// see `build_dep_graph`.
 pub(crate) fn staging_dep_graph_path(sess: &Session) -> PathBuf {
     in_incr_comp_dir_sess(sess, STAGING_DEP_GRAPH_FILENAME)
+}
+
+pub(crate) fn flat_dep_graph_path(sess: &Session) -> PathBuf {
+    in_incr_comp_dir_sess(sess, FLAT_DEP_GRAPH_FILENAME)
+}
+
+pub(crate) fn staging_flat_dep_graph_path(sess: &Session) -> PathBuf {
+    in_incr_comp_dir_sess(sess, STAGING_FLAT_DEP_GRAPH_FILENAME)
 }
 
 pub(crate) fn work_products_path(sess: &Session) -> PathBuf {
@@ -324,6 +334,10 @@ pub fn finalize_session_directory(sess: &Session, svh: Option<Svh>) {
         sess.mark_incr_comp_session_as_invalid();
     }
 
+    if sess.dcx().has_errors_or_delayed_bugs().is_none() && super::load::flat_dep_graph_enabled() {
+        sess.time("incr_comp_persist_flat_dep_graph", || super::load::write_flat_dep_graph(sess));
+    }
+
     debug!("finalize_session_directory() - session directory: {}", incr_comp_session_dir.display());
 
     let mut sub_dir_name = incr_comp_session_dir
@@ -399,6 +413,21 @@ fn copy_files(sess: &Session, target_dir: &Path, source_dir: &Path) -> Result<bo
     // destination absent until cloning has been attempted; its separate lock file is held too.
     #[cfg(target_os = "macos")]
     if rustc_fs_util::clone_directory(source_dir, target_dir).is_ok() {
+        if super::load::flat_dep_graph_enabled() {
+            // APFS directory cloning gives the flat file a new vnode. Replace that clone by a
+            // hard link so fresh compiler processes map the actual completed-generation inode.
+            // A failure discards this optional representation; a later load uses the stock graph.
+            let source = source_dir.join(FLAT_DEP_GRAPH_FILENAME);
+            let target = target_dir.join(FLAT_DEP_GRAPH_FILENAME);
+            let staging = target_dir.join(STAGING_FLAT_DEP_GRAPH_FILENAME);
+            if std_fs::hard_link(&source, &staging)
+                .and_then(|()| std_fs::rename(&staging, &target))
+                .is_err()
+            {
+                safe_remove_file(&staging).map_err(|_| ())?;
+                safe_remove_file(&target).map_err(|_| ())?;
+            }
+        }
         if sess.opts.unstable_opts.incremental_info {
             eprintln!("[incremental] session directory cloned with copy-on-write");
         }
@@ -414,14 +443,22 @@ fn copy_files(sess: &Session, target_dir: &Path, source_dir: &Path) -> Result<bo
         match entry {
             Ok(entry) => {
                 let file_name = entry.file_name();
+                let share_flat =
+                    file_name == FLAT_DEP_GRAPH_FILENAME && super::load::flat_dep_graph_enabled();
 
                 let target_file_path = target_dir.join(file_name);
                 let source_path = entry.path();
 
                 debug!("copying into session dir: {}", source_path.display());
-                match link_or_copy(source_path, target_file_path) {
+                match link_or_copy(source_path, &target_file_path) {
                     Ok(LinkOrCopy::Link) => files_linked += 1,
-                    Ok(LinkOrCopy::Copy) => files_copied += 1,
+                    Ok(LinkOrCopy::Copy) => {
+                        files_copied += 1;
+                        if share_flat {
+                            // Do not claim cross-process mmap sharing for an independent inode.
+                            safe_remove_file(&target_file_path).map_err(|_| ())?;
+                        }
+                    }
                     Err(_) => return Err(()),
                 }
             }

@@ -62,6 +62,8 @@ use super::graph::{CurrentDepGraph, DepNodeColorMap, DesiredColor, TrySetColorRe
 use super::retained::RetainedDepGraph;
 use super::{DepKind, DepNode, DepNodeIndex};
 
+mod snapshot;
+
 // The maximum value of `SerializedDepNodeIndex` leaves the upper two bits
 // unused so that we can store multiple index types in `CompressedHybridIndex`,
 // and use those bits to encode which index type it contains.
@@ -122,6 +124,8 @@ pub struct SerializedDepGraph {
     /// Used to time the lazy per-`DepKind` reverse-index build. `None` only for
     /// the empty default graph, which is never looked up.
     profiler: Option<SelfProfilerRef>,
+    /// An optional shareable flat generation; value fingerprints and edge bytes stay mapped.
+    snapshot: Option<snapshot::MappedDepGraphSnapshot>,
 }
 
 // `SelfProfilerRef` is not `Debug`, so we can't derive this.
@@ -134,6 +138,7 @@ impl std::fmt::Debug for SerializedDepGraph {
             .field("edge_list_data", &self.edge_list_data)
             .field("reverse_index", &self.reverse_index)
             .field("session_count", &self.session_count)
+            .field("snapshot", &self.snapshot)
             .finish_non_exhaustive()
     }
 }
@@ -210,7 +215,7 @@ impl SerializedDepGraph {
         source: SerializedDepNodeIndex,
     ) -> impl Iterator<Item = SerializedDepNodeIndex> + Clone {
         let header = self.edge_list_indices[source];
-        let mut raw = &self.edge_list_data[header.start()..];
+        let mut raw = &self.edge_bytes()[header.start()..];
 
         let bytes_per_index = header.bytes_per_index();
 
@@ -248,7 +253,18 @@ impl SerializedDepGraph {
         &self,
         dep_node_index: SerializedDepNodeIndex,
     ) -> Fingerprint {
-        self.value_fingerprints[dep_node_index]
+        match &self.snapshot {
+            Some(snapshot) => snapshot.value_fingerprint(dep_node_index),
+            None => self.value_fingerprints[dep_node_index],
+        }
+    }
+
+    #[inline]
+    fn edge_bytes(&self) -> &[u8] {
+        match &self.snapshot {
+            Some(snapshot) => snapshot.edge_bytes(),
+            None => &self.edge_list_data,
+        }
     }
 
     #[inline]
@@ -416,6 +432,7 @@ impl SerializedDepGraph {
             reverse_index,
             session_count,
             profiler: Some(profiler.clone()),
+            snapshot: None,
         })
     }
 }
