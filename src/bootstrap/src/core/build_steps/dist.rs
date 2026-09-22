@@ -1917,6 +1917,8 @@ impl CommandLineStep for Extended {
         // before rust-std in the list below.
         tarballs.push(builder.ensure(Rustc { target_compiler }));
         tarballs.push(builder.ensure(Std { build_compiler, target }).expect("missing std"));
+        // Custom toolchains cannot install rust-src through rustup.
+        tarballs.push(builder.ensure(Src));
 
         if target.is_windows_gnu() || target.is_windows_gnullvm() {
             tarballs.push(builder.ensure(Mingw { target }).expect("missing mingw"));
