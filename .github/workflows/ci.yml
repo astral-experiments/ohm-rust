@@ -70,6 +70,10 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off --warnings deny check compiler
 
+      - name: Install Ninja for distribution tests
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
       - name: Run bootstrap and component PGO tests
         shell: bash
         run: |
@@ -96,6 +100,7 @@ jobs:
           "$stage0_cargo" test --locked --manifest-path src/bootstrap/Cargo.toml pgo_
           "$stage0_cargo" test --locked --manifest-path src/bootstrap/Cargo.toml copy_link_tests
           "$stage0_cargo" test --locked --manifest-path src/bootstrap/Cargo.toml allocator_features
+          "$stage0_cargo" test --locked --manifest-path src/bootstrap/Cargo.toml dist_extended
           "$stage0_cargo" test --locked -p opt-dist
 
       - name: Run incremental driver input regression
