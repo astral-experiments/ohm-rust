@@ -96,6 +96,7 @@ jobs:
           "$stage0_cargo" test --locked --manifest-path src/bootstrap/Cargo.toml pgo_
           "$stage0_cargo" test --locked --manifest-path src/bootstrap/Cargo.toml copy_link_tests
           "$stage0_cargo" test --locked --manifest-path src/bootstrap/Cargo.toml allocator_features
+          "$stage0_cargo" test --locked --manifest-path src/bootstrap/Cargo.toml dist_extended
           "$stage0_cargo" test --locked -p opt-dist
 
       - name: Run incremental driver input regression

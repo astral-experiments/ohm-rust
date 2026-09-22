@@ -1323,6 +1323,18 @@ mod snapshot {
     }
 
     #[test]
+    fn dist_extended_includes_rust_src() {
+        let ctx = TestCtx::new();
+        let config = ctx
+            .config("dist")
+            .path("extended")
+            .args(&["--set", "build.extended=true", "--set", "build.tools=[]"])
+            .create_config();
+        let cache = run_build(&[PathBuf::from("extended")], config);
+        assert!(cache.contains::<dist::Src>());
+    }
+
+    #[test]
     fn dist_with_targets() {
         let ctx = TestCtx::new();
         insta::assert_snapshot!(
