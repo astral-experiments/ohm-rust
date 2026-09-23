@@ -1915,6 +1915,16 @@ impl Step for Extended {
         // before rust-std in the list below.
         tarballs.push(builder.ensure(Rustc { target_compiler }));
         tarballs.push(builder.ensure(Std { build_compiler, target }).expect("missing std"));
+        // Custom toolchains cannot install additional targets through rustup.
+        for &extra_target in &builder.config.targets {
+            if extra_target != target {
+                tarballs.push(
+                    builder
+                        .ensure(Std { build_compiler, target: extra_target })
+                        .expect("missing std"),
+                );
+            }
+        }
         // Custom toolchains cannot install rust-src through rustup.
         tarballs.push(builder.ensure(Src));
 

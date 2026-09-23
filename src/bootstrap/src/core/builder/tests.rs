@@ -1335,6 +1335,30 @@ mod snapshot {
     }
 
     #[test]
+    fn dist_extended_includes_target_std() {
+        let ctx = TestCtx::new();
+        let host = host_target();
+        for targets in
+            [vec![host.as_str(), "wasm32-unknown-unknown"], vec!["wasm32-unknown-unknown"]]
+        {
+            let config = ctx
+                .config("dist")
+                .path("extended")
+                .hosts(&[&host])
+                .targets(&targets)
+                .args(&["--set", "build.extended=true", "--set", "build.tools=[]"])
+                .create_config();
+            let cache = run_build(&[PathBuf::from("extended")], config);
+            let mut expected = vec![host.clone(), "wasm32-unknown-unknown".to_owned()];
+            expected.sort();
+            assert_eq!(
+                cache.inspect_all_steps_of_type::<dist::Std, _>(|step, _| step.target.to_string()),
+                expected,
+            );
+        }
+    }
+
+    #[test]
     fn dist_with_targets() {
         let ctx = TestCtx::new();
         insta::assert_snapshot!(
