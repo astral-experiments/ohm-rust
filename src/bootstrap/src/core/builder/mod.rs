@@ -1128,6 +1128,17 @@ impl<'a> Builder<'a> {
         }
     }
 
+    /// Build the default documentation included in a single target's installer.
+    pub fn run_default_doc_steps_for_target(&self, target: TargetSelection) {
+        for desc in Builder::get_step_descriptions(Kind::Doc) {
+            if (desc.is_default_step_fn)(self) && (!desc.is_host || self.hosts.contains(&target)) {
+                let should_run = (desc.should_run)(ShouldRun::new(self));
+                let run = RunConfig { builder: self, target, paths: should_run.default_pathsets() };
+                (desc.make_run)(run);
+            }
+        }
+    }
+
     pub fn doc_rust_lang_org_channel(&self) -> String {
         let channel = match &*self.config.channel {
             "stable" => &self.version,
