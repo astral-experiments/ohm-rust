@@ -454,15 +454,22 @@ impl StepDescription {
         }
     }
 
-    fn maybe_run(&self, builder: &Builder<'_>, mut pathsets: Vec<PathSet>) {
+    fn maybe_run(&self, builder: &Builder<'_>, pathsets: Vec<PathSet>) {
+        let targets = if self.is_host { &builder.hosts } else { &builder.targets };
+        self.maybe_run_for_targets(builder, pathsets, targets);
+    }
+
+    fn maybe_run_for_targets(
+        &self,
+        builder: &Builder<'_>,
+        mut pathsets: Vec<PathSet>,
+        targets: &[TargetSelection],
+    ) {
         pathsets.retain(|set| !self.is_excluded(builder, set));
 
         if pathsets.is_empty() {
             return;
         }
-
-        // Determine the targets participating in this rule.
-        let targets = if self.is_host { &builder.hosts } else { &builder.targets };
 
         // Log the step that's about to run, for snapshot tests.
         if let Some(ref log_cli_step) = builder.log_cli_step_for_tests {
@@ -1122,6 +1129,16 @@ impl<'a> Builder<'a> {
     /// Run all default documentation steps to build documentation.
     pub fn run_default_doc_steps(&self) {
         self.run_step_descriptions(&Builder::get_step_descriptions(Kind::Doc), &[]);
+    }
+
+    /// Build the default documentation included in a single target's installer.
+    pub fn run_default_doc_steps_for_target(&self, target: TargetSelection) {
+        for desc in Builder::get_step_descriptions(Kind::Doc) {
+            if (desc.is_default_step_fn)(self) && (!desc.is_host || self.hosts.contains(&target)) {
+                let should_run = (desc.should_run)(ShouldRun::new(self, Kind::Doc));
+                desc.maybe_run_for_targets(self, should_run.paths.into_iter().collect(), &[target]);
+            }
+        }
     }
 
     pub fn doc_rust_lang_org_channel(&self) -> String {
