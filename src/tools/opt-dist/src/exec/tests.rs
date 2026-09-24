@@ -1,7 +1,33 @@
 use camino::Utf8Path;
+use clap::Parser;
 
 use super::{Bootstrap, profile_setting};
 use crate::environment::{Environment, EnvironmentBuilder};
+use crate::{Args, create_environment};
+
+#[test]
+fn build_prepares_distribution_targets() {
+    for (extra_args, targets) in [
+        (vec![], "test-host"),
+        (vec!["--std-target=wasm32-unknown-unknown"], "test-host,wasm32-unknown-unknown"),
+    ] {
+        let args = Args::parse_from(
+            [
+                "opt-dist",
+                "local",
+                "--target-triple=test-host",
+                "--checkout-dir=checkout",
+                "--llvm-dir=llvm",
+            ]
+            .into_iter()
+            .chain(extra_args),
+        );
+        let (env, _) = create_environment(args).unwrap();
+        let build = Bootstrap::build(&env);
+        assert!(build.cmd.args.windows(2).any(|args| args == ["--target", targets]));
+        assert!(build.cmd.args.windows(2).any(|args| args == ["--host", "test-host"]));
+    }
+}
 
 fn environment(fast_try_build: bool) -> Environment {
     EnvironmentBuilder::default()
