@@ -49,6 +49,10 @@ enum EnvironmentCmd {
         #[arg(long)]
         target_triple: String,
 
+        /// Additional targets whose standard libraries must be built before packaging.
+        #[arg(long = "std-target")]
+        std_targets: Vec<String>,
+
         /// Checkout directory of `rustc`.
         #[arg(long)]
         checkout_dir: Utf8PathBuf,
@@ -135,6 +139,7 @@ fn create_environment(args: Args) -> anyhow::Result<(Environment, Vec<String>)> 
     let (env, args) = match args.env {
         EnvironmentCmd::Local {
             target_triple,
+            std_targets,
             checkout_dir,
             llvm_dir,
             python,
@@ -152,6 +157,7 @@ fn create_environment(args: Args) -> anyhow::Result<(Environment, Vec<String>)> 
         } => {
             let env = EnvironmentBuilder::default()
                 .host_tuple(target_triple)
+                .std_targets(std_targets)
                 .python_binary(python)
                 .checkout_dir(checkout_dir.clone())
                 .host_llvm_dir(llvm_dir)
