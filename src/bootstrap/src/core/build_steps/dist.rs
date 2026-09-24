@@ -88,7 +88,7 @@ impl Step for Docs {
         // FIXME: explicitly enumerate the steps that should be executed here, and gather their
         // documentation, rather than running all default steps and then read their output
         // from a shared directory.
-        builder.run_default_doc_steps();
+        builder.run_default_doc_steps_for_target(host);
 
         // In case no default doc steps are run for host, it is possible that `<host>/doc` directory
         // is never created.
@@ -188,7 +188,7 @@ impl Step for RustcDocs {
 
     fn run(self, builder: &Builder<'_>) -> Self::Output {
         let target = self.target;
-        builder.run_default_doc_steps();
+        builder.run_default_doc_steps_for_target(target);
 
         let mut tarball = Tarball::new(builder, "rustc-docs", &target.triple);
         tarball.set_product_name("Rustc Documentation");
