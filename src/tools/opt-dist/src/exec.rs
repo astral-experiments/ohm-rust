@@ -119,12 +119,17 @@ pub struct Bootstrap {
 impl Bootstrap {
     pub fn build(env: &Environment) -> Self {
         let metrics_path = env.build_root().join("metrics.json");
+        // The final dist command keeps stage1, so its target libraries must already exist.
+        let targets = std::iter::once(env.host_tuple())
+            .chain(env.std_targets().iter().map(String::as_str))
+            .collect::<Vec<_>>()
+            .join(",");
         let cmd = cmd(&[
             env.python_binary(),
             env.checkout_path().join("x.py").as_str(),
             "build",
             "--target",
-            &env.host_tuple(),
+            &targets,
             "--host",
             &env.host_tuple(),
             "--stage",
