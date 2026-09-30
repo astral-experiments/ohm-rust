@@ -1,3 +1,5 @@
+use std::hash::Hasher;
+use std::io::Read;
 use std::marker::PhantomData;
 use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
@@ -8,18 +10,21 @@ use std::{assert_matches, fs, io, mem, str, thread};
 use rustc_abi::Size;
 use rustc_data_structures::jobserver::{self, Acquired};
 use rustc_data_structures::profiling::{SelfProfilerRef, VerboseTimingGuard};
+use rustc_data_structures::stable_hash::StableHasher;
 use rustc_errors::emitter::Emitter;
 use rustc_errors::{
     Diag, DiagArgMap, DiagCtxt, DiagCtxtHandle, DiagMessage, ErrCode, FatalError, FatalErrorMarker,
     Level, MultiSpan, Style, Suggestions, catch_fatal_errors,
 };
 use rustc_fs_util::link_or_copy;
+use rustc_hashes::Hash128;
 use rustc_hir::find_attr;
 use rustc_incremental::{copy_cgu_workproduct_to_incr_comp_cache_dir, in_incr_comp_dir_sess};
 use rustc_macros::{Decodable, Encodable};
 use rustc_metadata::fs::copy_to_stdout;
 use rustc_middle::bug;
 use rustc_middle::dep_graph::{WorkProduct, WorkProductMap};
+use rustc_middle::query::resident::{ResidentCodegenArtifacts, ResidentCodegenCache};
 use rustc_middle::ty::TyCtxt;
 use rustc_session::Session;
 use rustc_session::config::{
@@ -417,6 +422,7 @@ pub(crate) fn start_async_codegen<B: WriteBackendMethods>(
     backend: B,
     tcx: TyCtxt<'_>,
     allocator_module: Option<ModuleCodegen<B::Module>>,
+    resident_cache: Option<Arc<ResidentCodegenCache>>,
 ) -> OngoingCodegen<B> {
     let (coordinator_send, coordinator_receive) = channel();
 
@@ -451,6 +457,7 @@ pub(crate) fn start_async_codegen<B: WriteBackendMethods>(
             phantom: PhantomData,
         },
         output_filenames: Arc::clone(tcx.output_filenames(())),
+        resident_cache,
     }
 }
 
@@ -679,6 +686,8 @@ pub(crate) enum WorkItem<B: WriteBackendMethods> {
     /// Copy the post-LTO artifacts from the incremental cache to the output
     /// directory.
     CopyPostLtoArtifacts(CachedModuleCodegen),
+    /// Restore already compiled LLVM object(s) from the current compiler's private cache.
+    CopyResidentArtifacts { name: String, artifacts: ResidentCodegenArtifacts },
 }
 
 enum ThinLtoWorkItem<B: WriteBackendMethods> {
@@ -734,6 +743,9 @@ impl<B: WriteBackendMethods> WorkItem<B> {
         match self {
             WorkItem::Optimize(m) => desc("opt", "optimize module", &m.name),
             WorkItem::CopyPostLtoArtifacts(m) => desc("cpy", "copy LTO artifacts for", &m.name),
+            WorkItem::CopyResidentArtifacts { name, .. } => {
+                desc("cpy", "copy resident artifacts for", name)
+            }
         }
     }
 }
@@ -973,6 +985,140 @@ fn execute_copy_from_cache_work_item(
         bytecode,
         assembly,
         llvm_ir,
+    }
+}
+
+fn resident_artifact_fingerprint(
+    object: &Path,
+    global_asm_object: Option<&Path>,
+    dwarf_object: Option<&Path>,
+) -> io::Result<String> {
+    let mut hasher = StableHasher::new();
+    let mut buffer = [0u8; 64 * 1024];
+    for (tag, path) in [(0, Some(object)), (1, global_asm_object), (2, dwarf_object)] {
+        hasher.write_u8(tag);
+        hasher.write_u8(u8::from(path.is_some()));
+        if let Some(path) = path {
+            let mut file = fs::File::open(path)?;
+            hasher.write_u64(file.metadata()?.len());
+            loop {
+                let count = file.read(&mut buffer)?;
+                if count == 0 {
+                    break;
+                }
+                hasher.write(&buffer[..count]);
+            }
+        }
+    }
+    let fingerprint: Hash128 = hasher.finish();
+    Ok(format!("{:032x}", fingerprint.as_u128()))
+}
+
+fn restore_resident_module(
+    cgcx: &CodegenContext,
+    shared_emitter: SharedEmitter,
+    name: String,
+    artifacts: ResidentCodegenArtifacts,
+) -> CompiledModule {
+    let dcx = DiagCtxt::new(Box::new(shared_emitter));
+    let dcx = dcx.handle();
+    if resident_artifact_fingerprint(
+        &artifacts.object,
+        artifacts.global_asm_object.as_deref(),
+        artifacts.dwarf_object.as_deref(),
+    )
+    .ok()
+    .as_ref()
+        != Some(&artifacts.fingerprint)
+    {
+        dcx.emit_fatal(errors::NoSavedObjectFile { cgu_name: &name });
+    }
+    let stable_outputs;
+    let outputs = if cgcx.output_filenames.stable_codegen_paths {
+        stable_outputs = cgcx.output_filenames.stable_temp_paths();
+        &stable_outputs
+    } else {
+        &cgcx.output_filenames
+    };
+    let copy = |source: &Path, destination: PathBuf| {
+        // The compiler can rewrite the destination in later builds. Never hard-link it to the
+        // private cache or an unrelated build's immutable incremental artifact.
+        ensure_removed(dcx, &destination);
+        dcx.abort_if_errors();
+        if let Err(error) = fs::copy(source, &destination) {
+            dcx.emit_fatal(errors::CopyPathBuf {
+                source_file: source.to_path_buf(),
+                output_path: destination.clone(),
+                error,
+            });
+        }
+        destination
+    };
+    let object =
+        Some(copy(&artifacts.object, outputs.temp_path_for_cgu(OutputType::Object, &name)));
+    let global_asm_object = artifacts
+        .global_asm_object
+        .as_deref()
+        .map(|path| copy(path, outputs.temp_path_ext_for_cgu("asm.o", &name)));
+    let dwarf_object = artifacts
+        .dwarf_object
+        .as_deref()
+        .map(|path| copy(path, outputs.temp_path_dwo_for_cgu(&name)));
+    CompiledModule {
+        name,
+        kind: ModuleKind::Regular,
+        object,
+        global_asm_object,
+        dwarf_object,
+        bytecode: None,
+        assembly: None,
+        llvm_ir: None,
+        links_from_incr_cache: Vec::new(),
+    }
+}
+
+fn publish_resident_modules(
+    sess: &Session,
+    cache: &ResidentCodegenCache,
+    modules: &CompiledModules,
+) {
+    for module in &modules.modules {
+        if module.kind != ModuleKind::Regular {
+            continue;
+        }
+        if let Some(artifacts) = cache.reused(&module.name) {
+            cache.publish(&module.name, artifacts);
+            continue;
+        }
+        let Some(object) = &module.object else {
+            continue;
+        };
+        let copy = |source: &Path, extension: &str| {
+            let destination = cache.directory().join(format!("{}.{}", module.name, extension));
+            if let Err(error) = fs::copy(source, &destination) {
+                sess.dcx().emit_fatal(errors::CopyPathBuf {
+                    source_file: source.to_path_buf(),
+                    output_path: destination.clone(),
+                    error,
+                });
+            }
+            destination
+        };
+        let object = copy(object, "o");
+        let global_asm_object = module.global_asm_object.as_deref().map(|path| copy(path, "asm.o"));
+        let dwarf_object = module.dwarf_object.as_deref().map(|path| copy(path, "dwo"));
+        let fingerprint = resident_artifact_fingerprint(
+            &object,
+            global_asm_object.as_deref(),
+            dwarf_object.as_deref(),
+        )
+        .unwrap_or_else(|_| {
+            sess.dcx().emit_fatal(errors::NoSavedObjectFile { cgu_name: &module.name })
+        });
+        cache.publish(
+            &module.name,
+            ResidentCodegenArtifacts { object, global_asm_object, dwarf_object, fingerprint },
+        );
     }
 }
 
@@ -1876,6 +2022,9 @@ fn spawn_work<'a, B: WriteBackendMethods>(
             WorkItem::CopyPostLtoArtifacts(m) => WorkItemResult::Finished(
                 execute_copy_from_cache_work_item(&cgcx, &prof, shared_emitter, m),
             ),
+            WorkItem::CopyResidentArtifacts { name, artifacts } => WorkItemResult::Finished(
+                restore_resident_module(&cgcx, shared_emitter, name, artifacts),
+            ),
         }));
 
         let msg = match result {
@@ -2110,6 +2259,7 @@ impl<B: WriteBackendMethods> Drop for Coordinator<B> {
 pub struct OngoingCodegen<B: WriteBackendMethods> {
     backend: B,
     output_filenames: Arc<OutputFilenames>,
+    resident_cache: Option<Arc<ResidentCodegenCache>>,
     // Field order below is intended to terminate the coordinator thread before two fields below
     // drop and prematurely close channels used by coordinator thread. See `Coordinator`'s
     // `Drop` implementation for more info.
@@ -2196,6 +2346,10 @@ impl<B: WriteBackendMethods> OngoingCodegen<B> {
         // the backend in the same order every time to ensure that we're handing
         // out deterministic results.
         compiled_modules.modules.sort_by(|a, b| a.name.cmp(&b.name));
+
+        if let Some(cache) = &self.resident_cache {
+            publish_resident_modules(sess, cache, &compiled_modules);
+        }
 
         let work_products =
             copy_all_cgu_workproducts_to_incr_comp_cache_dir(sess, &compiled_modules);
@@ -2293,6 +2447,15 @@ pub(crate) fn submit_post_lto_module_to_llvm<B: WriteBackendMethods>(
     module: CachedModuleCodegen,
 ) {
     let llvm_work_item = WorkItem::CopyPostLtoArtifacts(module);
+    drop(coordinator.sender.send(Message::CodegenDone::<B> { llvm_work_item, cost: 0 }));
+}
+
+pub(crate) fn submit_resident_module_to_llvm<B: WriteBackendMethods>(
+    coordinator: &Coordinator<B>,
+    name: String,
+    artifacts: ResidentCodegenArtifacts,
+) {
+    let llvm_work_item = WorkItem::CopyResidentArtifacts { name, artifacts };
     drop(coordinator.sender.send(Message::CodegenDone::<B> { llvm_work_item, cost: 0 }));
 }
 

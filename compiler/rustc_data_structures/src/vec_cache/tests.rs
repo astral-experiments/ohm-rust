@@ -53,6 +53,42 @@ fn vec_cache_insert_and_check() {
 }
 
 #[test]
+fn resident_invalidation_preserves_other_keys_and_iteration() {
+    let cache: VecCache<u32, u32, u32> = VecCache::default();
+    cache.complete(11, 100, 0);
+    cache.complete(5_000, 200, 1);
+    cache.complete(22, 300, 2);
+
+    // This test uses no other threads or active operations on the cache.
+    unsafe {
+        assert!(cache.ohm_invalidate_quiescent(5_000));
+        assert!(!cache.ohm_invalidate_quiescent(5_000));
+        assert!(!cache.ohm_invalidate_quiescent(9_000));
+    }
+    assert_eq!(cache.len(), 2);
+    assert_eq!(cache.lookup(&11), Some((100, 0)));
+    assert_eq!(cache.lookup(&5_000), None);
+    assert_eq!(cache.lookup(&22), Some((300, 2)));
+
+    for value in 0..8 {
+        cache.complete(5_000, value, value + 10);
+        assert_eq!(cache.len(), 3);
+        let mut contents = Vec::new();
+        cache.for_each(&mut |key, value, index| contents.push((*key, *value, index)));
+        contents.sort_unstable();
+        assert_eq!(contents, [(11, 100, 0), (22, 300, 2), (5_000, value, value + 10)]);
+        assert!(unsafe { cache.ohm_invalidate_quiescent(5_000) });
+    }
+    assert!(unsafe { cache.ohm_invalidate_quiescent(11) });
+    assert!(unsafe { cache.ohm_invalidate_quiescent(22) });
+    assert_eq!(cache.len(), 0);
+    cache.for_each(&mut |_, _, _| panic!("empty cache"));
+
+    cache.complete(22, 400, 3);
+    assert_eq!(cache.lookup(&22), Some((400, 3)));
+}
+
+#[test]
 fn sparse_inserts() {
     let cache: VecCache<u32, u8, u32> = VecCache::default();
     let end = if cfg!(target_pointer_width = "64") && cfg!(target_os = "linux") {

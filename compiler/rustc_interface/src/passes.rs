@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::cell::RefCell;
 use std::ffi::{OsStr, OsString};
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -16,7 +17,7 @@ use rustc_data_structures::sync::{
 };
 use rustc_data_structures::thousands;
 use rustc_errors::timings::TimingSection;
-use rustc_errors::{Diag, DiagCtxtHandle, Diagnostic, Level};
+use rustc_errors::{Diag, DiagCtxtHandle, DiagInner, Diagnostic, Level};
 use rustc_expand::base::{ExtCtxt, LintStoreExpand};
 use rustc_feature::Features;
 use rustc_fs_util::try_canonicalize;
@@ -30,6 +31,7 @@ use rustc_lint::{BufferedEarlyLint, EarlyCheckNode, LintStore, unerased_lint_sto
 use rustc_metadata::EncodedMetadata;
 use rustc_metadata::creader::CStore;
 use rustc_middle::arena::Arena;
+use rustc_middle::query::resident::ResidentDelayedAttributeLint;
 use rustc_middle::ty::{self, RegisteredTools, TyCtxt};
 use rustc_middle::util::Providers;
 use rustc_parse::lexer::StripTokens;
@@ -1009,6 +1011,7 @@ pub fn create_and_enter_global_ctxt<T, F: for<'tcx> FnOnce(TyCtxt<'tcx>) -> T>(
             incremental,
             compiler.sess.opts.unstable_opts.public_api_hash,
             compiler.sess.opts.unstable_opts.ohm_incremental_mono_partitions,
+            compiler.sess.opts.unstable_opts.ohm_resident_query_graph,
         ),
         providers.hooks,
         compiler.current_gcx.clone(),
@@ -1051,31 +1054,78 @@ pub fn create_and_enter_global_ctxt<T, F: for<'tcx> FnOnce(TyCtxt<'tcx>) -> T>(
     )
 }
 
-struct DiagCallback<'tcx> {
+struct DiagCallback<'tcx, 'capture> {
     callback: Box<
         dyn for<'b> FnOnce(DiagCtxtHandle<'b>, Level, &dyn Any) -> Diag<'b, ()> + DynSend + DynSync,
     >,
     tcx: TyCtxt<'tcx>,
+    capture: Option<&'capture RefCell<Option<DiagInner>>>,
 }
 
-impl<'a, 'tcx> Diagnostic<'a, ()> for DiagCallback<'tcx> {
+impl<'a> Diagnostic<'a, ()> for DiagCallback<'_, '_> {
     fn into_diag(self, dcx: DiagCtxtHandle<'a>, level: Level) -> Diag<'a, ()> {
-        (self.callback)(dcx, level, self.tcx.sess)
+        let diag = (self.callback)(dcx, level, self.tcx.sess);
+        if let Some(capture) = self.capture {
+            *capture.borrow_mut() = Some((*diag).clone());
+        }
+        diag
+    }
+}
+
+struct ResidentDiagTemplate(DiagInner);
+
+impl<'a> Diagnostic<'a, ()> for ResidentDiagTemplate {
+    fn into_diag(self, dcx: DiagCtxtHandle<'a>, level: Level) -> Diag<'a, ()> {
+        let mut diag = Diag::new(dcx, level, "");
+        *diag = self.0;
+        diag
     }
 }
 
 pub fn emit_delayed_lints(tcx: TyCtxt<'_>) {
+    let resident = tcx.query_system.resident.as_ref();
+    if let Some(lints) = resident.and_then(|resident| resident.delayed_attribute_lints()) {
+        for lint in lints {
+            tcx.emit_node_span_lint(
+                lint.lint.lint,
+                lint.hir_id,
+                lint.span,
+                ResidentDiagTemplate(lint.diagnostic),
+            );
+        }
+        return;
+    }
+
+    let mut replay = Vec::new();
     for owner_id in tcx.hir_crate_items(()).owners() {
         if let Some(delayed_lints) = tcx.opt_ast_lowering_delayed_lints(owner_id) {
             for lint in delayed_lints.steal() {
+                let capture = RefCell::new(None);
                 tcx.emit_node_span_lint(
                     lint.lint_id.lint,
                     lint.id,
                     lint.span.clone(),
-                    DiagCallback { callback: lint.callback, tcx },
+                    DiagCallback {
+                        callback: lint.callback,
+                        tcx,
+                        capture: resident.map(|_| &capture),
+                    },
                 );
+                if let Some(diagnostic) = capture.into_inner() {
+                    replay.push(ResidentDelayedAttributeLint {
+                        lint: lint.lint_id,
+                        hir_id: lint.id,
+                        span: lint.span,
+                        diagnostic,
+                    });
+                }
             }
         }
+    }
+    if let Some(resident) = resident {
+        // Attribute syntax and lint levels cannot change through the resident HIR body editor.
+        // In particular, an allowed lint whose decorator was skipped cannot become enabled later.
+        resident.store_delayed_attribute_lints(replay);
     }
 }
 
@@ -1199,6 +1249,12 @@ fn analysis(tcx: TyCtxt<'_>, (): ()) {
     // But we exclude lint errors from this, because lint errors are typically
     // less serious and we're more likely to want to continue (#87337).
     if let Some(guar) = sess.dcx().has_errors_excluding_lint_errors() {
+        if tcx.query_system.resident.as_ref().is_some_and(|resident| resident.is_rechecking()) {
+            // The embedding driver can repair a body and re-request analysis in the same query
+            // context. Finish this revision normally so its reads are committed and the query
+            // is not permanently poisoned; skip the same later checks as the ordinary fatal path.
+            return;
+        }
         guar.raise_fatal();
     }
 

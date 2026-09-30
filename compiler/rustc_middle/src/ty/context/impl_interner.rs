@@ -141,6 +141,9 @@ impl<'tcx> Interner for TyCtxt<'tcx> {
     }
 
     fn with_global_cache<R>(self, f: impl FnOnce(&mut search_graph::GlobalCache<Self>) -> R) -> R {
+        if let Some(resident) = &self.query_system.resident {
+            resident.read_trait_solver();
+        }
         f(&mut *self.new_solver_evaluation_cache.lock())
     }
 

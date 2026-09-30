@@ -40,6 +40,9 @@ pub(crate) fn query_get_at<'tcx, C>(
 where
     C: QueryCache,
 {
+    if let Some(resident) = &tcx.query_system.resident {
+        resident.read((query.create_tagged_key)(key), true);
+    }
     match try_get_cached(tcx, &query.cache, key) {
         Some(value) => value,
         None => (query.execute_query_fn)(tcx, span, key, QueryMode::Get).unwrap(),
@@ -55,6 +58,9 @@ pub(crate) fn query_ensure_ok<'tcx, C>(
 ) where
     C: QueryCache,
 {
+    if let Some(resident) = &tcx.query_system.resident {
+        resident.read((query.create_tagged_key)(key), false);
+    }
     match try_get_cached(tcx, &query.cache, key) {
         Some(_value) => {}
         None => {
@@ -75,6 +81,9 @@ where
     C: QueryCache<Value = Erased<Result<T, ErrorGuaranteed>>>,
     Result<T, ErrorGuaranteed>: Erasable,
 {
+    if let Some(resident) = &tcx.query_system.resident {
+        resident.read((query.create_tagged_key)(key), false);
+    }
     let convert = |value: Erased<Result<T, ErrorGuaranteed>>| -> Result<(), ErrorGuaranteed> {
         match erase::restore_val(value) {
             Ok(_) => Ok(()),
@@ -113,6 +122,9 @@ pub(crate) fn query_feed<'tcx, C>(
     C::Key: DepNodeKey<'tcx>,
 {
     let format_value = query.format_value;
+    if let Some(resident) = &tcx.query_system.resident {
+        resident.feed((query.create_tagged_key)(key));
+    }
 
     // Check whether the in-memory cache already has a value for this key.
     match try_get_cached(tcx, &query.cache, key) {
