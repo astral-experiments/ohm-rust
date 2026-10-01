@@ -8,6 +8,7 @@
 //! and will always succeed.
 
 use std::process::{Command, Stdio};
+
 use test_utils::{CARGO_CLIPPY_PATH, IS_RUSTC_TEST_SUITE};
 
 mod test_utils;
