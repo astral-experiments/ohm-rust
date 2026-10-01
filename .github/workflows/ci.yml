@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches:
-      - ohm-1.98.1
+      - ohm-1.99.0
   pull_request:
   workflow_dispatch:
 
@@ -28,7 +28,7 @@ jobs:
       - name: Install the pinned nightly formatter
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
-          toolchain: nightly-2026-06-25
+          toolchain: nightly-2026-07-19
           components: rustfmt
 
       - name: Checkout the standard-library backtrace submodule
@@ -37,13 +37,13 @@ jobs:
       - name: Check formatting
         run: >-
           python3 x.py --set build.submodules=false
-          --set build.rustfmt=$(rustup which --toolchain nightly-2026-06-25 rustfmt)
+          --set build.rustfmt=$(rustup which --toolchain nightly-2026-07-19 rustfmt)
           fmt --check
 
       - name: Run tidy checks
         run: >-
           env -u GITHUB_ACTIONS python3 x.py --ci false --set build.submodules=false
-          --set build.rustfmt=$(rustup which --toolchain nightly-2026-06-25 rustfmt)
+          --set build.rustfmt=$(rustup which --toolchain nightly-2026-07-19 rustfmt)
           test tidy
 
   compiler:
@@ -68,7 +68,7 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off --warnings deny check compiler
 
-      - name: Run Rust 1.98.1 trait-solver regressions
+      - name: Run trait-solver regressions
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1
