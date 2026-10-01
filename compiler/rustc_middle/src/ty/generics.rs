@@ -4,11 +4,13 @@ use rustc_ast as ast;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
 use rustc_macros::{StableHash, TyDecodable, TyEncodable};
+use rustc_serialize::Encodable;
 use rustc_span::{Span, Symbol, kw};
 use rustc_type_ir::{TypeSuperVisitable as _, TypeVisitable, TypeVisitor};
 use tracing::instrument;
 
 use super::{Clause, InstantiatedClauses, ParamConst, ParamTy, Ty, TyCtxt, Unnormalized};
+use crate::ty::codec::TyEncoder;
 use crate::ty::region::RegionExt;
 use crate::ty::{self, ClauseKind, EarlyBinder, GenericArgsRef, Region, RegionKind, TyKind};
 
@@ -117,7 +119,7 @@ pub struct GenericParamCount {
 ///
 /// The ordering of parameters is the same as in [`ty::GenericArg`] (excluding child generics):
 /// `Self` (optionally), `Lifetime` params..., `Type` params...
-#[derive(Clone, TyEncodable, TyDecodable, StableHash)]
+#[derive(Clone, TyDecodable, StableHash)]
 pub struct Generics {
     pub parent: Option<DefId>,
     pub parent_count: usize,
@@ -129,6 +131,25 @@ pub struct Generics {
 
     pub has_self: bool,
     pub has_late_bound_regions: Option<Span>,
+}
+
+impl<'tcx, E: TyEncoder<'tcx>> Encodable<E> for Generics {
+    fn encode(&self, e: &mut E) {
+        self.parent.encode(e);
+        self.parent_count.encode(e);
+        self.own_params.encode(e);
+
+        // Query-cache decoding can change the reverse map's iteration order. Encode
+        // its entries in declaration order so query reuse cannot change metadata.
+        self.own_params.len().encode(e);
+        for param in &self.own_params {
+            param.def_id.encode(e);
+            param.index.encode(e);
+        }
+
+        self.has_self.encode(e);
+        self.has_late_bound_regions.encode(e);
+    }
 }
 
 impl std::fmt::Debug for Generics {
