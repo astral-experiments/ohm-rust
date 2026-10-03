@@ -631,8 +631,8 @@ extern "C" LLVMRustResult LLVMRustOptimize(
     bool IsLinkerPluginLTO, bool NoPrepopulatePasses, bool VerifyIR,
     bool LintIR, LLVMRustBuffer **ThinLTOBufferRef,
     LLVMRustBuffer **ThinLTOSummaryBufferRef, bool MergeFunctions,
-    bool UnrollLoops, bool SLPVectorize, bool LoopVectorize,
-    bool DisableSimplifyLibCalls, bool EmitLifetimeMarkers,
+    bool EarlyLTOMergeFunctions, bool UnrollLoops, bool SLPVectorize,
+    bool LoopVectorize, bool DisableSimplifyLibCalls, bool EmitLifetimeMarkers,
     registerEnzymeAndPassPipelineFn EnzymePtr, bool PrintBeforeEnzyme,
     bool PrintAfterEnzyme, bool PrintPasses,
     LLVMRustSanitizerOptions *SanitizerOptions, const char *PGOGenPath,
@@ -802,6 +802,17 @@ extern "C" LLVMRustResult LLVMRustOptimize(
        SanitizerOptions->SanitizeThread || SanitizerOptions->SanitizeHWAddress ||
        SanitizerOptions->SanitizeKernelAddress ||
        SanitizerOptions->SanitizeKernelHWAddress);
+  if (EarlyLTOMergeFunctions && MergeFunctions &&
+      OptStage == LLVMRustOptStage::FatLTO && !NoPrepopulatePasses && !PGOOpt &&
+      !InstrumentCoverage && !HasSanitizer && LLVMPluginsLen == 0) {
+    // Linking exposes identical bodies from different prelink modules. Merge
+    // them before running expensive whole-program optimization over each copy.
+    PB.registerFullLinkTimeOptimizationEarlyEPCallback(
+        [](ModulePassManager &MPM, OptimizationLevel Level) {
+          if (Level != OptimizationLevel::O0)
+            MPM.addPass(MergeFunctionsPass());
+        });
+  }
   if (MergeFunctions && IsPreLink && !NoPrepopulatePasses && !PGOOpt &&
       !InstrumentCoverage && !HasSanitizer && LLVMPluginsLen == 0) {
     // Merge canonicalized bodies before global cleanup and CGSCC optimization.

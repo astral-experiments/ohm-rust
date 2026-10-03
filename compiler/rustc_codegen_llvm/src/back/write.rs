@@ -791,6 +791,7 @@ pub(crate) unsafe fn llvm_optimize(
             thin_lto_buffer,
             thin_lto_summary_buffer,
             merge_functions,
+            config.early_lto_merge_functions,
             unroll_loops,
             vectorize_slp,
             vectorize_loop,
