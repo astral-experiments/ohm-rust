@@ -359,7 +359,7 @@ pub struct CodegenContext {
     pub incr_comp_session_dir: Option<PathBuf>,
     /// Validated work products from the previous incremental session. ThinLTO may
     /// reuse dependency modules when LLVM confirms their optimization inputs match.
-    pub thin_lto_dependency_work_products: WorkProductMap,
+    pub thin_lto_dependency_work_products: Arc<WorkProductMap>,
     /// `Some(limit)` if the codegen should be run in parallel.
     ///
     /// Depends on [`WriteBackendMethods::supports_parallel()`] and `--jobs-backend`.
@@ -1328,15 +1328,17 @@ fn start_executing_work<B: WriteBackendMethods>(
             .incr_comp_session
             .as_ref()
             .map(|incr_comp_session| incr_comp_session.session_directory.clone()),
-        thin_lto_dependency_work_products: if sess.opts.unstable_opts.ohm_thin_lto_dependency_cache
-            && !sess.opts.unstable_opts.disable_incr_comp_backend_caching
-            && sess.lto() == Lto::Thin
-            && tcx.dep_graph.is_fully_enabled()
-        {
-            tcx.dep_graph.previous_work_products().clone()
-        } else {
-            WorkProductMap::default()
-        },
+        thin_lto_dependency_work_products: Arc::new(
+            if sess.opts.unstable_opts.ohm_thin_lto_dependency_cache
+                && !sess.opts.unstable_opts.disable_incr_comp_backend_caching
+                && sess.lto() == Lto::Thin
+                && tcx.dep_graph.is_fully_enabled()
+            {
+                tcx.dep_graph.previous_work_products().clone()
+            } else {
+                WorkProductMap::default()
+            },
+        ),
         output_filenames: Arc::clone(tcx.output_filenames(())),
         module_config: regular_config,
         opt_level,
