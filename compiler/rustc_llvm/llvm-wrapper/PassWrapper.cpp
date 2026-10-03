@@ -1566,6 +1566,17 @@ extern "C" LLVMModuleRef LLVMRustParseBitcodeForLTO(LLVMContextRef Context,
   return wrap(std::move(*SrcOrError).release());
 }
 
+// LLVM cache keys include module hashes. Fat-LTO bitcode may omit these,
+// including for a module imported by an otherwise hashed dependency.
+extern "C" bool LLVMRustThinLTOHasModuleHashes(LLVMRustThinLTOData *Data) {
+  for (const auto &Entry : Data->Index.modulePaths()) {
+    if (llvm::all_of(Data->Index.getModuleHash(Entry.getKey()),
+                     [](uint32_t Word) { return Word == 0; }))
+      return false;
+  }
+  return true;
+}
+
 // Computes the LTO cache key for the provided 'ModId' in the given 'Data',
 // storing the result in 'KeyOut'.
 // Currently, this cache key is a SHA-1 hash of anything that could affect
