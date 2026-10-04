@@ -3273,11 +3273,9 @@ fn encode_crate_root<'tcx, 'h, M: MetadataEncoder<'tcx>>(
 fn try_reuse_metadata_prefix(
     tcx: TyCtxt<'_>,
     path: &Path,
-    ref_path: Option<&Path>,
     metadata_dep_node: DepNode,
-) -> Option<()> {
-    if ref_path.is_some()
-        || !tcx.sess.opts.unstable_opts.public_api_hash
+) -> Option<CrateHashes> {
+    if !tcx.sess.opts.unstable_opts.public_api_hash
         || tcx.sess.opts.unstable_opts.incremental_ignore_spans
         || tcx.sess.opts.unstable_opts.meta_stats
         || tcx.crate_types().contains(&CrateType::ProcMacro)
@@ -3375,6 +3373,7 @@ fn try_reuse_metadata_prefix(
         .tempfile_in(output_directory)
         .ok()?;
     let prefix_position = manifest.prefix_position;
+    let hashes = CrateHashes { private_hash: current_private_hash, ..previous_root.header.hashes };
     with_encode_metadata_header::<DefPathHashDefIdEncoder<'_>>(
         tcx,
         temporary_file.path(),
@@ -3410,7 +3409,7 @@ fn try_reuse_metadata_prefix(
                 ),
                 public_global_hash: previous_rdr_hashes.public_global_hash,
             });
-            previous_root.header.hashes.private_hash = current_private_hash;
+            previous_root.header.hashes = hashes;
             let root: LazyValue<CrateRoot> = ecx.lazy(previous_root);
             root.position.get()
         },
@@ -3437,7 +3436,7 @@ fn try_reuse_metadata_prefix(
         tcx.prof.artifact_size("crate_metadata", "crate_metadata", metadata.len());
     }
     debug!(target: "ohm_metadata_reuse", "reused metadata item prefix with a freshly encoded source map");
-    Some(())
+    Some(hashes)
 }
 
 #[instrument(level = "trace", skip(tcx))]
@@ -3499,7 +3498,12 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
         return;
     };
 
-    if try_reuse_metadata_prefix(tcx, path, ref_path, dep_node).is_some() {
+    if let Some(hashes) = try_reuse_metadata_prefix(tcx, path, dep_node) {
+        // A separate stub has the same public hash as the reused prefix, but must carry the
+        // current private hash from the freshly encoded suffix.
+        if let Some(ref_path) = ref_path {
+            encode_metadata_stub(tcx, ref_path, hashes);
+        }
         return;
     }
 
@@ -3542,19 +3546,24 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
 
     // Generate the metadata stub manually, as that is a small file compared to full metadata.
     if let Some(ref_path) = ref_path {
-        let _prof_timer = tcx.prof.verbose_generic_activity("generate_crate_metadata_stub");
-
-        with_encode_metadata_header::<DefIndexDefIdEncoder>(tcx, ref_path, |ecx| {
-            let header: LazyValue<CrateHeader> = ecx.lazy(CrateHeader {
-                name: tcx.crate_name(LOCAL_CRATE),
-                triple: tcx.sess.opts.target_triple.clone(),
-                hashes,
-                is_proc_macro_crate: false,
-                is_stub: true,
-            });
-            header.position.get()
-        })
+        encode_metadata_stub(tcx, ref_path, hashes);
     }
+}
+
+/// Emits the separate crate header after either full encoding or validated prefix reuse.
+fn encode_metadata_stub(tcx: TyCtxt<'_>, path: &Path, hashes: CrateHashes) {
+    let _prof_timer = tcx.prof.verbose_generic_activity("generate_crate_metadata_stub");
+
+    with_encode_metadata_header::<DefIndexDefIdEncoder>(tcx, path, |ecx| {
+        let header: LazyValue<CrateHeader> = ecx.lazy(CrateHeader {
+            name: tcx.crate_name(LOCAL_CRATE),
+            triple: tcx.sess.opts.target_triple.clone(),
+            hashes,
+            is_proc_macro_crate: false,
+            is_stub: true,
+        });
+        header.position.get()
+    })
 }
 
 fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(

@@ -3,7 +3,9 @@
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use run_make_support::{dynamic_lib_name, rfs, run, rust_lib_name, rustc, serde_json};
+use run_make_support::{
+    dynamic_lib_name, rfs, run, run_in_tmpdir, rust_lib_name, rustc, serde_json, target,
+};
 
 fn compile_and_read_public_api_hash(expect_prefix_reuse: bool) -> String {
     compile_and_read_public_api_hash_with_flags(expect_prefix_reuse, &[]).0
@@ -164,7 +166,71 @@ fn downstream_exported_macro_column() -> u32 {
     run("macro-user").stdout_utf8().trim().parse().expect("macro token location was not a column")
 }
 
+/// Separate stubs must agree with both hashes in the full metadata after a private edit.
+fn separate_metadata_prefix(flags: &[&str]) {
+    let compile = |expect_prefix_reuse| {
+        let result = compile_and_read_public_api_hash_with_output(
+            expect_prefix_reuse,
+            flags,
+            "metadata,link",
+        );
+        // Resolving both artifacts checks the stub against the full metadata, including its
+        // private hash. A check-only consumer does not need a linker that reads compact objects.
+        rustc()
+            .input("consumer.rs")
+            .crate_type("lib")
+            .emit("metadata")
+            .extern_("lib", rust_lib_name("lib"))
+            .extern_("lib", "liblib.rmeta")
+            .arg("-Zpublic-api-hash")
+            .run();
+        result
+    };
+    rfs::write("consumer.rs", "extern crate lib; pub fn value() -> u32 { lib::answer() }");
+    let (fresh_hash, _) = compile(false);
+    let original_metadata = metadata_work_product();
+    std::fs::hard_link(original_metadata, "original-separate-metadata.rmeta").unwrap();
+    let original_bytes = rfs::read("original-separate-metadata.rmeta");
+
+    change_private_value(1, 2);
+    assert_eq!(fresh_hash, compile(true).0);
+    assert_eq!(original_bytes, rfs::read("original-separate-metadata.rmeta"));
+    let (green_hash, green_stderr) = compile(false);
+    assert_eq!(fresh_hash, green_hash);
+    assert!(green_stderr.contains("copying preexisting metadata"), "{green_stderr}");
+
+    rfs::remove_file(metadata_work_product().with_file_name("metadata-prefix-v3.ohm-prefix-v3"));
+    change_private_value(2, 3);
+    assert_eq!(fresh_hash, compile(false).0);
+    rfs::write(
+        metadata_work_product().with_file_name("metadata-prefix-v3.ohm-prefix-v3"),
+        b"ohm-metadata-prefix-v3\0",
+    );
+    change_private_value(3, 4);
+    assert_eq!(fresh_hash, compile(false).0);
+    change_private_value(4, 5);
+    assert_eq!(fresh_hash, compile(true).0);
+    assert_eq!(original_bytes, rfs::read("original-separate-metadata.rmeta"));
+
+    let source = rfs::read_to_string("lib.rs");
+    rfs::write("lib.rs", source.replace("-> u32", "-> u64"));
+    rfs::write("consumer.rs", "extern crate lib; pub fn value() -> u64 { lib::answer() }");
+    assert_ne!(fresh_hash, compile(false).0);
+}
+
 fn main() {
+    run_in_tmpdir(|| separate_metadata_prefix(&["-Zembed-metadata=no"]));
+    if target().contains("linux") {
+        for raw_metadata in ["yes", "no"] {
+            run_in_tmpdir(|| {
+                separate_metadata_prefix(&[
+                    "-Zcompact-artifact-store=compact-store",
+                    &format!("-Zcompact-artifact-raw-metadata={raw_metadata}"),
+                ]);
+            });
+        }
+    }
+
     let fresh_hash = compile_and_read_public_api_hash(false);
     let original_metadata = metadata_work_product();
     let prefix_manifest = original_metadata.with_file_name("metadata-prefix-v3.ohm-prefix-v3");
