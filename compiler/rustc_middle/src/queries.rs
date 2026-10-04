@@ -383,6 +383,17 @@ rustc_queries! {
         }
     }
 
+    /// The analysis passes that check the crate's item interfaces, before the
+    /// body-checking pass. `analysis` runs these first; with
+    /// `-Zohm-early-metadata`, the driver writes early metadata after them.
+    query analysis_interfaces(key: ()) {
+        eval_always
+        desc {
+            "checking item interfaces of crate `{}`",
+            tcx.crate_name(LOCAL_CRATE),
+        }
+    }
+
     /// The root query triggering all analysis passes like typeck or borrowck.
     query analysis(key: ()) {
         eval_always
