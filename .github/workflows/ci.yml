@@ -240,6 +240,7 @@ jobs:
           tests=(
             tests/run-make/public-api-hash*
             tests/run-make/rdr-public-hash*
+            tests/run-make/ohm-early-metadata
             tests/run-make/caller-local-codegen
             tests/run-make/unused-externs-transparent
             tests/run-make/reset-codegen-1
