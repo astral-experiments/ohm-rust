@@ -1091,8 +1091,7 @@ pub fn emit_delayed_lints(tcx: TyCtxt<'_>) {
     }
 }
 
-/// Runs the required analyses up to and including the item interface checks,
-/// before any function body is type-checked. See the `analysis_interfaces` query.
+/// Runs the required analyses through item interface checking.
 fn analysis_interfaces(tcx: TyCtxt<'_>, (): ()) {
     if tcx.sess.opts.unstable_opts.input_stats {
         rustc_passes::input_stats::print_hir_stats(tcx);

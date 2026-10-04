@@ -50,7 +50,7 @@ pub fn write_early_metadata(tcx: TyCtxt<'_>) -> EarlyMetadata {
     let OutFileName::Real(path) = filename_for_metadata(tcx.sess, tcx.output_filenames(())) else {
         return none;
     };
-    if !crate::prepare_early_metadata(tcx) {
+    if !crate::rmeta::prepare_early_metadata(tcx) {
         return none;
     }
     let metadata = encode_and_write_metadata(tcx).unwrap_or_else(|guar| guar.raise_fatal());
