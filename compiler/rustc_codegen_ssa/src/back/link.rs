@@ -646,7 +646,7 @@ fn link_rlib<'a>(
     archive_builder_builder: &dyn ArchiveBuilderBuilder,
     compiled_modules: &CompiledModules,
     crate_info: &CrateInfo,
-    metadata: &EncodedMetadata,
+    metadata: &'a EncodedMetadata,
     flavor: RlibFlavor,
     tmpdir: &MaybeTempDir,
 ) -> Box<dyn ArchiveBuilder + 'a> {
@@ -919,7 +919,12 @@ fn link_staticlib(
                 false
             }),
         )
-        .unwrap();
+        .unwrap_or_else(|error| {
+            sess.dcx().emit_fatal(diagnostics::ArchiveBuildFailure {
+                path: out_filename.to_owned(),
+                error,
+            })
+        });
 
         archive_builder_builder
             .extract_bundled_libs(path, tempdir.as_ref(), &relevant_libs)
@@ -928,7 +933,12 @@ fn link_staticlib(
         for filename in relevant_libs.iter() {
             let joined = tempdir.as_ref().join(filename.as_str());
             let path = joined.as_path();
-            ab.add_archive(path, AddArchiveKind::Other).unwrap();
+            ab.add_archive(path, AddArchiveKind::Other).unwrap_or_else(|error| {
+                sess.dcx().emit_fatal(diagnostics::ArchiveBuildFailure {
+                    path: out_filename.to_owned(),
+                    error,
+                })
+            });
         }
 
         all_native_libs.extend(crate_info.native_libraries[&cnum].iter().cloned());
