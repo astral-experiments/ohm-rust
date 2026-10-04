@@ -2488,8 +2488,6 @@ options! {
     eagerly_emit_delayed_bugs: bool = (false, parse_bool, [UNTRACKED],
         "emit delayed bugs eagerly as errors instead of stashing them and emitting \
         them only if an error has not been emitted"),
-    ohm_early_metadata: bool = (false, parse_bool, [TRACKED],
-        "pipeline metadata-only checks before checking all function bodies (default: no)"),
     ehcont_guard: bool = (false, parse_bool, [TRACKED],
         "generate Windows EHCont Guard tables"),
     embed_metadata: bool = (true, parse_bool, [TRACKED],
@@ -2714,6 +2712,8 @@ options! {
         Currently the only option available"),
     ohm_caller_local_cgus: bool = (false, parse_bool, [TRACKED],
         "place upstream generics containing local closures in caller-local codegen units"),
+    ohm_early_metadata: bool = (false, parse_bool, [TRACKED],
+        "pipeline metadata-only checks before checking all function bodies (default: no)"),
     ohm_incremental_mono_partitions: bool = (false, parse_bool, [TRACKED],
         "reuse unchanged incremental monomorphization partitions without public API hashing"),
     ohm_stable_cgu_merging: bool = (false, parse_bool, [TRACKED],
