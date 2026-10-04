@@ -166,8 +166,8 @@ fn downstream_exported_macro_column() -> u32 {
     run("macro-user").stdout_utf8().trim().parse().expect("macro token location was not a column")
 }
 
-/// Separate stubs must agree with both hashes in the full metadata after a private edit.
-fn separate_metadata_prefix(flags: &[&str]) {
+/// Library metadata must agree with both hashes in the `.rmeta` file after a private edit.
+fn metadata_prefix_with_artifacts(flags: &[&str]) {
     let compile = |expect_prefix_reuse| {
         let result = compile_and_read_public_api_hash_with_output(
             expect_prefix_reuse,
@@ -191,10 +191,28 @@ fn separate_metadata_prefix(flags: &[&str]) {
     let original_metadata = metadata_work_product();
     std::fs::hard_link(original_metadata, "original-separate-metadata.rmeta").unwrap();
     let original_bytes = rfs::read("original-separate-metadata.rmeta");
+    let compact_object = if flags.iter().any(|flag| flag.starts_with("-Zcompact-artifact")) {
+        let session = metadata_work_product().parent().unwrap().to_path_buf();
+        let objects = rfs::read_dir(session)
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|extension| extension == "o"))
+            .collect::<Vec<_>>();
+        assert!(!objects.is_empty(), "no compact incremental objects were saved");
+        for object in &objects {
+            assert!(rfs::read(object).starts_with(b"RCOBJ001"));
+        }
+        std::fs::hard_link(&objects[0], "original-compact-object.o").unwrap();
+        Some(rfs::read("original-compact-object.o"))
+    } else {
+        None
+    };
 
     change_private_value(1, 2);
     assert_eq!(fresh_hash, compile(true).0);
     assert_eq!(original_bytes, rfs::read("original-separate-metadata.rmeta"));
+    if let Some(compact_object) = compact_object {
+        assert_eq!(compact_object, rfs::read("original-compact-object.o"));
+    }
     let (green_hash, green_stderr) = compile(false);
     assert_eq!(fresh_hash, green_hash);
     assert!(green_stderr.contains("copying preexisting metadata"), "{green_stderr}");
@@ -219,11 +237,12 @@ fn separate_metadata_prefix(flags: &[&str]) {
 }
 
 fn main() {
-    run_in_tmpdir(|| separate_metadata_prefix(&["-Zembed-metadata=no"]));
+    run_in_tmpdir(|| metadata_prefix_with_artifacts(&["-Zembed-metadata=no"]));
     if target().contains("linux") {
+        run_in_tmpdir(|| metadata_prefix_with_artifacts(&["-Zcompact-artifacts"]));
         for raw_metadata in ["yes", "no"] {
             run_in_tmpdir(|| {
-                separate_metadata_prefix(&[
+                metadata_prefix_with_artifacts(&[
                     "-Zcompact-artifact-store=compact-store",
                     &format!("-Zcompact-artifact-raw-metadata={raw_metadata}"),
                 ]);
