@@ -1324,8 +1324,9 @@ fn should_encode_local_definition(tcx: TyCtxt<'_>, def_id: LocalDefId, def_kind:
 fn metadata_definition_span_fingerprint(tcx: TyCtxt<'_>) -> (usize, Fingerprint) {
     let mut count = 0;
     let mut hasher = StableHasher::new();
+    let early_bodies = early::enabled(tcx).then(|| early::interface_bodies(tcx));
 
-    for local_id in tcx.iter_local_def_id() {
+    for local_id in metadata_definitions(tcx, early_bodies.as_ref()) {
         let def_kind = tcx.def_kind(local_id);
         if !should_encode_local_definition(tcx, local_id, def_kind) || !should_encode_span(def_kind)
         {
@@ -1352,6 +1353,23 @@ fn metadata_definition_span_fingerprint(tcx: TyCtxt<'_>) -> (usize, Fingerprint)
     }
 
     (count, hasher.finish())
+}
+
+fn metadata_definitions(
+    tcx: TyCtxt<'_>,
+    early_bodies: Option<&FxHashSet<LocalDefId>>,
+) -> Vec<LocalDefId> {
+    let mut definitions: Vec<_> = if early_bodies.is_some() {
+        tcx.iter_local_def_id_after_interfaces().collect()
+    } else {
+        tcx.iter_local_def_id().collect()
+    };
+    if let Some(bodies) = early_bodies {
+        definitions.retain(|&local_id| {
+            early::enclosing_body(tcx, local_id).is_none_or(|body| bodies.contains(&body))
+        });
+    }
+    definitions
 }
 
 fn should_encode_span(def_kind: DefKind) -> bool {
@@ -1920,17 +1938,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
 
         let tcx = self.tcx;
 
-        let definitions: Vec<_> = if self.early_bodies.is_some() {
-            tcx.iter_local_def_id_after_interfaces().collect()
-        } else {
-            tcx.iter_local_def_id().collect()
-        };
-        for local_id in definitions {
-            if self.early_bodies.as_ref().is_some_and(|bodies| {
-                early::enclosing_body(tcx, local_id).is_some_and(|body| !bodies.contains(&body))
-            }) {
-                continue;
-            }
+        for local_id in metadata_definitions(tcx, self.early_bodies.as_ref()) {
             let def_id = local_id.to_def_id();
             let def_kind = tcx.def_kind(local_id);
             self.tables.def_kind.set_some_local_hashed(local_id, def_kind, hcx);
@@ -3482,7 +3490,7 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
         return;
     };
 
-    if !early::enabled(tcx) && try_reuse_metadata_prefix(tcx, path, ref_path, dep_node).is_some() {
+    if try_reuse_metadata_prefix(tcx, path, ref_path, dep_node).is_some() {
         return;
     }
 
@@ -3571,10 +3579,8 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
         source_file_cache,
         interpret_allocs: Default::default(),
         required_source_files,
-        metadata_prefix_manifest: (M::HASH_PUBLIC_API
-            && tcx.dep_graph.is_fully_enabled()
-            && !early::enabled(tcx))
-        .then(|| MetadataPrefixManifestBuilder::new(tcx)),
+        metadata_prefix_manifest: (M::HASH_PUBLIC_API && tcx.dep_graph.is_fully_enabled())
+            .then(|| MetadataPrefixManifestBuilder::new(tcx)),
         is_proc_macro: tcx.crate_types().contains(&CrateType::ProcMacro),
         hygiene_ctxt: &hygiene_ctxt,
         symbol_index_table: Default::default(),
