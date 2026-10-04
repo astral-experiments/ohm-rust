@@ -151,7 +151,7 @@ pub fn prepare(tcx: TyCtxt<'_>) -> bool {
                 tcx.ensure_ok().mir_const_qualif(def_id);
             }
         }
-        if encode_const || coroutine {
+        if (encode_const || coroutine) && !tcx.is_trivial_const(def_id) {
             tcx.ensure_done().promoted_mir(def_id);
         }
         if coroutine {
