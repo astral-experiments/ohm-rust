@@ -2470,6 +2470,8 @@ options! {
         "emit retag function calls in generated code"),
     codegen_source_order: bool = (false, parse_bool, [UNTRACKED],
         "emit mono items in the order of spans in source files (default: no)"),
+    compact_artifact_raw_metadata: bool = (false, parse_bool, [TRACKED],
+        "disable implicit metadata compression for compact artifacts (default: no)"),
     compact_artifact_store: Option<PathBuf> = (None, parse_opt_pathbuf, [TRACKED],
         "emit compact library manifests and shared objects for the experimental Wild reader"),
     compress_artifacts: bool = (false, parse_bool, [TRACKED],

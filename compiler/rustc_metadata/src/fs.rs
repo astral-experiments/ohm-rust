@@ -62,7 +62,8 @@ pub fn encode_and_write_metadata(tcx: TyCtxt<'_>) -> EncodedMetadata {
     if tcx.needs_metadata() {
         encode_metadata(tcx, &metadata_filename, metadata_stub_filename.as_deref());
         if tcx.sess.opts.unstable_opts.compress_artifacts
-            || tcx.sess.opts.unstable_opts.compact_artifact_store.is_some()
+            || (tcx.sess.opts.unstable_opts.compact_artifact_store.is_some()
+                && !tcx.sess.opts.unstable_opts.compact_artifact_raw_metadata)
         {
             tcx.sess
                 .time("compress_metadata", || {

@@ -817,6 +817,7 @@ fn test_unstable_options_tracking_hash() {
     );
     tracked!(codegen_backend, Some("abc".to_string()));
     tracked!(codegen_emit_retag, Some(CodegenRetagOptions::default()));
+    tracked!(compact_artifact_raw_metadata, true);
     tracked!(compact_artifact_store, Some(PathBuf::from("compact-store")));
     tracked!(compress_artifacts, true);
     tracked!(compress_incremental, true);

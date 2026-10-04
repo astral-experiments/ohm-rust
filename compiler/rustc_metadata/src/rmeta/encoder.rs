@@ -3461,7 +3461,8 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
         let source_file_in_incr_dir = &incr_comp_session_dir.join(saved_path);
         debug!("copying preexisting metadata from {source_file_in_incr_dir:?} to {path:?}");
         let restore = if !tcx.sess.opts.unstable_opts.compress_artifacts
-            && tcx.sess.opts.unstable_opts.compact_artifact_store.is_none()
+            && (tcx.sess.opts.unstable_opts.compact_artifact_store.is_none()
+                || tcx.sess.opts.unstable_opts.compact_artifact_raw_metadata)
         {
             rustc_data_structures::artifact_compression::is_compressed(source_file_in_incr_dir)
                 .and_then(|packed| {
