@@ -8,8 +8,12 @@ directly readable. A compatible Wild linker is required when linking the compact
 rustc -Zcompact-artifacts --crate-type=rlib library.rs
 ```
 
-The resulting `.rlib` can be copied on its own: it does not reference a separate object
-store or metadata sidecar. Incremental object files use the same compact representation.
+With metadata embedding enabled (the compiler default), the resulting `.rlib` can be
+copied on its own: it does not reference a separate object store or metadata sidecar.
+Explicitly combining this flag with `-Zembed-metadata=no` produces an internal library
+that still requires its separate `.rmeta` file.
+
+Incremental object files use the same compact representation.
 The normal Cargo target and incremental directory lifetimes determine when these files
 are removed. Rust `staticlib` exports materialize ordinary ELF members so C consumers do
 not need the compact object reader.
