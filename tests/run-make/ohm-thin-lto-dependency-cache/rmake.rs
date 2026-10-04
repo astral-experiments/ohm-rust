@@ -141,7 +141,12 @@ fn main() {
         .codegen_units(1)
         .arg("-Cembed-bitcode=yes")
         .run();
-    fs::write("importer.rs", r#"unsafe extern "Rust" { fn leaf_value() -> u32; } #[inline(never)] pub fn value() -> u32 { unsafe { leaf_value() + 10 } }"#).unwrap();
+    fs::write(
+        "importer.rs",
+        "unsafe extern \"Rust\" { fn leaf_value() -> u32; } \
+         #[inline(never)] pub fn value() -> u32 { unsafe { leaf_value() + 10 } }",
+    )
+    .unwrap();
     rustc()
         .input("importer.rs")
         .crate_type("rlib")
@@ -151,7 +156,12 @@ fn main() {
         .arg("-Zinline-mir=no")
         .run();
     let importer = fs::read("libimporter.rlib").unwrap();
-    fs::write("import_main.rs", "extern crate importer; extern crate leaf; fn main() { println!(\"{}\", importer::value()); }").unwrap();
+    fs::write(
+        "import_main.rs",
+        "extern crate importer; extern crate leaf; \
+         fn main() { println!(\"{}\", importer::value()); }",
+    )
+    .unwrap();
     importing_app().run().assert_stderr_contains_regex(r" - importer\.[^\n]*: re-compiled");
     run("import_main").assert_stdout_equals("17\n");
     importing_app().run().assert_stderr_contains_regex(r" - importer\.[^\n]*: re-used");
