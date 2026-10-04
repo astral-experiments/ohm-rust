@@ -386,6 +386,7 @@ pub fn link_binary(
                     .build(&out_filename, None);
                     if sess.opts.unstable_opts.compress_artifacts
                         && sess.opts.unstable_opts.compact_artifact_store.is_none()
+                        && !sess.opts.unstable_opts.compact_artifacts
                     {
                         if let Err(error) = sess.time("compress_rlib", || {
                             artifact_compression::pack_with_options(
@@ -650,14 +651,17 @@ fn link_rlib<'a>(
     flavor: RlibFlavor,
     tmpdir: &MaybeTempDir,
 ) -> Box<dyn ArchiveBuilder + 'a> {
-    let mut ab: Box<dyn ArchiveBuilder> =
-        if sess.opts.unstable_opts.compact_artifact_store.is_some()
-            && matches!(flavor, RlibFlavor::Normal)
-        {
+    let mut ab: Box<dyn ArchiveBuilder> = if matches!(flavor, RlibFlavor::Normal) {
+        if sess.opts.unstable_opts.compact_artifact_store.is_some() {
             Box::new(super::archive::CompactArchiveBuilder::new(sess, metadata))
+        } else if sess.opts.unstable_opts.compact_artifacts {
+            Box::new(super::archive::ArArchiveBuilder::new_compact(sess))
         } else {
             archive_builder_builder.new_archive_builder(sess)
-        };
+        }
+    } else {
+        archive_builder_builder.new_archive_builder(sess)
+    };
 
     // Pre-compute the list of Rust object filenames and materialize the rmeta-link
     // wrapper file before any `add_file` calls. This lets the rmeta-link member be

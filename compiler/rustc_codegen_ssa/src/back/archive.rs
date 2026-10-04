@@ -214,6 +214,16 @@ pub trait ArchiveBuilderBuilder {
             if !bundled_lib_file_names.contains(&Symbol::intern(name)) {
                 continue; // We need to extract only native libraries.
             }
+            let decoded;
+            let data = if data.starts_with(rustc_data_structures::compact_artifact::MAGIC) {
+                decoded =
+                    rustc_data_structures::compact_artifact::unpack_elf(data).map_err(|error| {
+                        ExtractBundledLibsError::ArchiveMember { rlib, error: Box::new(error) }
+                    })?;
+                decoded.as_slice()
+            } else {
+                data
+            };
             let data = search_for_section(rlib, data, ".bundled_lib").map_err(|e| {
                 ExtractBundledLibsError::ExtractSection { rlib, error: Box::<dyn Error>::from(e) }
             })?;
@@ -378,30 +388,6 @@ pub(crate) struct CompactArchiveBuilder<'a> {
 
 impl<'a> CompactArchiveBuilder<'a> {
     pub(crate) fn new(sess: &'a Session, metadata: &'a EncodedMetadata) -> Self {
-        let unsupported =
-            if sess.target.os != rustc_target::spec::Os::Linux || sess.target.pointer_width != 64 {
-                Some("compact artifacts currently require 64-bit Linux ELF")
-            } else if sess.opts.cg.linker_plugin_lto.enabled()
-                || !matches!(
-                    sess.lto(),
-                    rustc_session::config::Lto::No | rustc_session::config::Lto::ThinLocal
-                )
-            {
-                Some("compact artifacts currently require cross-crate LTO to be disabled")
-            } else if sess.split_debuginfo() == rustc_target::spec::SplitDebuginfo::Packed {
-                // Packing reads `.dwo` members out of dependency rlibs, which compact libraries
-                // do not carry (see `add_file`).
-                Some("compact artifacts do not support `-Csplit-debuginfo=packed`")
-            } else {
-                None
-            };
-        if let Some(message) = unsupported {
-            sess.dcx().emit_fatal(crate::diagnostics::CompressedArtifactError {
-                action: "validate compact library",
-                path: metadata.path().unwrap_or(Path::new("lib.rmeta")).to_owned(),
-                error: io::Error::other(message),
-            });
-        }
         Self { sess, metadata, files: Vec::new(), native: Vec::new(), link_metadata: Vec::new() }
     }
 }
@@ -581,6 +567,7 @@ impl ArchiveBuilderBuilder for ArArchiveBuilderBuilder {
 pub struct ArArchiveBuilder<'a> {
     sess: &'a Session,
     object_reader: &'static ObjectReader,
+    compact: bool,
 
     src_archives: Vec<(PathBuf, Mmap)>,
     // Don't use an `HashMap` here, as the order is important. `lib.rmeta` needs
@@ -610,9 +597,38 @@ struct ArchiveEntry {
 
 impl<'a> ArArchiveBuilder<'a> {
     pub fn new(sess: &'a Session, object_reader: &'static ObjectReader) -> ArArchiveBuilder<'a> {
-        ArArchiveBuilder { sess, object_reader, src_archives: vec![], entries: vec![] }
+        ArArchiveBuilder {
+            sess,
+            object_reader,
+            compact: false,
+            src_archives: vec![],
+            entries: vec![],
+        }
+    }
+
+    /// Preserve normal archive ownership while compacting its object members.
+    pub(crate) fn new_compact(sess: &'a Session) -> Self {
+        Self { compact: true, ..Self::new(sess, &COMPACT_OBJECT_READER) }
     }
 }
+
+// Symbol tables live in the eager metadata view, so indexing the archive does not decode
+// any code, relocations, or DWARF payload. Compact members are always ELF64, not COFF/XCOFF.
+const COMPACT_OBJECT_READER: ObjectReader = ObjectReader {
+    get_symbols: |data, symbols| {
+        if data.starts_with(rustc_data_structures::compact_artifact::MAGIC) {
+            let object = rustc_data_structures::compact_artifact::CompactObject::parse(data)?;
+            (DEFAULT_OBJECT_READER.get_symbols)(object.metadata(), symbols)
+        } else {
+            (DEFAULT_OBJECT_READER.get_symbols)(data, symbols)
+        }
+    },
+    is_64_bit_object_file: |data| {
+        data.starts_with(rustc_data_structures::compact_artifact::MAGIC)
+            || (DEFAULT_OBJECT_READER.is_64_bit_object_file)(data)
+    },
+    ..DEFAULT_OBJECT_READER
+};
 
 fn try_filter_fat_archs(
     archs: &[impl FatArch],
@@ -783,6 +799,9 @@ impl<'a> ArchiveBuilder for ArArchiveBuilder<'a> {
 
 impl<'a> ArArchiveBuilder<'a> {
     fn build_inner(self, output: &Path, symbols: Option<ArchiveSymbols>) -> io::Result<bool> {
+        if self.compact && symbols.is_some() {
+            return Err(io::Error::other("compact rlib symbol rewriting is not supported"));
+        }
         let archive_kind = match &*self.sess.target.archive_format {
             "gnu" => ArchiveKind::Gnu,
             "bsd" => ArchiveKind::Bsd,
@@ -794,9 +813,9 @@ impl<'a> ArArchiveBuilder<'a> {
             }
         };
 
-        // Materialize compact members before reading symbols or writing a conventional archive.
-        // This covers both dependency manifests and local incremental work-product hardlinks.
-        // Keep ordinary members mapped, and decode each compact member only once.
+        // Conventional exports materialize compact objects before reading or editing symbols.
+        // Compact rlibs retain ordinary metadata members and independently compressed objects.
+        let profile = self.sess.opts.unstable_opts.artifact_compression_options();
         let mut inputs = Vec::new();
         for (entry_name, entry) in self.entries {
             let data: Box<dyn AsRef<[u8]>> =
@@ -833,7 +852,22 @@ impl<'a> ArArchiveBuilder<'a> {
                     },
                 };
             let bytes = (*data).as_ref();
-            let data = if bytes.starts_with(rustc_data_structures::compact_artifact::MAGIC) {
+            let data = if self.compact {
+                if bytes.starts_with(b"\x7fELF")
+                    && entry_name != b"lib.rmeta"
+                    && entry_name != rmeta_link::FILENAME.as_bytes()
+                {
+                    Box::new(rustc_data_structures::compact_artifact::pack_elf(
+                        bytes,
+                        rustc_data_structures::compact_artifact::Options {
+                            level: profile.level,
+                            block_size: profile.chunk_size,
+                        },
+                    )?) as Box<dyn AsRef<[u8]>>
+                } else {
+                    data
+                }
+            } else if bytes.starts_with(rustc_data_structures::compact_artifact::MAGIC) {
                 Box::new(rustc_data_structures::compact_artifact::unpack_elf(bytes)?)
                     as Box<dyn AsRef<[u8]>>
             } else {

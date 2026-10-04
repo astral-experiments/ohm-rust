@@ -2474,6 +2474,8 @@ options! {
         "disable implicit metadata compression for compact artifacts (default: no)"),
     compact_artifact_store: Option<PathBuf> = (None, parse_opt_pathbuf, [TRACKED],
         "emit compact library manifests and shared objects for the experimental Wild reader"),
+    compact_artifacts: bool = (false, parse_bool, [TRACKED],
+        "store compact objects in self-contained rlib archives for the experimental Wild reader (default: no)"),
     compress_artifacts: bool = (false, parse_bool, [TRACKED],
         "store `.rmeta` files and `.rlib` archives in compressed format (default: no)"),
     compress_incremental: bool = (false, parse_bool, [TRACKED],
