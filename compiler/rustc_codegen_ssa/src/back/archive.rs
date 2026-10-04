@@ -66,6 +66,10 @@ impl ImportLibraryItem {
 pub trait ArchiveBuilderBuilder {
     fn new_archive_builder<'a>(&self, sess: &'a Session) -> Box<dyn ArchiveBuilder + 'a>;
 
+    fn new_compact_archive_builder<'a>(&self, sess: &'a Session) -> Box<dyn ArchiveBuilder + 'a> {
+        Box::new(ArArchiveBuilder::new_compact(sess, &DEFAULT_OBJECT_READER))
+    }
+
     fn create_dylib_metadata_wrapper(
         &self,
         sess: &Session,
@@ -607,8 +611,8 @@ impl<'a> ArArchiveBuilder<'a> {
     }
 
     /// Preserve normal archive ownership while compacting its object members.
-    pub(crate) fn new_compact(sess: &'a Session) -> Self {
-        Self { compact: true, ..Self::new(sess, &COMPACT_OBJECT_READER) }
+    pub fn new_compact(sess: &'a Session, object_reader: &'static ObjectReader) -> Self {
+        Self { compact: true, ..Self::new(sess, object_reader) }
     }
 }
 
@@ -904,9 +908,16 @@ impl<'a> ArArchiveBuilder<'a> {
                 } else {
                     data
                 };
+                let object_reader =
+                    if (*data).as_ref().starts_with(rustc_data_structures::compact_artifact::MAGIC)
+                    {
+                        &COMPACT_OBJECT_READER
+                    } else {
+                        self.object_reader
+                    };
                 NewArchiveMember {
                     buf: data,
-                    object_reader: self.object_reader,
+                    object_reader,
                     member_name: String::from_utf8(entry_name).unwrap(),
                     mtime: 0,
                     uid: 0,

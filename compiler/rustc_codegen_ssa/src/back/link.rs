@@ -655,7 +655,7 @@ fn link_rlib<'a>(
         if sess.opts.unstable_opts.compact_artifact_store.is_some() {
             Box::new(super::archive::CompactArchiveBuilder::new(sess, metadata))
         } else if sess.opts.unstable_opts.compact_artifacts {
-            Box::new(super::archive::ArArchiveBuilder::new_compact(sess))
+            archive_builder_builder.new_compact_archive_builder(sess)
         } else {
             archive_builder_builder.new_archive_builder(sess)
         }

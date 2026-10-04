@@ -17,6 +17,10 @@ impl ArchiveBuilderBuilder for LlvmArchiveBuilderBuilder {
         // Use the `object` crate to build archives, with a little bit of help from LLVM.
         Box::new(ArArchiveBuilder::new(sess, &LLVM_OBJECT_READER))
     }
+
+    fn new_compact_archive_builder<'a>(&self, sess: &'a Session) -> Box<dyn ArchiveBuilder + 'a> {
+        Box::new(ArArchiveBuilder::new_compact(sess, &LLVM_OBJECT_READER))
+    }
 }
 
 // The object crate doesn't know how to get symbols for LLVM bitcode and COFF bigobj files.
