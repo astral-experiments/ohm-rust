@@ -96,7 +96,7 @@ pub(super) fn interface_bodies(tcx: TyCtxt<'_>) -> FxHashSet<LocalDefId> {
     bodies
 }
 
-pub fn prepare(tcx: TyCtxt<'_>) -> bool {
+pub(crate) fn prepare(tcx: TyCtxt<'_>) -> bool {
     if !enabled(tcx) {
         return false;
     }
