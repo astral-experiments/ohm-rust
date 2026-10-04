@@ -189,7 +189,7 @@ fn check_ordinary_consumers(manifest: bool) {
         .input("consumer.rs")
         .extern_("dep", dependency)
         .arg("-Zunstable-options")
-        .arg("-Clinker-features=+lld")
+        .arg("-Clinker-features=-lld")
         .output("consumer")
         .run();
     run("consumer");
@@ -197,6 +197,8 @@ fn check_ordinary_consumers(manifest: bool) {
         .input("documented.rs")
         .edition("2024")
         .extern_("dep", dependency)
+        .arg("-Zunstable-options")
+        .arg("-Clinker-features=-lld")
         .arg("--test")
         .run()
         .assert_stdout_contains("1 passed");
