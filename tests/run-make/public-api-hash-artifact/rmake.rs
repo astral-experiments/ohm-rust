@@ -32,7 +32,7 @@ fn compile_and_read_public_api_hash_with_output(
         .json("artifacts")
         .error_format("json")
         .incremental("incremental")
-        .env("RUSTC_LOG", "ohm_metadata_reuse=debug,rustc_metadata::rmeta::encoder=debug");
+        .env("RUSTC_LOG", "ohm_metadata_reuse=info");
     for flag in flags {
         compiler.arg(flag);
     }

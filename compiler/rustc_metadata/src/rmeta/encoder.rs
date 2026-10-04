@@ -50,7 +50,7 @@ use rustc_span::{
     ByteSymbol, ExternalSource, FileName, SourceFile, Span, SpanData, SpanEncoder,
     StableSourceFileId, Symbol, SyntaxContext, sym,
 };
-use tracing::{debug, instrument, trace};
+use tracing::{debug, info, instrument, trace};
 
 use self::metadata_prefix::{
     MetadataPrefixManifest, MetadataPrefixManifestBuilder, hash_definition_span,
@@ -3435,7 +3435,8 @@ fn try_reuse_metadata_prefix(
     if let Ok(metadata) = std::fs::metadata(path) {
         tcx.prof.artifact_size("crate_metadata", "crate_metadata", metadata.len());
     }
-    debug!(target: "ohm_metadata_reuse", "reused metadata item prefix with a freshly encoded source map");
+    // Keep this opt-in event available in release compilers, where debug tracing is disabled.
+    info!(target: "ohm_metadata_reuse", "reused metadata item prefix with a freshly encoded source map");
     Some(hashes)
 }
 
@@ -3458,7 +3459,7 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
         let saved_path = &work_product.saved_files["rmeta"];
         let incr_comp_session_dir = &tcx.incr_comp_session.unwrap().session_directory;
         let source_file_in_incr_dir = &incr_comp_session_dir.join(saved_path);
-        debug!("copying preexisting metadata from {source_file_in_incr_dir:?} to {path:?}");
+        info!(target: "ohm_metadata_reuse", "copying preexisting metadata from {source_file_in_incr_dir:?} to {path:?}");
         let restore = if !tcx.sess.opts.unstable_opts.compress_artifacts
             && (tcx.sess.opts.unstable_opts.compact_artifact_store.is_none()
                 || tcx.sess.opts.unstable_opts.compact_artifact_raw_metadata)
