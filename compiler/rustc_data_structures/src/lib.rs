@@ -43,6 +43,7 @@ extern crate self as rustc_data_structures;
 use std::fmt;
 
 pub use atomic_ref::AtomicRef;
+pub use compact_artifact;
 pub use ena::{snapshot_vec, undo_log, unify};
 // Re-export `hashbrown::hash_table`, because it's part of our API
 // (via `ShardedHashMap`), and because it lets other compiler crates use the
@@ -53,6 +54,7 @@ pub use rustc_index::static_assert_size;
 // Re-export some data-structure crates which are part of our public API.
 pub use {either, indexmap, smallvec, thin_vec};
 pub mod aligned;
+pub mod artifact_compression;
 pub mod base_n;
 pub mod binary_search_util;
 pub mod fingerprint;
@@ -61,6 +63,7 @@ pub mod flock;
 pub mod frozen;
 pub mod fx;
 pub mod graph;
+pub mod indexed_artifact;
 pub mod intern;
 pub mod jobserver;
 mod limit;

@@ -3125,7 +3125,7 @@ fn prefetch_mir(tcx: TyCtxt<'_>) {
 pub struct EncodedMetadata {
     // The declaration order matters because `full_metadata` should be dropped
     // before `_temp_dir`.
-    full_metadata: Option<Mmap>,
+    full_metadata: std::sync::OnceLock<Option<Mmap>>,
     // This is an optional stub metadata containing only the crate header.
     // The header should be very small, so we load it directly into memory.
     stub_metadata: Option<Vec<u8>>,
@@ -3157,17 +3157,23 @@ impl EncodedMetadata {
         stub_path: Option<PathBuf>,
         temp_dir: Option<MaybeTempDir>,
     ) -> std::io::Result<Self> {
-        let file = std::fs::File::open(&path)?;
-        let file_metadata = file.metadata()?;
+        let file_metadata = std::fs::metadata(&path)?;
         if file_metadata.len() == 0 {
             return Ok(Self {
-                full_metadata: None,
+                full_metadata: std::sync::OnceLock::from(None),
                 stub_metadata: None,
                 path: None,
                 _temp_dir: None,
             });
         }
-        let full_mmap = unsafe { Some(Mmap::map(file)?) };
+        // Keep ordinary files file-backed. The experimental compressed format is
+        // eagerly decoded into an owned contiguous buffer so metadata decoders can retain
+        // their existing slice contract.
+        let full_mmap = if stub_path.is_some() {
+            std::sync::OnceLock::new()
+        } else {
+            std::sync::OnceLock::from(unsafe { Some(Mmap::map_artifact(&path)?) })
+        };
 
         let stub =
             if let Some(stub_path) = stub_path { Some(std::fs::read(stub_path)?) } else { None };
@@ -3182,12 +3188,19 @@ impl EncodedMetadata {
 
     #[inline]
     pub fn full(&self) -> &[u8] {
-        &self.full_metadata.as_deref().unwrap_or_default()
+        self.full_metadata
+            .get_or_init(|| {
+                self.path.as_ref().map(|path| {
+                    unsafe { Mmap::map_artifact(path) }.expect("read own encoded metadata")
+                })
+            })
+            .as_deref()
+            .unwrap_or_default()
     }
 
     #[inline]
     pub fn stub_or_full(&self) -> &[u8] {
-        self.stub_metadata.as_deref().unwrap_or(self.full())
+        self.stub_metadata.as_deref().unwrap_or_else(|| self.full())
     }
 
     #[inline]
@@ -3218,7 +3231,12 @@ impl<D: Decoder> Decodable<D> for EncodedMetadata {
             None
         };
 
-        Self { full_metadata, stub_metadata: stub, path: None, _temp_dir: None }
+        Self {
+            full_metadata: std::sync::OnceLock::from(full_metadata),
+            stub_metadata: stub,
+            path: None,
+            _temp_dir: None,
+        }
     }
 }
 
@@ -3281,10 +3299,9 @@ fn try_reuse_metadata_prefix(
     let dependencies =
         tcx.dep_graph.previous_dependencies_except_red(&metadata_dep_node, &changed_dep_node)?;
     let manifest = MetadataPrefixManifest::load(&manifest_path)?;
-    let file = File::open(metadata_path).ok()?;
     // SAFETY: The previous work-product remains immutable; replacement metadata is written to a
     // freshly created inode and atomically renamed only after encoding completes.
-    let previous_metadata = unsafe { Mmap::map(file).ok()? };
+    let previous_metadata = unsafe { Mmap::map_artifact(&metadata_path).ok()? };
     if manifest.metadata_len != previous_metadata.len()
         || manifest.metadata_fingerprint != metadata_fingerprint(&previous_metadata)
         || manifest.stable_crate_id != tcx.stable_crate_id(LOCAL_CRATE).as_u64()
@@ -3311,6 +3328,7 @@ fn try_reuse_metadata_prefix(
     }
     drop(source_files);
 
+    let metadata_len = previous_metadata.len();
     let metadata = MetadataBlob::new(slice_owned(previous_metadata, Deref::deref)).ok()?;
     metadata.check_compatibility(tcx.sess.cfg_version).ok()?;
     let mut version_encoder = opaque::mem_encoder::MemEncoder::new();
@@ -3334,8 +3352,10 @@ fn try_reuse_metadata_prefix(
         return None;
     }
     let previous_rdr_hashes = previous_root.rdr_hashes.take()?;
-    let local_hashes_range = previous_rdr_hashes.local.encoded_range(&metadata)?;
-    let expn_hashes_range = previous_rdr_hashes.expn.encoded_range(&metadata)?;
+    let local_hashes_range =
+        previous_rdr_hashes.local.encoded_range(metadata.range(0, metadata_len))?;
+    let expn_hashes_range =
+        previous_rdr_hashes.expn.encoded_range(metadata.range(0, metadata_len))?;
     if local_hashes_range.start < manifest.prefix_position
         || expn_hashes_range.start < manifest.prefix_position
     {
@@ -3360,7 +3380,7 @@ fn try_reuse_metadata_prefix(
         temporary_file.path(),
         move |ecx| {
             let preamble = ecx.position();
-            ecx.emit_raw_bytes(&metadata[preamble..prefix_position]);
+            ecx.emit_raw_bytes(metadata.range(preamble, prefix_position));
             ecx.required_source_files = Some(required_source_files);
             ecx.metadata_prefix_manifest = Some(MetadataPrefixManifestBuilder {
                 manifest,
@@ -3378,13 +3398,13 @@ fn try_reuse_metadata_prefix(
             previous_root.rdr_hashes = Some(ItemPublicHashes {
                 local: relocate_metadata_table(
                     ecx,
-                    &metadata,
+                    metadata.range(0, metadata_len),
                     previous_rdr_hashes.local,
                     local_hashes_range,
                 ),
                 expn: relocate_metadata_table(
                     ecx,
-                    &metadata,
+                    metadata.range(0, metadata_len),
                     previous_rdr_hashes.expn,
                     expn_hashes_range,
                 ),
@@ -3440,10 +3460,41 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
         let incr_comp_session_dir = &tcx.incr_comp_session.unwrap().session_directory;
         let source_file_in_incr_dir = &incr_comp_session_dir.join(saved_path);
         debug!("copying preexisting metadata from {source_file_in_incr_dir:?} to {path:?}");
-        match rustc_fs_util::link_or_copy(&source_file_in_incr_dir, path) {
+        let restore = if !tcx.sess.opts.unstable_opts.compress_artifacts
+            && tcx.sess.opts.unstable_opts.compact_artifact_store.is_none()
+        {
+            rustc_data_structures::artifact_compression::is_compressed(source_file_in_incr_dir)
+                .and_then(|packed| {
+                    if packed {
+                        rustc_data_structures::artifact_compression::unpack_to(
+                            source_file_in_incr_dir,
+                            path,
+                        )
+                    } else {
+                        rustc_fs_util::link_or_copy(source_file_in_incr_dir, path).map(|_| ())
+                    }
+                })
+        } else {
+            rustc_fs_util::link_or_copy(source_file_in_incr_dir, path).map(|_| ())
+        };
+        match restore {
             Ok(_) => {}
             Err(err) => tcx.dcx().emit_fatal(FailCreateFileEncoder { err }),
         };
+        if let Some(ref_path) = ref_path {
+            // The full metadata work product does not include the separately emitted stub.
+            // Recreate it from the reused header, retaining the original public API hash.
+            let mmap = std::fs::File::open(path)
+                .and_then(|file| unsafe { Mmap::map(file) })
+                .unwrap_or_else(|err| tcx.dcx().emit_fatal(FailCreateFileEncoder { err }));
+            let metadata =
+                MetadataBlob::new(slice_owned(mmap, Deref::deref)).expect("valid reused metadata");
+            let mut header = metadata.get_header();
+            header.is_stub = true;
+            with_encode_metadata_header::<DefIndexDefIdEncoder>(tcx, ref_path, |ecx| {
+                ecx.lazy::<CrateHeader, _>(header).position.get()
+            });
+        }
         return;
     };
 

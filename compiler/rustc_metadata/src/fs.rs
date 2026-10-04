@@ -1,4 +1,3 @@
-use std::mem::size_of;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
@@ -17,7 +16,7 @@ use crate::diagnostics::{
     FailedCreateTempdir, FailedWriteError,
 };
 use crate::rmeta::MetadataBlob;
-use crate::{EncodedMetadata, METADATA_HEADER, encode_metadata};
+use crate::{EncodedMetadata, encode_metadata};
 
 // FIXME(eddyb) maybe include the crate name in this?
 pub const METADATA_FILENAME: &str = "lib.rmeta";
@@ -51,7 +50,8 @@ pub fn encode_and_write_metadata(tcx: TyCtxt<'_>) -> EncodedMetadata {
         .unwrap_or_else(|err| tcx.dcx().emit_fatal(FailedCreateTempdir { err }));
     let metadata_tmpdir = MaybeTempDir::new(metadata_tmpdir, tcx.sess.opts.cg.save_temps);
     let metadata_filename = metadata_tmpdir.as_ref().join("full.rmeta");
-    let metadata_stub_filename = if !tcx.sess.opts.unstable_opts.embed_metadata
+    let metadata_stub_filename = if (!tcx.sess.opts.unstable_opts.embed_metadata
+        || tcx.sess.opts.unstable_opts.compact_artifact_store.is_some())
         && !tcx.crate_types().contains(&CrateType::ProcMacro)
     {
         Some(metadata_tmpdir.as_ref().join("stub.rmeta"))
@@ -61,6 +61,21 @@ pub fn encode_and_write_metadata(tcx: TyCtxt<'_>) -> EncodedMetadata {
 
     if tcx.needs_metadata() {
         encode_metadata(tcx, &metadata_filename, metadata_stub_filename.as_deref());
+        if tcx.sess.opts.unstable_opts.compress_artifacts
+            || tcx.sess.opts.unstable_opts.compact_artifact_store.is_some()
+        {
+            tcx.sess
+                .time("compress_metadata", || {
+                    rustc_data_structures::artifact_compression::pack_with_options(
+                        &metadata_filename,
+                        tcx.sess.opts.unstable_opts.artifact_compression_options(),
+                    )
+                })
+                .unwrap_or_else(|err| {
+                    tcx.dcx()
+                        .emit_fatal(FailedWriteError { filename: metadata_filename.clone(), err });
+                });
+        }
     } else {
         // Always create a file at `metadata_filename`, even if we have nothing to write to it.
         // This simplifies the creation of the output `out_filename` when requested.
@@ -135,10 +150,8 @@ fn recover_public_api_hash(path: &Path, cfg_version: &'static str) -> Option<Str
     // SAFETY: `path` names the completed metadata file owned by this compiler invocation. We only
     // read through the mapping and keep the file-backed mapping alive in `MetadataBlob`.
     let mmap = unsafe { Mmap::map(file).ok()? };
-    if mmap.len() < METADATA_HEADER.len() + size_of::<u64>() || !mmap.starts_with(METADATA_HEADER) {
-        return None;
-    }
-
+    // MetadataBlob validates the ordinary or indexed compressed metadata header.
+    // Inspecting the raw file magic here would hide compressed public API hashes from Cargo.
     let metadata = MetadataBlob::new(slice_owned(mmap, Deref::deref)).ok()?;
     metadata.check_compatibility(cfg_version).ok()?;
     Some(metadata.get_header().hashes.public_hash.to_hex())
