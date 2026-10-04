@@ -23,7 +23,6 @@ mod rmeta;
 pub mod creader;
 pub mod diagnostics;
 pub mod fs;
-pub use rmeta::prepare_early_metadata;
 pub mod locator;
 
 pub use fs::{METADATA_FILENAME, emit_wrapper_file};

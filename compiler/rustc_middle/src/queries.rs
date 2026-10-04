@@ -383,9 +383,7 @@ rustc_queries! {
         }
     }
 
-    /// The analysis passes that check the crate's item interfaces, before the
-    /// body-checking pass. `analysis` runs these first; with
-    /// `-Zohm-early-metadata`, the driver writes early metadata after them.
+    /// Checks item interfaces without running the body-checking pass.
     query analysis_interfaces(key: ()) {
         eval_always
         desc {

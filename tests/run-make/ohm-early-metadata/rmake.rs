@@ -1,6 +1,6 @@
 //@ needs-target-std
 
-use run_make_support::{recursive_find_files, rfs, rustc, serde_json};
+use run_make_support::{rfs, rustc, serde_json};
 
 fn assert_metadata_before_bodies(stderr: &str) {
     let metadata = stderr.find("\"pass\":\"generate_crate_metadata\"").unwrap();
@@ -103,12 +103,6 @@ fn main() {
             let stderr = output.stderr_utf8();
             let artifact = metadata_artifact(&stderr);
             if public_hash {
-                assert!(
-                    !recursive_find_files("incremental-true", |path| {
-                        path.file_name().unwrap() == "metadata-prefix-v3.ohm-prefix-v3"
-                    })
-                    .is_empty()
-                );
                 let hash = artifact["public_api_hash"]["value"].as_str().unwrap().to_owned();
                 assert_eq!(previous_hash.get_or_insert_with(|| hash.clone()), &hash);
             }

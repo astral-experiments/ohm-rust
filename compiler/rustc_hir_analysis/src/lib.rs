@@ -151,9 +151,7 @@ pub fn check_crate(tcx: TyCtxt<'_>) {
     check_crate_bodies(tcx);
 }
 
-/// The part of [`check_crate`] that checks item interfaces (well-formedness,
-/// coherence) without running the body-checking pass. Metadata written after
-/// this describes the crate's interface (`-Zohm-early-metadata`).
+/// Checks item well-formedness and coherence without running the body-checking pass.
 pub fn check_crate_interfaces(tcx: TyCtxt<'_>) {
     tcx.sess.time("coherence_checking", || {
         // When discarding query call results, use an explicit type to indicate
@@ -171,8 +169,7 @@ pub fn check_crate_interfaces(tcx: TyCtxt<'_>) {
     });
 }
 
-/// The part of [`check_crate`] after [`check_crate_interfaces`]: evaluates
-/// statics and consts, and type-checks every body.
+/// Evaluates statics and consts, and type-checks every body.
 pub fn check_crate_bodies(tcx: TyCtxt<'_>) {
     tcx.par_hir_body_owners(|item_def_id| {
         let def_kind = tcx.def_kind(item_def_id);
