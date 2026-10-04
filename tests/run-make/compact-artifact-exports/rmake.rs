@@ -6,6 +6,7 @@
 use run_make_support::object::read::archive::ArchiveFile;
 use run_make_support::{
     build_native_static_lib, cc, cwd, extra_c_flags, llvm_ar, rfs, run, run_in_tmpdir, rustc,
+    rustdoc,
 };
 
 fn flags(manifest: bool) -> [&'static str; 3] {
@@ -29,6 +30,7 @@ fn main() {
         for raw in [false, true] {
             run_in_tmpdir(|| check_replay(manifest, raw));
         }
+        run_in_tmpdir(|| check_ordinary_consumers(manifest));
         for flag in ["-Clto=fat", "-Clinker-plugin-lto", "-Csplit-debuginfo=packed"] {
             rustc()
                 .input("export.rs")
@@ -168,6 +170,44 @@ fn check_thin_archive() {
         .args(flags(false))
         .run();
     check_c_link();
+}
+
+fn check_ordinary_consumers(manifest: bool) {
+    build_native_static_lib("native");
+    rustc()
+        .input("dep.rs")
+        .crate_type("rlib")
+        .arg("-Zpacked-bundled-libs")
+        .args(flags(manifest))
+        .run();
+    rfs::remove_file("libnative.a");
+    let dependency = prepare_dependency(manifest);
+    let original = rfs::read(dependency);
+
+    // Neither direct compiler consumers nor rustdoc inherit Cargo's selected linker/format.
+    rustc()
+        .input("consumer.rs")
+        .extern_("dep", dependency)
+        .arg("-Zunstable-options")
+        .arg("-Clinker-features=+lld")
+        .output("consumer")
+        .run();
+    run("consumer");
+    rustdoc()
+        .input("documented.rs")
+        .edition("2024")
+        .extern_("dep", dependency)
+        .arg("--test")
+        .run()
+        .assert_stdout_contains("1 passed");
+    rustc()
+        .input("export.rs")
+        .crate_type("staticlib")
+        .cfg("dependency")
+        .extern_("dep", dependency)
+        .run();
+    check_c_link();
+    assert_eq!(rfs::read(dependency), original);
 }
 
 fn check_c_link() {
