@@ -600,6 +600,21 @@ impl CommandLineStep for Rustc {
                     &wild_bin.join("ld.bfd"),
                     FileType::Executable,
                 );
+                // The versioned marker distinguishes a matching compact reader from upstream
+                // Wild releases that report the same package version. Do not retain a marker
+                // from a previous source-built payload when packaging an ordinary linker.
+                let capability = "compact-artifacts-v1";
+                if wild_bin.join(capability).exists() {
+                    t!(fs::remove_file(wild_bin.join(capability)));
+                }
+                if wild.join(capability).is_file() {
+                    assert_eq!(t!(fs::read(wild.join(capability))), b"RCOBJ001\n");
+                    builder.copy_link(
+                        &wild.join(capability),
+                        &wild_bin.join(capability),
+                        FileType::Regular,
+                    );
+                }
                 let licenses = image.join("share/doc/rust/licenses");
                 t!(fs::create_dir_all(&licenses));
                 for license in ["LICENSE-APACHE", "LICENSE-MIT"] {
