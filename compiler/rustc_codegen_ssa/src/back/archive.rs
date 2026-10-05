@@ -196,9 +196,12 @@ pub trait ArchiveBuilderBuilder {
                         error: "missing bundled library".into(),
                     }
                 })?;
-                let data = packed.read_section(&bytes, section.index().0).map_err(|e| {
-                    ExtractBundledLibsError::ArchiveMember { rlib, error: Box::new(e) }
-                })?;
+                let data = packed
+                    .read_section_with_size(&bytes, section.index().0, section.size())
+                    .map_err(|e| ExtractBundledLibsError::ArchiveMember {
+                        rlib,
+                        error: Box::new(e),
+                    })?;
                 fs::write(outdir.join(&member.name), data)
                     .map_err(|e| ExtractBundledLibsError::WriteFile { rlib, error: Box::new(e) })?;
             }
