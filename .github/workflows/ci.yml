@@ -31,13 +31,14 @@ jobs:
           fetch-depth: 0
           path: source/rust
 
-      # Use the release coordinator's App credentials, restricted to read-only Wild access.
+      # Use a dedicated source App installed only on ohm-wild with contents: read.
+      # Never expose the release App's write-capable private key to PR jobs.
       - name: Create read-only Wild source token
         id: wild-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          client-id: ${{ vars.OHM_RELEASE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.OHM_RELEASE_APP_PRIVATE_KEY }}
+          client-id: ${{ vars.OHM_SOURCE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.OHM_SOURCE_APP_PRIVATE_KEY }}
           owner: astral-sh
           repositories: ohm-wild
           permission-contents: read
@@ -92,8 +93,8 @@ jobs:
         id: wild-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          client-id: ${{ vars.OHM_RELEASE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.OHM_RELEASE_APP_PRIVATE_KEY }}
+          client-id: ${{ vars.OHM_SOURCE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.OHM_SOURCE_APP_PRIVATE_KEY }}
           owner: astral-sh
           repositories: ohm-wild
           permission-contents: read
