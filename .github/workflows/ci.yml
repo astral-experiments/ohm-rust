@@ -47,7 +47,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: astral-sh/ohm-wild
-          ref: 0f3f4b429c747372466213dbd1ff8eca87516170
+          ref: 9179eb988df2676342192a24dc337cf9823e9d56
           token: ${{ steps.wild-token.outputs.token }}
           persist-credentials: false
           path: source/wild
@@ -103,7 +103,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: astral-sh/ohm-wild
-          ref: 0f3f4b429c747372466213dbd1ff8eca87516170
+          ref: 9179eb988df2676342192a24dc337cf9823e9d56
           token: ${{ steps.wild-token.outputs.token }}
           persist-credentials: false
           path: source/wild
