@@ -1417,12 +1417,6 @@ fn validate_commandline_args_with_session_available(sess: &Session) {
             || sess.target.binary_format != rustc_target::spec::BinaryFormat::Elf
         {
             Some("require 64-bit little-endian Linux ELF")
-        } else if sess.opts.cg.linker_plugin_lto.enabled()
-            || !matches!(sess.lto(), config::Lto::No | config::Lto::ThinLocal)
-        {
-            Some("require cross-crate LTO to be disabled")
-        } else if sess.split_debuginfo() == SplitDebuginfo::Packed {
-            Some("do not support `-Csplit-debuginfo=packed`")
         } else {
             None
         };

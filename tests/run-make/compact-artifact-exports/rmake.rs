@@ -24,16 +24,7 @@ fn main() {
     }
     run_in_tmpdir(check_replay);
     run_in_tmpdir(check_ordinary_consumers);
-    for flag in ["-Clto=fat", "-Clinker-plugin-lto", "-Csplit-debuginfo=packed"] {
-        rustc()
-            .input("export.rs")
-            .crate_type("staticlib")
-            .incremental("rejected")
-            .args(flags())
-            .arg(flag)
-            .run_fail()
-            .assert_stderr_contains("error: compact artifacts");
-    }
+    run_in_tmpdir(check_compact_local_objects);
     run_in_tmpdir(check_thin_archive);
 }
 
@@ -192,4 +183,40 @@ fn check_c_link() {
     }
     cc().input("main.c").input("libexport.a").out_exe("main").args(extra_c_flags()).run();
     run("main");
+}
+
+fn check_compact_local_objects() {
+    build_native_static_lib("native");
+    rustc().input("dep.rs").crate_type("rlib").args(flags()).run();
+    let dependency = prepare_dependency();
+    let original = rfs::read(dependency);
+    for _ in 0..2 {
+        rustc()
+            .input("consumer.rs")
+            .extern_("dep", dependency)
+            .args(flags())
+            .incremental("incremental")
+            .arg("-Zunstable-options")
+            .arg("-Clinker-features=-lld")
+            .output("consumer")
+            .run();
+        run("consumer");
+    }
+    rustc()
+        .input("consumer.rs")
+        .extern_("dep", dependency)
+        .args(flags())
+        .incremental("incremental")
+        .arg("-Zno-link")
+        .output("consumer")
+        .run();
+    // Replay intentionally does not carry the producer's compact flag.
+    rustc()
+        .input("consumer.rlink")
+        .arg("-Zlink-only")
+        .arg("-Zunstable-options")
+        .arg("-Clinker-features=-lld")
+        .run();
+    run("consumer");
+    assert_eq!(rfs::read(dependency), original);
 }

@@ -288,6 +288,7 @@ jobs:
             tests/run-make/rdr-public-hash*
             tests/run-make/caller-local-codegen
             tests/run-make/compact-artifact-exports
+            tests/run-make/compact-artifact-lto-dwarf
             tests/run-make/unused-externs-transparent
             tests/run-make/reset-codegen-1
             tests/run-make/stable-cgu-merging

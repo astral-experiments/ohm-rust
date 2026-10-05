@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::ffi::{CStr, CString};
 use std::fs::File;
@@ -113,7 +114,7 @@ fn prepare_lto(
                 cgcx,
             ) {
                 Ok(data) => {
-                    let module = SerializedModule::FromRlib(data.to_vec());
+                    let module = SerializedModule::FromRlib(data.into_owned());
                     upstream_modules.push((module, CString::new(name).unwrap()));
                 }
                 Err(e) => dcx.emit_fatal(e),
@@ -127,12 +128,21 @@ fn prepare_lto(
 fn get_bitcode_slice_from_object_data<'a>(
     obj: &'a [u8],
     cgcx: &CodegenContext,
-) -> Result<&'a [u8], LtoBitcodeFromRlib> {
+) -> Result<Cow<'a, [u8]>, LtoBitcodeFromRlib> {
+    // LTO reads upstream members before native linking can materialize their archives.
+    // A compact producer can be consumed by an ordinary LTO build, so inspect the bytes
+    // independently of this compilation's artifact settings.
+    if obj.starts_with(rustc_data_structures::compact_artifact::MAGIC) {
+        let decoded = rustc_data_structures::compact_artifact::unpack_elf(obj)
+            .map_err(|err| LtoBitcodeFromRlib { err: err.to_string() })?;
+        return get_bitcode_slice_from_object_data(&decoded, cgcx)
+            .map(|data| Cow::Owned(data.into_owned()));
+    }
     // We're about to assume the data here is an object file with sections, but if it's raw LLVM IR
     // that won't work. Fortunately, if that's what we have we can just return the object directly,
     // so we sniff the relevant magic strings here and return.
     if obj.starts_with(b"\xDE\xC0\x17\x0B") || obj.starts_with(b"BC\xC0\xDE") {
-        return Ok(obj);
+        return Ok(Cow::Borrowed(obj));
     }
     // We drop the "__LLVM," prefix here because on Apple platforms there's a notion of "segment
     // name" which in the public API for sections gets treated as part of the section name, but
@@ -146,7 +156,7 @@ fn get_bitcode_slice_from_object_data<'a>(
         .section_by_name(section_name)
         .ok_or_else(|| LtoBitcodeFromRlib { err: format!("Can't find section {section_name}") })?;
 
-    section.data().map_err(|err| LtoBitcodeFromRlib { err: err.to_string() })
+    section.data().map(Cow::Borrowed).map_err(|err| LtoBitcodeFromRlib { err: err.to_string() })
 }
 
 /// Performs fat LTO by merging all modules into a single one and returning it

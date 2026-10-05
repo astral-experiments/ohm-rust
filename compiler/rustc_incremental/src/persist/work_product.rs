@@ -42,7 +42,9 @@ pub fn copy_cgu_workproduct_to_incr_comp_cache_dir(
             let result = (|| -> std::io::Result<()> {
                 let options = sess.opts.unstable_opts.compact_artifact_options();
                 let bytes = std_fs::read(path)?;
-                if !bytes.starts_with(compact::MAGIC) {
+                // Linker-plugin LTO emits raw LLVM bitcode in `.o` files. Preserve it
+                // for the plugin instead of treating the filename as proof of ELF.
+                if bytes.starts_with(b"\x7fELF") {
                     // Publish a new inode: this output may already share an immutable
                     // incremental work product with another compilation or worktree.
                     compact::atomic_write(path, &compact::pack_elf(&bytes, options)?)?;

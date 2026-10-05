@@ -818,6 +818,7 @@ fn test_unstable_options_tracking_hash() {
     tracked!(codegen_backend, Some("abc".to_string()));
     tracked!(codegen_emit_retag, Some(CodegenRetagOptions::default()));
     tracked!(compact_artifacts, true);
+    tracked!(compact_artifacts_linker, true);
     tracked!(
         coverage_options,
         CoverageOptions {
