@@ -240,14 +240,6 @@ fn main() {
     run_in_tmpdir(|| metadata_prefix_with_artifacts(&["-Zembed-metadata=no"]));
     if target().contains("linux") {
         run_in_tmpdir(|| metadata_prefix_with_artifacts(&["-Zcompact-artifacts"]));
-        for raw_metadata in ["yes", "no"] {
-            run_in_tmpdir(|| {
-                metadata_prefix_with_artifacts(&[
-                    "-Zcompact-artifact-store=compact-store",
-                    &format!("-Zcompact-artifact-raw-metadata={raw_metadata}"),
-                ]);
-            });
-        }
     }
 
     let fresh_hash = compile_and_read_public_api_hash(false);

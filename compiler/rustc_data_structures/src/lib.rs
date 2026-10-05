@@ -54,7 +54,6 @@ pub use rustc_index::static_assert_size;
 // Re-export some data-structure crates which are part of our public API.
 pub use {either, indexmap, smallvec, thin_vec};
 pub mod aligned;
-pub mod artifact_compression;
 pub mod base_n;
 pub mod binary_search_util;
 pub mod fingerprint;
@@ -63,7 +62,6 @@ pub mod flock;
 pub mod frozen;
 pub mod fx;
 pub mod graph;
-pub mod indexed_artifact;
 pub mod intern;
 pub mod jobserver;
 mod limit;

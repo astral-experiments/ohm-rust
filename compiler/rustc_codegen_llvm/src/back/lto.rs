@@ -92,7 +92,10 @@ fn prepare_lto(
     // with either fat or thin LTO
     let mut upstream_modules = Vec::new();
     for path in each_linked_rlib_for_lto {
-        let archive_data = unsafe { Mmap::map_artifact(&path).expect("couldn't map rlib") };
+        let archive_data = unsafe {
+            Mmap::map(std::fs::File::open(&path).expect("couldn't open rlib"))
+                .expect("couldn't map rlib")
+        };
         let archive = ArchiveFile::parse(&*archive_data).expect("wanted an rlib");
         let metadata_link = rmeta_link::read(&archive, &archive_data, &path).unwrap();
         let obj_files = archive
@@ -517,12 +520,7 @@ fn thin_lto(
         // Save the current ThinLTO import information for the next compilation
         // session, overwriting the previous serialized data (if any).
         if let Some(path) = key_map_path
-            && let Err(err) = curr_key_map.save_to_file(&path).and_then(|()| {
-                if let Some(options) = cgcx.incremental_compression_options() {
-                    rustc_data_structures::artifact_compression::pack_with_options(&path, options)?;
-                }
-                Ok(())
-            })
+            && let Err(err) = curr_key_map.save_to_file(&path)
         {
             write::llvm_err(dcx, LlvmError::WriteThinLtoKey { err });
         }
@@ -818,7 +816,7 @@ impl ThinLTOKeysMap {
     fn load_from_file(path: &Path) -> io::Result<Self> {
         use std::io::BufRead;
         let mut keys = BTreeMap::default();
-        let file = io::Cursor::new(rustc_data_structures::artifact_compression::read_all(path)?);
+        let file = File::open_buffered(path)?;
         for line in file.lines() {
             let line = line?;
             let mut split = line.split(' ');

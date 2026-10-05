@@ -357,22 +357,10 @@ pub struct CodegenContext {
     /// The incremental compilation session directory, or None if we are not
     /// compiling incrementally
     pub incr_comp_session_dir: Option<PathBuf>,
-    /// Storage settings for cache-only bitcode and other incremental files.
-    pub incremental_compression: Option<(i32, usize)>,
     /// `Some(limit)` if the codegen should be run in parallel.
     ///
     /// Depends on [`WriteBackendMethods::supports_parallel()`] and `--jobs-backend`.
     pub parallel: Option<NonZero<usize>>,
-}
-
-impl CodegenContext {
-    pub fn incremental_compression_options(
-        &self,
-    ) -> Option<rustc_data_structures::artifact_compression::CompressionOptions> {
-        self.incremental_compression.map(|(level, chunk_size)| {
-            rustc_data_structures::artifact_compression::CompressionOptions { level, chunk_size }
-        })
-    }
 }
 
 fn generate_thin_lto_work<B: WriteBackendMethods>(
@@ -883,14 +871,6 @@ fn execute_optimize_work_item<B: WriteBackendMethods>(
             if let Some(path) = bitcode {
                 remove_existing_incr_comp_artifact(&path)
                     .and_then(|()| fs::write(&path, thin_buffer.data()))
-                    .and_then(|()| {
-                        if let Some(options) = cgcx.incremental_compression_options() {
-                            rustc_data_structures::artifact_compression::pack_with_options(
-                                &path, options,
-                            )?;
-                        }
-                        Ok(())
-                    })
                     .unwrap_or_else(|e| {
                         panic!("Error writing pre-lto-bitcode file `{}`: {}", path.display(), e);
                     });
@@ -902,14 +882,6 @@ fn execute_optimize_work_item<B: WriteBackendMethods>(
                 let buffer = B::serialize_module(module.module_llvm, false);
                 remove_existing_incr_comp_artifact(&path)
                     .and_then(|()| fs::write(&path, buffer.data()))
-                    .and_then(|()| {
-                        if let Some(options) = cgcx.incremental_compression_options() {
-                            rustc_data_structures::artifact_compression::pack_with_options(
-                                &path, options,
-                            )?;
-                        }
-                        Ok(())
-                    })
                     .unwrap_or_else(|e| {
                         panic!("Error writing pre-lto-bitcode file `{}`: {}", path.display(), e);
                     });
@@ -961,20 +933,7 @@ fn execute_copy_from_cache_work_item(
             ensure_removed(dcx, &output_path);
             dcx.abort_if_errors();
         }
-        let copy_result = rustc_data_structures::artifact_compression::is_compressed(
-            &source_file_in_incr_comp_dir,
-        )
-        .and_then(|compressed| {
-            if compressed {
-                rustc_data_structures::artifact_compression::unpack_to(
-                    &source_file_in_incr_comp_dir,
-                    &output_path,
-                )
-            } else {
-                link_or_copy(&source_file_in_incr_comp_dir, &output_path).map(|_| ())
-            }
-        });
-        match copy_result {
+        match link_or_copy(&source_file_in_incr_comp_dir, &output_path) {
             Ok(_) => {
                 links_from_incr_cache.push(source_file_in_incr_comp_dir);
                 Some(output_path)
@@ -1381,10 +1340,6 @@ fn start_executing_work<B: WriteBackendMethods>(
             .incr_comp_session
             .as_ref()
             .map(|incr_comp_session| incr_comp_session.session_directory.clone()),
-        incremental_compression: sess.opts.unstable_opts.compress_incremental.then(|| {
-            let options = sess.opts.unstable_opts.artifact_compression_options();
-            (options.level, options.chunk_size)
-        }),
         output_filenames: Arc::clone(tcx.output_filenames(())),
         module_config: regular_config,
         opt_level,

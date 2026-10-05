@@ -1410,9 +1410,7 @@ pub fn generate_proc_macro_decls_symbol(stable_crate_id: StableCrateId) -> Strin
 #[allow(rustc::bad_opt_access)]
 fn validate_commandline_args_with_session_available(sess: &Session) {
     // Validate before codegen replaces incremental object files with compact artifacts.
-    if sess.opts.unstable_opts.compact_artifacts
-        || sess.opts.unstable_opts.compact_artifact_store.is_some()
-    {
+    if sess.opts.unstable_opts.compact_artifacts {
         let reason = if sess.target.os != Os::Linux
             || sess.target.pointer_width != 64
             || sess.target.endian.as_str() != "little"

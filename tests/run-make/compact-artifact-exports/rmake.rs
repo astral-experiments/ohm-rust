@@ -9,48 +9,36 @@ use run_make_support::{
     rustdoc,
 };
 
-fn flags(manifest: bool) -> [&'static str; 3] {
-    [
-        if manifest { "-Zcompact-artifact-store=store" } else { "-Zcompact-artifacts" },
-        "-Zcompact-artifact-raw-metadata=yes",
-        "-Zcompress-incremental=no",
-    ]
+fn flags() -> [&'static str; 1] {
+    ["-Zcompact-artifacts"]
 }
 
 fn main() {
-    for manifest in [false, true] {
-        for dependency in [false, true] {
-            for incremental in [false, true] {
-                run_in_tmpdir(|| check_export(manifest, dependency, incremental, None));
-            }
+    for dependency in [false, true] {
+        for incremental in [false, true] {
+            run_in_tmpdir(|| check_export(dependency, incremental, None));
         }
-        for flag in ["-Zstaticlib-hide-internal-symbols", "-Zstaticlib-rename-internal-symbols"] {
-            run_in_tmpdir(|| check_export(manifest, true, true, Some(flag)));
-        }
-        for raw in [false, true] {
-            run_in_tmpdir(|| check_replay(manifest, raw));
-        }
-        run_in_tmpdir(|| check_ordinary_consumers(manifest));
-        for flag in ["-Clto=fat", "-Clinker-plugin-lto", "-Csplit-debuginfo=packed"] {
-            rustc()
-                .input("export.rs")
-                .crate_type("staticlib")
-                .incremental("rejected")
-                .args(flags(manifest))
-                .arg(flag)
-                .run_fail()
-                .assert_stderr_contains("error: compact artifacts");
-        }
+    }
+    for flag in ["-Zstaticlib-hide-internal-symbols", "-Zstaticlib-rename-internal-symbols"] {
+        run_in_tmpdir(|| check_export(true, true, Some(flag)));
+    }
+    run_in_tmpdir(check_replay);
+    run_in_tmpdir(check_ordinary_consumers);
+    for flag in ["-Clto=fat", "-Clinker-plugin-lto", "-Csplit-debuginfo=packed"] {
+        rustc()
+            .input("export.rs")
+            .crate_type("staticlib")
+            .incremental("rejected")
+            .args(flags())
+            .arg(flag)
+            .run_fail()
+            .assert_stderr_contains("error: compact artifacts");
     }
     run_in_tmpdir(check_thin_archive);
 }
 
-fn check_rlib(manifest: bool) {
+fn check_rlib() {
     let bytes = rfs::read("libdep.rlib");
-    if manifest {
-        assert!(bytes.starts_with(b"RCLIB001"));
-        return;
-    }
     let archive = ArchiveFile::parse(bytes.as_slice()).unwrap();
     let mut objects = 0;
     let mut metadata = 0;
@@ -68,24 +56,19 @@ fn check_rlib(manifest: bool) {
     assert!(objects > 0);
 }
 
-fn prepare_dependency(manifest: bool) -> &'static str {
-    check_rlib(manifest);
-    if manifest {
-        "libdep.rlib"
-    } else {
-        // The rlib alone must remain usable after a copy, with no adjacent metadata or store.
-        rfs::create_dir("copied");
-        rfs::copy("libdep.rlib", "copied/libdep.rlib");
-        rfs::remove_file("libdep.rlib");
-        if std::path::Path::new("libdep.rmeta").exists() {
-            rfs::remove_file("libdep.rmeta");
-        }
-        assert!(!std::path::Path::new("store").exists());
-        "copied/libdep.rlib"
+fn prepare_dependency() -> &'static str {
+    check_rlib();
+    // The rlib alone must remain usable after a copy, with no adjacent metadata or store.
+    rfs::create_dir("copied");
+    rfs::copy("libdep.rlib", "copied/libdep.rlib");
+    rfs::remove_file("libdep.rlib");
+    if std::path::Path::new("libdep.rmeta").exists() {
+        rfs::remove_file("libdep.rmeta");
     }
+    "copied/libdep.rlib"
 }
 
-fn check_export(manifest: bool, dependency: bool, incremental: bool, symbol_flag: Option<&str>) {
+fn check_export(dependency: bool, incremental: bool, symbol_flag: Option<&str>) {
     let path = if dependency {
         build_native_static_lib("native");
         rustc()
@@ -93,17 +76,17 @@ fn check_export(manifest: bool, dependency: bool, incremental: bool, symbol_flag
             .crate_type("rlib")
             .emit("link,metadata")
             .arg("-Zpacked-bundled-libs")
-            .args(flags(manifest))
+            .args(flags())
             .run();
         // A consumer must use the native archive bundled in the compact dependency.
         rfs::remove_file("libnative.a");
-        prepare_dependency(manifest)
+        prepare_dependency()
     } else {
         ""
     };
     for _ in 0..2 {
         let mut command = rustc();
-        command.input("export.rs").crate_type("staticlib").args(flags(manifest));
+        command.input("export.rs").crate_type("staticlib").args(flags());
         if dependency {
             command.cfg("dependency").extern_("dep", path);
         }
@@ -118,15 +101,14 @@ fn check_export(manifest: bool, dependency: bool, incremental: bool, symbol_flag
     }
 }
 
-fn check_replay(manifest: bool, raw: bool) {
+fn check_replay() {
     build_native_static_lib("native");
     rustc()
         .input("dep.rs")
         .crate_type("rlib")
         .emit("link,metadata")
         .arg("-Zpacked-bundled-libs")
-        .args(flags(manifest))
-        .arg(format!("-Zcompact-artifact-raw-metadata={raw}"))
+        .args(flags())
         .arg("-Zno-link")
         .run();
     rfs::remove_file("libdep.rmeta");
@@ -136,20 +118,15 @@ fn check_replay(manifest: bool, raw: bool) {
         .filter(|path| path.extension().is_some_and(|extension| extension == "rlink"))
         .collect();
     assert_eq!(recipes.len(), 1);
-    rustc()
-        .input(&recipes[0])
-        .args(flags(manifest))
-        .arg(format!("-Zcompact-artifact-raw-metadata={raw}"))
-        .arg("-Zlink-only")
-        .run();
+    rustc().input(&recipes[0]).args(flags()).arg("-Zlink-only").run();
     rfs::remove_file("libnative.a");
-    let dependency = prepare_dependency(manifest);
+    let dependency = prepare_dependency();
     rustc()
         .input("export.rs")
         .crate_type("staticlib")
         .cfg("dependency")
         .extern_("dep", dependency)
-        .args(flags(manifest))
+        .args(flags())
         .run();
     check_c_link();
 }
@@ -158,30 +135,25 @@ fn check_thin_archive() {
     build_native_static_lib("native");
     rfs::remove_file("libnative.a");
     llvm_ar().obj_to_thin_ar().output_input("libnative.a", "native.o").run();
-    rustc().input("dep.rs").crate_type("rlib").args(flags(false)).run();
+    rustc().input("dep.rs").crate_type("rlib").args(flags()).run();
     rfs::remove_file("libnative.a");
     rfs::remove_file("native.o");
-    let dependency = prepare_dependency(false);
+    let dependency = prepare_dependency();
     rustc()
         .input("export.rs")
         .crate_type("staticlib")
         .cfg("dependency")
         .extern_("dep", dependency)
-        .args(flags(false))
+        .args(flags())
         .run();
     check_c_link();
 }
 
-fn check_ordinary_consumers(manifest: bool) {
+fn check_ordinary_consumers() {
     build_native_static_lib("native");
-    rustc()
-        .input("dep.rs")
-        .crate_type("rlib")
-        .arg("-Zpacked-bundled-libs")
-        .args(flags(manifest))
-        .run();
+    rustc().input("dep.rs").crate_type("rlib").arg("-Zpacked-bundled-libs").args(flags()).run();
     rfs::remove_file("libnative.a");
-    let dependency = prepare_dependency(manifest);
+    let dependency = prepare_dependency();
     let original = rfs::read(dependency);
 
     // Neither direct compiler consumers nor rustdoc inherit Cargo's selected linker/format.

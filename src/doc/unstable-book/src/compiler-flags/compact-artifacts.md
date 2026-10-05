@@ -23,7 +23,3 @@ LTO, and packed split DWARF are rejected before code generation. Thin native arc
 are read by the ordinary archive builder. Compression settings come from
 `-Zartifact-compression-profile`, `-Zartifact-compression-level`, and
 `-Zartifact-compression-chunk-size`.
-
-`-Zcompact-artifact-store=<path>` separately selects the earlier manifest and shared object
-store experiment. It takes precedence when both flags are present. That mode requires
-retaining the referenced store and metadata files, and does not support thin native archives.

@@ -786,7 +786,7 @@ where
             let width = self.width - SPARSE_TABLE;
             let bucket_start =
                 self.position.get() + (i.index() / SPARSE_BUCKET_LEN) * SPARSE_BUCKET_BYTES;
-            let bucket = metadata.blob().range(bucket_start, bucket_start + SPARSE_BUCKET_BYTES);
+            let bucket = &metadata.blob()[bucket_start..bucket_start + SPARSE_BUCKET_BYTES];
             let bitmap = u64::from_le_bytes(bucket[..8].try_into().unwrap());
             let bit = 1u64 << (i.index() % SPARSE_BUCKET_LEN);
             if bitmap & bit == 0 {
@@ -807,7 +807,7 @@ where
             (self.position.get() + self.width * i.index(), self.width)
         };
         let end = start + width;
-        let bytes = metadata.blob().range(start, end);
+        let bytes = &metadata.blob()[start..end];
 
         if let Ok(fixed) = bytes.try_into() {
             FixedSizeEncoding::from_bytes(fixed)

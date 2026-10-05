@@ -2470,16 +2470,8 @@ options! {
         "emit retag function calls in generated code"),
     codegen_source_order: bool = (false, parse_bool, [UNTRACKED],
         "emit mono items in the order of spans in source files (default: no)"),
-    compact_artifact_raw_metadata: bool = (false, parse_bool, [TRACKED],
-        "disable implicit metadata compression for compact artifacts (default: no)"),
-    compact_artifact_store: Option<PathBuf> = (None, parse_opt_pathbuf, [TRACKED],
-        "emit compact library manifests and shared objects for the experimental Wild reader"),
     compact_artifacts: bool = (false, parse_bool, [TRACKED],
         "store compact objects in self-contained rlib archives for the experimental Wild reader (default: no)"),
-    compress_artifacts: bool = (false, parse_bool, [TRACKED],
-        "store `.rmeta` files and `.rlib` archives in compressed format (default: no)"),
-    compress_incremental: bool = (false, parse_bool, [TRACKED],
-        "store incremental records and codegen work products in compressed format (default: no)"),
     contract_checks: Option<bool> = (None, parse_opt_bool, [TRACKED],
         "emit runtime checks for contract pre- and post-conditions (default: no)"),
     coverage_options: CoverageOptions = (CoverageOptions::default(), parse_coverage_options, [TRACKED],
@@ -3075,18 +3067,16 @@ written to standard error output)"),
 
 impl UnstableOptions {
     /// Readers obtain chunk geometry from the file; matching flags are unnecessary.
-    pub fn artifact_compression_options(
-        &self,
-    ) -> rustc_data_structures::artifact_compression::CompressionOptions {
+    pub fn compact_artifact_options(&self) -> rustc_data_structures::compact_artifact::Options {
         let (level, chunk_size) = match self.artifact_compression_profile.as_str() {
             "fast" => (-1, 256 * 1024),
             "small" => (9, 1024 * 1024),
             "legacy" => (3, 64 * 1024),
             _ => (3, 256 * 1024),
         };
-        rustc_data_structures::artifact_compression::CompressionOptions {
+        rustc_data_structures::compact_artifact::Options {
             level: self.artifact_compression_level.unwrap_or(level),
-            chunk_size: self.artifact_compression_chunk_size.unwrap_or(chunk_size),
+            block_size: self.artifact_compression_chunk_size.unwrap_or(chunk_size),
         }
     }
 }

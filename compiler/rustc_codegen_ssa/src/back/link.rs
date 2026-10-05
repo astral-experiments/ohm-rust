@@ -1,4 +1,4 @@
-mod compressed_artifacts;
+mod compact_artifacts;
 mod raw_dylib;
 
 use std::collections::BTreeSet;
@@ -17,9 +17,9 @@ use regex::Regex;
 use rustc_arena::TypedArena;
 use rustc_attr_parsing::eval_config_entry;
 use rustc_data_structures::fx::{FxHashSet, FxIndexSet};
+use rustc_data_structures::jobserver;
 use rustc_data_structures::memmap::Mmap;
 use rustc_data_structures::temp_dir::MaybeTempDir;
-use rustc_data_structures::{artifact_compression, jobserver};
 use rustc_errors::DiagCtxtHandle;
 use rustc_fs_util::{TempDirBuilder, fix_windows_verbatim_for_gcc, try_canonicalize};
 use rustc_hir::attrs::NativeLibKind;
@@ -321,8 +321,8 @@ pub fn link_binary(
     // selection still belongs to the ordinary linker; compression must not turn
     // an archive into a list of eagerly linked objects. Library-only rustc jobs
     // do not need to expand their upstream archives.
-    let _compressed_inputs = if outputs.outputs.should_link() {
-        compressed_artifacts::materialize_compressed_rlibs(
+    let _compact_inputs = if outputs.outputs.should_link() {
+        compact_artifacts::materialize_compact_rlibs(
             sess,
             archive_builder_builder,
             &mut crate_info,
@@ -389,23 +389,6 @@ pub fn link_binary(
                         &path,
                     )
                     .build(&out_filename, None);
-                    if sess.opts.unstable_opts.compress_artifacts
-                        && sess.opts.unstable_opts.compact_artifact_store.is_none()
-                        && !sess.opts.unstable_opts.compact_artifacts
-                    {
-                        if let Err(error) = sess.time("compress_rlib", || {
-                            artifact_compression::pack_with_options(
-                                &out_filename,
-                                sess.opts.unstable_opts.artifact_compression_options(),
-                            )
-                        }) {
-                            sess.dcx().emit_fatal(diagnostics::CompressedArtifactError {
-                                action: "compress",
-                                path: out_filename.clone(),
-                                error,
-                            });
-                        }
-                    }
                 }
                 CrateType::StaticLib => {
                     link_staticlib(
@@ -589,21 +572,16 @@ fn link_rlib<'a>(
     archive_builder_builder: &dyn ArchiveBuilderBuilder,
     compiled_modules: &CompiledModules,
     crate_info: &CrateInfo,
-    metadata: &'a EncodedMetadata,
+    metadata: &EncodedMetadata,
     flavor: RlibFlavor,
     tmpdir: &MaybeTempDir,
 ) -> Box<dyn ArchiveBuilder + 'a> {
-    let mut ab: Box<dyn ArchiveBuilder> = if matches!(flavor, RlibFlavor::Normal) {
-        if sess.opts.unstable_opts.compact_artifact_store.is_some() {
-            Box::new(super::archive::CompactArchiveBuilder::new(sess, metadata))
-        } else if sess.opts.unstable_opts.compact_artifacts {
+    let mut ab =
+        if matches!(flavor, RlibFlavor::Normal) && sess.opts.unstable_opts.compact_artifacts {
             archive_builder_builder.new_compact_archive_builder(sess)
         } else {
             archive_builder_builder.new_archive_builder(sess)
-        }
-    } else {
-        archive_builder_builder.new_archive_builder(sess)
-    };
+        };
 
     // Pre-compute the list of Rust object filenames and materialize the rmeta-link
     // wrapper file before any `add_file` calls. This lets the rmeta-link member be

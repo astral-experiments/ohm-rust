@@ -13,7 +13,6 @@ use rustc_session::{IncrCompSession, Session};
 use tracing::debug;
 
 use crate::diagnostics;
-use crate::persist::file_format;
 use crate::persist::fs::*;
 
 /// Copies a CGU work product to the incremental compilation directory, so next compilation can
@@ -38,28 +37,17 @@ pub fn copy_cgu_workproduct_to_incr_comp_cache_dir(
             let _ = saved_files.insert(ext.to_string(), file_name);
             continue;
         }
-        if *ext == "o"
-            && (sess.opts.unstable_opts.compact_artifacts
-                || sess.opts.unstable_opts.compact_artifact_store.is_some())
-        {
+        if *ext == "o" && sess.opts.unstable_opts.compact_artifacts {
             use rustc_data_structures::compact_artifact as compact;
             let result = (|| -> std::io::Result<()> {
-                let profile = sess.opts.unstable_opts.artifact_compression_options();
-                let options =
-                    compact::Options { level: profile.level, block_size: profile.chunk_size };
+                let options = sess.opts.unstable_opts.compact_artifact_options();
                 let bytes = std_fs::read(path)?;
-                if let Some(store) = &sess.opts.unstable_opts.compact_artifact_store {
-                    let object = compact::store_object(&bytes, store, options)?;
-                    compact::link_object(&object, path)?;
-                    compact::link_object(&object, &path_in_incr_dir)
-                } else {
-                    if !bytes.starts_with(compact::MAGIC) {
-                        // Publish a new inode: this output may already share an immutable
-                        // incremental work product with another compilation or worktree.
-                        compact::atomic_write(path, &compact::pack_elf(&bytes, options)?)?;
-                    }
-                    compact::link_object(path, &path_in_incr_dir)
+                if !bytes.starts_with(compact::MAGIC) {
+                    // Publish a new inode: this output may already share an immutable
+                    // incremental work product with another compilation or worktree.
+                    compact::atomic_write(path, &compact::pack_elf(&bytes, options)?)?;
                 }
+                compact::link_object(path, &path_in_incr_dir)
             })();
             match result {
                 Ok(()) => {
@@ -77,15 +65,6 @@ pub fn copy_cgu_workproduct_to_incr_comp_cache_dir(
         }
         match link_or_copy(path, &path_in_incr_dir) {
             Ok(_) => {
-                // A `.dwo` stays hard-linked to the copy debuggers read from the output
-                // directory; packing it would store its DWARF twice.
-                if *ext != "dwo" {
-                    file_format::compress_incremental_artifact(
-                        sess,
-                        &path_in_incr_dir,
-                        "compress_incremental_work_product",
-                    );
-                }
                 let _ = saved_files.insert(ext.to_string(), file_name);
             }
             Err(err) => {
