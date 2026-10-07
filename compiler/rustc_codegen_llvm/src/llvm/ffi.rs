@@ -2554,6 +2554,8 @@ unsafe extern "C" {
         bytecode_len: usize,
     ) -> bool;
     pub(crate) fn LLVMRustLinkerFree<'a>(linker: &'a mut Linker<'a>);
+    pub(crate) fn LLVMRustThinLTOHasModuleHashes(data: &ThinLTOData) -> bool;
+
     pub(crate) fn LLVMRustComputeLTOCacheKey(
         key_out: &RustString,
         mod_id: *const c_char,

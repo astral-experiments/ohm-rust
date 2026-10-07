@@ -20,7 +20,7 @@ use rustc_data_structures::profiling::SelfProfilerRef;
 use rustc_errors::{DiagCtxt, DiagCtxtHandle};
 use rustc_hir::attrs::SanitizerSet;
 use rustc_middle::bug;
-use rustc_middle::dep_graph::WorkProduct;
+use rustc_middle::dep_graph::{WorkProduct, WorkProductId};
 use rustc_session::config;
 use tracing::{debug, info};
 
@@ -485,6 +485,12 @@ fn thin_lto(
         info!("prev_key_map: {:#?}", prev_key_map);
         info!("curr_key_map: {:#?}", curr_key_map);
 
+        // Fat-LTO bitcode can have no module hash. Its body could change without
+        // changing the cache key of either itself or a module importing from it.
+        // Fail closed for dependency reuse if any input lacks this identity.
+        let reuse_dependencies = !cgcx.thin_lto_dependency_work_products.is_empty()
+            && llvm::LLVMRustThinLTOHasModuleHashes(data.0);
+
         // Throw our data in an `Arc` as we'll be sharing it across threads. We
         // also put all memory referenced by the C++ data (buffers, ids, etc)
         // into the arc as well. After this we'll create a thin module
@@ -497,16 +503,27 @@ fn thin_lto(
         info!("checking which modules can be-reused and which have to be re-optimized.");
         for (module_index, module_name) in shared.module_names.iter().enumerate() {
             let module_name = module_name_to_str(module_name);
-            if let (Some(prev_key_map), true) =
-                (prev_key_map.as_ref(), green_modules.contains_key(module_name))
+            // Local modules still require a green dep-node. Dependency modules do
+            // not have local dep-nodes; their bitcode and ThinLTO imports, exports,
+            // and symbol resolutions are covered by LLVM's cache key instead.
+            let work_product = if module_index < full_scope_len {
+                green_modules.get(module_name)
+            } else if reuse_dependencies {
+                cgcx.thin_lto_dependency_work_products
+                    .get(&WorkProductId::from_cgu_name(module_name))
+            } else {
+                None
+            };
+            if let (Some(prev_key_map), Some(work_product)) = (prev_key_map.as_ref(), work_product)
             {
                 assert!(cgcx.incr_comp_session_dir.is_some());
 
                 // If a module exists in both the current and the previous session,
                 // and has the same LTO cache key in both sessions, then we can re-use it
-                if prev_key_map.keys.get(module_name) == curr_key_map.keys.get(module_name) {
-                    let work_product = green_modules[module_name].clone();
-                    copy_jobs.push(work_product);
+                if let Some(key) = curr_key_map.keys.get(module_name)
+                    && prev_key_map.keys.get(module_name) == Some(key)
+                {
+                    copy_jobs.push(work_product.clone());
                     info!(" - {}: re-used", module_name);
                     assert!(cgcx.incr_comp_session_dir.is_some());
                     continue;

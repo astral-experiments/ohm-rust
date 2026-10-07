@@ -2716,6 +2716,8 @@ options! {
         "reuse unchanged incremental monomorphization partitions without public API hashing"),
     ohm_stable_cgu_merging: bool = (false, parse_bool, [TRACKED],
         "merge incremental codegen units into stable, name-based buckets"),
+    ohm_thin_lto_dependency_cache: bool = (false, parse_bool, [TRACKED],
+        "reuse optimized dependency modules in incremental ThinLTO builds"),
     on_broken_pipe: OnBrokenPipe = (OnBrokenPipe::Default, parse_on_broken_pipe, [TRACKED],
         "behavior of std::io::ErrorKind::BrokenPipe (SIGPIPE)"),
     osx_rpath_install_name: bool = (false, parse_bool, [TRACKED],
