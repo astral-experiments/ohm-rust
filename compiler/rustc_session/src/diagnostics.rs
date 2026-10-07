@@ -265,6 +265,12 @@ pub(crate) struct NotCircumventFeature;
 pub(crate) struct LinkerPluginToWindowsNotSupported;
 
 #[derive(Diagnostic)]
+#[diag("compact artifacts {$reason}")]
+pub(crate) struct UnsupportedCompactArtifacts {
+    pub(crate) reason: &'static str,
+}
+
+#[derive(Diagnostic)]
 #[diag("file `{$path}` passed to `-C profile-use` does not exist")]
 pub(crate) struct ProfileUseFileDoesNotExist<'a> {
     pub(crate) path: &'a std::path::Path,

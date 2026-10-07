@@ -43,6 +43,7 @@ extern crate self as rustc_data_structures;
 use std::fmt;
 
 pub use atomic_ref::AtomicRef;
+pub use compact_artifact;
 pub use ena::{snapshot_vec, undo_log, unify};
 // Re-export `hashbrown::hash_table`, because it's part of our API
 // (via `ShardedHashMap`), and because it lets other compiler crates use the

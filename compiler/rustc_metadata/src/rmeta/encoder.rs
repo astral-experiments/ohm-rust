@@ -50,7 +50,7 @@ use rustc_span::{
     ByteSymbol, ExternalSource, FileName, SourceFile, Span, SpanData, SpanEncoder,
     StableSourceFileId, Symbol, SyntaxContext, sym,
 };
-use tracing::{debug, instrument, trace};
+use tracing::{debug, info, instrument, trace};
 
 use self::metadata_prefix::{
     MetadataPrefixManifest, MetadataPrefixManifestBuilder, hash_definition_span,
@@ -3255,11 +3255,9 @@ fn encode_crate_root<'tcx, 'h, M: MetadataEncoder<'tcx>>(
 fn try_reuse_metadata_prefix(
     tcx: TyCtxt<'_>,
     path: &Path,
-    ref_path: Option<&Path>,
     metadata_dep_node: DepNode,
-) -> Option<()> {
-    if ref_path.is_some()
-        || !tcx.sess.opts.unstable_opts.public_api_hash
+) -> Option<CrateHashes> {
+    if !tcx.sess.opts.unstable_opts.public_api_hash
         || tcx.sess.opts.unstable_opts.incremental_ignore_spans
         || tcx.sess.opts.unstable_opts.meta_stats
         || tcx.crate_types().contains(&CrateType::ProcMacro)
@@ -3281,10 +3279,9 @@ fn try_reuse_metadata_prefix(
     let dependencies =
         tcx.dep_graph.previous_dependencies_except_red(&metadata_dep_node, &changed_dep_node)?;
     let manifest = MetadataPrefixManifest::load(&manifest_path)?;
-    let file = File::open(metadata_path).ok()?;
     // SAFETY: The previous work-product remains immutable; replacement metadata is written to a
     // freshly created inode and atomically renamed only after encoding completes.
-    let previous_metadata = unsafe { Mmap::map(file).ok()? };
+    let previous_metadata = unsafe { Mmap::map(File::open(&metadata_path).ok()?).ok()? };
     if manifest.metadata_len != previous_metadata.len()
         || manifest.metadata_fingerprint != metadata_fingerprint(&previous_metadata)
         || manifest.stable_crate_id != tcx.stable_crate_id(LOCAL_CRATE).as_u64()
@@ -3355,6 +3352,7 @@ fn try_reuse_metadata_prefix(
         .tempfile_in(output_directory)
         .ok()?;
     let prefix_position = manifest.prefix_position;
+    let hashes = CrateHashes { private_hash: current_private_hash, ..previous_root.header.hashes };
     with_encode_metadata_header::<DefPathHashDefIdEncoder<'_>>(
         tcx,
         temporary_file.path(),
@@ -3390,7 +3388,7 @@ fn try_reuse_metadata_prefix(
                 ),
                 public_global_hash: previous_rdr_hashes.public_global_hash,
             });
-            previous_root.header.hashes.private_hash = current_private_hash;
+            previous_root.header.hashes = hashes;
             let root: LazyValue<CrateRoot> = ecx.lazy(previous_root);
             root.position.get()
         },
@@ -3416,8 +3414,9 @@ fn try_reuse_metadata_prefix(
     if let Ok(metadata) = std::fs::metadata(path) {
         tcx.prof.artifact_size("crate_metadata", "crate_metadata", metadata.len());
     }
-    debug!(target: "ohm_metadata_reuse", "reused metadata item prefix with a freshly encoded source map");
-    Some(())
+    // Keep this opt-in event available in release compilers, where debug tracing is disabled.
+    info!(target: "ohm_metadata_reuse", "reused metadata item prefix with a freshly encoded source map");
+    Some(hashes)
 }
 
 #[instrument(level = "trace", skip(tcx))]
@@ -3439,15 +3438,34 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
         let saved_path = &work_product.saved_files["rmeta"];
         let incr_comp_session_dir = &tcx.incr_comp_session.unwrap().session_directory;
         let source_file_in_incr_dir = &incr_comp_session_dir.join(saved_path);
-        debug!("copying preexisting metadata from {source_file_in_incr_dir:?} to {path:?}");
-        match rustc_fs_util::link_or_copy(&source_file_in_incr_dir, path) {
+        info!(target: "ohm_metadata_reuse", "copying preexisting metadata from {source_file_in_incr_dir:?} to {path:?}");
+        match rustc_fs_util::link_or_copy(source_file_in_incr_dir, path) {
             Ok(_) => {}
             Err(err) => tcx.dcx().emit_fatal(FailCreateFileEncoder { err }),
         };
+        if let Some(ref_path) = ref_path {
+            // The full metadata work product does not include the separately emitted stub.
+            // Recreate it from the reused header, retaining the original public API hash.
+            let mmap = std::fs::File::open(path)
+                .and_then(|file| unsafe { Mmap::map(file) })
+                .unwrap_or_else(|err| tcx.dcx().emit_fatal(FailCreateFileEncoder { err }));
+            let metadata =
+                MetadataBlob::new(slice_owned(mmap, Deref::deref)).expect("valid reused metadata");
+            let mut header = metadata.get_header();
+            header.is_stub = true;
+            with_encode_metadata_header::<DefIndexDefIdEncoder>(tcx, ref_path, |ecx| {
+                ecx.lazy::<CrateHeader, _>(header).position.get()
+            });
+        }
         return;
     };
 
-    if try_reuse_metadata_prefix(tcx, path, ref_path, dep_node).is_some() {
+    if let Some(hashes) = try_reuse_metadata_prefix(tcx, path, dep_node) {
+        // A separate stub has the same public hash as the reused prefix, but must carry the
+        // current private hash from the freshly encoded suffix.
+        if let Some(ref_path) = ref_path {
+            encode_metadata_stub(tcx, ref_path, hashes);
+        }
         return;
     }
 
@@ -3490,19 +3508,24 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
 
     // Generate the metadata stub manually, as that is a small file compared to full metadata.
     if let Some(ref_path) = ref_path {
-        let _prof_timer = tcx.prof.verbose_generic_activity("generate_crate_metadata_stub");
-
-        with_encode_metadata_header::<DefIndexDefIdEncoder>(tcx, ref_path, |ecx| {
-            let header: LazyValue<CrateHeader> = ecx.lazy(CrateHeader {
-                name: tcx.crate_name(LOCAL_CRATE),
-                triple: tcx.sess.opts.target_triple.clone(),
-                hashes,
-                is_proc_macro_crate: false,
-                is_stub: true,
-            });
-            header.position.get()
-        })
+        encode_metadata_stub(tcx, ref_path, hashes);
     }
+}
+
+/// Emits the separate crate header after either full encoding or validated prefix reuse.
+fn encode_metadata_stub(tcx: TyCtxt<'_>, path: &Path, hashes: CrateHashes) {
+    let _prof_timer = tcx.prof.verbose_generic_activity("generate_crate_metadata_stub");
+
+    with_encode_metadata_header::<DefIndexDefIdEncoder>(tcx, path, |ecx| {
+        let header: LazyValue<CrateHeader> = ecx.lazy(CrateHeader {
+            name: tcx.crate_name(LOCAL_CRATE),
+            triple: tcx.sess.opts.target_triple.clone(),
+            hashes,
+            is_proc_macro_crate: false,
+            is_stub: true,
+        });
+        header.position.get()
+    })
 }
 
 fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(

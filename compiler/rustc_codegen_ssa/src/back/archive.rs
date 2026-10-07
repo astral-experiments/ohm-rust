@@ -66,6 +66,10 @@ impl ImportLibraryItem {
 pub trait ArchiveBuilderBuilder {
     fn new_archive_builder<'a>(&self, sess: &'a Session) -> Box<dyn ArchiveBuilder + 'a>;
 
+    fn new_compact_archive_builder<'a>(&self, sess: &'a Session) -> Box<dyn ArchiveBuilder + 'a> {
+        Box::new(ArArchiveBuilder::new_compact(sess, &DEFAULT_OBJECT_READER))
+    }
+
     fn create_dylib_metadata_wrapper(
         &self,
         sess: &Session,
@@ -177,6 +181,16 @@ pub trait ArchiveBuilderBuilder {
             if !bundled_lib_file_names.contains(&Symbol::intern(name)) {
                 continue; // We need to extract only native libraries.
             }
+            let decoded;
+            let data = if data.starts_with(rustc_data_structures::compact_artifact::MAGIC) {
+                decoded =
+                    rustc_data_structures::compact_artifact::unpack_elf(data).map_err(|error| {
+                        ExtractBundledLibsError::ArchiveMember { rlib, error: Box::new(error) }
+                    })?;
+                decoded.as_slice()
+            } else {
+                data
+            };
             let data = search_for_section(rlib, data, ".bundled_lib").map_err(|e| {
                 ExtractBundledLibsError::ExtractSection { rlib, error: Box::<dyn Error>::from(e) }
             })?;
@@ -385,6 +399,7 @@ impl ArchiveBuilderBuilder for ArArchiveBuilderBuilder {
 pub struct ArArchiveBuilder<'a> {
     sess: &'a Session,
     object_reader: &'static ObjectReader,
+    compact: bool,
 
     src_archives: Vec<(PathBuf, Mmap)>,
     // Don't use an `HashMap` here, as the order is important. `lib.rmeta` needs
@@ -414,9 +429,38 @@ struct ArchiveEntry {
 
 impl<'a> ArArchiveBuilder<'a> {
     pub fn new(sess: &'a Session, object_reader: &'static ObjectReader) -> ArArchiveBuilder<'a> {
-        ArArchiveBuilder { sess, object_reader, src_archives: vec![], entries: vec![] }
+        ArArchiveBuilder {
+            sess,
+            object_reader,
+            compact: false,
+            src_archives: vec![],
+            entries: vec![],
+        }
+    }
+
+    /// Preserve normal archive ownership while compacting its object members.
+    pub fn new_compact(sess: &'a Session, object_reader: &'static ObjectReader) -> Self {
+        Self { compact: true, ..Self::new(sess, object_reader) }
     }
 }
+
+// Symbol tables live in the eager metadata view, so indexing the archive does not decode
+// any code, relocations, or DWARF payload. Compact members are always ELF64, not COFF/XCOFF.
+const COMPACT_OBJECT_READER: ObjectReader = ObjectReader {
+    get_symbols: |data, symbols| {
+        if data.starts_with(rustc_data_structures::compact_artifact::MAGIC) {
+            let object = rustc_data_structures::compact_artifact::CompactObject::parse(data)?;
+            (DEFAULT_OBJECT_READER.get_symbols)(object.metadata(), symbols)
+        } else {
+            (DEFAULT_OBJECT_READER.get_symbols)(data, symbols)
+        }
+    },
+    is_64_bit_object_file: |data| {
+        data.starts_with(rustc_data_structures::compact_artifact::MAGIC)
+            || (DEFAULT_OBJECT_READER.is_64_bit_object_file)(data)
+    },
+    ..DEFAULT_OBJECT_READER
+};
 
 fn try_filter_fat_archs(
     archs: &[impl FatArch],
@@ -564,6 +608,9 @@ impl<'a> ArchiveBuilder for ArArchiveBuilder<'a> {
 
 impl<'a> ArArchiveBuilder<'a> {
     fn build_inner(self, output: &Path, symbols: Option<ArchiveSymbols>) -> io::Result<bool> {
+        if self.compact && symbols.is_some() {
+            return Err(io::Error::other("compact rlib symbol rewriting is not supported"));
+        }
         let archive_kind = match &*self.sess.target.archive_format {
             "gnu" => ArchiveKind::Gnu,
             "bsd" => ArchiveKind::Bsd,
@@ -575,32 +622,72 @@ impl<'a> ArArchiveBuilder<'a> {
             }
         };
 
-        // Collect all internally-defined symbol names across every Rust object file.
-        // This set is needed because rename must also apply to *undefined* references
-        // (cross-object calls within the staticlib), but we cannot use `!exported.contains(name)`
-        // alone — that would also match external C symbols like `malloc` which must not be renamed.
+        // Conventional exports materialize compact objects before reading or editing symbols.
+        // Compact rlibs retain ordinary metadata members and independently compressed objects.
+        let options = self.sess.opts.unstable_opts.compact_artifact_options();
+        let mut inputs = Vec::new();
+        for (entry_name, entry) in self.entries {
+            let data: Box<dyn AsRef<[u8]>> =
+                match entry.source {
+                    ArchiveEntrySource::Archive { archive_index, file_range } => {
+                        let src_archive = &self.src_archives[archive_index];
+                        let archive_data = &src_archive.1;
+                        let start = file_range.0 as usize;
+                        let end = start + file_range.1 as usize;
+                        let Some(data) = archive_data.get(start..end) else {
+                            return Err(io_error_context(
+                                "invalid archive member",
+                                io::Error::new(
+                                    io::ErrorKind::InvalidData,
+                                    format!(
+                                        "archive member at offset {start} with size {} \
+                                         exceeds archive size {} in `{}`",
+                                        file_range.1,
+                                        archive_data.len(),
+                                        src_archive.0.display(),
+                                    ),
+                                ),
+                            ));
+                        };
+                        Box::new(data)
+                    }
+                    ArchiveEntrySource::File(file) => unsafe {
+                        Box::new(
+                            Mmap::map(File::open(file).map_err(|err| {
+                                io_error_context("failed to open object file", err)
+                            })?)
+                            .map_err(|err| io_error_context("failed to map object file", err))?,
+                        )
+                    },
+                };
+            let bytes = (*data).as_ref();
+            let data = if self.compact {
+                if bytes.starts_with(b"\x7fELF")
+                    && entry_name != b"lib.rmeta"
+                    && entry_name != rmeta_link::FILENAME.as_bytes()
+                {
+                    Box::new(rustc_data_structures::compact_artifact::pack_elf(bytes, options)?)
+                        as Box<dyn AsRef<[u8]>>
+                } else {
+                    data
+                }
+            } else if bytes.starts_with(rustc_data_structures::compact_artifact::MAGIC) {
+                Box::new(rustc_data_structures::compact_artifact::unpack_elf(bytes)?)
+                    as Box<dyn AsRef<[u8]>>
+            } else {
+                data
+            };
+            inputs.push((entry_name, entry.kind, data));
+        }
+
+        // Rename must include references between Rust objects, but exclude external C symbols.
         let rename = if let Some(sym) = &symbols
             && let Some(rename_suffix) = sym.rename_suffix.as_deref()
         {
             let mut names = FxHashSet::default();
-            for (_, entry) in &self.entries {
-                if entry.kind != ArchiveEntryKind::RustObj {
-                    continue;
-                }
-                match &entry.source {
-                    ArchiveEntrySource::Archive { archive_index, file_range } => {
-                        let src_archive = &self.src_archives[*archive_index];
-                        let start = file_range.0 as usize;
-                        let end = start + file_range.1 as usize;
-                        if let Some(data) = src_archive.1.get(start..end) {
-                            collect_internal_names(data, &sym.exported, &mut names);
-                        }
-                    }
-                    ArchiveEntrySource::File(file) => {
-                        if let Ok(data) = fs::read(file) {
-                            collect_internal_names(&data, &sym.exported, &mut names);
-                        }
-                    }
+            for (_, kind, data) in &inputs {
+                if *kind == ArchiveEntryKind::RustObj {
+                    collect_internal_names((**data).as_ref(), &sym.exported, &mut names);
                 }
             }
             Some((names, rename_suffix))
@@ -608,69 +695,37 @@ impl<'a> ArArchiveBuilder<'a> {
             None
         };
 
-        let mut entries = Vec::new();
-
-        for (entry_name, entry) in self.entries {
-            let data: Box<dyn AsRef<[u8]>> = match entry.source {
-                ArchiveEntrySource::Archive { archive_index, file_range } => {
-                    let src_archive = &self.src_archives[archive_index];
-                    let archive_data = &src_archive.1;
-                    let start = file_range.0 as usize;
-                    let end = start + file_range.1 as usize;
-                    let Some(data) = archive_data.get(start..end) else {
-                        return Err(io_error_context(
-                            "invalid archive member",
-                            io::Error::new(
-                                io::ErrorKind::InvalidData,
-                                format!(
-                                    "archive member at offset {start} with size {} \
-                                         exceeds archive size {} in `{}`",
-                                    file_range.1,
-                                    archive_data.len(),
-                                    src_archive.0.display(),
-                                ),
-                            ),
-                        ));
+        let entries = inputs
+            .into_iter()
+            .map(|(entry_name, kind, data)| {
+                let data = if kind == ArchiveEntryKind::RustObj
+                    && let Some(sym) = &symbols
+                {
+                    match apply_edits((*data).as_ref(), &sym.exported, sym.hide, rename.as_ref()) {
+                        Cow::Borrowed(_) => data,
+                        Cow::Owned(edited) => Box::new(edited) as Box<dyn AsRef<[u8]>>,
+                    }
+                } else {
+                    data
+                };
+                let object_reader =
+                    if (*data).as_ref().starts_with(rustc_data_structures::compact_artifact::MAGIC)
+                    {
+                        &COMPACT_OBJECT_READER
+                    } else {
+                        self.object_reader
                     };
-
-                    if entry.kind == ArchiveEntryKind::RustObj
-                        && let Some(sym) = &symbols
-                    {
-                        Box::new(apply_edits(data, &sym.exported, sym.hide, rename.as_ref()))
-                    } else {
-                        Box::new(data)
-                    }
+                NewArchiveMember {
+                    buf: data,
+                    object_reader,
+                    member_name: String::from_utf8(entry_name).unwrap(),
+                    mtime: 0,
+                    uid: 0,
+                    gid: 0,
+                    perms: 0o644,
                 }
-                ArchiveEntrySource::File(file) => unsafe {
-                    let mmap = Mmap::map(
-                        File::open(file)
-                            .map_err(|err| io_error_context("failed to open object file", err))?,
-                    )
-                    .map_err(|err| io_error_context("failed to map object file", err))?;
-                    if entry.kind == ArchiveEntryKind::RustObj
-                        && let Some(sym) = &symbols
-                    {
-                        let edited = apply_edits(&mmap, &sym.exported, sym.hide, rename.as_ref());
-                        match edited {
-                            Cow::Borrowed(_) => Box::new(mmap) as Box<dyn AsRef<[u8]>>,
-                            Cow::Owned(v) => Box::new(v),
-                        }
-                    } else {
-                        Box::new(mmap) as Box<dyn AsRef<[u8]>>
-                    }
-                },
-            };
-
-            entries.push(NewArchiveMember {
-                buf: data,
-                object_reader: self.object_reader,
-                member_name: String::from_utf8(entry_name).unwrap(),
-                mtime: 0,
-                uid: 0,
-                gid: 0,
-                perms: 0o644,
             })
-        }
+            .collect::<Vec<_>>();
 
         // Write to a temporary file first before atomically renaming to the final name.
         // This prevents programs (including rustc) from attempting to read a partial archive.

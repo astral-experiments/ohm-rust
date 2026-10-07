@@ -1409,6 +1409,22 @@ pub fn generate_proc_macro_decls_symbol(stable_crate_id: StableCrateId) -> Strin
 // JUSTIFICATION: needs to access args to validate them
 #[allow(rustc::bad_opt_access)]
 fn validate_commandline_args_with_session_available(sess: &Session) {
+    // Validate before codegen replaces incremental object files with compact artifacts.
+    if sess.opts.unstable_opts.compact_artifacts {
+        let reason = if sess.target.os != Os::Linux
+            || sess.target.pointer_width != 64
+            || sess.target.endian.as_str() != "little"
+            || sess.target.binary_format != rustc_target::spec::BinaryFormat::Elf
+        {
+            Some("require 64-bit little-endian Linux ELF")
+        } else {
+            None
+        };
+        if let Some(reason) = reason {
+            sess.dcx().emit_fatal(diagnostics::UnsupportedCompactArtifacts { reason });
+        }
+    }
+
     // Since we don't know if code in an rlib will be linked to statically or
     // dynamically downstream, rustc generates `__imp_` symbols that help linkers
     // on Windows deal with this lack of knowledge (#27438). Unfortunately,

@@ -1,3 +1,4 @@
+mod compact_artifacts;
 mod raw_dylib;
 
 use std::collections::BTreeSet;
@@ -305,8 +306,8 @@ fn find_bundled_library(
 pub fn link_binary(
     sess: &Session,
     archive_builder_builder: &dyn ArchiveBuilderBuilder,
-    compiled_modules: CompiledModules,
-    crate_info: CrateInfo,
+    mut compiled_modules: CompiledModules,
+    mut crate_info: CrateInfo,
     metadata: EncodedMetadata,
     outputs: &OutputFilenames,
     codegen_backend: &'static str,
@@ -315,6 +316,22 @@ pub fn link_binary(
     let output_metadata = sess.opts.output_types.contains_key(&OutputType::Metadata);
     let mut tempfiles_for_stdout_output: Vec<PathBuf> = Vec::new();
     let mut rmeta_link_cache = RmetaLinkCache::default();
+
+    // Keep conventional inputs only for this link operation. Archive member
+    // selection still belongs to the ordinary linker; compression must not turn
+    // an archive into a list of eagerly linked objects. Library-only rustc jobs
+    // do not need to expand their upstream archives.
+    let mut compact_inputs = if outputs.outputs.should_link() {
+        compact_artifacts::materialize_compact_inputs(
+            sess,
+            archive_builder_builder,
+            &mut compiled_modules,
+            &mut crate_info,
+            outputs,
+        )
+    } else {
+        None
+    };
 
     if outputs.outputs.should_link() {
         sess.time("check_externally_implementable_item_linkage", || {
@@ -441,6 +458,16 @@ pub fn link_binary(
         }
     }
 
+    if let Some(inputs) = &mut compact_inputs {
+        inputs.restore_objects(&mut compiled_modules);
+    }
+
+    if (sess.opts.unstable_opts.compact_artifacts || sess.opts.unstable_opts.link_only)
+        && preserve_objects_for_their_debuginfo(sess).0
+    {
+        compact_artifacts::materialize_debug_objects(sess, &compiled_modules);
+    }
+
     // Remove the temporary object file and metadata if we aren't saving temps.
     sess.time("link_binary_remove_temps", || {
         // If the user requests that temporaries are saved, don't delete any.
@@ -560,7 +587,12 @@ fn link_rlib<'a>(
     flavor: RlibFlavor,
     tmpdir: &MaybeTempDir,
 ) -> Box<dyn ArchiveBuilder + 'a> {
-    let mut ab = archive_builder_builder.new_archive_builder(sess);
+    let mut ab =
+        if matches!(flavor, RlibFlavor::Normal) && sess.opts.unstable_opts.compact_artifacts {
+            archive_builder_builder.new_compact_archive_builder(sess)
+        } else {
+            archive_builder_builder.new_archive_builder(sess)
+        };
 
     // Pre-compute the list of Rust object filenames and materialize the rmeta-link
     // wrapper file before any `add_file` calls. This lets the rmeta-link member be
@@ -822,7 +854,12 @@ fn link_staticlib(
                 false
             }),
         )
-        .unwrap();
+        .unwrap_or_else(|error| {
+            sess.dcx().emit_fatal(diagnostics::ArchiveBuildFailure {
+                path: out_filename.to_owned(),
+                error,
+            })
+        });
 
         archive_builder_builder
             .extract_bundled_libs(path, tempdir.as_ref(), &relevant_libs)
@@ -831,7 +868,12 @@ fn link_staticlib(
         for filename in relevant_libs.iter() {
             let joined = tempdir.as_ref().join(filename.as_str());
             let path = joined.as_path();
-            ab.add_archive(path, AddArchiveKind::Other).unwrap();
+            ab.add_archive(path, AddArchiveKind::Other).unwrap_or_else(|error| {
+                sess.dcx().emit_fatal(diagnostics::ArchiveBuildFailure {
+                    path: out_filename.to_owned(),
+                    error,
+                })
+            });
         }
 
         all_native_libs.extend(crate_info.native_libraries[&cnum].iter().cloned());
@@ -910,6 +952,7 @@ fn link_staticlib(
 /// DWARF package.
 fn link_dwarf_object(
     sess: &Session,
+    archive_builder_builder: &dyn ArchiveBuilderBuilder,
     compiled_modules: &CompiledModules,
     crate_info: &CrateInfo,
     executable_out_filename: &Path,
@@ -947,6 +990,11 @@ fn link_dwarf_object(
         }
     }
 
+    let mut inputs = compact_artifacts::MaterializedInputs::new(
+        sess,
+        archive_builder_builder,
+        executable_out_filename.parent(),
+    );
     match sess.time("run_thorin", || -> Result<(), thorin::Error> {
         let thorin_sess = ThorinSession::default();
         let mut package = thorin::DwarfPackage::new(&thorin_sess);
@@ -956,10 +1004,12 @@ fn link_dwarf_object(
             SplitDwarfKind::Single => {
                 for m in &compiled_modules.modules {
                     if let Some(input_obj) = &m.object {
-                        package.add_input_object(input_obj)?;
+                        let path = inputs.materialize(input_obj);
+                        package.add_input_object(path.as_deref().unwrap_or(input_obj))?;
                     }
                     if let Some(input_obj) = &m.global_asm_object {
-                        package.add_input_object(input_obj)?;
+                        let path = inputs.materialize(input_obj);
+                        package.add_input_object(path.as_deref().unwrap_or(input_obj))?;
                     }
                 }
             }
@@ -967,7 +1017,8 @@ fn link_dwarf_object(
                 for input_obj in
                     compiled_modules.modules.iter().filter_map(|m| m.dwarf_object.as_ref())
                 {
-                    package.add_input_object(input_obj)?;
+                    let path = inputs.materialize(input_obj);
+                    package.add_input_object(path.as_deref().unwrap_or(input_obj))?;
                 }
             }
         }
@@ -981,7 +1032,8 @@ fn link_dwarf_object(
 
         for input_rlib in input_rlibs {
             debug!(?input_rlib);
-            package.add_input_object(input_rlib)?;
+            let path = inputs.materialize(input_rlib);
+            package.add_input_object(path.as_deref().unwrap_or(input_rlib))?;
         }
 
         // Failing to read the referenced objects is expected for dependencies where the path in the
@@ -1527,9 +1579,13 @@ fn link_natively(
         // We cannot rely on the .o paths in the executable because they may have been
         // remapped by --remap-path-prefix and therefore invalid, so we need to provide
         // the .o/.dwo paths explicitly.
-        SplitDebuginfo::Packed => {
-            link_dwarf_object(sess, compiled_modules, crate_info, out_filename)
-        }
+        SplitDebuginfo::Packed => link_dwarf_object(
+            sess,
+            archive_builder_builder,
+            compiled_modules,
+            crate_info,
+            out_filename,
+        ),
     }
 
     let strip = sess.opts.cg.strip;

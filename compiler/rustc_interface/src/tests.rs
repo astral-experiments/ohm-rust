@@ -799,6 +799,9 @@ fn test_unstable_options_tracking_hash() {
     tracked!(allow_features, Some(vec![String::from("lang_items")]));
     tracked!(always_encode_mir, true);
     tracked!(annotate_moves, AnnotateMoves::Enabled(Some(1234)));
+    tracked!(artifact_compression_chunk_size, Some(16384));
+    tracked!(artifact_compression_level, Some(-1));
+    tracked!(artifact_compression_profile, "fast".to_owned());
     tracked!(assume_incomplete_release, true);
     tracked!(autodiff, vec![AutoDiff::Enable, AutoDiff::NoTT]);
     tracked!(autodiff_post_passes, Some("function(mem2reg,instsimplify,simplifycfg)".to_string()));
@@ -814,6 +817,8 @@ fn test_unstable_options_tracking_hash() {
     );
     tracked!(codegen_backend, Some("abc".to_string()));
     tracked!(codegen_emit_retag, Some(CodegenRetagOptions::default()));
+    tracked!(compact_artifacts, true);
+    tracked!(compact_artifacts_linker, true);
     tracked!(
         coverage_options,
         CoverageOptions {

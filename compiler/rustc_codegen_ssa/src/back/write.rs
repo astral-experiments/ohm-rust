@@ -423,6 +423,17 @@ fn need_pre_lto_bitcode_for_incr_comp(sess: &Session) -> bool {
     }
 }
 
+fn remove_existing_incr_comp_artifact(path: &Path) -> io::Result<()> {
+    // When a previous session exists, its files may be hard-linked into this session. Remove this
+    // session's directory entry before opening it with a truncating writer, so the previous
+    // session's immutable artifact keeps its contents.
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err),
+    }
+}
+
 pub(crate) fn start_async_codegen<B: WriteBackendMethods>(
     backend: B,
     tcx: TyCtxt<'_>,
@@ -858,18 +869,22 @@ fn execute_optimize_work_item<B: WriteBackendMethods>(
         ComputedLtoType::Thin => {
             let thin_buffer = B::serialize_module(module.module_llvm, true);
             if let Some(path) = bitcode {
-                fs::write(&path, thin_buffer.data()).unwrap_or_else(|e| {
-                    panic!("Error writing pre-lto-bitcode file `{}`: {}", path.display(), e);
-                });
+                remove_existing_incr_comp_artifact(&path)
+                    .and_then(|()| fs::write(&path, thin_buffer.data()))
+                    .unwrap_or_else(|e| {
+                        panic!("Error writing pre-lto-bitcode file `{}`: {}", path.display(), e);
+                    });
             }
             WorkItemResult::NeedsThinLto(module.name, thin_buffer)
         }
         ComputedLtoType::Fat => match bitcode {
             Some(path) => {
                 let buffer = B::serialize_module(module.module_llvm, false);
-                fs::write(&path, buffer.data()).unwrap_or_else(|e| {
-                    panic!("Error writing pre-lto-bitcode file `{}`: {}", path.display(), e);
-                });
+                remove_existing_incr_comp_artifact(&path)
+                    .and_then(|()| fs::write(&path, buffer.data()))
+                    .unwrap_or_else(|e| {
+                        panic!("Error writing pre-lto-bitcode file `{}`: {}", path.display(), e);
+                    });
                 WorkItemResult::NeedsFatLto(FatLtoInput::Serialized {
                     name: module.name,
                     bitcode_path: path,

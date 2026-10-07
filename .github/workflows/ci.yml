@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    working-directory: source/rust
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -25,6 +29,28 @@ jobs:
         with:
           # Bootstrap must reach the upstream LLVM commit beyond the Ohm stack.
           fetch-depth: 0
+          path: source/rust
+
+      # Use a dedicated source App installed only on ohm-wild with contents: read.
+      # Never expose the release App's write-capable private key to PR jobs.
+      - name: Create read-only Wild source token
+        id: wild-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.OHM_SOURCE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.OHM_SOURCE_APP_PRIVATE_KEY }}
+          owner: astral-sh
+          repositories: ohm-wild
+          permission-contents: read
+
+      - name: Checkout pinned shared compact-artifact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: astral-sh/ohm-wild
+          ref: 9179eb988df2676342192a24dc337cf9823e9d56
+          token: ${{ steps.wild-token.outputs.token }}
+          persist-credentials: false
+          path: source/wild
 
       - name: Install the pinned nightly formatter
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
@@ -61,6 +87,26 @@ jobs:
         with:
           # Bootstrap must reach the upstream LLVM commit beyond the Ohm stack.
           fetch-depth: 0
+          path: source/rust
+
+      - name: Create read-only Wild source token
+        id: wild-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.OHM_SOURCE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.OHM_SOURCE_APP_PRIVATE_KEY }}
+          owner: astral-sh
+          repositories: ohm-wild
+          permission-contents: read
+
+      - name: Checkout pinned shared compact-artifact source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: astral-sh/ohm-wild
+          ref: 9179eb988df2676342192a24dc337cf9823e9d56
+          token: ${{ steps.wild-token.outputs.token }}
+          persist-credentials: false
+          path: source/wild
 
       - name: Checkout the standard-library backtrace submodule
         run: git submodule update --init --depth 1 library/backtrace
@@ -218,7 +264,7 @@ jobs:
           tests/run-make/incremental-directory-copy tests/run-make/incremental-session-fail
 
       - name: Run reduced-dependency-rebuild and monomorphization incremental tests
-        if: hashFiles('tests/incremental/rdr/**/*.rs') != ''
+        if: hashFiles('source/rust/tests/incremental/rdr/**/*.rs') != ''
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/incremental/rdr
@@ -241,6 +287,8 @@ jobs:
             tests/run-make/public-api-hash*
             tests/run-make/rdr-public-hash*
             tests/run-make/caller-local-codegen
+            tests/run-make/compact-artifact-exports
+            tests/run-make/compact-artifact-lto-dwarf
             tests/run-make/unused-externs-transparent
             tests/run-make/reset-codegen-1
             tests/run-make/stable-cgu-merging

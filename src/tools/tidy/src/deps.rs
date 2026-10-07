@@ -397,6 +397,7 @@ const PERMITTED_RUSTC_DEPENDENCIES: &[&str] = &[
     "pathdiff",
     "perf-event-open-sys",
     "pin-project-lite",
+    "pkg-config",
     "polonius-engine",
     "portable-atomic", // dependency for platforms doesn't support `AtomicU64` in std
     "portable-atomic-util",
@@ -414,6 +415,7 @@ const PERMITTED_RUSTC_DEPENDENCIES: &[&str] = &[
     "rand_core",
     "rand_xorshift", // dependency for doc-tests in rustc_thread_pool
     "rand_xoshiro",
+    "rayon-core",
     "redox_syscall",
     "ref-cast",
     "ref-cast-impl",
@@ -513,6 +515,9 @@ const PERMITTED_RUSTC_DEPENDENCIES: &[&str] = &[
     "zerovec",
     "zerovec-derive",
     "zlib-rs",
+    "zstd",
+    "zstd-safe",
+    "zstd-sys",
     // tidy-alphabetical-end
 ];
 

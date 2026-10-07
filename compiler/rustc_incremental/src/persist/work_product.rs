@@ -37,6 +37,34 @@ pub fn copy_cgu_workproduct_to_incr_comp_cache_dir(
             let _ = saved_files.insert(ext.to_string(), file_name);
             continue;
         }
+        if *ext == "o" && sess.opts.unstable_opts.compact_artifacts {
+            use rustc_data_structures::compact_artifact as compact;
+            let result = (|| -> std::io::Result<()> {
+                let options = sess.opts.unstable_opts.compact_artifact_options();
+                let bytes = std_fs::read(path)?;
+                // Linker-plugin LTO emits raw LLVM bitcode in `.o` files. Preserve it
+                // for the plugin instead of treating the filename as proof of ELF.
+                if bytes.starts_with(b"\x7fELF") {
+                    // Publish a new inode: this output may already share an immutable
+                    // incremental work product with another compilation or worktree.
+                    compact::atomic_write(path, &compact::pack_elf(&bytes, options)?)?;
+                }
+                compact::link_object(path, &path_in_incr_dir)
+            })();
+            match result {
+                Ok(()) => {
+                    let _ = saved_files.insert(ext.to_string(), file_name);
+                }
+                Err(err) => {
+                    sess.dcx().emit_warn(diagnostics::CopyWorkProductToCache {
+                        from: path,
+                        to: &path_in_incr_dir,
+                        err,
+                    });
+                }
+            }
+            continue;
+        }
         match link_or_copy(path, &path_in_incr_dir) {
             Ok(_) => {
                 let _ = saved_files.insert(ext.to_string(), file_name);
