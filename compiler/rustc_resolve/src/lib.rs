@@ -95,6 +95,7 @@ mod ident;
 mod imports;
 mod late;
 mod macros;
+mod resident;
 pub mod rustdoc;
 
 type Res = def::Res<NodeId>;
@@ -1997,6 +1998,61 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
             next_node_id: self.next_node_id,
             owners: self.owners,
             lint_buffer: Steal::new(self.lint_buffer),
+            disambiguators,
+        };
+        ResolverOutputs { global_ctxt, ast_lowering }
+    }
+
+    pub fn resident_outputs(&mut self) -> ResolverOutputs<'tcx> {
+        let proc_macros = self.proc_macros.clone();
+        let expn_that_defined = self.expn_that_defined.clone();
+        let extern_crate_map = self.extern_crate_map.clone();
+        let maybe_unused_trait_imports = self.maybe_unused_trait_imports.clone();
+        let glob_map = self.glob_map.clone();
+        let main_def = self.main_def.clone();
+        let confused_type_with_std_module = self.confused_type_with_std_module.clone();
+        let effective_visibilities = self.effective_visibilities.clone();
+
+        let stripped_cfg_items = self
+            .stripped_cfg_items
+            .iter()
+            .cloned()
+            .filter_map(|item| {
+                let parent_scope = self.owners.get(&item.parent_scope)?.def_id.to_def_id();
+                Some(StrippedCfgItem { parent_scope, ident: item.ident, cfg: item.cfg })
+            })
+            .collect();
+        let disambiguators = self
+            .disambiguators
+            .items()
+            .map(|(&def_id, disamb)| (def_id, Steal::new(disamb.clone())))
+            .collect();
+
+        let global_ctxt = ResolverGlobalCtxt {
+            expn_that_defined,
+            visibilities_for_hashing: self.visibilities_for_hashing.clone(),
+            effective_visibilities,
+            macro_reachable_adts: self.macro_reachable_adts.clone(),
+            extern_crate_map,
+            module_children: self.module_children.clone(),
+            ambig_module_children: self.ambig_module_children.clone(),
+            glob_map,
+            maybe_unused_trait_imports,
+            main_def,
+            trait_impls: self.trait_impls.clone(),
+            proc_macros,
+            confused_type_with_std_module,
+            doc_link_resolutions: self.doc_link_resolutions.clone(),
+            doc_link_traits_in_scope: self.doc_link_traits_in_scope.clone(),
+            all_macro_rules: self.all_macro_rules.clone(),
+            stripped_cfg_items,
+            delegation_infos: self.delegation_infos.clone(),
+        };
+        let ast_lowering = ty::ResolverAstLowering {
+            partial_res_map: self.partial_res_map.clone(),
+            next_node_id: self.next_node_id.clone(),
+            owners: self.owners.clone(),
+            lint_buffer: Steal::new(mem::take(&mut self.lint_buffer)),
             disambiguators,
         };
         ResolverOutputs { global_ctxt, ast_lowering }

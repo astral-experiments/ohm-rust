@@ -5,10 +5,12 @@
 use rustc_abi::ExternAbi;
 use rustc_ast::visit::{VisitorResult, walk_list};
 use rustc_data_structures::fingerprint::Fingerprint;
+use rustc_data_structures::fx::FxHashSet;
 use rustc_data_structures::stable_hash::{StableHash, StableHasher};
 use rustc_data_structures::steal::Steal;
 use rustc_data_structures::svh::Svh;
 use rustc_data_structures::sync::{DynSend, DynSync, par_for_each_in, try_par_for_each_in};
+use rustc_hir::attrs::AttributeKind;
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::def_id::{DefId, LOCAL_CRATE, LocalDefId, LocalModId};
 use rustc_hir::definitions::{DefKey, DefPath, DefPathHash};
@@ -22,7 +24,7 @@ use rustc_span::{ErrorGuaranteed, Ident, Span, Symbol, kw, with_metavar_spans};
 use crate::hir::{ModuleItems, ProjectedMaybeOwner, nested_filter};
 use crate::middle::debugger_visualizer::DebuggerVisualizerFile;
 use crate::query::{IntoQueryKey, LocalCrate};
-use crate::ty::{self, TyCtxt};
+use crate::ty::{self, Ty, TyCtxt};
 
 /// An iterator that walks up the ancestor tree of a given `HirId`.
 /// Constructed using `tcx.hir_parent_iter(hir_id)`.
@@ -32,6 +34,64 @@ struct ParentHirIterator<'tcx> {
     // Cache the current value of `hir_owner_nodes` to avoid repeatedly calling the same query for
     // the same owner, which will uselessly record many times the same query dependency.
     current_owner_nodes: Option<&'tcx OwnerNodes<'tcx>>,
+}
+
+/// Compare every attribute-map field, allowing only empty maps or owner-level module doc comments.
+fn validate_resident_attrs(
+    old: &AttributeMap<'_>,
+    new: &AttributeMap<'_>,
+    module: bool,
+) -> Result<(), &'static str> {
+    let AttributeMap { map: old_map, define_opaque: old_opaque, opt_hash: old_hash } = old;
+    let AttributeMap { map: new_map, define_opaque: new_opaque, opt_hash: new_hash } = new;
+    if old_opaque.is_some() || new_opaque.is_some() {
+        return Err("resident attributes define opaque types");
+    }
+    if old_hash != new_hash {
+        return Err("resident attribute hash changed");
+    }
+    if old_map.is_empty() && new_map.is_empty() {
+        return Ok(());
+    }
+    if !module {
+        return Err("resident function attributes are not empty");
+    }
+    let ([(old_id, old_attrs)], [(new_id, new_attrs)]) = (old_map.range(..), new_map.range(..))
+    else {
+        return Err("resident module attribute map shape changed");
+    };
+    if *old_id != ItemLocalId::ZERO || *new_id != ItemLocalId::ZERO {
+        return Err("resident module attributes belong to interior nodes");
+    }
+    if old_attrs.len() != new_attrs.len() {
+        return Err("resident module doc attribute count changed");
+    }
+    for (old, new) in old_attrs.iter().zip(new_attrs.iter()) {
+        match (old, new) {
+            (
+                Attribute::Parsed(AttributeKind::DocComment {
+                    style: old_style,
+                    kind: old_kind,
+                    span: old_span,
+                    comment: old_comment,
+                }),
+                Attribute::Parsed(AttributeKind::DocComment {
+                    style: new_style,
+                    kind: new_kind,
+                    span: new_span,
+                    comment: new_comment,
+                }),
+            ) => {
+                if (old_style, old_kind, old_span, old_comment)
+                    != (new_style, new_kind, new_span, new_comment)
+                {
+                    return Err("resident module doc attribute changed");
+                }
+            }
+            _ => return Err("resident module attributes are not doc comments"),
+        }
+    }
+    Ok(())
 }
 
 impl<'tcx> ParentHirIterator<'tcx> {
@@ -103,6 +163,301 @@ impl<'tcx> Iterator for ParentOwnerIterator<'tcx> {
 }
 
 impl<'tcx> TyCtxt<'tcx> {
+    /// Update absolute span inputs while preparing a normally lowered resident owner.
+    ///
+    /// # Safety
+    /// The compiler must be quiescent and single-threaded. The driver must subsequently call
+    /// `ohm_replace_resident_owners` before requesting analysis or consuming old query results.
+    pub unsafe fn ohm_prepare_resident_source_spans(
+        self,
+        source_spans: &[(LocalDefId, Span)],
+    ) -> Result<(), &'static str> {
+        if self.dep_graph.is_fully_enabled()
+            || self.sess.opts.jobs.frontend.is_some()
+            || crate::ty::tls::with_context(|context| context.query.is_some())
+        {
+            return Err("resident source spans require a quiescent single-threaded compiler");
+        }
+        let graph = self.query_system.resident.as_ref().ok_or("resident graph is disabled")?;
+        graph.source_spans.lock().extend(source_spans.iter().copied());
+        for &(owner, _) in source_spans {
+            // SAFETY: The driver owns the compiler and preserves dependency edges until commit.
+            unsafe {
+                crate::queries::TaggedQueryKey::source_span(owner)
+                    .resident_invalidate_quiescent(self);
+            }
+        }
+        Ok(())
+    }
+
+    /// Publish normally lowered owners, backdating only exactly revalidated structural results.
+    ///
+    /// # Safety
+    /// The caller owns the sole compiler thread between requests. The replacements preserve
+    /// definitions, signatures, trait implementations, and exported inferred types. Only the
+    /// checked concrete, non-const body, its containing module's span, and a same-width float
+    /// literal initializer may change. No old query value may be used after publication.
+    pub unsafe fn ohm_replace_resident_owners(
+        self,
+        replacements: &[(LocalDefId, MaybeOwner<'tcx>)],
+        source_spans: &[(LocalDefId, Span)],
+        source_file: rustc_span::StableSourceFileId,
+        old_signature: ty::EarlyBinder<'tcx, ty::PolyFnSig<'tcx>>,
+        old_type: ty::EarlyBinder<'tcx, Ty<'tcx>>,
+        constant_header: Option<(LocalDefId, ty::EarlyBinder<'tcx, Ty<'tcx>>)>,
+    ) -> Result<crate::query::resident::ResidentEviction<'tcx>, &'static str> {
+        use crate::queries::TaggedQueryKey;
+        use crate::query::QueryCache;
+        use crate::query::erase::restore_val;
+        use crate::query::resident::ResidentQueryKey;
+        if self.dep_graph.is_fully_enabled()
+            || self.sess.opts.jobs.frontend.is_some()
+            || crate::ty::tls::with_context(|context| context.query.is_some())
+        {
+            return Err("resident owner replacement requires a quiescent single-threaded compiler");
+        }
+        let graph = self.query_system.resident.as_ref().ok_or("resident graph is disabled")?;
+        let queries = &self.query_system.query_vtables;
+        let mut function = None;
+        let mut constant = None;
+        let mut backdated = Vec::new();
+        // Fixed declarations cannot change global solver answers independently of their recorded
+        // query dependencies. The invalidation planner follows those dependencies, including
+        // legacy solver cache hits, and retains its conservative reset for affected opaque types.
+        let mut inputs =
+            vec![ResidentQueryKey::Query(TaggedQueryKey::source_file_hash(source_file))];
+        for &(owner, replacement) in replacements {
+            if !matches!(replacement, MaybeOwner::Owner(info) if info.nodes.node().def_id().def_id == owner)
+            {
+                return Err("resident replacement must preserve its owner identity");
+            }
+            let info = replacement.as_owner().unwrap();
+            let OwnerNode::Item(item) = info.nodes.node() else {
+                return Err("resident replacement must be a function or module");
+            };
+            match &item.kind {
+                ItemKind::Fn { sig, generics, .. } => {
+                    struct Lifetimes(bool);
+                    impl<'hir> Visitor<'hir> for Lifetimes {
+                        fn visit_lifetime(&mut self, _: &'hir Lifetime) {
+                            self.0 = true;
+                        }
+                    }
+                    let mut lifetimes = Lifetimes(false);
+                    lifetimes.visit_fn_decl(sig.decl);
+                    if function.replace(owner).is_some()
+                        || self.def_kind(owner) != DefKind::Fn
+                        || !info.children.is_empty()
+                        || !generics.params.is_empty()
+                        || !generics.predicates.is_empty()
+                        || sig.header.constness != Constness::NotConst
+                        || sig.header.is_async()
+                        || lifetimes.0
+                    {
+                        return Err("resident backdating requires one concrete free function");
+                    }
+                }
+                ItemKind::Mod(..) => {}
+                ItemKind::Const(_, generics, _, ConstItemRhs::Body(_)) => {
+                    if constant.replace(owner).is_some()
+                        || constant_header.is_none_or(|(expected, _)| expected != owner)
+                        || !matches!(self.def_kind(owner), DefKind::Const { is_type_const: false })
+                        || !info.children.is_empty()
+                        || !generics.params.is_empty()
+                        || !generics.predicates.is_empty()
+                    {
+                        return Err("resident constant must preserve a concrete declaration");
+                    }
+                }
+                _ => return Err("resident replacement must be a function or module"),
+            }
+            let owner_id = OwnerId { def_id: owner };
+            let Some((old_attrs, _)) = queries.hir_attr_map.cache.lookup(&owner_id) else {
+                return Err("resident owner has no cached attributes");
+            };
+            validate_resident_attrs(
+                restore_val(old_attrs),
+                &info.attrs,
+                matches!(item.kind, ItemKind::Mod(..)),
+            )?;
+            // The provider projects exactly this map from lower_to_hir(owner). Its input key is
+            // unchanged, and the freshly lowered complete value was just compared with the cache.
+            backdated.push(TaggedQueryKey::hir_attr_map(owner_id));
+            inputs.extend([
+                ResidentQueryKey::HirBody(owner),
+                ResidentQueryKey::HirStructure(owner),
+                TaggedQueryKey::lower_to_hir(owner).into(),
+                TaggedQueryKey::hir_owner(owner).into(),
+                TaggedQueryKey::def_span(owner.to_def_id()).into(),
+                TaggedQueryKey::def_ident_span(owner.to_def_id()).into(),
+                TaggedQueryKey::source_span(owner).into(),
+            ]);
+        }
+        inputs.extend(
+            source_spans
+                .iter()
+                .map(|&(owner, _)| ResidentQueryKey::Query(TaggedQueryKey::source_span(owner))),
+        );
+        let function = function.ok_or("missing resident function")?;
+        if constant != constant_header.map(|(owner, _)| owner) {
+            return Err("resident constant header does not match the replacement");
+        }
+        // Check every field, including the reverse map that stable hashing intentionally ignores.
+        // Requiring this single canonical value avoids comparing arbitrary generic parameters.
+        fn empty_generics(generics: &ty::Generics) -> bool {
+            let ty::Generics {
+                parent,
+                parent_count,
+                own_params,
+                param_def_id_to_index,
+                has_self,
+                has_late_bound_regions,
+            } = generics;
+            parent.is_none()
+                && *parent_count == 0
+                && own_params.is_empty()
+                && param_def_id_to_index.is_empty()
+                && !has_self
+                && has_late_bound_regions.is_none()
+        }
+        let Some((old_generics, _)) = queries.generics_of.cache.lookup(&function.to_def_id())
+        else {
+            return Err("resident function has no cached generics");
+        };
+        if !empty_generics(restore_val(old_generics)) {
+            return Err("resident function has nonempty generics");
+        }
+        if let Some(constant) = constant
+            && !empty_generics(self.generics_of(constant))
+        {
+            return Err("resident constant has nonempty generics");
+        }
+        let mut item_lists: Vec<(TaggedQueryKey<'tcx>, &'tcx ModuleItems)> = Vec::new();
+        let attribute_barriers: FxHashSet<_> =
+            backdated.iter().copied().map(ResidentQueryKey::Query).collect();
+        for key in graph.affected_with_backdated(inputs.iter().copied(), &attribute_barriers) {
+            let (key, old) = match key {
+                ResidentQueryKey::Query(key @ TaggedQueryKey::hir_crate_items(())) => {
+                    (key, queries.hir_crate_items.cache.lookup(&()).map(|(value, _)| value))
+                }
+                ResidentQueryKey::Query(key @ TaggedQueryKey::hir_module_items(module)) => {
+                    (key, queries.hir_module_items.cache.lookup(&module).map(|(value, _)| value))
+                }
+                _ => continue,
+            };
+            if let Some(old) = old {
+                item_lists.push((key, restore_val(old)));
+            }
+        }
+        graph.source_spans.lock().extend(source_spans.iter().copied());
+        // The item collectors read only owner and attribute data. The guarded generics provider
+        // reads the fresh declaration and its fixed definition kind; without lifetime syntax it
+        // does not consult old bound-variable maps. No other semantic consumer may run here.
+        unsafe { self.ohm_publish_resident_owners(replacements) };
+        for (key, old) in item_lists {
+            unsafe { key.resident_invalidate_quiescent(self) };
+            let current = match key {
+                TaggedQueryKey::hir_crate_items(()) => self.hir_crate_items(()),
+                TaggedQueryKey::hir_module_items(module) => self.hir_module_items(module),
+                _ => unreachable!(),
+            };
+            if old != current || self.dcx().has_errors_or_delayed_bugs().is_some() {
+                return Err("resident definition list changed during revalidation");
+            }
+            backdated.push(key);
+        }
+        // Both signature providers read late-bound maps, even for a lifetime-free declaration.
+        // Refresh those maps from the new HIR before comparing semantic values; the maps themselves
+        // remain subject to ordinary invalidation because their interior HIR IDs can change.
+        for declaration in std::iter::once(function).chain(constant) {
+            let generics_key = TaggedQueryKey::generics_of(declaration.to_def_id());
+            unsafe { generics_key.resident_invalidate_quiescent(self) };
+            if !empty_generics(self.generics_of(declaration))
+                || self.dcx().has_errors_or_delayed_bugs().is_some()
+            {
+                return Err("resident declaration generics changed during revalidation");
+            }
+            backdated.push(generics_key);
+            let owner = OwnerId { def_id: declaration };
+            for key in [
+                TaggedQueryKey::resolve_bound_vars(owner),
+                TaggedQueryKey::late_bound_vars_map(owner),
+                TaggedQueryKey::named_variable_map(owner),
+                TaggedQueryKey::is_late_bound_map(owner),
+            ] {
+                unsafe { key.resident_invalidate_quiescent(self) };
+            }
+            self.ensure_ok().resolve_bound_vars(owner);
+        }
+        let trace = self.ohm_resident_invalidation_trace(&inputs, &backdated, function);
+        let signature_key = TaggedQueryKey::fn_sig(function.to_def_id());
+        unsafe { signature_key.resident_invalidate_quiescent(self) };
+        if old_signature != self.fn_sig(function)
+            || self.dcx().has_errors_or_delayed_bugs().is_some()
+        {
+            return Err("resident function signature changed during revalidation");
+        }
+        backdated.push(signature_key);
+        let type_key = TaggedQueryKey::type_of(function.to_def_id());
+        unsafe { type_key.resident_invalidate_quiescent(self) };
+        if old_type != self.type_of(function) || self.dcx().has_errors_or_delayed_bugs().is_some() {
+            return Err("resident function type changed during revalidation");
+        }
+        backdated.push(type_key);
+        if let Some((constant, previous)) = constant_header {
+            let type_key = TaggedQueryKey::type_of(constant.to_def_id());
+            unsafe { type_key.resident_invalidate_quiescent(self) };
+            if previous != self.type_of(constant)
+                || self.dcx().has_errors_or_delayed_bugs().is_some()
+            {
+                return Err("resident constant type changed during revalidation");
+            }
+            backdated.push(type_key);
+        }
+        // SAFETY: The compiler is quiescent, and the only barriers are complete values just
+        // recomputed and compared above. All original HIR, span and source inputs remain dirty.
+        let mut eviction =
+            unsafe { self.ohm_invalidate_resident_queries_with_backdated(inputs, &backdated) }?;
+        eviction.trace = trace;
+        // Invalidation also removed the temporarily published owner values.
+        unsafe { self.ohm_publish_resident_owners(replacements) };
+        Ok(eviction)
+    }
+
+    /// Replace the three owner caches while a resident revision is exclusively owned by its driver.
+    unsafe fn ohm_publish_resident_owners(self, replacements: &[(LocalDefId, MaybeOwner<'tcx>)]) {
+        use crate::queries::TaggedQueryKey;
+        let queries = &self.query_system.query_vtables;
+        for &(owner, replacement) in replacements {
+            for key in [
+                TaggedQueryKey::lower_to_hir(owner),
+                TaggedQueryKey::hir_owner(owner),
+                TaggedQueryKey::hir_attr_map(OwnerId { def_id: owner }),
+            ] {
+                unsafe { key.resident_invalidate_quiescent(self) };
+            }
+            crate::query::inner::query_feed(
+                self,
+                &queries.lower_to_hir,
+                owner,
+                crate::query::erase::erase_val(replacement),
+            );
+            crate::query::inner::query_feed(
+                self,
+                &queries.hir_owner,
+                owner,
+                crate::query::erase::erase_val(ProjectedMaybeOwner::new(replacement)),
+            );
+            let attrs = replacement.as_owner().map_or(AttributeMap::EMPTY, |info| &info.attrs);
+            crate::query::inner::query_feed(
+                self,
+                &queries.hir_attr_map,
+                OwnerId { def_id: owner },
+                crate::query::erase::erase_val(attrs),
+            );
+        }
+    }
+
     #[inline]
     pub fn local_def_id_to_hir_id(self, def_id: impl IntoQueryKey<LocalDefId>) -> HirId {
         let def_id = def_id.into_query_key();
@@ -131,23 +486,33 @@ impl<'tcx> TyCtxt<'tcx> {
 
     #[inline]
     pub fn opt_hir_owner_nodes(self, def_id: LocalDefId) -> Option<&'tcx OwnerNodes<'tcx>> {
+        self.record_resident_hir_body(def_id);
+        self.opt_hir_owner_nodes_without_resident_body(def_id)
+    }
+
+    #[inline]
+    fn opt_hir_owner_nodes_without_resident_body(
+        self,
+        def_id: LocalDefId,
+    ) -> Option<&'tcx OwnerNodes<'tcx>> {
         self.hir_owner(def_id).as_owner().map(|o| o.nodes)
     }
 
     #[inline]
     fn expect_hir_owner_nodes(self, def_id: LocalDefId) -> &'tcx OwnerNodes<'tcx> {
-        self.opt_hir_owner_nodes(def_id)
+        self.opt_hir_owner_nodes_without_resident_body(def_id)
             .unwrap_or_else(|| span_bug!(self.def_span(def_id), "{def_id:?} is not an owner"))
     }
 
     #[inline]
     pub fn hir_owner_nodes(self, owner_id: OwnerId) -> &'tcx OwnerNodes<'tcx> {
+        self.record_resident_hir_body(owner_id.def_id);
         self.expect_hir_owner_nodes(owner_id.def_id)
     }
 
     #[inline]
     fn opt_hir_owner_node(self, def_id: LocalDefId) -> Option<OwnerNode<'tcx>> {
-        self.opt_hir_owner_nodes(def_id).map(|nodes| nodes.node())
+        self.opt_hir_owner_nodes_without_resident_body(def_id).map(|nodes| nodes.node())
     }
 
     #[inline]
@@ -157,12 +522,22 @@ impl<'tcx> TyCtxt<'tcx> {
 
     #[inline]
     pub fn hir_owner_node(self, owner_id: OwnerId) -> OwnerNode<'tcx> {
-        self.hir_owner_nodes(owner_id).node()
+        self.expect_hir_owner_nodes(owner_id.def_id).node()
     }
 
     /// Retrieves the `hir::Node` corresponding to `id`.
     pub fn hir_node(self, id: HirId) -> Node<'tcx> {
-        self.hir_owner_nodes(id.owner).nodes[id.local_id].node
+        if id.local_id != ItemLocalId::ZERO {
+            self.record_resident_hir_body(id.owner.def_id);
+        }
+        self.expect_hir_owner_nodes(id.owner.def_id).nodes[id.local_id].node
+    }
+
+    #[inline]
+    fn record_resident_hir_body(self, def_id: LocalDefId) {
+        if let Some(resident) = &self.query_system.resident {
+            resident.read_hir_body(def_id);
+        }
     }
 
     /// Retrieves the `hir::Node` corresponding to `id`.

@@ -125,6 +125,10 @@ pub(crate) fn expand_include<'cx>(
         }
     };
 
+    if cx.sess.opts.unstable_opts.ohm_check_session {
+        cx.sess.file_depinfo.borrow_mut().insert(Symbol::intern(&path.to_string_lossy()));
+    }
+
     // If in the included file we have e.g., `mod bar;`,
     // then the path of `bar.rs` should be relative to the directory of `path`.
     // See https://github.com/rust-lang/rust/pull/69838/files#r395217057 for a discussion.

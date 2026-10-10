@@ -207,7 +207,7 @@ pub struct ResolverGlobalCtxt {
     pub delegation_infos: FxIndexMap<LocalDefId, DelegationInfo>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PerOwnerResolverData<'tcx> {
     pub node_id_to_def_id: NodeMap<LocalDefId> = Default::default(),
     /// Whether lifetime elision was successful.
@@ -275,7 +275,7 @@ pub struct ResolverAstLowering<'tcx> {
     pub disambiguators: LocalDefIdMap<Steal<PerParentDisambiguatorState>>,
 }
 
-#[derive(Debug, StableHash)]
+#[derive(Debug, Clone, StableHash)]
 pub struct DelegationInfo {
     // `DefId` (either the resolution at delegation.id or item_id in case of a trait impl) for signature resolution,
     // for details see https://github.com/rust-lang/rust/issues/118212#issuecomment-2160686914

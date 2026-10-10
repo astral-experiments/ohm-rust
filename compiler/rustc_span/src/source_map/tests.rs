@@ -797,3 +797,51 @@ fn read_binary_file_handles_lying_stat() {
     let bin = RealFileLoader.read_binary_file(kernel_max).unwrap();
     assert_eq!(&real[..], &bin[..]);
 }
+
+#[test]
+fn resident_source_revisions_preserve_addresses() {
+    let sm = SourceMap::new(FilePathMapping::empty());
+    let path = std::fs::canonicalize(std::env::current_exe().unwrap()).unwrap();
+    sm.ohm_reserve_resident_file(path.clone(), 64).unwrap();
+    let name = FileName::Real(sm.path_mapping().to_real_filename(sm.working_dir(), path));
+    let original = sm.new_source_file(name, "fn f() { 1 }\n".into());
+    let id = original.stable_id;
+    let start = original.start_pos;
+    let old_hash = original.src_hash;
+    let index = sm.lookup_source_file_idx(start);
+    let following = sm.new_source_file(filename(&sm, "following.rs"), "untouched".into());
+    let following_start = following.start_pos;
+    let prefix = "fn f() { ".len();
+    drop(original);
+
+    // SAFETY: This test owns the source map and retains no previous file handle.
+    let revised =
+        unsafe { sm.ohm_replace_resident_file(id, "fn f() { let x = 2;\n x }\n".into(), prefix) }
+            .unwrap();
+    assert_eq!(revised.start_pos, start);
+    assert_eq!(sm.lookup_source_file_idx(start), index);
+    assert_ne!(revised.src_hash, old_hash);
+    assert_eq!(sm.lookup_char_pos(start + BytePos(20)).line, 2);
+    assert_eq!(sm.lookup_source_file(following_start).start_pos, following_start);
+    assert_eq!(following.src.as_deref().map(String::as_str), Some("untouched"));
+    drop(revised);
+
+    // SAFETY: As above; shrinking the file also preserves the reserved address slot.
+    let restored =
+        unsafe { sm.ohm_replace_resident_file(id, "fn f() { 1 }\n".into(), prefix) }.unwrap();
+    assert_eq!(restored.src_hash, old_hash);
+    assert_eq!(restored.start_pos, start);
+    drop(restored);
+
+    // SAFETY: The rejected requests run between all source-map reads.
+    assert!(unsafe { sm.ohm_replace_resident_file(id, "fn g() { 1 }\n".into(), prefix) }.is_err());
+    assert!(
+        unsafe {
+            sm.ohm_replace_resident_file(id, format!("fn f() {{ {} }}", "x".repeat(128)), prefix)
+        }
+        .is_err()
+    );
+    let retained = sm.source_file_by_stable_id(id).unwrap();
+    assert!(unsafe { sm.ohm_replace_resident_file(id, "fn f() { 2 }\n".into(), prefix) }.is_err());
+    assert_eq!(retained.src_hash, old_hash);
+}

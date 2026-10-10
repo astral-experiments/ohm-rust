@@ -5654,6 +5654,23 @@ impl<'ast> Visitor<'ast> for ItemInfoCollector<'_, 'ast, '_, '_> {
 }
 
 impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
+    pub(super) fn late_resolve_resident_item(
+        &mut self,
+        item: &Item,
+        module: crate::LocalModule<'ra>,
+    ) -> Result<(), &'static str> {
+        let mut visitor = LateResolutionVisitor::new(self);
+        visitor.parent_scope = ParentScope::module(module, visitor.r.arenas);
+        visitor.ribs.value_ns = vec![Rib::new(RibKind::Module(module))];
+        visitor.ribs.type_ns = vec![Rib::new(RibKind::Module(module))];
+        visitor.ribs.macro_ns = vec![Rib::new(RibKind::Module(module))];
+        visitor.visit_item(item);
+        if !visitor.use_injections.is_empty() || !visitor.diag_metadata.unused_labels.is_empty() {
+            return Err("body has delayed resolution diagnostics");
+        }
+        Ok(())
+    }
+
     /// Returns the `use` and `extern crate` items of the crate, for use by `check_unused`.
     pub(crate) fn late_resolve_crate<'ast>(
         &mut self,

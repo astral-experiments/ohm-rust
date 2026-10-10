@@ -84,6 +84,7 @@ use {do_not_use_print as print, do_not_use_print as println};
 
 mod allocator;
 pub mod args;
+mod check_session;
 pub mod pretty;
 #[macro_use]
 mod print;
@@ -145,6 +146,14 @@ pub trait Callbacks {
         &mut self,
         _compiler: &interface::Compiler,
         _tcx: TyCtxt<'tcx>,
+    ) -> Compilation {
+        Compilation::Continue
+    }
+    fn after_resident_analysis<'ra, 'tcx>(
+        &mut self,
+        _compiler: &interface::Compiler,
+        _tcx: TyCtxt<'tcx>,
+        _frontend: &mut rustc_interface::resident::ResidentFrontend<'ra, 'tcx>,
     ) -> Compilation {
         Compilation::Continue
     }
@@ -226,6 +235,18 @@ pub fn run_compiler(at_args: &[String], callbacks: &mut (dyn Callbacks + Send)) 
 
     callbacks.config(&mut config);
 
+    let check_session = if config.opts.unstable_opts.ohm_check_session {
+        match check_session::CheckSession::configure(&mut config) {
+            Ok(session) => Some(session),
+            Err(error) => {
+                check_session::unsupported(&error.to_string());
+                return;
+            }
+        }
+    } else {
+        None
+    };
+
     let registered_lints = config.register_lints.is_some();
 
     interface::run_compiler(config, |compiler| {
@@ -263,6 +284,18 @@ pub fn run_compiler(at_args: &[String], callbacks: &mut (dyn Callbacks + Send)) 
             return;
         }
 
+        if let Some(path) = &sess.opts.unstable_opts.ohm_resident_frontend {
+            if let Err(reason) =
+                sess.source_map().ohm_reserve_resident_file(path.clone(), 1024 * 1024)
+            {
+                if check_session.is_some() {
+                    check_session::unsupported(reason);
+                    return;
+                }
+                panic!("resident source reservation failed: {reason}");
+            }
+        }
+
         // Parse the crate root source code (doesn't parse submodules yet)
         // Everything else is parsed during macro expansion.
         let mut krate = passes::parse(sess);
@@ -290,53 +323,75 @@ pub fn run_compiler(at_args: &[String], callbacks: &mut (dyn Callbacks + Send)) 
             return;
         }
 
-        let linker = create_and_enter_global_ctxt(compiler, krate, |tcx| {
-            // Make sure name resolution and macro expansion is run.
-            let _ = tcx.resolver_for_lowering();
+        let linker =
+            passes::create_and_enter_global_ctxt_with_resident(compiler, krate, |tcx, frontend| {
+                // Make sure name resolution and macro expansion is run.
+                let _ = tcx.resolver_for_lowering();
 
-            if callbacks.after_expansion(compiler, tcx) == Compilation::Stop {
-                return None;
-            }
-
-            passes::write_dep_info(tcx);
-
-            passes::write_interface(tcx);
-
-            if sess.opts.output_types.contains_key(&OutputType::DepInfo)
-                && sess.opts.output_types.len() == 1
-            {
-                return None;
-            }
-
-            if sess.opts.unstable_opts.no_analysis {
-                return None;
-            }
-
-            let mut early_metadata = rustc_metadata::fs::write_early_metadata(tcx);
-            tcx.ensure_ok().analysis(());
-
-            if let Some(metrics_dir) = &sess.opts.unstable_opts.metrics_dir {
-                dump_feature_usage_metrics(tcx, metrics_dir);
-            }
-
-            if callbacks.after_analysis(compiler, tcx) == Compilation::Stop {
-                return None;
-            }
-
-            if sess.opts.output_types.contains_key(&OutputType::Mir) {
-                if let Err(error) = pretty::emit_mir(tcx) {
-                    tcx.dcx().emit_fatal(CantEmitMIR { error });
+                if callbacks.after_expansion(compiler, tcx) == Compilation::Stop {
+                    return None;
                 }
-            }
 
-            tcx.dcx().abort_if_errors();
-            let linker =
-                Linker::codegen_and_build_linker(tcx, codegen_backend, early_metadata.take());
+                passes::write_dep_info(tcx);
 
-            tcx.report_unused_features();
+                passes::write_interface(tcx);
 
-            Some(linker)
-        });
+                if sess.opts.output_types.contains_key(&OutputType::DepInfo)
+                    && sess.opts.output_types.len() == 1
+                {
+                    return None;
+                }
+
+                if sess.opts.unstable_opts.no_analysis {
+                    return None;
+                }
+
+                if check_session.is_some() && frontend.is_none() {
+                    check_session::unsupported("unsupported source boundary");
+                    return None;
+                }
+                let mut early_metadata = rustc_metadata::fs::write_early_metadata(tcx);
+                tcx.ensure_ok().analysis(());
+
+                if let Some(metrics_dir) = &sess.opts.unstable_opts.metrics_dir {
+                    dump_feature_usage_metrics(tcx, metrics_dir);
+                }
+
+                if callbacks.after_analysis(compiler, tcx) == Compilation::Stop {
+                    return None;
+                }
+
+                if let Some(session) = &check_session {
+                    tcx.report_unused_features();
+                    tcx.dcx().emit_stashed_diagnostics();
+                    session.run(tcx, frontend);
+                    return None;
+                }
+
+                if let Some(frontend) = frontend {
+                    tcx.report_unused_features();
+                    tcx.dcx().emit_stashed_diagnostics();
+                    if callbacks.after_resident_analysis(compiler, tcx, frontend)
+                        == Compilation::Stop
+                    {
+                        return None;
+                    }
+                }
+
+                if sess.opts.output_types.contains_key(&OutputType::Mir) {
+                    if let Err(error) = pretty::emit_mir(tcx) {
+                        tcx.dcx().emit_fatal(CantEmitMIR { error });
+                    }
+                }
+
+                tcx.dcx().abort_if_errors();
+                let linker =
+                    Linker::codegen_and_build_linker(tcx, codegen_backend, early_metadata.take());
+
+                tcx.report_unused_features();
+
+                Some(linker)
+            });
 
         // Linking is done outside the `compiler.enter()` so that the
         // `GlobalCtxt` within `Queries` can be freed as early as possible.

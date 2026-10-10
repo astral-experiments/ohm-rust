@@ -104,6 +104,16 @@ impl SlotIndex {
         Some((value, index))
     }
 
+    /// Clears the slot when the entire cache is quiescent.
+    unsafe fn clear_quiescent<V>(&self, buckets: &[AtomicPtr<Slot<V>>; 21]) {
+        let ptr = buckets[self.bucket_idx].load(Ordering::Acquire);
+        assert!(!ptr.is_null());
+        let slot = unsafe { ptr.add(self.index_in_bucket) };
+        let state = unsafe { &(*slot).index_and_lock };
+        assert!(state.load(Ordering::Acquire) >= 2);
+        state.store(0, Ordering::Release);
+    }
+
     fn bucket_ptr<V>(&self, bucket: &AtomicPtr<Slot<V>>) -> *mut Slot<V> {
         let ptr = bucket.load(Ordering::Acquire);
         if ptr.is_null() { Self::initialize_bucket(bucket, self.bucket_idx) } else { ptr }
@@ -315,6 +325,42 @@ where
             // as it will run out of slots.
             unsafe { slot.put_unique(&self.present, (), key) };
         }
+    }
+
+    /// Removes one cached query while a resident compiler is between requests.
+    ///
+    /// Values previously returned from this cache are copies and remain valid. This method only
+    /// makes future lookups miss, allowing the existing `complete` path to install a new result.
+    /// The present-key list is maintained so iteration still reports each live key exactly once.
+    ///
+    /// # Safety
+    ///
+    /// All other operations on this cache must have completed before this call, and no other
+    /// operations can start until it returns. In particular, the lock-free `lookup` cannot race
+    /// with this method or with a subsequent `complete` without a happens-before edge between
+    /// this method and the operation. An embedding driver can provide this guarantee by using a
+    /// single compiler thread and calling this method only between completed queries.
+    pub unsafe fn ohm_invalidate_quiescent(&self, key: K) -> bool {
+        let key = u32::try_from(key.index()).unwrap();
+        let value_slot = SlotIndex::from_index(key);
+        if unsafe { value_slot.get(&self.buckets) }.is_none() {
+            return false;
+        }
+
+        let len = self.len.load(Ordering::Acquire);
+        let (position, present_slot) = (0..len)
+            .map(|position| (position, SlotIndex::from_index(position as u32)))
+            .find(|(_, slot)| unsafe { slot.get(&self.present) }.is_some_and(|(_, k)| k == key))
+            .expect("every filled slot must occur in the present-key list");
+        let last_slot = SlotIndex::from_index((len - 1) as u32);
+        if position != len - 1 {
+            let (_, last_key) = unsafe { last_slot.get(&self.present) }.unwrap();
+            unsafe { present_slot.put_unique(&self.present, (), last_key) };
+        }
+        unsafe { last_slot.clear_quiescent(&self.present) };
+        unsafe { value_slot.clear_quiescent(&self.buckets) };
+        self.len.store(len - 1, Ordering::Release);
+        true
     }
 
     pub fn for_each(&self, f: &mut dyn FnMut(&K, &V, I)) {

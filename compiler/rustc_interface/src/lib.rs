@@ -11,6 +11,7 @@ pub mod interface;
 mod limits;
 pub mod passes;
 mod queries;
+pub mod resident;
 pub mod util;
 
 pub use callbacks::setup_callbacks;

@@ -390,8 +390,17 @@ fn execute_job_non_incr<'tcx, C: QueryCache>(
 
     let prof_timer = tcx.prof.query_provider();
     // Call the query provider.
-    let value = start_query(job_id, query.depth_limit, || (query.invoke_provider_fn)(tcx, key));
+    let provider =
+        || start_query(job_id, query.depth_limit, || (query.invoke_provider_fn)(tcx, key));
+    let value = if let Some(resident) = &tcx.query_system.resident {
+        resident.with_provider(job_id, (query.create_tagged_key)(key), provider)
+    } else {
+        provider()
+    };
     let dep_node_index = tcx.dep_graph.next_virtual_depnode_index();
+    if let Some(resident) = &tcx.query_system.resident {
+        resident.register_cached(dep_node_index, (query.create_tagged_key)(key));
+    }
     prof_timer.finish_with_query_invocation_id(dep_node_index.into());
 
     // Sanity: Fingerprint the key and the result to assert they don't contain anything unhashable.

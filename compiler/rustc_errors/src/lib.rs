@@ -402,6 +402,9 @@ pub static TRACK_DIAGNOSTIC: AtomicRef<
     fn(DiagInner, &mut dyn FnMut(DiagInner) -> Option<ErrorGuaranteed>) -> Option<ErrorGuaranteed>,
 > = AtomicRef::new(&(default_track_diagnostic as _));
 
+/// Records producers of stashed diagnostics and deferred error guarantees.
+pub static TRACK_DIAGNOSTIC_STASH: AtomicRef<fn(bool)> = AtomicRef::new(&((|_| {}) as fn(bool)));
+
 #[derive(Copy, Clone, Default)]
 pub struct DiagCtxtFlags {
     /// If false, warning-level lints are suppressed.
@@ -552,6 +555,31 @@ impl DiagCtxt {
         *fulfilled_expectations = Default::default();
     }
 
+    /// Whether a completed resident revision has no unresolved diagnostic obligations.
+    pub fn resident_revision_complete(&self) -> bool {
+        let inner = self.inner.borrow();
+        inner.stashed_diagnostics.is_empty()
+            && inner.delayed_bugs.is_empty()
+            && (inner.must_produce_diag.is_none()
+                || inner.has_printed
+                || inner.suppressed_expected_diag)
+            && inner.flags.treat_err_as_bug.is_none()
+            && !inner.flags.eagerly_emit_delayed_bugs
+    }
+
+    /// Start a diagnostic epoch after invalidating the previous epoch's query effects.
+    ///
+    /// # Safety
+    /// The compiler must be quiescent. Every query that produced diagnostics, stashed
+    /// diagnostics, or error-tainted values, and its consumers, must have been invalidated.
+    pub unsafe fn reset_resident_revision(&self) -> Result<(), &'static str> {
+        if !self.resident_revision_complete() {
+            return Err("resident revision has unresolved diagnostic obligations");
+        }
+        self.reset_err_count();
+        Ok(())
+    }
+
     pub fn handle<'a>(&'a self) -> DiagCtxtHandle<'a> {
         DiagCtxtHandle { dcx: self, tainted_with_errors: None }
     }
@@ -595,6 +623,7 @@ impl<'a> DiagCtxtHandle<'a> {
         key: StashKey,
         diag: DiagInner,
     ) -> Option<ErrorGuaranteed> {
+        TRACK_DIAGNOSTIC_STASH(diag.is_error());
         let guar = match diag.level {
             Bug | Fatal => {
                 self.span_bug(
@@ -908,6 +937,7 @@ impl<'a> DiagCtxtHandle<'a> {
         // "unused-externs-silent"), also affects whether it's treated like a
         // hard error or not.
         if loud && lint_level.is_error() {
+            TRACK_DIAGNOSTIC_STASH(true);
             // This `unchecked_error_guaranteed` is valid. It is where the
             // `ErrorGuaranteed` for unused_extern errors originates.
             #[allow(deprecated)]
@@ -1253,6 +1283,9 @@ impl DiagCtxtInner {
                 }
             }
             DelayedBug => {
+                // A later ordinary error can suppress this diagnostic while query values
+                // still contain its guarantee. Its producer must not survive an epoch reset.
+                TRACK_DIAGNOSTIC_STASH(true);
                 // Note that because we check these conditions first,
                 // `-Zeagerly-emit-delayed-bugs` and `-Ztreat-err-as-bug`
                 // continue to work even after we've issued an error and

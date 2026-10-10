@@ -186,6 +186,16 @@ rustc_queries! {
         desc { "getting the resolver outputs" }
     }
 
+    query resident_resolver_for_lowering(_: ()) -> (
+        &'tcx Steal<ty::ResolverAstLowering<'tcx>>,
+        &'tcx Steal<ast::Crate>,
+        &'tcx ty::ResolverGlobalCtxt,
+    ) {
+        feedable
+        no_hash
+        desc { "retained resident frontend inputs" }
+    }
+
     query resolver_for_lowering_raw(_: ()) -> (
         // Those two fields are consumed by `index_ast`.
         // We want them to be eventually dropped after lowering.

@@ -46,14 +46,18 @@ mod monotonic {
     use std::ops::{Deref, DerefMut};
 
     /// A `MonotonicVec` is a `Vec` which can only be grown.
-    /// Once inserted, an element can never be removed or swapped,
-    /// guaranteeing that any indices into a `MonotonicVec` are stable
+    /// Ordinary operations never remove or reorder elements, keeping indices stable.
+    /// The resident experiment can replace a value at quiescence without changing its index.
     // This is declared in its own module to ensure that the private
     // field is inaccessible
     pub struct MonotonicVec<T>(Vec<T>);
     impl<T> MonotonicVec<T> {
         pub(super) fn push(&mut self, val: T) {
             self.0.push(val);
+        }
+
+        pub(super) fn replace_quiescent(&mut self, index: usize, value: T) {
+            self.0[index] = value;
         }
     }
 
@@ -172,11 +176,19 @@ impl FileLoader for RealFileLoader {
 struct SourceMapFiles {
     source_files: monotonic::MonotonicVec<Arc<SourceFile>>,
     stable_id_to_source_file: UnhashMap<StableSourceFileId, Arc<SourceFile>>,
+    resident_reservation: Option<ResidentSourceReservation>,
+    next_start_pos: u32,
+}
+
+struct ResidentSourceReservation {
+    path: path::PathBuf,
+    extra_bytes: u32,
+    registered: Option<(StableSourceFileId, usize, u32)>,
 }
 
 impl std::fmt::Debug for SourceMapFiles {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let SourceMapFiles { source_files, stable_id_to_source_file: _ } = self;
+        let SourceMapFiles { source_files, .. } = self;
 
         f.debug_list()
             .entries(
@@ -329,19 +341,112 @@ impl SourceMap {
     ) -> Result<Arc<SourceFile>, OffsetOverflowError> {
         let mut files = self.files.borrow_mut();
 
-        file.start_pos = BytePos(if let Some(last_file) = files.source_files.last() {
-            // Add one so there is some space between files. This lets us distinguish
-            // positions in the `SourceMap`, even in the presence of zero-length files.
-            last_file.end_position().0.checked_add(1).ok_or(OffsetOverflowError)?
-        } else {
-            0
-        });
+        file.start_pos = BytePos(files.next_start_pos);
+        let selected = file.cnum == LOCAL_CRATE
+            && files.resident_reservation.as_ref().is_some_and(|reservation| {
+                Self::resident_path_matches(&file.name, &reservation.path)
+            });
+        let extra =
+            if selected { files.resident_reservation.as_ref().unwrap().extra_bytes } else { 0 };
+        let allocation_end = file
+            .start_pos
+            .0
+            .checked_add(file.normalized_source_len.0)
+            .and_then(|end| end.checked_add(extra))
+            .ok_or(OffsetOverflowError)?;
+        files.next_start_pos = allocation_end.checked_add(1).ok_or(OffsetOverflowError)?;
+        if selected {
+            let index = files.source_files.len();
+            let reservation = files.resident_reservation.as_mut().unwrap();
+            assert!(reservation.registered.is_none());
+            reservation.registered = Some((file_id, index, allocation_end));
+        }
 
         let file = Arc::new(file);
         files.source_files.push(Arc::clone(&file));
         files.stable_id_to_source_file.insert(file_id, Arc::clone(&file));
 
         Ok(file)
+    }
+
+    fn resident_path_matches(name: &FileName, path: &Path) -> bool {
+        let FileName::Real(name) = name else { return false };
+        name.local_path().is_some_and(|local| {
+            local == path || fs::canonicalize(local).is_ok_and(|canonical| canonical == path)
+        })
+    }
+
+    /// Reserve growth space without changing the selected file's actual source contents.
+    pub fn ohm_reserve_resident_file(
+        &self,
+        path: path::PathBuf,
+        extra_bytes: u32,
+    ) -> Result<(), &'static str> {
+        let path = fs::canonicalize(path).map_err(|_| "resident source path is unavailable")?;
+        let mut files = self.files.borrow_mut();
+        if files.resident_reservation.is_some() {
+            return Err("resident source reservation is already configured");
+        }
+        if files.source_files.iter().any(|file| Self::resident_path_matches(&file.name, &path)) {
+            return Err("resident source must be reserved before loading it");
+        }
+        files.resident_reservation =
+            Some(ResidentSourceReservation { path, extra_bytes, registered: None });
+        Ok(())
+    }
+
+    /// Replace an EOF suffix while preserving every other file's address range.
+    ///
+    /// # Safety
+    /// The caller must own the only compiler thread between requests, discard old parser and
+    /// diagnostic state, and invalidate all semantic readers of the changed source before reuse.
+    /// No source-file or source-string handles may survive from the previous request.
+    pub unsafe fn ohm_replace_resident_file(
+        &self,
+        id: StableSourceFileId,
+        new_source: String,
+        unchanged_prefix: usize,
+    ) -> Result<Arc<SourceFile>, &'static str> {
+        let mut files = self.files.borrow_mut();
+        let Some((registered_id, index, allocation_end)) =
+            files.resident_reservation.as_ref().and_then(|reservation| reservation.registered)
+        else {
+            return Err("resident source was not registered with reserved capacity");
+        };
+        if id != registered_id {
+            return Err("replacement does not select the reserved source file");
+        }
+        let old = &files.source_files[index];
+        let old_source = old.src.as_ref().ok_or("resident source contents are unavailable")?;
+        if Arc::strong_count(old) != 2 || Arc::strong_count(old_source) != 1 {
+            return Err("a previous request still retains resident source handles");
+        }
+        if !old.normalized_pos.is_empty()
+            || old_source.get(..unchanged_prefix) != new_source.get(..unchanged_prefix)
+            || old_source.get(..unchanged_prefix).is_none()
+        {
+            return Err("replacement changed the fixed source prefix or normalization");
+        }
+        let mut replacement =
+            SourceFile::new(old.name.clone(), new_source, self.hash_kind, self.checksum_hash_kind)
+                .map_err(|_| "resident source is too large")?;
+        if !replacement.normalized_pos.is_empty() {
+            return Err("resident replacement cannot change source normalization");
+        }
+        let end = old
+            .start_pos
+            .0
+            .checked_add(replacement.normalized_source_len.0)
+            .ok_or("resident source address overflow")?;
+        replacement.start_pos = old.start_pos;
+        if end > allocation_end {
+            return Err("resident source exceeded its reserved address range");
+        }
+        debug_assert_eq!(replacement.stable_id, old.stable_id);
+        let replacement = Arc::new(replacement);
+        files.source_files.replace_quiescent(index, Arc::clone(&replacement));
+        files.stable_id_to_source_file.insert(id, Arc::clone(&replacement));
+        Ok(replacement)
     }
 
     /// Creates a new `SourceFile`.

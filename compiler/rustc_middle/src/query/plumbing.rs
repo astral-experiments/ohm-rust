@@ -146,6 +146,10 @@ pub struct QuerySystem<'tcx> {
     pub arenas: WorkerLocal<QueryArenas<'tcx>>,
     pub query_vtables: QueryVTables<'tcx>,
 
+    /// Current-process dependency tracking for the experimental resident checker.
+    /// Unlike `on_disk_cache`, this is only enabled without disk incremental compilation.
+    pub resident: Option<crate::query::resident::ResidentQueryGraph<'tcx>>,
+
     /// Side-effect associated with each [`DepKind::SideEffect`] node in the
     /// current incremental-compilation session. Side effects will be written
     /// to disk, and loaded by [`OnDiskCache`] in the next session.
@@ -401,7 +405,7 @@ macro_rules! define_callbacks {
         /// Identifies a query by kind and key. This is in contrast to `QueryJobId` which is just a
         /// number.
         #[allow(non_camel_case_types)]
-        #[derive(Clone, Copy, Debug)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
         pub enum TaggedQueryKey<'tcx> {
             $(
                 $name($name::Key<'tcx>),
@@ -409,6 +413,35 @@ macro_rules! define_callbacks {
         }
 
         impl<'tcx> TaggedQueryKey<'tcx> {
+            pub(crate) fn resident_key_def_id(&self) -> Option<rustc_span::def_id::DefId> {
+                match self {
+                    $(
+                        TaggedQueryKey::$name(key) => $crate::query::QueryKey::key_as_def_id(key),
+                    )*
+                }
+            }
+
+            /// Evicts the typed key from exactly the cache identified by this query variant.
+            ///
+            /// # Safety
+            /// The compiler must be quiescent between requests, as required by `QueryCache`.
+            pub(crate) unsafe fn resident_invalidate_quiescent(
+                self,
+                tcx: TyCtxt<'tcx>,
+            ) -> bool {
+                match self {
+                    $(
+                        TaggedQueryKey::$name(key) => {
+                            // SAFETY: The caller guarantees cache-wide quiescence.
+                            unsafe { $crate::query::QueryCache::invalidate_quiescent(
+                                &tcx.query_system.query_vtables.$name.cache,
+                                key,
+                            ) }
+                        }
+                    )*
+                }
+            }
+
             /// Returns the name of the query this key is tagged with.
             ///
             /// This is useful for error/debug output, but don't use it to check for

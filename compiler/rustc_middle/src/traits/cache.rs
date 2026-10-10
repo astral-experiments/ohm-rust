@@ -32,6 +32,11 @@ impl<Key: Eq + Hash, Value: Clone> WithDepNodeCache<Key, Value> {
     pub fn insert(&self, key: Key, dep_node: DepNodeIndex, value: Value) {
         self.hashmap.borrow_mut().insert(key, WithDepNode::new(dep_node, value));
     }
+
+    /// Remove the answer whose recorded inputs changed in a resident session.
+    pub(crate) fn remove_resident(&self, key: &Key) -> bool {
+        self.hashmap.borrow_mut().remove(key).is_some()
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

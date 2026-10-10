@@ -2980,6 +2980,24 @@ pub fn build_session_options(early_dcx: &mut EarlyDiagCtxt, matches: &getopts::M
         early_dcx.early_fatal("can't dump dependency graph without `-Z query-dep-graph`");
     }
 
+    if unstable_opts.ohm_check_session {
+        if unstable_opts.ohm_resident_frontend.is_none() {
+            early_dcx.early_fatal("check sessions require a resident source file");
+        }
+        unstable_opts.ohm_early_metadata = false;
+    }
+
+    if unstable_opts.ohm_resident_frontend.is_some() {
+        unstable_opts.ohm_resident_query_graph = true;
+        if output_types.should_codegen() {
+            early_dcx.early_fatal("resident frontend only supports checking");
+        }
+    }
+
+    if unstable_opts.ohm_resident_query_graph && cg.incremental.is_some() {
+        early_dcx.early_fatal("`-Zohm-resident-query-graph` cannot be used with `-Cincremental`");
+    }
+
     let logical_env = parse_logical_env(early_dcx, matches);
 
     let sysroot = Sysroot::new(matches.opt_str("sysroot").map(PathBuf::from));
@@ -3055,6 +3073,9 @@ pub fn build_session_options(early_dcx: &mut EarlyDiagCtxt, matches: &getopts::M
         unstable_opts.no_parallel_backend,
         unstable_opts.unstable_options,
     );
+    if unstable_opts.ohm_resident_frontend.is_some() && jobs.frontend.is_some() {
+        early_dcx.early_fatal("resident frontend requires --jobs-frontend=1");
+    }
 
     Options {
         crate_types,

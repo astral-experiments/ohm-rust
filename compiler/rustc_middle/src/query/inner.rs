@@ -14,12 +14,23 @@ use crate::ty::TyCtxt;
 ///
 /// (Also performs some associated bookkeeping, if a value was found.)
 #[inline(always)]
-fn try_get_cached<'tcx, C>(tcx: TyCtxt<'tcx>, cache: &C, key: C::Key) -> Option<C::Value>
+fn try_get_cached<'tcx, C>(
+    tcx: TyCtxt<'tcx>,
+    query: &'tcx QueryVTable<'tcx, C>,
+    key: C::Key,
+    accesses_value: Option<bool>,
+) -> Option<C::Value>
 where
     C: QueryCache,
 {
-    match cache.lookup(&key) {
+    match query.cache.lookup(&key) {
         Some((value, index)) => {
+            if let Some(accesses_value) = accesses_value
+                && let Some(resident) = &tcx.query_system.resident
+                && !resident.read_cached(index, accesses_value)
+            {
+                resident.read((query.create_tagged_key)(key), accesses_value);
+            }
             tcx.prof.query_cache_hit(index.into());
             tcx.dep_graph.read_index(index);
             Some(value)
@@ -40,9 +51,14 @@ pub(crate) fn query_get_at<'tcx, C>(
 where
     C: QueryCache,
 {
-    match try_get_cached(tcx, &query.cache, key) {
+    match try_get_cached(tcx, query, key, Some(true)) {
         Some(value) => value,
-        None => (query.execute_query_fn)(tcx, span, key, QueryMode::Get).unwrap(),
+        None => {
+            if let Some(resident) = &tcx.query_system.resident {
+                resident.read((query.create_tagged_key)(key), true);
+            }
+            (query.execute_query_fn)(tcx, span, key, QueryMode::Get).unwrap()
+        }
     }
 }
 
@@ -55,9 +71,12 @@ pub(crate) fn query_ensure_ok<'tcx, C>(
 ) where
     C: QueryCache,
 {
-    match try_get_cached(tcx, &query.cache, key) {
+    match try_get_cached(tcx, query, key, Some(false)) {
         Some(_value) => {}
         None => {
+            if let Some(resident) = &tcx.query_system.resident {
+                resident.read((query.create_tagged_key)(key), false);
+            }
             (query.execute_query_fn)(tcx, DUMMY_SP, key, QueryMode::EnsureOk);
         }
     }
@@ -82,9 +101,12 @@ where
         }
     };
 
-    match try_get_cached(tcx, &query.cache, key) {
+    match try_get_cached(tcx, query, key, Some(false)) {
         Some(value) => convert(value),
         None => {
+            if let Some(resident) = &tcx.query_system.resident {
+                resident.read((query.create_tagged_key)(key), false);
+            }
             match (query.execute_query_fn)(tcx, DUMMY_SP, key, QueryMode::EnsureOk) {
                 // We executed the query. Convert the successful result.
                 Some(res) => convert(res),
@@ -113,9 +135,12 @@ pub(crate) fn query_feed<'tcx, C>(
     C::Key: DepNodeKey<'tcx>,
 {
     let format_value = query.format_value;
+    if let Some(resident) = &tcx.query_system.resident {
+        resident.feed((query.create_tagged_key)(key));
+    }
 
     // Check whether the in-memory cache already has a value for this key.
-    match try_get_cached(tcx, &query.cache, key) {
+    match try_get_cached(tcx, query, key, None) {
         Some(old) => {
             // The query already has a cached value for this key.
             // That's OK if both values are the same, i.e. they have the same hash,
@@ -158,6 +183,9 @@ pub(crate) fn query_feed<'tcx, C>(
                 query.hash_value_fn,
                 query.format_value,
             );
+            if let Some(resident) = &tcx.query_system.resident {
+                resident.register_cached(dep_node_index, (query.create_tagged_key)(key));
+            }
             query.cache.complete(key, value, dep_node_index);
         }
     }

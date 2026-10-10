@@ -24,7 +24,7 @@ use crate::ty::TyCtxt;
 
 /// Gather the LocalDefId for each item-like within a module, including items contained within
 /// bodies. The Ids are in visitor order. This is used to partition a pass between modules.
-#[derive(Debug, StableHash, Encodable, Decodable)]
+#[derive(Debug, PartialEq, Eq, StableHash, Encodable, Decodable)]
 pub struct ModuleItems {
     /// Whether this represents the whole crate, in which case we need to add `CRATE_OWNER_ID` to
     /// the iterators if we want to account for the crate root.
@@ -360,16 +360,19 @@ impl<'tcx> TyCtxt<'tcx> {
     fn hir_owner_parent_impl(self, owner_id: OwnerId) -> HirId {
         self.opt_local_parent(owner_id.def_id).map_or(CRATE_HIR_ID, |parent_def_id| {
             let parent_owner_id = self.local_def_id_to_hir_id(parent_def_id).owner;
-            HirId {
-                owner: parent_owner_id,
-                local_id: self
-                    .hir_owner(parent_owner_id.def_id)
-                    .unwrap()
-                    .parenting
-                    .get(&owner_id.def_id)
-                    .copied()
-                    .unwrap_or(ItemLocalId::ZERO),
+            let local_id = self
+                .hir_owner(parent_owner_id.def_id)
+                .unwrap()
+                .parenting
+                .get(&owner_id.def_id)
+                .copied()
+                .unwrap_or(ItemLocalId::ZERO);
+            if local_id != ItemLocalId::ZERO
+                && let Some(resident) = &self.query_system.resident
+            {
+                resident.read_hir_body(parent_owner_id.def_id);
             }
+            HirId { owner: parent_owner_id, local_id }
         })
     }
 

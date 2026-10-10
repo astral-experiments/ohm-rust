@@ -101,6 +101,14 @@ pub fn provide(providers: &mut Providers) {
     providers.lower_to_hir = lower_to_hir;
 }
 
+pub fn lower_resident_item<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    resolver: &ResolverAstLowering<'tcx>,
+    item: &ast::Item,
+) -> hir::MaybeOwner<'tcx> {
+    item::ItemLowerer { tcx, resolver }.lower_item(item)
+}
+
 #[cfg(debug_assertions)]
 pub(crate) mod re_lowering {
     use rustc_ast::NodeId;

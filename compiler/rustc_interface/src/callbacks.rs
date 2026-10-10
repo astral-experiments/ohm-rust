@@ -40,6 +40,9 @@ fn track_span_parent(def_id: rustc_span::def_id::LocalDefId) {
 fn track_diagnostic<R>(diagnostic: DiagInner, f: &mut dyn FnMut(DiagInner) -> R) -> R {
     tls::with_context_opt(|icx| {
         if let Some(icx) = icx {
+            if let Some(resident) = &icx.tcx.query_system.resident {
+                resident.record_diagnostic(&diagnostic);
+            }
             icx.tcx.dep_graph.record_diagnostic(icx.tcx, &diagnostic);
 
             // Diagnostics are tracked, we can ignore the dependency.
@@ -50,6 +53,16 @@ fn track_diagnostic<R>(diagnostic: DiagInner, f: &mut dyn FnMut(DiagInner) -> R)
             (*f)(diagnostic)
         }
     })
+}
+
+fn track_diagnostic_stash(is_error: bool) {
+    tls::with_context_opt(|icx| {
+        if let Some(icx) = icx
+            && let Some(resident) = &icx.tcx.query_system.resident
+        {
+            resident.record_diagnostic_stash(is_error);
+        }
+    });
 }
 
 fn track_feature(feature: Symbol) {
@@ -90,5 +103,6 @@ pub fn setup_callbacks() {
     rustc_span::SPAN_TRACK.swap(&(track_span_parent as fn(_)));
     rustc_hir::def_id::DEF_ID_DEBUG.swap(&(def_id_debug as fn(_, &mut fmt::Formatter<'_>) -> _));
     rustc_errors::TRACK_DIAGNOSTIC.swap(&(track_diagnostic as _));
+    rustc_errors::TRACK_DIAGNOSTIC_STASH.swap(&(track_diagnostic_stash as _));
     rustc_feature::TRACK_FEATURE.swap(&(track_feature as _));
 }

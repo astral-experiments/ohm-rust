@@ -33,7 +33,9 @@ pub fn query_system<'tcx>(
     incremental: bool,
     public_api_hash: bool,
     ohm_incremental_mono_partitions: bool,
+    ohm_resident_query_graph: bool,
 ) -> QuerySystem<'tcx> {
+    assert!(!incremental || !ohm_resident_query_graph);
     let mut query_vtables = query_vtables::make_query_vtables(incremental);
     if incremental && (public_api_hash || ohm_incremental_mono_partitions) {
         query_vtables.items_of_instance.hash_value_fn =
@@ -47,6 +49,7 @@ pub fn query_system<'tcx>(
     QuerySystem {
         arenas: Default::default(),
         query_vtables,
+        resident: ohm_resident_query_graph.then(Default::default),
         side_effects: Default::default(),
         on_disk_cache,
         local_providers,

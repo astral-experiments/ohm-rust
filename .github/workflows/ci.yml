@@ -103,6 +103,13 @@ jobs:
           "$stage0_cargo" test --locked --manifest-path src/bootstrap/Cargo.toml dist_
           "$stage0_cargo" test --locked -p opt-dist
 
+      - name: Run check-session query and input regressions
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1 compiler/rustc_middle
+          compiler/rustc_data_structures compiler/rustc_errors compiler/rustc_span
+          compiler/rustc_driver_impl
+
       - name: Run incremental driver input regression
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
@@ -241,6 +248,7 @@ jobs:
             tests/run-make/public-api-hash*
             tests/run-make/rdr-public-hash*
             tests/run-make/ohm-early-metadata
+            tests/run-make/ohm-check-session
             tests/run-make/caller-local-codegen
             tests/run-make/unused-externs-transparent
             tests/run-make/reset-codegen-1

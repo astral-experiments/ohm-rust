@@ -21,6 +21,7 @@ use rustc_infer::traits::{ImplSource, PredicateObligations, TraitObligation};
 use rustc_macros::{TypeFoldable, TypeVisitable};
 use rustc_middle::bug;
 use rustc_middle::dep_graph::{DepKind, DepNodeIndex};
+use rustc_middle::query::resident::ResidentOldTraitKey;
 pub use rustc_middle::traits::select::*;
 use rustc_middle::ty::abstract_const::NotConstEvaluatable;
 use rustc_middle::ty::error::TypeErrorToStringExt;
@@ -351,8 +352,18 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         // account cycles that may have occurred in forming the
         // candidate. I don't know of any specific problems that
         // result but it seems awfully suspicious.
+        let key = self.tcx().query_system.resident.as_ref().and_then(|_| {
+            self.can_use_global_caches(stack.obligation.param_env, cache_fresh_trait_pred).then(
+                || {
+                    ResidentOldTraitKey::Selection(
+                        self.infcx.typing_env(stack.obligation.param_env),
+                        cache_fresh_trait_pred.skip_binder(),
+                    )
+                },
+            )
+        });
         let (candidate, dep_node) =
-            self.in_task(|this| this.candidate_from_obligation_no_cache(stack));
+            self.in_resident_trait_task(key, |this| this.candidate_from_obligation_no_cache(stack));
 
         debug!("CACHE MISS");
         self.insert_candidate_cache(
@@ -1047,7 +1058,12 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             return Ok(cycle_result);
         }
 
-        let (result, dep_node) = self.in_task(|this| {
+        let key = self.tcx().query_system.resident.as_ref().and_then(|_| {
+            self.can_use_global_caches(param_env, fresh_trait_pred).then(|| {
+                ResidentOldTraitKey::Evaluation(self.infcx.typing_env(param_env), fresh_trait_pred)
+            })
+        });
+        let (result, dep_node) = self.in_resident_trait_task(key, |this| {
             let mut result = this.evaluate_stack(&stack)?;
 
             // fix issue #103563, we don't normalize
@@ -1321,6 +1337,9 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         let tcx = infcx.tcx;
         if self.can_use_global_caches(param_env, trait_pred) {
             let key = (infcx.typing_env(param_env), trait_pred);
+            if let Some(resident) = &tcx.query_system.resident {
+                resident.read_old_trait_solver(ResidentOldTraitKey::Evaluation(key.0, key.1));
+            }
             if let Some(res) = tcx.evaluation_cache.get(&key, tcx) {
                 Some(res)
             } else {
@@ -1407,6 +1426,23 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         OP: FnOnce(&mut Self) -> R,
     {
         self.tcx().dep_graph.with_anon_task(self.tcx(), DepKind::TraitSelect, || op(self))
+    }
+
+    fn in_resident_trait_task<OP, R>(
+        &mut self,
+        key: Option<ResidentOldTraitKey<'tcx>>,
+        op: OP,
+    ) -> (R, DepNodeIndex)
+    where
+        OP: FnOnce(&mut Self) -> R,
+    {
+        if let Some(key) = key
+            && let Some(resident) = &self.tcx().query_system.resident
+        {
+            resident.with_old_trait_solver(key, || self.in_task(op))
+        } else {
+            self.in_task(op)
+        }
     }
 
     /// filter_impls filters candidates that have a positive impl for a negative
@@ -1551,7 +1587,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         let pred = cache_fresh_trait_pred.skip_binder();
 
         if self.can_use_global_caches(param_env, cache_fresh_trait_pred) {
-            if let Some(res) = tcx.selection_cache.get(&(infcx.typing_env(param_env), pred), tcx) {
+            let key = (infcx.typing_env(param_env), pred);
+            if let Some(resident) = &tcx.query_system.resident {
+                resident.read_old_trait_solver(ResidentOldTraitKey::Selection(key.0, key.1));
+            }
+            if let Some(res) = tcx.selection_cache.get(&key, tcx) {
                 return Some(res);
             } else if cfg!(debug_assertions) {
                 match infcx.selection_cache.get(&(param_env, pred), tcx) {

@@ -31,7 +31,7 @@ impl Reexport {
 /// need to add more data in the future to correctly support macros 2.0, for example.
 /// Module child can be either a proper item or a reexport (including private imports).
 /// In case of reexport all the fields describe the reexport item itself, not what it refers to.
-#[derive(Debug, TyEncodable, TyDecodable, StableHash)]
+#[derive(Clone, Debug, TyEncodable, TyDecodable, StableHash)]
 pub struct ModChild {
     /// Name of the item.
     pub ident: Ident,
@@ -46,7 +46,7 @@ pub struct ModChild {
 }
 
 /// Same as `ModChild`, however, it includes ambiguity error.
-#[derive(Debug, TyEncodable, TyDecodable, StableHash)]
+#[derive(Clone, Debug, TyEncodable, TyDecodable, StableHash)]
 pub struct AmbigModChild {
     pub main: ModChild,
     pub second: ModChild,

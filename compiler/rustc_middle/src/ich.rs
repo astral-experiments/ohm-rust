@@ -1,9 +1,11 @@
 use std::hash::Hash;
 
 use rustc_crate_store::Untracked;
+use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::stable_hash::{
     RawDefId, RawDefPathHash, RawSpan, StableHash, StableHashControls, StableHashCtxt, StableHasher,
 };
+use rustc_data_structures::sync::Lock;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_session::Session;
 use rustc_span::source_map::SourceMap;
@@ -22,6 +24,7 @@ enum CachingSourceMap<'a> {
 /// things (e.g., each `DefId`/`DefPath` is only hashed once).
 pub struct StableHashState<'a, const HASH_SPANS_AS_PARENTLESS: bool = false> {
     untracked: &'a Untracked,
+    resident_source_spans: Option<&'a Lock<FxHashMap<LocalDefId, Span>>>,
     // The value of `-Z incremental-ignore-spans`.
     // This field should only be used by `unstable_opts_incremental_ignore_span`
     incremental_ignore_spans: bool,
@@ -32,10 +35,16 @@ pub struct StableHashState<'a, const HASH_SPANS_AS_PARENTLESS: bool = false> {
 impl<'a> StableHashState<'a, false> {
     /// Switches to hashing spans without their parent definitions, matching their rmeta encoding.
     pub fn hash_spans_as_parentless(self) -> StableHashState<'a, true> {
-        let Self { untracked, incremental_ignore_spans, caching_source_map, stable_hash_controls } =
-            self;
+        let Self {
+            untracked,
+            resident_source_spans,
+            incremental_ignore_spans,
+            caching_source_map,
+            stable_hash_controls,
+        } = self;
         StableHashState {
             untracked,
+            resident_source_spans,
             incremental_ignore_spans,
             caching_source_map,
             stable_hash_controls,
@@ -50,10 +59,19 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashState<'a, HASH_SPANS_AS
 
         StableHashState {
             untracked,
+            resident_source_spans: None,
             incremental_ignore_spans: sess.opts.unstable_opts.incremental_ignore_spans,
             caching_source_map: CachingSourceMap::Unused(sess.source_map()),
             stable_hash_controls: StableHashControls { hash_spans: hash_spans_initial },
         }
+    }
+
+    pub(crate) fn with_resident_source_spans(
+        mut self,
+        spans: Option<&'a Lock<FxHashMap<LocalDefId, Span>>>,
+    ) -> Self {
+        self.resident_source_spans = spans;
+        self
     }
 
     #[inline]
@@ -77,7 +95,10 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashState<'a, HASH_SPANS_AS
 
     #[inline]
     fn def_span(&self, def_id: LocalDefId) -> Span {
-        self.untracked.source_span.get(def_id).unwrap_or(DUMMY_SP)
+        self.resident_source_spans
+            .and_then(|spans| spans.lock().get(&def_id).copied())
+            .or_else(|| self.untracked.source_span.get(def_id))
+            .unwrap_or(DUMMY_SP)
     }
 
     #[inline]

@@ -1508,12 +1508,19 @@ impl<'tcx> TyCtxt<'tcx> {
     /// system if the result is otherwise tracked through queries
     #[inline]
     pub fn source_span_untracked(self, def_id: LocalDefId) -> Span {
-        self.untracked.source_span.get(def_id).unwrap_or(DUMMY_SP)
+        self.query_system
+            .resident
+            .as_ref()
+            .and_then(|resident| resident.source_spans.lock().get(&def_id).copied())
+            .or_else(|| self.untracked.source_span.get(def_id))
+            .unwrap_or(DUMMY_SP)
     }
 
     #[inline(always)]
     pub fn with_stable_hashing_context<R>(self, f: impl FnOnce(StableHashState<'_>) -> R) -> R {
-        f(StableHashState::new(self.sess, &self.untracked))
+        f(StableHashState::new(self.sess, &self.untracked).with_resident_source_spans(
+            self.query_system.resident.as_ref().map(|resident| &resident.source_spans),
+        ))
     }
 
     #[inline]
@@ -3115,5 +3122,5 @@ pub fn provide(providers: &mut Providers) {
         // We want to check if the panic handler was defined in this crate
         tcx.lang_items().panic_impl().is_some_and(|did| did.is_local())
     };
-    providers.source_span = |tcx, def_id| tcx.untracked.source_span.get(def_id).unwrap_or(DUMMY_SP);
+    providers.source_span = |tcx, def_id| tcx.source_span_untracked(def_id);
 }

@@ -3998,6 +3998,7 @@ dependencies = [
  "rustc_target",
  "serde_json",
  "shlex",
+ "tempfile",
  "tracing",
  "windows 0.61.3",
 ]

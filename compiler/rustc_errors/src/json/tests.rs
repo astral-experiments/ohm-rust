@@ -7,6 +7,29 @@ use serde::Deserialize;
 use super::*;
 use crate::DiagCtxt;
 
+#[test]
+fn resident_records_deferred_error_guarantees() {
+    thread_local! {
+        static RECORDED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+    fn record(is_error: bool) {
+        RECORDED.set(is_error);
+    }
+    rustc_span::create_default_session_globals_then(|| {
+        let previous = crate::TRACK_DIAGNOSTIC_STASH.swap(&(record as fn(bool)));
+        let _restore = rustc_data_structures::defer(|| {
+            crate::TRACK_DIAGNOSTIC_STASH.swap(previous);
+        });
+        RECORDED.set(false);
+        let dcx = DiagCtxt::new(Box::new(crate::emitter::SilentEmitter {}));
+        dcx.handle().delayed_bug("deferred test error");
+        let recorded = RECORDED.get();
+        // Resolve the delayed guarantee before the assertion can unwind the context.
+        dcx.handle().err("reported test error");
+        assert!(recorded);
+    });
+}
+
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 struct TestData {
     spans: Vec<SpanTestData>,

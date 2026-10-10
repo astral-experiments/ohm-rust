@@ -22,6 +22,8 @@ mod keys;
 pub(crate) mod modifiers;
 pub mod on_disk_cache;
 pub(crate) mod plumbing;
+pub mod resident;
+mod resident_graph;
 mod stack;
 
 pub fn describe_as_module(def_id: impl Into<LocalDefId>, tcx: TyCtxt<'_>) -> String {
