@@ -31,8 +31,11 @@ solver cache dependencies. Query-owned diagnostics are replayed for unaffected
 queries and recomputed for invalidated ones. Unowned diagnostic effects,
 early AST diagnostics, pending future-incompatibility reports, unsupported cache eviction, and
 unsupported resolution require a fresh compiler.
-The implementation is restricted to one frontend thread and cannot be combined
-with disk incremental state or code generation.
+Checks use the configured frontend thread count. The driver joins all scoped
+frontend work before changing source or query caches, and mutation boundaries
+wait for the query-cycle handler's final access. Parallel reuse requires this
+driver; other resident frontend drivers remain restricted to one thread.
+Sessions cannot be combined with disk incremental state or code generation.
 
 The driver records source reads and existence probes from the filesystem loader.
 It hashes compiler inputs before and after requests and copies mutable dependency

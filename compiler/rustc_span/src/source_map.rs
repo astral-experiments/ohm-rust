@@ -398,8 +398,8 @@ impl SourceMap {
     /// Replace an EOF suffix while preserving every other file's address range.
     ///
     /// # Safety
-    /// The caller must own the only compiler thread between requests, discard old parser and
-    /// diagnostic state, and invalidate all semantic readers of the changed source before reuse.
+    /// The caller must join all frontend work, exclusively control the next request, discard old
+    /// parser and diagnostic state, and invalidate semantic readers of the changed source before reuse.
     /// No source-file or source-string handles may survive from the previous request.
     pub unsafe fn ohm_replace_resident_file(
         &self,

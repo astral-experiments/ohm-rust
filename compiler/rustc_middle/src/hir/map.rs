@@ -166,18 +166,13 @@ impl<'tcx> TyCtxt<'tcx> {
     /// Update absolute span inputs while preparing a normally lowered resident owner.
     ///
     /// # Safety
-    /// The compiler must be quiescent and single-threaded. The driver must subsequently call
+    /// The driver must have joined all frontend work and must subsequently call
     /// `ohm_replace_resident_owners` before requesting analysis or consuming old query results.
     pub unsafe fn ohm_prepare_resident_source_spans(
         self,
         source_spans: &[(LocalDefId, Span)],
     ) -> Result<(), &'static str> {
-        if self.dep_graph.is_fully_enabled()
-            || self.sess.opts.jobs.frontend.is_some()
-            || crate::ty::tls::with_context(|context| context.query.is_some())
-        {
-            return Err("resident source spans require a quiescent single-threaded compiler");
-        }
+        unsafe { self.ohm_resident_quiesce() }?;
         let graph = self.query_system.resident.as_ref().ok_or("resident graph is disabled")?;
         graph.source_spans.lock().extend(source_spans.iter().copied());
         for &(owner, _) in source_spans {
@@ -193,7 +188,7 @@ impl<'tcx> TyCtxt<'tcx> {
     /// Publish normally lowered owners, backdating only exactly revalidated structural results.
     ///
     /// # Safety
-    /// The caller owns the sole compiler thread between requests. The replacements preserve
+    /// The caller has joined all frontend work and exclusively owns the next request. Replacements preserve
     /// definitions, signatures, trait implementations, and exported inferred types. Only the
     /// checked concrete, non-const body, its containing module's span, and a same-width float
     /// literal initializer may change. No old query value may be used after publication.
@@ -210,12 +205,7 @@ impl<'tcx> TyCtxt<'tcx> {
         use crate::query::QueryCache;
         use crate::query::erase::restore_val;
         use crate::query::resident::ResidentQueryKey;
-        if self.dep_graph.is_fully_enabled()
-            || self.sess.opts.jobs.frontend.is_some()
-            || crate::ty::tls::with_context(|context| context.query.is_some())
-        {
-            return Err("resident owner replacement requires a quiescent single-threaded compiler");
-        }
+        unsafe { self.ohm_resident_quiesce() }?;
         let graph = self.query_system.resident.as_ref().ok_or("resident graph is disabled")?;
         let queries = &self.query_system.query_vtables;
         let mut function = None;

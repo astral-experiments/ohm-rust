@@ -15,7 +15,7 @@ struct Session {
     revision: u64,
 }
 
-fn compiler() -> Command {
+fn compiler(threads: usize) -> Command {
     let mut command = Command::new(rustc_path());
     command.args([
         "lib.rs",
@@ -24,15 +24,15 @@ fn compiler() -> Command {
         "--emit=metadata",
         "--error-format=json",
         "--json=artifacts",
-        "-Zthreads=1",
     ]);
+    command.arg(format!("-Zthreads={threads}"));
     command
 }
 
 impl Session {
-    fn start() -> Self {
+    fn start(threads: usize) -> Self {
         fs::create_dir_all("resident").unwrap();
-        let mut child = compiler()
+        let mut child = compiler(threads)
             .args(["--out-dir=resident", "-Zohm-check-session", "-Zohm-resident-frontend=edit.rs"])
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
@@ -112,9 +112,9 @@ fn semantic_diagnostics(mut values: Vec<Value>) -> Vec<Value> {
     values
 }
 
-fn fresh() -> Vec<Value> {
+fn fresh(threads: usize) -> Vec<Value> {
     fs::create_dir_all("fresh").unwrap();
-    let output = compiler().arg("--out-dir=fresh").output().unwrap();
+    let output = compiler(threads).arg("--out-dir=fresh").output().unwrap();
     semantic_diagnostics(
         String::from_utf8(output.stderr)
             .unwrap()
@@ -135,7 +135,7 @@ fn source(body: &str, constant: &str) {
     .unwrap();
 }
 
-fn main() {
+fn run(threads: usize) {
     fs::write(
         "lib.rs",
         "mod edit;\n\
@@ -143,9 +143,19 @@ fn main() {
         const _: () = assert!(edit::SCALE.to_bits() == 0x3f000000);\n",
     )
     .unwrap();
+    // Independent query owners exercise scoped frontend jobs and diagnostic ownership. Separate
+    // lint-level spans keep one-time notes independent of which parallel query emits first.
+    let mut root = fs::read_to_string("lib.rs").unwrap();
+    for index in 0..64 {
+        root.push_str(&format!(
+            "#[warn(unused_variables)]\n\
+            pub fn independent_{index}<T: Copy>(value: T) -> T {{ let unused = 1; value }}\n"
+        ));
+    }
+    fs::write("lib.rs", root).unwrap();
     source("x + 1.0", "0.5");
-    let mut session = Session::start();
-    assert_eq!(session.response("ready"), fresh());
+    let mut session = Session::start(threads);
+    assert_eq!(session.response("ready"), fresh(threads));
     for (body, constant) in [
         ("x + 2.0", "0.5"),
         ("let unused = 1; x + 2.0", "0.5"),
@@ -155,7 +165,7 @@ fn main() {
         ("x + 3.0", "0.5"),
     ] {
         source(body, constant);
-        assert_eq!(session.check("checked"), fresh(), "{body}, {constant}");
+        assert_eq!(session.check("checked"), fresh(threads), "{body}, {constant}");
     }
     // A declaration edit must discard the worker, not serve stale resolution.
     fs::write("edit.rs", "pub(crate) const SCALE: f32 = 0.5; pub(crate) fn other() {}\n").unwrap();
@@ -170,13 +180,13 @@ fn main() {
         "mod edit; #[path=\"edit.rs\"] mod duplicate;",
     ] {
         fs::write("lib.rs", root).unwrap();
-        let mut session = Session::start();
+        let mut session = Session::start(threads);
         session.response("unsupported");
         session.close();
     }
     // An unrelated source edit invalidates even when its byte length is unchanged.
     fs::write("lib.rs", "mod edit; pub const OTHER: u32 = 1;\n").unwrap();
-    let mut session = Session::start();
+    let mut session = Session::start(threads);
     session.response("ready");
     fs::write("lib.rs", "mod edit; pub const OTHER: u32 = 2;\n").unwrap();
     session.check("unsupported");
@@ -190,7 +200,7 @@ fn main() {
         "pub(crate) fn value(x: f32) -> f32 { (x) }\n",
     ] {
         fs::write("edit.rs", original).unwrap();
-        let mut session = Session::start();
+        let mut session = Session::start(threads);
         session.response("unsupported");
         session.close();
     }
@@ -208,8 +218,14 @@ fn main() {
             ),
         )
         .unwrap();
-        let mut session = Session::start();
+        let mut session = Session::start(threads);
         session.response("unsupported");
         session.close();
+    }
+}
+
+fn main() {
+    for threads in [1, 8] {
+        run(threads);
     }
 }

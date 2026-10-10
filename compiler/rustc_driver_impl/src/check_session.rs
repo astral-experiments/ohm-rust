@@ -416,7 +416,11 @@ impl CheckSession {
             }
             let Ok(source) = fs::read_to_string(&self.source) else { break };
             let expected = hash_bytes(source.as_bytes());
-            if let Err(reason) = frontend.replace_source(tcx, source) {
+            // SAFETY: This loop runs after analysis and its scoped frontend jobs have joined.
+            // The input reader only sends strings; no other task can request compiler queries.
+            // Each replacement finishes analysis before returning, and the loop retains no
+            // semantic query results. Mutation boundaries also drain the query-cycle handler.
+            if let Err(reason) = unsafe { frontend.replace_source(tcx, source) } {
                 let _ = event("unsupported", revision, false, false, reason, &[]);
                 break;
             }

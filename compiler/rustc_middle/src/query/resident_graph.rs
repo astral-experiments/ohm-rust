@@ -287,6 +287,10 @@ impl<K: Copy + Eq + Hash, J: Copy + Eq + Hash> Graph<K, J> {
         found
     }
 
+    pub(crate) fn is_quiescent(&self) -> bool {
+        self.running.is_empty()
+    }
+
     pub(crate) fn advance(&mut self, inputs: impl IntoIterator<Item = K>) -> (u64, HashSet<K>) {
         self.advance_with_backdated(inputs, &HashSet::default())
     }

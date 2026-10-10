@@ -3073,8 +3073,11 @@ pub fn build_session_options(early_dcx: &mut EarlyDiagCtxt, matches: &getopts::M
         unstable_opts.no_parallel_backend,
         unstable_opts.unstable_options,
     );
-    if unstable_opts.ohm_resident_frontend.is_some() && jobs.frontend.is_some() {
-        early_dcx.early_fatal("resident frontend requires --jobs-frontend=1");
+    if unstable_opts.ohm_resident_frontend.is_some()
+        && jobs.frontend.is_some()
+        && !unstable_opts.ohm_check_session
+    {
+        early_dcx.early_fatal("parallel resident frontend requires a check session");
     }
 
     Options {

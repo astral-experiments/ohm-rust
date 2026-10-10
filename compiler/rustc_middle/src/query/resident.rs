@@ -441,6 +441,36 @@ impl<'tcx> ResidentQueryGraph<'tcx> {
 }
 
 impl<'tcx> TyCtxt<'tcx> {
+    /// Join the query-cycle handler after the driver has joined all frontend work.
+    ///
+    /// # Safety
+    /// The caller must have joined every query/cache access and must exclusively control when
+    /// new work starts. Returning from a scoped parallel query provides the required happens-before
+    /// edge; checking this thread's query context alone does not. No detached compiler task may
+    /// survive the request. The check-session driver meets this contract at completed query calls.
+    pub unsafe fn ohm_resident_quiesce(self) -> Result<(), &'static str> {
+        if self.dep_graph.is_fully_enabled()
+            || (self.sess.opts.jobs.frontend.is_some()
+                && !self.sess.opts.unstable_opts.ohm_check_session)
+        {
+            return Err("resident mutation requires a check session or a single compiler thread");
+        }
+        if tls::with_context(|context| context.query.is_some()) {
+            return Err("cannot mutate resident state from inside an active query");
+        }
+        let graph = self.query_system.resident.as_ref().ok_or("resident graph is disabled")?;
+        if !graph.graph.lock().is_quiescent()
+            || graph.active_trait_tasks.load(Ordering::Relaxed) != 0
+        {
+            return Err("resident mutation requires completed queries and trait tasks");
+        }
+        // A cycle handler wakes a blocked query before dropping its GlobalCtxt read guard.
+        // Drain that final access too. With all scoped jobs joined, no handler can still be
+        // waiting to wake a query, and no new handler can start until the driver runs queries.
+        self.ohm_wait_for_query_cycle_handler();
+        Ok(())
+    }
+
     /// Validate a result boundary before allowing another source revision.
     pub fn ohm_resident_diagnostics_complete(self) -> Result<(), &'static str> {
         let resident = self.query_system.resident.as_ref().ok_or("resident graph is disabled")?;
@@ -454,7 +484,7 @@ impl<'tcx> TyCtxt<'tcx> {
     /// Discard diagnostic and error-tainted query results before clearing ambient error state.
     ///
     /// # Safety
-    /// The caller owns the sole compiler thread between completed requests.
+    /// The caller has joined all frontend work and exclusively owns the next request.
     pub unsafe fn ohm_begin_resident_diagnostic_revision(self) -> Result<(), &'static str> {
         self.ohm_resident_diagnostics_complete()?;
         let resident = self.query_system.resident.as_ref().unwrap();
@@ -555,8 +585,8 @@ impl<'tcx> TyCtxt<'tcx> {
     /// handed to the driver still refer to the old revision and must no longer be consulted.
     ///
     /// # Safety
-    /// The embedding driver must own the only compiler thread, with all previous query/cache
-    /// accesses completed and no access started until this call returns.
+    /// The embedding driver must have joined all previous query/cache accesses, with no access
+    /// started until this call returns. See `ohm_resident_quiesce` for the parallel contract.
     pub unsafe fn ohm_invalidate_resident_queries(
         self,
         inputs: impl IntoIterator<Item = ResidentQueryKey<'tcx>>,
@@ -576,14 +606,7 @@ impl<'tcx> TyCtxt<'tcx> {
         inputs: impl IntoIterator<Item = ResidentQueryKey<'tcx>>,
         backdated: &[TaggedQueryKey<'tcx>],
     ) -> Result<ResidentEviction<'tcx>, &'static str> {
-        if self.dep_graph.is_fully_enabled() || self.sess.opts.jobs.frontend.is_some() {
-            return Err(
-                "requires a single-threaded compiler with incremental compilation disabled",
-            );
-        }
-        if tls::with_context(|context| context.query.is_some()) {
-            return Err("cannot invalidate from inside an active query");
-        }
+        unsafe { self.ohm_resident_quiesce() }?;
         let graph =
             self.query_system.resident.as_ref().ok_or("resident query graph is disabled")?;
         let mut inputs: Vec<_> = inputs.into_iter().collect();
@@ -635,7 +658,7 @@ impl<'tcx> TyCtxt<'tcx> {
                     eviction.trait_solver_caches_reset = true;
                 }
                 ResidentQueryKey::Query(query) => {
-                    // SAFETY: The caller owns the only compiler thread between query requests.
+                    // SAFETY: All frontend work was joined before this mutation boundary.
                     if unsafe { query.resident_invalidate_quiescent(self) } {
                         eviction.removed.push(query);
                     } else {

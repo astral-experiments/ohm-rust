@@ -429,6 +429,8 @@ macro_rules! define_callbacks {
                 self,
                 tcx: TyCtxt<'tcx>,
             ) -> bool {
+                // Revalidation can execute queries between individual cache mutations.
+                unsafe { tcx.ohm_resident_quiesce() }.expect("resident cache mutation boundary");
                 match self {
                     $(
                         TaggedQueryKey::$name(key) => {

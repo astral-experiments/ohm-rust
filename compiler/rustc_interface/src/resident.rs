@@ -205,7 +205,12 @@ impl<'ra, 'tcx> ResidentFrontend<'ra, 'tcx> {
         tcx.ohm_resident_diagnostics_complete()
     }
 
-    pub fn replace_source(
+    /// Recheck a supported edit after every query from the previous request has completed.
+    ///
+    /// # Safety
+    /// The driver must join all frontend tasks and exclusively control query execution until
+    /// this call returns. It must not retain or use query values from the previous revision.
+    pub unsafe fn replace_source(
         &mut self,
         tcx: TyCtxt<'tcx>,
         source: String,
@@ -286,6 +291,7 @@ impl<'ra, 'tcx> ResidentFrontend<'ra, 'tcx> {
         );
         let previous = find_item(&self.krate, self.item).ok_or("lost function")?;
         unsafe {
+            tcx.ohm_resident_quiesce()?;
             tcx.sess.source_map().ohm_replace_resident_file(
                 self.source,
                 source,

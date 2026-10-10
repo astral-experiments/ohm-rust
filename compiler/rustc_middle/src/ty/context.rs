@@ -915,6 +915,12 @@ impl CurrentGcx {
 }
 
 impl<'tcx> TyCtxt<'tcx> {
+    /// Wait for the cycle handler's final access after every scoped query job has completed.
+    pub(crate) fn ohm_wait_for_query_cycle_handler(self) {
+        // Do not keep this lock across query execution: the handler needs it to break cycles.
+        let _guard = self.current_gcx.value.write();
+    }
+
     pub fn has_typeck_results(self, def_id: LocalDefId) -> bool {
         // Closures' typeck results come from their outermost function,
         // as they are part of the same "inference environment".
