@@ -29,7 +29,8 @@ invalidates transitive readers in a process-local query graph. The graph records
 cache hits, provider dependencies, query feeds, selected HIR reads, and trait
 solver cache dependencies. Query-owned diagnostics are replayed for unaffected
 queries and recomputed for invalidated ones. Unowned diagnostic effects,
-unsupported cache eviction, and unsupported resolution require a fresh compiler.
+pending future-incompatibility reports, unsupported cache eviction, and
+unsupported resolution require a fresh compiler.
 The implementation is restricted to one frontend thread and cannot be combined
 with disk incremental state or code generation.
 

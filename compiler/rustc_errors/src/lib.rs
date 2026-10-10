@@ -560,6 +560,7 @@ impl DiagCtxt {
         let inner = self.inner.borrow();
         inner.stashed_diagnostics.is_empty()
             && inner.delayed_bugs.is_empty()
+            && inner.future_breakage_diagnostics.is_empty()
             && (inner.must_produce_diag.is_none()
                 || inner.has_printed
                 || inner.suppressed_expected_diag)

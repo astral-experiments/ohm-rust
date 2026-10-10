@@ -30,6 +30,20 @@ fn resident_records_deferred_error_guarantees() {
     });
 }
 
+#[test]
+fn resident_rejects_pending_future_breakage_reports() {
+    rustc_span::create_default_session_globals_then(|| {
+        let dcx = DiagCtxt::new(Box::new(crate::emitter::SilentEmitter {}));
+        assert!(dcx.resident_revision_complete());
+        let mut diagnostic = dcx.handle().struct_warn("future compatibility test warning");
+        diagnostic.is_lint("future_test".to_owned(), true, None);
+        diagnostic.emit();
+        assert!(!dcx.resident_revision_complete());
+        dcx.handle().emit_future_breakage_report();
+        assert!(dcx.resident_revision_complete());
+    });
+}
+
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 struct TestData {
     spans: Vec<SpanTestData>,
