@@ -190,6 +190,10 @@ impl<'tcx> ResidentQueryGraph<'tcx> {
         if diagnostics.unowned {
             return Err("resident diagnostic has no query owner");
         }
+        let early = TaggedQueryKey::early_lint_checks(());
+        if diagnostics.queries.contains_key(&early) || diagnostics.stashes.contains(&early) {
+            return Err("early AST diagnostics require a fresh compiler");
+        }
         Ok(diagnostics
             .queries
             .keys()

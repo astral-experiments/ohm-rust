@@ -12,6 +12,35 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
         self.owners.get(&id).map(|owner| owner.def_id)
     }
 
+    /// Require the original body and every replacement to preserve nonlocal name usage.
+    pub fn resident_body_has_only_local_paths(&self, item: &Item) -> bool {
+        struct LocalPaths<'a, 'ra, 'tcx> {
+            resolver: &'a Resolver<'ra, 'tcx>,
+            valid: bool,
+        }
+        impl<'ast> Visitor<'ast> for LocalPaths<'_, '_, '_> {
+            fn visit_expr(&mut self, expr: &'ast rustc_ast::Expr) {
+                if matches!(expr.kind, rustc_ast::ExprKind::Path(..)) {
+                    self.valid &= self
+                        .resolver
+                        .partial_res_map
+                        .get(&expr.id)
+                        .and_then(|res| res.full_res())
+                        .is_some_and(|res| matches!(res, Res::Local(_)));
+                }
+                visit::walk_expr(self, expr);
+            }
+        }
+        let rustc_ast::ItemKind::Fn(function) = &item.kind else {
+            return false;
+        };
+        let mut paths = LocalPaths { resolver: self, valid: true };
+        if let Some(body) = &function.body {
+            paths.visit_block(body);
+        }
+        paths.valid
+    }
+
     pub fn resolve_resident_function(
         &mut self,
         module: NodeId,
@@ -99,31 +128,7 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
         }) {
             return Err("body uses imported trait candidates");
         }
-        struct LocalPaths<'a, 'ra, 'tcx> {
-            resolver: &'a Resolver<'ra, 'tcx>,
-            valid: bool,
-        }
-        impl<'ast> Visitor<'ast> for LocalPaths<'_, '_, '_> {
-            fn visit_expr(&mut self, expr: &'ast rustc_ast::Expr) {
-                if matches!(expr.kind, rustc_ast::ExprKind::Path(..)) {
-                    self.valid &= self
-                        .resolver
-                        .partial_res_map
-                        .get(&expr.id)
-                        .and_then(|res| res.full_res())
-                        .is_some_and(|res| matches!(res, Res::Local(_)));
-                }
-                visit::walk_expr(self, expr);
-            }
-        }
-        let rustc_ast::ItemKind::Fn(function) = &item.kind else {
-            return Err("not a function");
-        };
-        let mut paths = LocalPaths { resolver: self, valid: true };
-        if let Some(body) = &function.body {
-            paths.visit_block(body);
-        }
-        if !paths.valid {
+        if !self.resident_body_has_only_local_paths(item) {
             return Err("body references a nonlocal path");
         }
         Ok(())

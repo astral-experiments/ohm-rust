@@ -181,4 +181,35 @@ fn main() {
     fs::write("lib.rs", "mod edit; pub const OTHER: u32 = 2;\n").unwrap();
     session.check("unsupported");
     session.close();
+
+    fs::write("lib.rs", "mod edit; pub fn value(x: f32) -> f32 { edit::value(x) }\n").unwrap();
+    for original in [
+        "use std::f32::consts::PI; pub(crate) fn value(x: f32) -> f32 { x + PI }\n",
+        "macro_rules! body { () => { 1.0 } }\n\
+         pub(crate) fn value(_x: f32) -> f32 { body!() }\n",
+        "pub(crate) fn value(x: f32) -> f32 { (x) }\n",
+    ] {
+        fs::write("edit.rs", original).unwrap();
+        let mut session = Session::start();
+        session.response("unsupported");
+        session.close();
+    }
+
+    source("x + 1.0", "0.5");
+    for level in ["warn", "allow", "expect"] {
+        fs::write(
+            "lib.rs",
+            format!(
+                "#![{level}(semicolon_in_expressions_from_macros)]\n\
+                macro_rules! compatibility {{ () => {{ 1u32; }} }}\n\
+                mod edit;\n\
+                pub fn value(x: f32) -> f32 {{ edit::value(x) + edit::SCALE }}\n\
+                pub fn compatibility() -> u32 {{ compatibility!() }}\n"
+            ),
+        )
+        .unwrap();
+        let mut session = Session::start();
+        session.response("unsupported");
+        session.close();
+    }
 }

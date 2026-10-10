@@ -62,6 +62,10 @@ impl<'ra, 'tcx> ResidentFrontend<'ra, 'tcx> {
         if !source_text.is_ascii() {
             return None;
         }
+        let parsed = parse_candidate(source_text.clone(), tcx.sess.edition()).ok()?;
+        if !parsed.items.last().is_some_and(|item| eligible(item)) {
+            return None;
+        }
         let file = tcx
             .sess
             .source_map()
@@ -128,7 +132,7 @@ impl<'ra, 'tcx> ResidentFrontend<'ra, 'tcx> {
             return None;
         }
         let item = find.item?;
-        if !eligible(&item) {
+        if !eligible(&item) || !resolver.resident_body_has_only_local_paths(&item) {
             return None;
         }
         let ItemKind::Fn(function) = &item.kind else {
@@ -222,39 +226,7 @@ impl<'ra, 'tcx> ResidentFrontend<'ra, 'tcx> {
             return Err("source changed outside the body");
         }
         unsafe { tcx.ohm_begin_resident_diagnostic_revision() }?;
-        let mut psess = ParseSess::new();
-        psess.edition = tcx.sess.edition();
-        let mut parser = rustc_parse::new_parser_from_source_str(
-            &psess,
-            FileName::Custom("resident-candidate".into()),
-            source.clone(),
-            StripTokens::Nothing,
-        )
-        .map_err(|errors| {
-            for error in errors {
-                error.cancel();
-            }
-            "candidate did not tokenize"
-        })?;
-        let mut parsed = parser.parse_crate_mod().map_err(|error| {
-            error.cancel();
-            "candidate did not parse"
-        })?;
-        #[expect(
-            rustc::potential_query_instability,
-            reason = "Only the existence of a gated span is observed, so map iteration order cannot affect the result"
-        )]
-        let has_gated_spans =
-            psess.gated_spans.spans.lock().values().any(|spans| !spans.is_empty());
-        if psess.dcx().has_errors_or_delayed_bugs().is_some()
-            || !psess.buffered_lints.lock().is_empty()
-            || !psess.ambiguous_block_expr_parse.lock().is_empty()
-            || psess.raw_identifier_spans.iter().next().is_some()
-            || !psess.bad_unicode_identifiers.lock().is_empty()
-            || has_gated_spans
-        {
-            return Err("candidate has parse diagnostics or side effects");
-        }
+        let mut parsed = parse_candidate(source.clone(), tcx.sess.edition())?;
         let mut item = *parsed.items.pop().ok_or("missing function")?;
         if !eligible(&item) {
             return Err("unsupported body syntax");
@@ -447,6 +419,46 @@ impl<'ra, 'tcx> ResidentFrontend<'ra, 'tcx> {
     pub fn last_invalidation_trace(&self) -> &str {
         &self.last_trace
     }
+}
+
+/// Parse without expansion so macros cannot enter the retained body through rewritten spans.
+fn parse_candidate(
+    source: String,
+    edition: rustc_span::edition::Edition,
+) -> Result<ast::Crate, &'static str> {
+    let mut psess = ParseSess::new();
+    psess.edition = edition;
+    let mut parser = rustc_parse::new_parser_from_source_str(
+        &psess,
+        FileName::Custom("resident-candidate".into()),
+        source,
+        StripTokens::Nothing,
+    )
+    .map_err(|errors| {
+        for error in errors {
+            error.cancel();
+        }
+        "candidate did not tokenize"
+    })?;
+    let parsed = parser.parse_crate_mod().map_err(|error| {
+        error.cancel();
+        "candidate did not parse"
+    })?;
+    #[expect(
+        rustc::potential_query_instability,
+        reason = "Only the existence of a gated span is observed, so map iteration order cannot affect the result"
+    )]
+    let has_gated_spans = psess.gated_spans.spans.lock().values().any(|spans| !spans.is_empty());
+    if psess.dcx().has_errors_or_delayed_bugs().is_some()
+        || !psess.buffered_lints.lock().is_empty()
+        || !psess.ambiguous_block_expr_parse.lock().is_empty()
+        || psess.raw_identifier_spans.iter().next().is_some()
+        || !psess.bad_unicode_identifiers.lock().is_empty()
+        || has_gated_spans
+    {
+        return Err("candidate has parse diagnostics or side effects");
+    }
+    Ok(parsed)
 }
 
 fn float_constant(item: &ast::Item) -> Option<&ast::Expr> {
