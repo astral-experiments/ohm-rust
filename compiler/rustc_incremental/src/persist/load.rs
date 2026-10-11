@@ -67,19 +67,19 @@ fn load_dep_graph(sess: &Session, incr_comp_session: &IncrCompSession) -> LoadRe
             Decodable::decode(&mut work_product_decoder);
 
         for swp in work_products {
-            let all_files_exist = swp.work_product.saved_files.items().all(|(_, path)| {
-                let exists = in_incr_comp_dir_sess(incr_comp_session, path).exists();
-                if !exists && sess.opts.unstable_opts.incremental_info {
+            let all_files_available = swp.work_product.saved_files.items().all(|(_, path)| {
+                let is_file = in_incr_comp_dir_sess(incr_comp_session, path).is_file();
+                if !is_file && sess.opts.unstable_opts.incremental_info {
                     eprintln!("incremental: could not find file for work product: {path}",);
                 }
-                exists
+                is_file
             });
 
-            if all_files_exist {
+            if all_files_available {
                 debug!("reconcile_work_products: all files for {:?} exist", swp);
                 prev_work_products.insert(swp.id, swp.work_product);
             } else {
-                debug!("reconcile_work_products: some file for {:?} does not exist", swp);
+                debug!("reconcile_work_products: some file for {:?} is unavailable", swp);
                 delete_dirty_work_product(sess, incr_comp_session, swp);
             }
         }
@@ -120,9 +120,7 @@ fn load_dep_graph(sess: &Session, incr_comp_session: &IncrCompSession) -> LoadRe
 
 /// Attempts to load the query result cache from disk
 ///
-/// If we are not in incremental compilation mode, returns `None`.
-/// Otherwise, tries to load the query result cache from disk,
-/// creating an empty cache if it could not be loaded.
+/// Returns `None` outside incremental compilation or if the cache could not be loaded.
 pub fn load_query_result_cache(
     sess: &Session,
     incr_comp_session: Option<&IncrCompSession>,
@@ -136,16 +134,10 @@ pub fn load_query_result_cache(
 
     let path = query_cache_path(incr_comp_session);
     match file_format::open_incremental_file(sess, &path) {
-        Ok(OpenFile { mmap, start_pos }) => {
-            let cache = OnDiskCache::new(sess, mmap, start_pos).unwrap_or_else(|()| {
-                sess.dcx().emit_warn(diagnostics::CorruptFile { path: &path });
-                OnDiskCache::new_empty()
-            });
-            Some(cache)
-        }
-        Err(OpenFileError::NotFoundOrHeaderMismatch | OpenFileError::IoError { .. }) => {
-            Some(OnDiskCache::new_empty())
-        }
+        Ok(OpenFile { mmap, start_pos }) => OnDiskCache::new(sess, mmap, start_pos)
+            .map_err(|()| sess.dcx().emit_warn(diagnostics::CorruptFile { path: &path }))
+            .ok(),
+        Err(OpenFileError::NotFoundOrHeaderMismatch | OpenFileError::IoError { .. }) => None,
     }
 }
 
@@ -184,15 +176,23 @@ pub fn setup_dep_graph(
     sess: &Session,
     crate_name: Symbol,
     stable_crate_id: StableCrateId,
-) -> (DepGraph, Option<IncrCompSession>) {
+) -> (DepGraph, Option<IncrCompSession>, Option<OnDiskCache>) {
     if sess.opts.incremental.is_none() {
-        return (DepGraph::new_disabled(), None);
+        return (DepGraph::new_disabled(), None, None);
     }
 
     // `load_dep_graph` can only be called after `prepare_session_directory`.
     let incr_comp_session = prepare_session_directory(sess, crate_name, stable_crate_id);
     // Try to load the previous session's dep graph and work products.
-    let load_result = load_dep_graph(sess, &incr_comp_session);
+    let mut load_result = load_dep_graph(sess, &incr_comp_session);
+    let mut query_cache = None;
+    if matches!(load_result, LoadResult::Ok { .. }) {
+        query_cache = load_query_result_cache(sess, Some(&incr_comp_session));
+        if query_cache.is_none() {
+            // Side-effect nodes cannot be reused without their cached payloads.
+            load_result = LoadResult::DataOutOfDate;
+        }
+    }
 
     sess.time("incr_comp_garbage_collect_session_directories", || {
         if let Err(e) =
@@ -239,5 +239,9 @@ pub fn setup_dep_graph(
     // First encode the commandline arguments hash
     sess.opts.dep_tracking_hash(false).encode(&mut encoder);
 
-    (DepGraph::new(sess, prev_graph, prev_work_products, encoder), Some(incr_comp_session))
+    (
+        DepGraph::new(sess, prev_graph, prev_work_products, encoder),
+        Some(incr_comp_session),
+        Some(query_cache.unwrap_or_else(OnDiskCache::new_empty)),
+    )
 }

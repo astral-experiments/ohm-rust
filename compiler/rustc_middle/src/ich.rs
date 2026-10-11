@@ -169,14 +169,10 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
         // issue #74890). A similar analysis applies if some query depends specifically on the
         // length of the span, but we only hash the end location. So hash both.
 
-        let col_lo_trunc = (col_lo.0 as u64) & 0xFF;
-        let line_lo_trunc = ((line_lo as u64) & 0xFF_FF_FF) << 8;
-        let col_hi_trunc = (col_hi.0 as u64) & 0xFF << 32;
-        let line_hi_trunc = ((line_hi as u64) & 0xFF_FF_FF) << 40;
-        let col_line = col_lo_trunc | line_lo_trunc | col_hi_trunc | line_hi_trunc;
-        let len = (span.hi - span.lo).0;
-        Hash::hash(&col_line, hasher);
-        Hash::hash(&len, hasher);
+        // A reified `#[track_caller]` shim can observe the full column, including moves by 256.
+        Hash::hash(&((line_lo as u64) << 32 | u64::from(col_lo.0)), hasher);
+        Hash::hash(&((line_hi as u64) << 32 | u64::from(col_hi.0)), hasher);
+        Hash::hash(&(span.hi - span.lo).0, hasher);
     }
 
     #[inline]
