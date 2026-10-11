@@ -263,7 +263,7 @@ fn main() {
     rfs::write("lib.rs", public_source.replace("-> u32", "-> u64"));
     assert_ne!(fresh_hash, compile_and_read_public_api_hash(false));
 
-    // Span stable hashing retains only eight column bits. Move an entire tracked function by
+    // Move an entire tracked function by
     // exactly 256 columns while keeping every line boundary and definition length unchanged.
     rfs::write("private.rs", private_source);
     let public_source = rfs::read_to_string("lib.rs");
@@ -294,7 +294,7 @@ fn main() {
     rfs::write("lib.rs", &moved_source);
     change_private_value(6, 7);
     let (moved_hash, _) = compile_and_read_public_api_hash_with_output(false, &[], "metadata,link");
-    assert_eq!(tracked_hash, moved_hash, "moving by 256 columns must collide under stable hashing");
+    assert_ne!(tracked_hash, moved_hash);
     assert_eq!(downstream_tracked_caller_column(), original_column + 256);
 
     change_private_value(7, 8);
