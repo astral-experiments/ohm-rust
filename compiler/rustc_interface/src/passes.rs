@@ -625,7 +625,6 @@ fn write_out_deps(tcx: TyCtxt<'_>, outputs: &OutputFilenames, out_filenames: &[P
         // (e.g. accessed in proc macros).
         let file_depinfo = sess.file_depinfo.borrow();
 
-
         let mut add_file = |path: &Path| {
             let escaped = escape_path(path.to_string_lossy());
             let checksum = checksum_hash_algo.and_then(|algo| {
