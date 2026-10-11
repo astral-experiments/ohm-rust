@@ -19,7 +19,7 @@ struct CachedRead<J> {
 /// A bounded, thread-local cache of dependencies already recorded for a query job.
 /// Query job IDs and virtual cache indices are never reused within a compiler session.
 pub(crate) struct CachedReads<J> {
-    session: u64,
+    session: usize,
     entries: [Option<CachedRead<J>>; 128],
 }
 
@@ -31,7 +31,7 @@ impl<J: Copy + Eq> CachedReads<J> {
     #[inline]
     pub(crate) fn read(
         &mut self,
-        session: u64,
+        session: usize,
         job: J,
         index: usize,
         accesses_value: bool,

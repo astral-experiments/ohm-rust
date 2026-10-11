@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread::{self, ThreadId};
 
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
-use rustc_data_structures::sync::{AtomicU64, Lock};
+use rustc_data_structures::sync::Lock;
 use rustc_errors::{DiagInner, MultiSpan};
 use rustc_hir::HirId;
 use rustc_lint_defs::LintId;
@@ -23,7 +23,7 @@ use crate::ty::{self, TyCtxt, tls};
 /// fed-query-to-feeder edge. This deliberately does not change rustc's disk dep graph or evict
 /// query values. Consumers must apply a returned invalidation plan to caches at quiescence.
 pub struct ResidentQueryGraph<'tcx> {
-    session_id: u64,
+    session_id: usize,
     graph: Lock<Graph<ResidentQueryKey<'tcx>, QueryJobId>>,
     trait_tasks: Lock<FxHashMap<ThreadId, Vec<TraitTask>>>,
     active_trait_tasks: AtomicUsize,
@@ -43,9 +43,9 @@ impl Default for ResidentQueryGraph<'_> {
     fn default() -> Self {
         // Compiler contexts can be replaced on a surviving thread. Never identify a session by
         // its address: an allocator may reuse that address along with its first query job IDs.
-        static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
+        static NEXT_SESSION_ID: AtomicUsize = AtomicUsize::new(1);
         let session_id = NEXT_SESSION_ID
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
             .expect("resident session ID overflow");
         Self {
             session_id,
