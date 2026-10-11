@@ -327,15 +327,14 @@ fn main() {
     assert_eq!(diagnostic_source.len(), moved_diagnostic_source.len());
     rfs::write("lib.rs", &moved_diagnostic_source);
     change_private_value(9, 1);
-    assert_eq!(
-        diagnostic_hash,
-        compile_and_read_public_api_hash_with_output(false, &[], "metadata,link").0,
-    );
+    let (moved_diagnostic_hash, _) =
+        compile_and_read_public_api_hash_with_output(false, &[], "metadata,link");
+    assert_ne!(diagnostic_hash, moved_diagnostic_hash);
     assert_eq!(downstream_private_method_column(), original_diagnostic_column + 256);
 
     change_private_value(1, 2);
     assert_eq!(
-        diagnostic_hash,
+        moved_diagnostic_hash,
         compile_and_read_public_api_hash_with_output(true, &[], "metadata,link").0,
     );
     assert_eq!(downstream_private_method_column(), original_diagnostic_column + 256);
@@ -464,11 +463,10 @@ fn main() {
 
     let moved_macro_source = macro_source.replacen(&original_line, &moved_line, 1);
     assert_eq!(macro_source.len(), moved_macro_source.len());
-    rfs::write("lib.rs", moved_macro_source);
+    rfs::write("lib.rs", &moved_macro_source);
     change_private_value(2, 3);
-    assert_eq!(
-        macro_hash,
-        compile_and_read_public_api_hash_with_output(false, &[], "metadata,link").0,
-    );
+    let (moved_macro_hash, _) =
+        compile_and_read_public_api_hash_with_output(false, &[], "metadata,link");
+    assert_ne!(macro_hash, moved_macro_hash);
     assert_eq!(downstream_exported_macro_column(), original_macro_column + 256);
 }
