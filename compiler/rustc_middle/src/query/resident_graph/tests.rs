@@ -125,6 +125,50 @@ fn cached_indices_preserve_reads_feeds_and_recomputed_keys() {
 }
 
 #[test]
+fn cached_reads_preserve_value_feeds_and_external_task_inputs() {
+    let mut graph = Graph::default();
+    let mut cache = CachedReads::new();
+    graph.register_cached(4, 'p', true);
+    record(&mut graph, 1, 'p', &['x'], &[]);
+    graph.begin(2, 'a');
+    let node = cache.read(1, 2, 4, false, || graph.read_cached(Some(2), 4, false)).unwrap();
+    assert_eq!(cache.read(1, 2, 4, false, || panic!("duplicate ensure")), Some(node));
+    // A value read after an ensure must add the edge that restores a consumed prerequisite.
+    assert_eq!(cache.read(1, 2, 4, true, || graph.read_cached(Some(2), 4, true)), Some(node));
+    for task in ['s', 't'] {
+        let input = cache.read(1, 2, 4, true, || panic!("duplicate value read")).unwrap();
+        let task = graph.intern_key(task);
+        graph.record_external_nodes(task, [input]);
+    }
+    assert_eq!(cache.read(1, 2, 4, false, || panic!("ensure after value")), Some(node));
+    graph.end(2, true);
+    assert_eq!(graph.closure(['a']), set(&['a', 'p', 's', 't']));
+    assert_eq!(graph.closure(['x']), set(&['x', 'p', 'a', 's', 't']));
+
+    // A new job must replace the old read/feed set even for the same query and cache index.
+    graph.begin(3, 'a');
+    cache.read(1, 3, 4, false, || graph.read_cached(Some(3), 4, false)).unwrap();
+    graph.end(3, true);
+    assert_eq!(graph.closure(['a']), set(&['a']));
+    assert_eq!(graph.closure(['x']), set(&['x', 'p', 'a', 's', 't']));
+}
+
+#[test]
+fn cached_reads_separate_jobs_sessions_collisions_and_unregistered_indices() {
+    let mut cache = CachedReads::new();
+    assert_eq!(cache.read(1, 1, 7, true, || None), None);
+    assert_eq!(cache.read(1, 1, 7, true, || Some(10)), Some(10));
+    assert_eq!(cache.read(1, 1, 7, true, || panic!("duplicate read")), Some(10));
+    let collision = 7 + cache.entries.len();
+    assert_eq!(cache.read(1, 1, collision, true, || Some(20)), Some(20));
+    // Eviction changes cost, never whether the graph records the dependency.
+    assert_eq!(cache.read(1, 1, 7, true, || Some(11)), Some(11));
+    assert_eq!(cache.read(1, 2, 7, true, || Some(12)), Some(12));
+    assert_eq!(cache.read(2, 2, 7, true, || Some(13)), Some(13));
+    assert_eq!(cache.read(2, 2, 7, true, || panic!("duplicate read")), Some(13));
+}
+
+#[test]
 fn interned_keys_without_committed_edges_remain_distinct_from_empty_queries() {
     let mut graph = Graph::default();
     graph.register_cached(2, 'u', false);

@@ -1,9 +1,9 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread::{self, ThreadId};
 
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
-use rustc_data_structures::sync::Lock;
+use rustc_data_structures::sync::{AtomicU64, Lock};
 use rustc_errors::{DiagInner, MultiSpan};
 use rustc_hir::HirId;
 use rustc_lint_defs::LintId;
@@ -11,7 +11,7 @@ use rustc_span::Span;
 use rustc_span::def_id::{DefId, LocalDefId};
 
 use super::QueryJobId;
-use super::resident_graph::{Graph, NodeId};
+use super::resident_graph::{CachedReads, Graph, NodeId};
 use crate::dep_graph::DepNodeIndex;
 use crate::queries::TaggedQueryKey;
 use crate::ty::{self, TyCtxt, tls};
@@ -23,6 +23,7 @@ use crate::ty::{self, TyCtxt, tls};
 /// fed-query-to-feeder edge. This deliberately does not change rustc's disk dep graph or evict
 /// query values. Consumers must apply a returned invalidation plan to caches at quiescence.
 pub struct ResidentQueryGraph<'tcx> {
+    session_id: u64,
     graph: Lock<Graph<ResidentQueryKey<'tcx>, QueryJobId>>,
     trait_tasks: Lock<FxHashMap<ThreadId, Vec<TraitTask>>>,
     active_trait_tasks: AtomicUsize,
@@ -32,9 +33,22 @@ pub struct ResidentQueryGraph<'tcx> {
     pub(crate) source_spans: Lock<FxHashMap<LocalDefId, Span>>,
 }
 
+thread_local! {
+    static CACHED_READS: RefCell<CachedReads<QueryJobId>> = const {
+        RefCell::new(CachedReads::new())
+    };
+}
+
 impl Default for ResidentQueryGraph<'_> {
     fn default() -> Self {
+        // Compiler contexts can be replaced on a surviving thread. Never identify a session by
+        // its address: an allocator may reuse that address along with its first query job IDs.
+        static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
+        let session_id = NEXT_SESSION_ID
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .expect("resident session ID overflow");
         Self {
+            session_id,
             graph: Lock::new(Graph::default()),
             trait_tasks: Default::default(),
             active_trait_tasks: AtomicUsize::new(0),
@@ -270,8 +284,18 @@ impl<'tcx> ResidentQueryGraph<'tcx> {
     /// Return false for an unregistered entry so the caller can use ordinary key recording.
     pub(crate) fn read_cached(&self, index: DepNodeIndex, accesses_value: bool) -> bool {
         let parent = tls::with_context(|icx| icx.query);
-        let node = self.graph.lock().read_cached(parent, index.as_u32() as usize, accesses_value);
+        let index = index.as_u32() as usize;
+        let record = || self.graph.lock().read_cached(parent, index, accesses_value);
+        let node = if let Some(parent) = parent {
+            CACHED_READS.with(|cache| {
+                cache.borrow_mut().read(self.session_id, parent, index, accesses_value, record)
+            })
+        } else {
+            record()
+        };
         let Some(node) = node else { return false };
+        // Solver tasks have their own lifetime within a query. Even a duplicate query read can
+        // be a new input to the current task, so only the query's graph insertion is memoized.
         self.read_trait_task(node, parent);
         true
     }

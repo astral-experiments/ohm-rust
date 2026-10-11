@@ -8,6 +8,53 @@ use smallvec::SmallVec;
 pub(crate) type NodeId = u32;
 type EdgeList = SmallVec<[NodeId; 4]>;
 
+#[derive(Clone, Copy)]
+struct CachedRead<J> {
+    job: J,
+    index: usize,
+    node: NodeId,
+    accesses_value: bool,
+}
+
+/// A bounded, thread-local cache of dependencies already recorded for a query job.
+/// Query job IDs and virtual cache indices are never reused within a compiler session.
+pub(crate) struct CachedReads<J> {
+    session: u64,
+    entries: [Option<CachedRead<J>>; 128],
+}
+
+impl<J: Copy + Eq> CachedReads<J> {
+    pub(crate) const fn new() -> Self {
+        Self { session: 0, entries: [None; 128] }
+    }
+
+    #[inline]
+    pub(crate) fn read(
+        &mut self,
+        session: u64,
+        job: J,
+        index: usize,
+        accesses_value: bool,
+        record: impl FnOnce() -> Option<NodeId>,
+    ) -> Option<NodeId> {
+        if self.session != session {
+            self.entries.fill(None);
+            self.session = session;
+        }
+        let slot = index % self.entries.len();
+        if let Some(entry) = self.entries[slot]
+            && entry.job == job
+            && entry.index == index
+            && (entry.accesses_value || !accesses_value)
+        {
+            return Some(entry.node);
+        }
+        let node = record()?;
+        self.entries[slot] = Some(CachedRead { job, index, node, accesses_value });
+        Some(node)
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 struct CachedNode(NonZeroU32);
