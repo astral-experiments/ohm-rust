@@ -269,7 +269,9 @@ fn main() {
 }
 
 fn macro_revalidation() {
-    fs::write("macros.rs", r#"
+    fs::write(
+        "macros.rs",
+        r#"
         extern crate proc_macro;
         use proc_macro::TokenStream;
         static INVOCATIONS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -290,7 +292,9 @@ fn macro_revalidation() {
             std::fs::write(path, (count + 1).to_string()).unwrap();
             TokenStream::new()
         }
-    "#).unwrap();
+    "#,
+    )
+    .unwrap();
     let library =
         format!("{}session_macros{}", std::env::consts::DLL_PREFIX, std::env::consts::DLL_SUFFIX);
     assert!(
