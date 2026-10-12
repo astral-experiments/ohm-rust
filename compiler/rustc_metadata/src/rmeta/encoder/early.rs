@@ -14,7 +14,7 @@ use super::{should_encode_const, should_encode_mir};
 
 pub(super) fn enabled(tcx: TyCtxt<'_>) -> bool {
     tcx.sess.opts.unstable_opts.ohm_early_metadata
-        && !tcx.sess.opts.output_types.should_codegen()
+        && !tcx.codegen_output_mode(()).0
         && !tcx.sess.opts.unstable_opts.always_encode_mir
         && !tcx.sess.opts.unstable_opts.validate_mir
         && !tcx.is_sdylib_interface_build()

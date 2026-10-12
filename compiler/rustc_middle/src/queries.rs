@@ -232,6 +232,11 @@ rustc_queries! {
         feedable
     }
 
+    query codegen_output_mode(_: ()) -> (bool, bool) {
+        eval_always
+        desc { "tracking code generation and linking output modes" }
+    }
+
     /// All items in the crate.
     query hir_crate_items(_: ()) -> &'tcx rustc_middle::hir::ModuleItems {
         arena_cache
