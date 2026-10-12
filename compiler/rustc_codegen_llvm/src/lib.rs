@@ -473,28 +473,46 @@ unsafe impl Sync for ModuleLlvm {}
 
 impl ModuleLlvm {
     fn new(tcx: TyCtxt<'_>, mod_name: &str) -> Self {
-        unsafe {
-            let llcx = llvm::LLVMContextCreate();
-            llvm::LLVMContextSetDiscardValueNames(llcx, tcx.sess.fewer_names().to_llvm_bool());
-            let llmod_raw = context::create_module(tcx, llcx, mod_name) as *const _;
-            ModuleLlvm {
-                llmod_raw,
-                llcx,
-                tm: ManuallyDrop::new(create_target_machine(tcx, mod_name)),
-            }
-        }
+        Self::new_with_target_machine(tcx, mod_name, || create_target_machine(tcx, mod_name))
     }
 
     fn new_metadata(tcx: TyCtxt<'_>, mod_name: &str) -> Self {
+        Self::new_with_target_machine(tcx, mod_name, || {
+            create_informational_target_machine(tcx.sess, false)
+        })
+    }
+
+    fn new_with_target_machine(
+        tcx: TyCtxt<'_>,
+        mod_name: &str,
+        create_target_machine: impl FnOnce() -> OwnedTargetMachine,
+    ) -> Self {
+        // Explicit settings and custom targets can emit diagnostics from each target machine.
+        // Reusing one would change the number or order of those diagnostics.
+        let opts = &tcx.sess.opts;
+        let reuse = opts.cg.target_cpu.is_none()
+            && opts.cg.target_feature.is_empty()
+            && opts.unstable_opts.llvm_target_feature.is_empty()
+            && opts.cg.llvm_args.is_empty()
+            && matches!(
+                &opts.target_triple,
+                rustc_target::spec::TargetTuple::TargetTuple(tuple)
+                    if rustc_target::spec::TARGETS.contains(&tuple.as_str())
+            );
+
         unsafe {
             let llcx = llvm::LLVMContextCreate();
             llvm::LLVMContextSetDiscardValueNames(llcx, tcx.sess.fewer_names().to_llvm_bool());
-            let llmod_raw = context::create_module(tcx, llcx, mod_name) as *const _;
-            ModuleLlvm {
-                llmod_raw,
-                llcx,
-                tm: ManuallyDrop::new(create_informational_target_machine(tcx.sess, false)),
-            }
+            let (llmod_raw, tm) = if reuse {
+                let tm = create_target_machine();
+                let llmod_raw =
+                    context::create_module(tcx, llcx, Some(tm.raw()), mod_name) as *const _;
+                (llmod_raw, tm)
+            } else {
+                let llmod_raw = context::create_module(tcx, llcx, None, mod_name) as *const _;
+                (llmod_raw, create_target_machine())
+            };
+            ModuleLlvm { llmod_raw, llcx, tm: ManuallyDrop::new(tm) }
         }
     }
 
