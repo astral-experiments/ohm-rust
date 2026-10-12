@@ -1215,7 +1215,7 @@ impl<'tcx> TyCtxt<'tcx> {
         if let Some(def_id) = def_id.as_local() {
             self.definitions_untracked().def_path_hash(def_id)
         } else {
-            self.cstore_untracked().def_path_hash(def_id)
+            self.untracked.foreign_def_path_hash(def_id)
         }
     }
 

@@ -12,9 +12,7 @@ use rustc_codegen_ssa::{CompiledModules, CrateInfo};
 use rustc_crate_store::Untracked;
 use rustc_data_structures::indexmap::IndexMap;
 use rustc_data_structures::steal::Steal;
-use rustc_data_structures::sync::{
-    AppendOnlyIndexVec, DynSend, DynSync, FreezeLock, WorkerLocal, par_fns,
-};
+use rustc_data_structures::sync::{DynSend, DynSync, FreezeLock, WorkerLocal, par_fns};
 use rustc_data_structures::{Limit, thousands};
 use rustc_errors::timings::TimingSection;
 use rustc_errors::{Diag, DiagCtxtHandle, Diagnostic, Level};
@@ -966,8 +964,7 @@ pub fn create_and_enter_global_ctxt<T, F: for<'tcx> FnOnce(TyCtxt<'tcx>) -> T>(
     let definitions = FreezeLock::new(Definitions::new(stable_crate_id));
 
     let stable_crate_ids = FreezeLock::new(StableCrateIdMap::default());
-    let untracked =
-        Untracked { cstore, source_span: AppendOnlyIndexVec::new(), definitions, stable_crate_ids };
+    let untracked = Untracked::new(cstore, definitions, stable_crate_ids);
 
     // We're constructing the HIR here; we don't care what we will
     // read, since we haven't even constructed the *input* to

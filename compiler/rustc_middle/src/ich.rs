@@ -185,7 +185,7 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
         if let Some(def_id) = def_id.as_local() {
             self.untracked.definitions.read().def_path_hash(def_id)
         } else {
-            self.untracked.cstore.read().def_path_hash(def_id)
+            self.untracked.foreign_def_path_hash(def_id)
         }
         .to_raw_def_path_hash()
     }

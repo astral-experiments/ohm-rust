@@ -3,11 +3,12 @@
 //! probably get a better home if someone can find one.
 
 use std::any::Any;
+use std::cell::Cell;
 use std::path::PathBuf;
 
 use rustc_abi::ExternAbi;
 use rustc_attr_ir::{CfgEntry, NativeLibKind, PeImportNameType};
-use rustc_data_structures::sync::{self, AppendOnlyIndexVec, FreezeLock};
+use rustc_data_structures::sync::{self, AppendOnlyIndexVec, FreezeLock, WorkerLocal};
 use rustc_hir_id::definitions::{DefKey, DefPath, Definitions};
 use rustc_macros::{BlobDecodable, Decodable, Encodable, StableHash};
 use rustc_span::def_id::{
@@ -219,14 +220,150 @@ pub struct Untracked {
     pub definitions: FreezeLock<Definitions>,
     /// The interned [StableCrateId]s.
     pub stable_crate_ids: FreezeLock<StableCrateIdMap>,
+    foreign_def_path_hashes: ForeignDefPathHashCache,
 }
 
 impl Untracked {
+    pub fn new(
+        cstore: FreezeLock<Box<CrateStoreDyn>>,
+        definitions: FreezeLock<Definitions>,
+        stable_crate_ids: FreezeLock<StableCrateIdMap>,
+    ) -> Self {
+        Self {
+            cstore,
+            source_span: AppendOnlyIndexVec::new(),
+            definitions,
+            stable_crate_ids,
+            foreign_def_path_hashes: ForeignDefPathHashCache::new(),
+        }
+    }
+
+    /// Foreign definition hashes are immutable for this store's lifetime. Retain common lookups
+    /// per worker, with the complete `DefId` checked before reusing an entry.
+    #[inline]
+    pub fn foreign_def_path_hash(&self, def_id: DefId) -> DefPathHash {
+        self.foreign_def_path_hashes
+            .get_or_insert_with(def_id, || self.cstore.read().def_path_hash(def_id))
+    }
+
     /// Freezes the cstore and, with it, the `StableCrateId` map, making reads of
     /// both lock-free. The cstore is frozen first so any in-flight crate loading
     /// (which writes the map) finishes before the map is frozen.
     pub fn freeze_cstore(&self) {
         self.cstore.freeze();
         self.stable_crate_ids.freeze();
+    }
+}
+
+const FOREIGN_DEF_PATH_HASH_CACHE_LEN: usize = 1024;
+
+struct ForeignDefPathHashCache {
+    entries: WorkerLocal<[Cell<Option<(DefId, DefPathHash)>>; FOREIGN_DEF_PATH_HASH_CACHE_LEN]>,
+}
+
+impl ForeignDefPathHashCache {
+    fn new() -> Self {
+        Self {
+            entries: WorkerLocal::new(|_| {
+                [const { Cell::new(None) }; FOREIGN_DEF_PATH_HASH_CACHE_LEN]
+            }),
+        }
+    }
+
+    #[inline]
+    fn get_or_insert_with(&self, key: DefId, load: impl FnOnce() -> DefPathHash) -> DefPathHash {
+        let slot = (key.index.as_usize() ^ key.krate.as_usize().wrapping_mul(0x9e37_79b9))
+            & (FOREIGN_DEF_PATH_HASH_CACHE_LEN - 1);
+        let entry = self.entries.get_if_registered().map(|entries| &entries[slot]);
+        if let Some(entry) = entry
+            && let Some((cached_key, hash)) = entry.get()
+            && cached_key == key
+        {
+            return hash;
+        }
+
+        let hash = load();
+        if let Some(entry) = entry {
+            entry.set(Some((key, hash)));
+        }
+        hash
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZero;
+
+    use rustc_data_structures::fingerprint::Fingerprint;
+    use rustc_data_structures::sync::Registry;
+    use rustc_span::def_id::DefIndex;
+
+    use super::*;
+
+    fn def_id(krate: u32, index: u32) -> DefId {
+        DefId { krate: CrateNum::from_u32(krate), index: DefIndex::from_u32(index) }
+    }
+
+    fn def_hash(value: u8) -> DefPathHash {
+        DefPathHash(Fingerprint::from_le_bytes([value; 16]))
+    }
+
+    #[test]
+    fn foreign_hash_cache_checks_complete_keys_and_store_scope() {
+        std::thread::spawn(|| {
+            Registry::new(NonZero::new(1).unwrap()).register();
+            let cache = ForeignDefPathHashCache::new();
+            let width = FOREIGN_DEF_PATH_HASH_CACHE_LEN as u32;
+            // These distinct crate/index combinations collide in the bounded cache.
+            let entries = [
+                (def_id(1, 7), def_hash(1)),
+                (def_id(1 + width, 7), def_hash(2)),
+                (def_id(1, 7 + width), def_hash(3)),
+            ];
+            for (key, expected) in entries.into_iter().cycle().take(9) {
+                assert_eq!(cache.get_or_insert_with(key, || expected), expected);
+                assert_eq!(
+                    cache.get_or_insert_with(key, || panic!("cached hash was not reused")),
+                    expected
+                );
+            }
+
+            let other_store = ForeignDefPathHashCache::new();
+            assert_eq!(other_store.get_or_insert_with(def_id(1, 7), || def_hash(4)), def_hash(4));
+            assert_eq!(cache.get_or_insert_with(def_id(1, 7), || def_hash(1)), def_hash(1));
+        })
+        .join()
+        .unwrap();
+    }
+
+    #[test]
+    fn unregistered_foreign_hash_lookups_use_the_loader() {
+        std::thread::spawn(|| {
+            Registry::new(NonZero::new(1).unwrap()).register();
+            let cache = ForeignDefPathHashCache::new();
+            let key = def_id(1, 7);
+            let expected = def_hash(1);
+            assert_eq!(cache.get_or_insert_with(key, || expected), expected);
+            std::thread::scope(|scope| {
+                scope
+                    .spawn(|| {
+                        let calls = Cell::new(0);
+                        for _ in 0..2 {
+                            assert_eq!(
+                                cache.get_or_insert_with(key, || {
+                                    calls.set(calls.get() + 1);
+                                    expected
+                                }),
+                                expected
+                            );
+                        }
+                        assert_eq!(calls.get(), 2);
+                    })
+                    .join()
+                    .unwrap();
+            });
+        })
+        .join()
+        .unwrap();
     }
 }
