@@ -171,7 +171,8 @@ pub(crate) struct CheckSession {
     exact: Vec<PathBuf>,
     artifacts: BTreeMap<PathBuf, SourceFileHash>,
     requests: Mutex<mpsc::Receiver<String>>,
-    _snapshot: tempfile::TempDir,
+    expansion: Mutex<Option<Value>>,
+    _snapshot: Option<tempfile::TempDir>,
 }
 
 impl CheckSession {
@@ -183,25 +184,42 @@ impl CheckSession {
             return Err(io::Error::other("custom target specifications require a fresh check"));
         }
         let (sender, requests) = mpsc::channel();
-        std::thread::spawn(move || {
-            let mut input = io::stdin().lock();
-            loop {
-                let mut request = String::new();
-                match std::io::Read::take(&mut input, MAX_REQUEST_BYTES).read_line(&mut request) {
-                    Ok(0) | Err(_) => std::process::exit(0),
-                    Ok(_) if request.ends_with('\n') => {
-                        if sender.send(request).is_err() {
-                            return;
+        if !config.opts.unstable_opts.ohm_check_session_validate_macros {
+            std::thread::spawn(move || {
+                let mut input = io::stdin().lock();
+                loop {
+                    let mut request = String::new();
+                    match std::io::Read::take(&mut input, MAX_REQUEST_BYTES).read_line(&mut request)
+                    {
+                        Ok(0) | Err(_) => std::process::exit(0),
+                        Ok(_) if request.ends_with('\n') => {
+                            if sender.send(request).is_err() {
+                                return;
+                            }
                         }
+                        _ => std::process::exit(1),
                     }
-                    _ => std::process::exit(1),
                 }
-            }
-        });
+            });
+        }
         let source =
             fs::canonicalize(config.opts.unstable_opts.ohm_resident_frontend.as_ref().unwrap())?;
         let inputs = Arc::new(Mutex::new(Inputs::default()));
         config.file_loader = Some(Box::new(RecordingLoader(Arc::clone(&inputs))));
+        if config.opts.unstable_opts.ohm_check_session_validate_macros {
+            // Cargo holds its build locks for this short-lived expansion. The retained
+            // worker separately verifies that its dependency snapshots still match.
+            return Ok(Self {
+                source,
+                inputs,
+                directories: Vec::new(),
+                exact: Vec::new(),
+                artifacts: BTreeMap::new(),
+                requests: Mutex::new(requests),
+                expansion: Mutex::new(None),
+                _snapshot: None,
+            });
+        }
         let mut directories: Vec<_> = config
             .opts
             .search_paths
@@ -301,7 +319,8 @@ impl CheckSession {
             exact,
             artifacts: expected_artifacts,
             requests: Mutex::new(requests),
-            _snapshot: snapshot,
+            expansion: Mutex::new(None),
+            _snapshot: Some(snapshot),
         })
     }
 
@@ -309,6 +328,49 @@ impl CheckSession {
         self.inputs.lock().unwrap().unchanged(edited.then_some(self.source.as_path()))
             && artifacts(&self.directories, &self.exact)
                 .is_ok_and(|current| current == self.artifacts)
+    }
+
+    pub(crate) fn capture_expansion(
+        &self,
+        tcx: TyCtxt<'_>,
+        frontend: Option<&ResidentFrontend<'_, '_>>,
+    ) -> Result<(), &'static str> {
+        let diagnostics = tcx
+            .sess
+            .ohm_check_session_expansion_diagnostics
+            .swap(2, std::sync::atomic::Ordering::Relaxed);
+        let macros =
+            tcx.sess.ohm_check_session_uses_proc_macros.load(std::sync::atomic::Ordering::Relaxed);
+        if !macros && !tcx.sess.opts.unstable_opts.ohm_check_session_validate_macros {
+            return Ok(());
+        }
+        if diagnostics != 0 {
+            return Err("macro expansion diagnostics require a fresh check");
+        }
+        let frontend = frontend.ok_or("unsupported source boundary")?;
+        let fingerprint = frontend.expansion_fingerprint(tcx)?;
+        let source_hash = hash_file(&self.source).map_err(|_| "cannot read the edited source")?;
+        *self.expansion.lock().unwrap() = Some(json!({
+            "fingerprint": format!("{fingerprint}"),
+            "source_hash": format!("{source_hash:?}"),
+        }));
+        Ok(())
+    }
+
+    pub(crate) fn finish_expansion_validation(&self, tcx: TyCtxt<'_>) {
+        if !self.unchanged(false) || tcx.dcx().has_errors_or_delayed_bugs().is_some() {
+            unsupported("inputs changed during macro validation");
+            return;
+        }
+        let _ = event_with_expansion(
+            "expanded",
+            0,
+            false,
+            false,
+            "",
+            &[],
+            self.expansion.lock().unwrap().as_ref(),
+        );
     }
 
     pub(crate) fn run<'ra, 'tcx>(
@@ -330,34 +392,15 @@ impl CheckSession {
             unsupported("the edited source is also a macro input");
             return;
         }
-        // Arbitrary procedural-macro side effects are not a tracked session input.
-        if !tcx.sess.opts.unstable_opts.ohm_check_session_trust_proc_macros
-            && tcx.crates(()).iter().any(|&krate| {
-                let source = tcx.used_crate_source(krate);
-                source.dylib.is_some() && source.rlib.is_none() && source.rmeta.is_none()
-            })
-        {
-            let _ = event(
-                "unsupported",
-                0,
-                false,
-                false,
-                "procedural macros require fresh expansion",
-                &[],
-            );
-            return;
-        }
-        if tcx.sess.opts.unstable_opts.ohm_check_session_trust_proc_macros {
-            for path in tcx.sess.file_depinfo.borrow().iter() {
-                let path = PathBuf::from(path.as_str());
-                let Ok(hash) = hash_file(&path) else {
-                    unsupported("cannot read a declared procedural-macro input");
-                    return;
-                };
-                let mut inputs = self.inputs.lock().unwrap();
-                if !inputs.files.contains_key(&path) {
-                    inputs.record(&path, Input::Contents(hash));
-                }
+        for path in tcx.sess.file_depinfo.borrow().iter() {
+            let path = PathBuf::from(path.as_str());
+            let Ok(hash) = hash_file(&path) else {
+                unsupported("cannot read a declared procedural-macro input");
+                return;
+            };
+            let mut inputs = self.inputs.lock().unwrap();
+            if !inputs.files.contains_key(&path) {
+                inputs.record(&path, Input::Contents(hash));
             }
         }
         if tcx.sess.file_depinfo.borrow().iter().any(|path| {
@@ -394,7 +437,16 @@ impl CheckSession {
         }
         let files: Vec<_> = self.inputs.lock().unwrap().files.keys().cloned().collect();
         let retained = get_resident_set_size().is_some_and(|rss| (rss as u64) < MAX_RSS);
-        if event("ready", 0, tcx.dcx().has_errors().is_some(), retained, "", &files).is_err()
+        if event_with_expansion(
+            "ready",
+            0,
+            tcx.dcx().has_errors().is_some(),
+            retained,
+            "",
+            &files,
+            self.expansion.lock().unwrap().as_ref(),
+        )
+        .is_err()
             || !retained
         {
             return;
@@ -416,6 +468,20 @@ impl CheckSession {
             }
             let Ok(source) = fs::read_to_string(&self.source) else { break };
             let expected = hash_bytes(source.as_bytes());
+            if let Some(expansion) = self.expansion.lock().unwrap().as_ref()
+                && (request["expansion"]["fingerprint"] != expansion["fingerprint"]
+                    || request["expansion"]["source_hash"] != format!("{expected:?}"))
+            {
+                let _ = event(
+                    "unsupported",
+                    revision,
+                    false,
+                    false,
+                    "fresh macro expansion does not match the retained program",
+                    &[],
+                );
+                break;
+            }
             // SAFETY: This loop runs after analysis and its scoped frontend jobs have joined.
             // The input reader only sends strings; no other task can request compiler queries.
             // Each replacement finishes analysis before returning, and the loop retains no
@@ -456,6 +522,18 @@ fn event(
     reason: &str,
     files: &[PathBuf],
 ) -> io::Result<()> {
+    event_with_expansion(kind, revision, errors, retained, reason, files, None)
+}
+
+fn event_with_expansion(
+    kind: &str,
+    revision: u64,
+    errors: bool,
+    retained: bool,
+    reason: &str,
+    files: &[PathBuf],
+    expansion: Option<&Value>,
+) -> io::Result<()> {
     // The boundary shares the diagnostic pipe so it cannot overtake earlier diagnostics.
     let mut stderr = io::stderr().lock();
     serde_json::to_writer(
@@ -464,6 +542,7 @@ fn event(
             "$message_type": "ohm-check-session", "protocol": 1, "kind": kind,
             "revision": revision, "errors": errors, "retained": retained,
             "reason": reason, "files": files,
+            "expansion": expansion,
         }),
     )?;
     stderr.write_all(b"\n")?;

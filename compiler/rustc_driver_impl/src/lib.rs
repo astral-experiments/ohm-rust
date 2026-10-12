@@ -235,7 +235,9 @@ pub fn run_compiler(at_args: &[String], callbacks: &mut (dyn Callbacks + Send)) 
 
     callbacks.config(&mut config);
 
-    let check_session = if config.opts.unstable_opts.ohm_check_session {
+    let check_session = if config.opts.unstable_opts.ohm_check_session
+        || config.opts.unstable_opts.ohm_check_session_validate_macros
+    {
         match check_session::CheckSession::configure(&mut config) {
             Ok(session) => Some(session),
             Err(error) => {
@@ -327,6 +329,17 @@ pub fn run_compiler(at_args: &[String], callbacks: &mut (dyn Callbacks + Send)) 
             passes::create_and_enter_global_ctxt_with_resident(compiler, krate, |tcx, frontend| {
                 // Make sure name resolution and macro expansion is run.
                 let _ = tcx.resolver_for_lowering();
+
+                if let Some(session) = &check_session {
+                    if let Err(reason) = session.capture_expansion(tcx, frontend.as_deref()) {
+                        check_session::unsupported(reason);
+                        return None;
+                    }
+                    if sess.opts.unstable_opts.ohm_check_session_validate_macros {
+                        session.finish_expansion_validation(tcx);
+                        return None;
+                    }
+                }
 
                 if callbacks.after_expansion(compiler, tcx) == Compilation::Stop {
                     return None;

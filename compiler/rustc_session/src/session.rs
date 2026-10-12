@@ -336,6 +336,9 @@ pub struct Session {
     /// Spans passed to `proc_macro::quote_span`. Each span has a numerical
     /// identifier represented by its position in the vector.
     proc_macro_quoted_spans: AppendOnlyVec<Span>,
+    /// Zero while expansion is clean, one after a diagnostic, and two after validation.
+    pub ohm_check_session_expansion_diagnostics: AtomicUsize,
+    pub ohm_check_session_uses_proc_macros: AtomicBool,
 
     /// Input, input file path and output file path to this compilation process.
     pub io: CompilerIO,
@@ -1368,6 +1371,8 @@ pub fn build_session(
         config: Cfg::default(),
         check_config: CheckCfg::default(),
         proc_macro_quoted_spans: Default::default(),
+        ohm_check_session_expansion_diagnostics: AtomicUsize::new(0),
+        ohm_check_session_uses_proc_macros: AtomicBool::new(false),
         io,
         prof,
         timings,

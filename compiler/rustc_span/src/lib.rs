@@ -1357,6 +1357,9 @@ rustc_index::newtype_index! {
 /// This trait is used to allow encoder specific encodings of certain types.
 /// It is similar to rustc_type_ir's TyEncoder.
 pub trait SpanEncoder: Encoder + Sized {
+    /// Only expanded-program validation encodes token buffers that have no decoding contract.
+    const ENCODE_LAZY_ATTR_TOKEN_STREAM: bool = false;
+
     fn encode_span(&mut self, span: Span);
     fn encode_symbol(&mut self, sym: Symbol);
     fn encode_byte_symbol(&mut self, byte_sym: ByteSymbol);

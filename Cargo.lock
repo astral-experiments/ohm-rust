@@ -4295,6 +4295,7 @@ dependencies = [
  "rustc_privacy",
  "rustc_query_impl",
  "rustc_resolve",
+ "rustc_serialize",
  "rustc_session",
  "rustc_span",
  "rustc_symbol_mangling",

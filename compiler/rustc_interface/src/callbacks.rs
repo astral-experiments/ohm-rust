@@ -40,6 +40,16 @@ fn track_span_parent(def_id: rustc_span::def_id::LocalDefId) {
 fn track_diagnostic<R>(diagnostic: DiagInner, f: &mut dyn FnMut(DiagInner) -> R) -> R {
     tls::with_context_opt(|icx| {
         if let Some(icx) = icx {
+            if icx.tcx.sess.opts.unstable_opts.ohm_check_session
+                || icx.tcx.sess.opts.unstable_opts.ohm_check_session_validate_macros
+            {
+                let _ = icx.tcx.sess.ohm_check_session_expansion_diagnostics.compare_exchange(
+                    0,
+                    1,
+                    std::sync::atomic::Ordering::Relaxed,
+                    std::sync::atomic::Ordering::Relaxed,
+                );
+            }
             if let Some(resident) = &icx.tcx.query_system.resident {
                 resident.record_diagnostic(&diagnostic);
             }
@@ -57,10 +67,20 @@ fn track_diagnostic<R>(diagnostic: DiagInner, f: &mut dyn FnMut(DiagInner) -> R)
 
 fn track_diagnostic_stash(is_error: bool) {
     tls::with_context_opt(|icx| {
-        if let Some(icx) = icx
-            && let Some(resident) = &icx.tcx.query_system.resident
-        {
-            resident.record_diagnostic_stash(is_error);
+        if let Some(icx) = icx {
+            if icx.tcx.sess.opts.unstable_opts.ohm_check_session
+                || icx.tcx.sess.opts.unstable_opts.ohm_check_session_validate_macros
+            {
+                let _ = icx.tcx.sess.ohm_check_session_expansion_diagnostics.compare_exchange(
+                    0,
+                    1,
+                    std::sync::atomic::Ordering::Relaxed,
+                    std::sync::atomic::Ordering::Relaxed,
+                );
+            }
+            if let Some(resident) = &icx.tcx.query_system.resident {
+                resident.record_diagnostic_stash(is_error);
+            }
         }
     });
 }

@@ -44,11 +44,16 @@ build locks while the worker waits. The toolchain installation is assumed to be
 immutable while its compiler is running, as for an ordinary compiler process.
 Metadata-only checks do not publish a reusable crate artifact.
 
-Procedural macros normally require fresh expansion. The separate
-`-Zohm-check-session-trust-proc-macros` option assumes their expansion is reusable.
-Declared macro file inputs are validated, but untracked inputs and side effects
-can make this assumption unsound. The flag is intended for controlled experiments
-and is disabled by default.
+When the initial check executes a procedural macro, each later request requires
+a fresh expansion process. Cargo runs that process on the current source and
+compares the complete expanded AST, including hygiene and source spans, after
+excluding exactly the supported body and constant edits. Source files and
+tracked environment inputs also participate in the comparison. The proof is
+bound to the current edited-file hash. Changed expansion, expansion diagnostics,
+or an unsuccessful validator require a fresh check. Macros execute again, even
+when their inputs were not declared; no macro-trust flag is required or accepted.
+The private `-Zohm-check-session-validate-macros` mode performs this validation
+without type checking or retaining a compiler. Its cost is part of each check.
 
 Workers retire after 256 updates or when RSS exceeds 4 GiB at a request boundary.
 These are retention limits, not a peak-memory guarantee. The owner must also

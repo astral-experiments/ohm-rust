@@ -11,6 +11,8 @@ use rustc_resolve::Resolver;
 use rustc_session::parse::ParseSess;
 use rustc_span::{BytePos, FileName, Span, StableSourceFileId};
 
+mod expansion;
+
 struct ResidentConstant<'tcx> {
     item: ast::Item,
     definition: LocalDefId,

@@ -14,6 +14,11 @@ use crate::base::{self, *};
 use crate::{diagnostics, proc_macro_server};
 
 fn exec_strategy(sess: &Session) -> impl pm::bridge::server::ExecutionStrategy + 'static {
+    if sess.opts.unstable_opts.ohm_check_session
+        || sess.opts.unstable_opts.ohm_check_session_validate_macros
+    {
+        sess.ohm_check_session_uses_proc_macros.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     pm::bridge::server::MaybeCrossThread {
         cross_thread: sess.opts.unstable_opts.proc_macro_execution_strategy
             == ProcMacroExecutionStrategy::CrossThread,

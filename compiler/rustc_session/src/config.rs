@@ -2980,7 +2980,7 @@ pub fn build_session_options(early_dcx: &mut EarlyDiagCtxt, matches: &getopts::M
         early_dcx.early_fatal("can't dump dependency graph without `-Z query-dep-graph`");
     }
 
-    if unstable_opts.ohm_check_session {
+    if unstable_opts.ohm_check_session || unstable_opts.ohm_check_session_validate_macros {
         if unstable_opts.ohm_resident_frontend.is_none() {
             early_dcx.early_fatal("check sessions require a resident source file");
         }
@@ -2988,7 +2988,7 @@ pub fn build_session_options(early_dcx: &mut EarlyDiagCtxt, matches: &getopts::M
     }
 
     if unstable_opts.ohm_resident_frontend.is_some() {
-        unstable_opts.ohm_resident_query_graph = true;
+        unstable_opts.ohm_resident_query_graph = !unstable_opts.ohm_check_session_validate_macros;
         if output_types.should_codegen() {
             early_dcx.early_fatal("resident frontend only supports checking");
         }
@@ -3076,6 +3076,7 @@ pub fn build_session_options(early_dcx: &mut EarlyDiagCtxt, matches: &getopts::M
     if unstable_opts.ohm_resident_frontend.is_some()
         && jobs.frontend.is_some()
         && !unstable_opts.ohm_check_session
+        && !unstable_opts.ohm_check_session_validate_macros
     {
         early_dcx.early_fatal("parallel resident frontend requires a check session");
     }

@@ -13,6 +13,8 @@ struct Session {
     child: Child,
     lines: mpsc::Receiver<String>,
     revision: u64,
+    threads: usize,
+    expansion: Option<Value>,
 }
 
 fn compiler(threads: usize) -> Command {
@@ -26,6 +28,11 @@ fn compiler(threads: usize) -> Command {
         "--json=artifacts",
     ]);
     command.arg(format!("-Zthreads={threads}"));
+    if std::path::Path::new("macro-library").exists() {
+        command
+            .arg("--extern")
+            .arg(format!("session_macros={}", fs::read_to_string("macro-library").unwrap()));
+    }
     command
 }
 
@@ -48,7 +55,7 @@ impl Session {
                 }
             }
         });
-        Self { child, lines, revision: 0 }
+        Self { child, lines, revision: 0, threads, expansion: None }
     }
 
     fn response(&mut self, expected: &str) -> Vec<Value> {
@@ -66,6 +73,9 @@ impl Session {
             if value["$message_type"] == "ohm-check-session" {
                 assert_eq!(value["kind"], expected, "{value}");
                 assert_eq!(value["revision"], self.revision);
+                if expected == "ready" && !value["expansion"].is_null() {
+                    self.expansion = Some(value["expansion"].clone());
+                }
                 if expected != "unsupported" {
                     assert_eq!(value["retained"], true, "{value}");
                     assert_eq!(
@@ -81,9 +91,36 @@ impl Session {
     }
 
     fn check(&mut self, expected: &str) -> Vec<Value> {
+        let expansion = if self.expansion.is_some() {
+            let output = compiler(self.threads)
+                .args([
+                    "--out-dir=validation",
+                    "-Zohm-check-session-validate-macros",
+                    "-Zohm-resident-frontend=edit.rs",
+                ])
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+            let boundary: Value = String::from_utf8(output.stderr)
+                .unwrap()
+                .lines()
+                .map(|line| serde_json::from_str::<Value>(line).unwrap())
+                .find(|value| value["$message_type"] == "ohm-check-session")
+                .expect("missing expansion proof");
+            assert_eq!(boundary["kind"], "expanded", "{boundary}");
+            Some(boundary["expansion"].clone())
+        } else {
+            None
+        };
         self.revision += 1;
         let input = self.child.stdin.as_mut().unwrap();
-        writeln!(input, "{}", json!({"command":"check", "revision":self.revision})).unwrap();
+        writeln!(
+            input,
+            "{}",
+            json!({"command":"check", "revision":self.revision,
+            "expansion": expansion})
+        )
+        .unwrap();
         input.flush().unwrap();
         self.response(expected)
     }
@@ -228,4 +265,95 @@ fn main() {
     for threads in [1, 8] {
         run(threads);
     }
+    macro_revalidation();
+}
+
+fn macro_revalidation() {
+    fs::write("macros.rs", r#"
+        extern crate proc_macro;
+        use proc_macro::TokenStream;
+        static INVOCATIONS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        #[proc_macro]
+        pub fn generated(_: TokenStream) -> TokenStream {
+            let value = std::fs::read_to_string("macro-input").unwrap_or("1".into());
+            let invocation = INVOCATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            format!("pub const GENERATED: usize = {value}; pub const INVOCATION: usize = {invocation};").parse().unwrap()
+        }
+        #[proc_macro_attribute]
+        pub fn identity(_: TokenStream, item: TokenStream) -> TokenStream { item }
+        #[proc_macro_derive(Empty)]
+        pub fn empty(_: TokenStream) -> TokenStream {
+            let path = "macro-executions";
+            let count: usize = std::fs::read_to_string(path).unwrap_or("0".into()).parse().unwrap();
+            std::fs::write(path, (count + 1).to_string()).unwrap();
+            TokenStream::new()
+        }
+    "#).unwrap();
+    let library =
+        format!("{}session_macros{}", std::env::consts::DLL_PREFIX, std::env::consts::DLL_SUFFIX);
+    assert!(
+        Command::new(rustc_path())
+            .args([
+                "macros.rs",
+                "--crate-name=session_macros",
+                "--crate-type=proc-macro",
+                "--edition=2024",
+                "-o",
+                &library
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
+    fs::write("macro-library", &library).unwrap();
+    for threads in [1, 8] {
+        let _ = fs::remove_file("macro-input");
+        fs::write("macro-executions", "0").unwrap();
+        fs::write(
+            "lib.rs",
+            "#![allow(dead_code)]\nmod edit;\nsession_macros::generated!();\n\
+            #[derive(session_macros::Empty)] pub struct Marker;\n\
+            #[session_macros::identity] pub fn marker() {}\n\
+            const _: [(); 1] = [(); GENERATED];\nconst _: [(); 0] = [(); INVOCATION];\n",
+        )
+        .unwrap();
+        source("x + 1.0", "0.5");
+        let mut session = Session::start(threads);
+        assert_eq!(session.response("ready"), fresh(threads));
+        assert!(session.expansion.is_some());
+        for (body, constant) in [
+            ("let renamed = x + 2.0; renamed", "0.5"),
+            ("let unused = 1; x + 2.0", "0.5"),
+            ("false", "0.5"),
+            ("x + 1.0", "0.7"),
+            ("x + 1.0", "0.5"),
+        ] {
+            source(body, constant);
+            assert_eq!(session.check("checked"), fresh(threads));
+        }
+        // Creating an undeclared file changes macro output, even though rustc's inputs are fixed.
+        fs::write("macro-input", "2").unwrap();
+        session.check("unsupported");
+        assert!(fresh(threads).iter().any(|diagnostic| diagnostic["level"] == "error"));
+        session.close();
+        assert_eq!(fs::read_to_string("macro-executions").unwrap(), "14");
+        fs::write("macro-input", "1").unwrap();
+        let mut session = Session::start(threads);
+        session.response("ready");
+        session.check("checked");
+        fs::remove_file("macro-input").unwrap();
+        // A changed hidden input is reusable when fresh expansion proves the program identical.
+        session.check("checked");
+        session.revision += 1;
+        writeln!(
+            session.child.stdin.as_mut().unwrap(),
+            "{}",
+            json!({"command": "check", "revision": session.revision})
+        )
+        .unwrap();
+        session.child.stdin.as_mut().unwrap().flush().unwrap();
+        session.response("unsupported");
+        session.close();
+    }
+    fs::remove_file("macro-library").unwrap();
 }
