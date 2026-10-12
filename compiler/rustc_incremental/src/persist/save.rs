@@ -93,7 +93,7 @@ pub fn save_work_product_index(
     sess: &Session,
     incr_comp_session: Option<&IncrCompSession>,
     dep_graph: &DepGraph,
-    new_work_products: WorkProductMap,
+    mut new_work_products: WorkProductMap,
 ) {
     if sess.opts.incremental.is_none() {
         return;
@@ -105,6 +105,22 @@ pub fn save_work_product_index(
 
     debug!("save_work_product_index()");
     dep_graph.assert_ignored();
+    if sess.opts.unstable_opts.ohm_shared_stages && !sess.opts.output_types.should_codegen() {
+        for (id, product) in dep_graph.previous_work_products().to_sorted_stable_ord() {
+            let session = incr_comp_session.unwrap();
+            if !product.cgu_name.starts_with("metadata")
+                && !new_work_products.contains_key(id)
+                && product.saved_files.items().all(|(_, name)| {
+                    in_old_incr_comp_dir_sess(session, name).is_some_and(|old| {
+                        rustc_fs_util::link_or_copy(old, in_incr_comp_dir_sess(session, name))
+                            .is_ok()
+                    })
+                })
+            {
+                new_work_products.insert(*id, product.clone());
+            }
+        }
+    }
     let path = work_products_path(incr_comp_session.unwrap());
     file_format::save_in(sess, path, "work product index", |mut e| {
         encode_work_product_index(&new_work_products, &mut e);
@@ -119,6 +135,60 @@ pub fn save_work_product_index(
                 .all(|(_, path)| in_incr_comp_dir_sess(incr_comp_session.unwrap(), path).exists())
         })
     });
+}
+
+/// Keeps each stage's graph and query cache inside the immutable incremental session.
+pub fn save_shared_stages_checkpoint(sess: &Session, session: Option<&IncrCompSession>) {
+    if !sess.opts.unstable_opts.ohm_shared_stages {
+        return;
+    }
+    let Some(session) = session else { return };
+    // A new session starts with an empty directory. Preserve the other stage's checkpoint
+    // before publishing this one, so repeated checks can still lead back to the last build.
+    if let Some(old) = &session.old_session_directory {
+        let (prefix, graph) = if sess.opts.output_types.should_codegen() {
+            ("ohm-check-", CHECK_DEP_GRAPH)
+        } else {
+            ("ohm-build-", BUILD_DEP_GRAPH)
+        };
+        // Publish the graph last. An incomplete copy cannot be selected by load_stage_checkpoint.
+        let preserve = || -> io::Result<()> {
+            for entry in fs::read_dir(&**old)? {
+                let entry = entry?;
+                let name = entry.file_name();
+                if name.to_str().is_some_and(|n| n.starts_with(prefix) && n != CHECK_SESSION && n != graph)
+                    && entry.file_type()?.is_file()
+                {
+                    rustc_fs_util::link_or_copy(entry.path(), session.new_session_directory.join(name))?;
+                }
+            }
+            rustc_fs_util::link_or_copy(old.join(graph), session.new_session_directory.join(graph))?;
+            Ok(())
+        };
+        let _ = preserve();
+    }
+    let marker = in_incr_comp_dir_sess(session, CHECK_SESSION);
+    let _ = fs::remove_file(&marker);
+    let (graph_filename, cache_filename) = if sess.opts.output_types.should_codegen() {
+        (BUILD_DEP_GRAPH, BUILD_QUERY_CACHE)
+    } else {
+        let _ = fs::write(marker, []);
+        (CHECK_DEP_GRAPH, CHECK_QUERY_CACHE)
+    };
+    let graph = in_incr_comp_dir_sess(session, graph_filename);
+    let cache = in_incr_comp_dir_sess(session, cache_filename);
+    let _ = fs::remove_file(&graph);
+    let _ = fs::remove_file(&cache);
+    let copy = |from: &std::path::Path, to: &std::path::Path| {
+        fs::hard_link(from, to).or_else(|_| fs::copy(from, to).map(|_| ()))
+    };
+    if copy(&dep_graph_path(session), &graph)
+        .and_then(|_| copy(&query_cache_path(session), &cache))
+        .is_err()
+    {
+        let _ = fs::remove_file(graph);
+        let _ = fs::remove_file(cache);
+    }
 }
 
 fn encode_work_product_index(work_products: &WorkProductMap, encoder: &mut FileEncoder<'_>) {
