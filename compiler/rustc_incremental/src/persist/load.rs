@@ -41,7 +41,11 @@ fn delete_dirty_work_product(
     work_product::delete_workproduct_files(sess, incr_comp_session, &swp.work_product);
 }
 
-fn load_dep_graph(sess: &Session, incr_comp_session: &IncrCompSession) -> LoadResult {
+fn load_dep_graph(
+    sess: &Session,
+    incr_comp_session: &IncrCompSession,
+    stage_graph: Option<&Arc<SerializedDepGraph>>,
+) -> LoadResult {
     assert!(sess.opts.incremental.is_some());
 
     let _timer = sess.prof.generic_activity("incr_comp_prepare_load_dep_graph");
@@ -111,7 +115,9 @@ fn load_dep_graph(sess: &Session, incr_comp_session: &IncrCompSession) -> LoadRe
                 return LoadResult::DataOutOfDate;
             }
 
-            let prev_graph = SerializedDepGraph::decode(&mut decoder, &sess.prof);
+            let prev_graph = stage_graph
+                .cloned()
+                .unwrap_or_else(|| SerializedDepGraph::decode(&mut decoder, &sess.prof));
 
             LoadResult::Ok { prev_graph, prev_work_products }
         }
@@ -184,15 +190,28 @@ pub fn setup_dep_graph(
     sess: &Session,
     crate_name: Symbol,
     stable_crate_id: StableCrateId,
-) -> (DepGraph, Option<IncrCompSession>) {
+) -> (DepGraph, Option<IncrCompSession>, Option<OnDiskCache>) {
     if sess.opts.incremental.is_none() {
-        return (DepGraph::new_disabled(), None);
+        return (DepGraph::new_disabled(), None, None);
     }
 
     // `load_dep_graph` can only be called after `prepare_session_directory`.
     let incr_comp_session = prepare_session_directory(sess, crate_name, stable_crate_id);
+    let should_codegen = sess.opts.output_types.should_codegen();
+    let checkpoint_files = if sess.opts.unstable_opts.ohm_shared_stages {
+        match (should_codegen, in_incr_comp_dir_sess(&incr_comp_session, CHECK_SESSION).exists()) {
+            (true, true) => Some((BUILD_DEP_GRAPH, BUILD_QUERY_CACHE)),
+            (false, false) => Some((CHECK_DEP_GRAPH, CHECK_QUERY_CACHE)),
+            _ => None,
+        }
+    } else {
+        None
+    };
+    let mut checkpoint = checkpoint_files
+        .and_then(|(graph, cache)| load_stage_checkpoint(sess, &incr_comp_session, graph, cache));
     // Try to load the previous session's dep graph and work products.
-    let load_result = load_dep_graph(sess, &incr_comp_session);
+    let load_result =
+        load_dep_graph(sess, &incr_comp_session, checkpoint.as_ref().map(|(graph, _)| graph));
 
     sess.time("incr_comp_garbage_collect_session_directories", || {
         if let Err(e) =
@@ -208,12 +227,14 @@ pub fn setup_dep_graph(
     // Emit a fatal error if `-Zassert-incr-state` is present and unsatisfied.
     maybe_assert_incr_state(sess, &load_result);
 
-    let (prev_graph, prev_work_products) = match load_result {
+    let (prev_graph, mut prev_work_products) = match load_result {
         LoadResult::IoError { path, err } => {
+            drop(checkpoint.take());
             sess.dcx().emit_warn(diagnostics::LoadDepGraph { path, err });
             Default::default()
         }
         LoadResult::DataOutOfDate => {
+            drop(checkpoint.take());
             if let Err(err) = delete_all_session_dir_contents(&incr_comp_session) {
                 sess.dcx().emit_err(diagnostics::DeleteIncompatible {
                     path: dep_graph_path(&incr_comp_session),
@@ -224,6 +245,19 @@ pub fn setup_dep_graph(
         }
         LoadResult::Ok { prev_graph, prev_work_products } => (prev_graph, prev_work_products),
     };
+
+    if should_codegen && checkpoint.is_some() {
+        // A check's metadata is not a built crate's metadata, even when native
+        // work products survive the transition.
+        prev_work_products = prev_work_products
+            .into_sorted_stable_ord()
+            .into_iter()
+            .filter(|(_, product)| !product.cgu_name.starts_with("metadata"))
+            .collect();
+    }
+    let query_cache = checkpoint
+        .map(|(_, cache)| cache)
+        .or_else(|| load_query_result_cache(sess, Some(&incr_comp_session)));
 
     // Stream the dep-graph to an alternate file, to avoid overwriting anything in case of errors.
     let path_buf = staging_dep_graph_path(&incr_comp_session);
@@ -239,5 +273,28 @@ pub fn setup_dep_graph(
     // First encode the commandline arguments hash
     sess.opts.dep_tracking_hash(false).encode(&mut encoder);
 
-    (DepGraph::new(sess, prev_graph, prev_work_products, encoder), Some(incr_comp_session))
+    (
+        DepGraph::new(sess, prev_graph, prev_work_products, encoder),
+        Some(incr_comp_session),
+        query_cache,
+    )
+}
+
+fn load_stage_checkpoint(
+    sess: &Session,
+    session: &IncrCompSession,
+    graph_filename: &str,
+    cache_filename: &str,
+) -> Option<(Arc<SerializedDepGraph>, OnDiskCache)> {
+    let path = in_incr_comp_dir_sess(session, graph_filename);
+    let OpenFile { mmap, start_pos } = file_format::open_incremental_file(sess, &path).ok()?;
+    let mut decoder = MemDecoder::new(&mmap, start_pos).ok()?;
+    if Hash64::decode(&mut decoder) != sess.opts.dep_tracking_hash(false) {
+        return None;
+    }
+    let graph = SerializedDepGraph::decode(&mut decoder, &sess.prof);
+    let path = in_incr_comp_dir_sess(session, cache_filename);
+    let OpenFile { mmap, start_pos } = file_format::open_incremental_file(sess, &path).ok()?;
+    let cache = OnDiskCache::new(sess, mmap, start_pos).ok()?;
+    Some((graph, cache))
 }

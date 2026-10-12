@@ -39,7 +39,7 @@ pub fn prepare_incremental_monomorphization(tcx: TyCtxt<'_>) {
     if !tcx.dep_graph.is_fully_enabled()
         || !(tcx.sess.opts.unstable_opts.public_api_hash
             || tcx.sess.opts.unstable_opts.ohm_incremental_mono_partitions)
-        || !tcx.sess.opts.output_types.should_codegen()
+        || !tcx.codegen_output_mode(()).0
         || tcx.sess.opts.unstable_opts.print_mono_items
         || tcx.sess.opts.unstable_opts.dump_mono_stats.enabled()
         || tcx.sess.opts.unstable_opts.profile_closures

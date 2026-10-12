@@ -159,6 +159,12 @@ pub(crate) fn query_cache_path(incr_comp_session: &IncrCompSession) -> PathBuf {
     in_incr_comp_dir_sess(incr_comp_session, QUERY_CACHE_FILENAME)
 }
 
+pub(crate) const BUILD_DEP_GRAPH: &str = "ohm-build-dep-graph.bin";
+pub(crate) const BUILD_QUERY_CACHE: &str = "ohm-build-query-cache.bin";
+pub(crate) const CHECK_DEP_GRAPH: &str = "ohm-check-dep-graph.bin";
+pub(crate) const CHECK_QUERY_CACHE: &str = "ohm-check-query-cache.bin";
+pub(crate) const CHECK_SESSION: &str = "ohm-check-session";
+
 /// Locks a given session directory.
 fn lock_file_path(session_dir: &Path) -> PathBuf {
     let crate_dir = session_dir.parent().unwrap();

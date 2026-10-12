@@ -1731,7 +1731,7 @@ fn exported_symbols_for_non_proc_macro(
 
 fn exported_symbols_for_proc_macro_crate(tcx: TyCtxt<'_>) -> Vec<SymbolExport> {
     // `exported_symbols` will be empty when !should_codegen.
-    if !tcx.sess.opts.output_types.should_codegen() {
+    if !tcx.codegen_output_mode(()).0 {
         return Vec::new();
     }
 
