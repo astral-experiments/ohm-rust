@@ -277,7 +277,9 @@ fn macro_revalidation() {
         pub fn generated(_: TokenStream) -> TokenStream {
             let value = std::fs::read_to_string("macro-input").unwrap_or("1".into());
             let invocation = INVOCATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            format!("pub const GENERATED: usize = {value}; pub const INVOCATION: usize = {invocation};").parse().unwrap()
+            format!(
+                "pub const GENERATED: usize = {value}; pub const INVOCATION: usize = {invocation};"
+            ).parse().unwrap()
         }
         #[proc_macro_attribute]
         pub fn identity(_: TokenStream, item: TokenStream) -> TokenStream { item }
