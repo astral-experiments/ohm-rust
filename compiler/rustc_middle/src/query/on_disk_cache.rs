@@ -5,7 +5,7 @@ use std::{fmt, mem};
 use rustc_data_structures::fx::{FxHashMap, FxIndexSet};
 use rustc_data_structures::memmap::Mmap;
 use rustc_data_structures::stable_hash::{StableHash, StableHasher};
-use rustc_data_structures::sync::{HashMapExt, Lock, RwLock};
+use rustc_data_structures::sync::{Lock, RwLock};
 use rustc_data_structures::unhash::UnhashMap;
 use rustc_data_structures::unord::{UnordMap, UnordSet};
 use rustc_hir::def_id::{
@@ -685,14 +685,7 @@ impl<'a, 'tcx> TyDecoder<'tcx> for CacheDecoder<'a, 'tcx> {
 
         let cache_key = ty::CReaderCacheKey { cnum: None, pos: shorthand };
 
-        if let Some(&ty) = tcx.ty_rcache.borrow().get(&cache_key) {
-            return ty;
-        }
-
-        let ty = or_insert_with(self);
-        // This may overwrite the entry, but it should overwrite with the same value.
-        tcx.ty_rcache.borrow_mut().insert_same(cache_key, ty);
-        ty
+        tcx.cached_ty_for_shorthand(cache_key, || or_insert_with(self))
     }
 
     fn with_position<F, R>(&mut self, pos: usize, f: F) -> R

@@ -26,7 +26,7 @@ use rustc_data_structures::sharded::{IntoPointer, ShardedHashMap, make_hash};
 use rustc_data_structures::stable_hash::StableHash;
 use rustc_data_structures::steal::Steal;
 use rustc_data_structures::sync::{
-    self, DynSend, DynSync, FreezeReadGuard, Lock, RwLock, WorkerLocal,
+    self, DynSend, DynSync, FreezeReadGuard, HashMapExt, Lock, RwLock, WorkerLocal,
 };
 use rustc_data_structures::{Limit, defer};
 use rustc_errors::{Applicability, Diag, DiagCtxtHandle, Diagnostic, MultiSpan};
@@ -136,6 +136,9 @@ const INTERNER_CACHE_LEN: usize = 16384;
 const SUPERTRAIT_CACHE_LEN: usize = 16384;
 const CLAUSE_INSTANTIATION_CACHE_LEN: usize = 16384;
 const FN_SIG_INSTANTIATION_CACHE_LEN: usize = 16384;
+const TYPE_SHORTHAND_CACHE_LEN: usize = 4096;
+
+type TypeShorthandCacheEntry<'tcx> = (ty::CReaderCacheKey, Ty<'tcx>);
 
 type SupertraitCacheEntry<'tcx> = (Clause<'tcx>, ty::PolyTraitRef<'tcx>, Clause<'tcx>);
 type ClauseInstantiationCacheEntry<'tcx> =
@@ -823,6 +826,8 @@ pub struct GlobalCtxt<'tcx> {
 
     // Internal caches for metadata decoding. No need to track deps on this.
     pub ty_rcache: Lock<FxHashMap<ty::CReaderCacheKey, Ty<'tcx>>>,
+    ty_rcache_local:
+        WorkerLocal<[Cell<Option<TypeShorthandCacheEntry<'tcx>>>; TYPE_SHORTHAND_CACHE_LEN]>,
 
     /// Caches the results of trait selection. This cache is used
     /// for things that do not have to do with the parameters in scope.
@@ -1060,6 +1065,9 @@ impl<'tcx> TyCtxt<'tcx> {
             query_system,
             dep_kind_vtables,
             ty_rcache: Default::default(),
+            ty_rcache_local: WorkerLocal::new(|_| {
+                [const { Cell::new(None) }; TYPE_SHORTHAND_CACHE_LEN]
+            }),
             selection_cache: Default::default(),
             evaluation_cache: Default::default(),
             freshened_types: Default::default(),
@@ -2505,6 +2513,35 @@ impl<'tcx> TyCtxt<'tcx> {
     #[inline]
     pub fn mk_ct_from_kind(self, kind: ty::ConstKind<'tcx>) -> Const<'tcx> {
         self.interners.intern_const(kind)
+    }
+
+    #[inline]
+    pub fn cached_ty_for_shorthand(
+        self,
+        key: ty::CReaderCacheKey,
+        or_insert_with: impl FnOnce() -> Ty<'tcx>,
+    ) -> Ty<'tcx> {
+        let local = self
+            .ty_rcache_local
+            .get_if_registered()
+            .map(|cache| &cache[key.pos & (TYPE_SHORTHAND_CACHE_LEN - 1)]);
+        if let Some(local) = local
+            && let Some((cached_key, ty)) = local.get()
+            && cached_key == key
+        {
+            return ty;
+        }
+
+        let cached = self.ty_rcache.borrow().get(&key).copied();
+        let ty = cached.unwrap_or_else(|| {
+            let ty = or_insert_with();
+            self.ty_rcache.borrow_mut().insert_same(key, ty);
+            ty
+        });
+        if let Some(local) = local {
+            local.set(Some((key, ty)));
+        }
+        ty
     }
 
     // Avoid this in favour of more specific `Ty::new_*` methods, where possible.
