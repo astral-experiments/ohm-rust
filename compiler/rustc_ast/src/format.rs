@@ -1,6 +1,7 @@
 use rustc_data_structures::fx::FxHashMap;
 use rustc_macros::{Decodable, Encodable, Walkable};
-use rustc_span::{Ident, Span, Symbol};
+use rustc_serialize::Encodable;
+use rustc_span::{Ident, Span, SpanEncoder, Symbol};
 
 use crate::Expr;
 use crate::token::LitKind;
@@ -72,12 +73,26 @@ pub enum FormatArgsPiece {
 ///
 /// E.g. `1, 2, name="ferris", n=3`,
 /// but also implicit captured arguments like `x` in `format_args!("{x}")`.
-#[derive(Clone, Encodable, Decodable, Debug, Walkable)]
+#[derive(Clone, Decodable, Debug, Walkable)]
 pub struct FormatArguments {
     arguments: Vec<FormatArgument>,
     num_unnamed_args: usize,
     num_explicit_args: usize,
     names: FxHashMap<Symbol, usize>,
+}
+
+impl<E: SpanEncoder> Encodable<E> for FormatArguments {
+    fn encode(&self, encoder: &mut E) {
+        self.arguments.encode(encoder);
+        self.num_unnamed_args.encode(encoder);
+        self.num_explicit_args.encode(encoder);
+        // Symbol allocation changes hash-table order even when the format arguments match.
+        // Encode every mapping in name order so fresh expansion has a reproducible fingerprint.
+        #[expect(rustc::potential_query_instability, reason = "sorted by symbol spelling below")]
+        let mut names: Vec<_> = self.names.iter().collect();
+        names.sort_by(|(a, _), (b, _)| a.as_str().cmp(b.as_str()));
+        names.encode(encoder);
+    }
 }
 
 impl FormatArguments {

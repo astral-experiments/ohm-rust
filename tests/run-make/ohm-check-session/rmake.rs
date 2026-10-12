@@ -270,6 +270,15 @@ fn main() {
 
 fn macro_revalidation() {
     fs::write(
+        "formatting.rs",
+        r#"
+        pub fn captured(format_a: u32, format_b: u32, format_c: u32, format_d: u32) -> String {
+            format!("{format_a} {format_b} {format_c} {format_d}")
+        }
+        "#,
+    )
+    .unwrap();
+    fs::write(
         "macros.rs",
         r#"
         extern crate proc_macro;
@@ -317,7 +326,7 @@ fn macro_revalidation() {
         fs::write("macro-executions", "0").unwrap();
         fs::write(
             "lib.rs",
-            "#![allow(dead_code)]\nmod edit;\nsession_macros::generated!();\n\
+            "#![allow(dead_code)]\nmod edit;\nmod formatting;\nsession_macros::generated!();\n\
             #[derive(session_macros::Empty)] pub struct Marker;\n\
             #[session_macros::identity] pub fn marker() {}\n\
             const _: [(); 1] = [(); GENERATED];\nconst _: [(); 0] = [(); INVOCATION];\n",
