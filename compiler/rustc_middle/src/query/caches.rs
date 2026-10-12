@@ -1,6 +1,8 @@
+use std::cell::Cell;
 use std::sync::OnceLock;
 
 use rustc_data_structures::sharded::ShardedHashMap;
+use rustc_data_structures::sync::WorkerLocal;
 pub use rustc_data_structures::vec_cache::VecCache;
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_index::Idx;
@@ -8,6 +10,9 @@ use rustc_span::def_id::{DefId, DefIndex};
 
 use crate::dep_graph::DepNodeIndex;
 use crate::query::keys::QueryKey;
+
+#[cfg(test)]
+mod tests;
 
 /// Trait for types that serve as an in-memory cache for query results,
 /// for a given key (argument) type and value (return) type.
@@ -130,11 +135,16 @@ pub struct DefIdCache<V> {
     /// a win over hashing query keys at marginal memory cost (~5% at most) compared to FxHashMap.
     local: VecCache<DefIndex, V, DepNodeIndex>,
     foreign: DefaultCache<DefId, V>,
+    recent_foreign: ForeignQueryCache<V>,
 }
 
 impl<V> Default for DefIdCache<V> {
     fn default() -> Self {
-        DefIdCache { local: Default::default(), foreign: Default::default() }
+        DefIdCache {
+            local: Default::default(),
+            foreign: Default::default(),
+            recent_foreign: Default::default(),
+        }
     }
 }
 
@@ -150,7 +160,7 @@ where
         if key.krate == LOCAL_CRATE {
             self.local.lookup(&key.index)
         } else {
-            self.foreign.lookup(key)
+            self.recent_foreign.get_or_insert_with(*key, || self.foreign.lookup(key))
         }
     }
 
@@ -172,6 +182,51 @@ where
 
     fn len(&self) -> usize {
         self.local.len() + self.foreign.len()
+    }
+}
+
+const FOREIGN_QUERY_CACHE_LEN: usize = 32;
+
+/// Retains completed results within one query cache and compiler worker.
+/// Misses still consult the shared cache, so later completion remains visible.
+struct ForeignQueryCache<V> {
+    entries: Option<WorkerLocal<[Cell<Option<(DefId, V, DepNodeIndex)>>; FOREIGN_QUERY_CACHE_LEN]>>,
+}
+
+impl<V> Default for ForeignQueryCache<V> {
+    fn default() -> Self {
+        Self {
+            entries: WorkerLocal::new_if_registered(|_| {
+                [const { Cell::new(None) }; FOREIGN_QUERY_CACHE_LEN]
+            }),
+        }
+    }
+}
+
+impl<V: Copy> ForeignQueryCache<V> {
+    #[inline(always)]
+    fn get_or_insert_with(
+        &self,
+        key: DefId,
+        lookup: impl FnOnce() -> Option<(V, DepNodeIndex)>,
+    ) -> Option<(V, DepNodeIndex)> {
+        let entry = self.entries.as_ref().and_then(WorkerLocal::get_if_registered).map(|entries| {
+            let slot = (key.index.as_usize() ^ key.krate.as_usize().wrapping_mul(0x9e37_79b9))
+                & (FOREIGN_QUERY_CACHE_LEN - 1);
+            &entries[slot]
+        });
+        if let Some(entry) = entry
+            && let Some((cached_key, value, index)) = entry.get()
+            && cached_key == key
+        {
+            return Some((value, index));
+        }
+
+        let (value, index) = lookup()?;
+        if let Some(entry) = entry {
+            entry.set(Some((key, value, index)));
+        }
+        Some((value, index))
     }
 }
 

@@ -131,6 +131,13 @@ impl<T> WorkerLocal<T> {
         }
     }
 
+    /// Creates worker-local storage only when the current thread has a registry.
+    /// Optional caches can otherwise retain their ordinary unregistered-thread behavior.
+    #[inline]
+    pub fn new_if_registered<F: FnMut(usize) -> T>(initial: F) -> Option<Self> {
+        REGISTRY.with(|registry| registry.get().map(|_| Self::new(initial)))
+    }
+
     /// Returns this thread's local value if it is registered with this worker local's registry.
     /// Returns `None` for unregistered threads or threads associated with another registry.
     #[inline]
