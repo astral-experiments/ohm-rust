@@ -211,9 +211,16 @@ impl DepGraphData {
                 return Some(());
             }
             if let Some(previous) = self.previous.node_to_index_opt(&node) {
-                // Force only input nodes. Walking the old build's dependencies
-                // here can recompute the very frontend result we want to reuse.
-                if tcx.is_eval_always(node.kind)
+                // Check and build metadata can have different whole-crate hashes
+                // while a particular external query still returns the same value.
+                // Validate that query against the native graph before comparing its
+                // result. Never force unknown local computations: that can redo
+                // the frontend work we are trying to reuse, or introduce cycles.
+                let external = node.extract_def_id(tcx).is_some_and(|id| !id.is_local());
+                if external && !tcx.is_eval_always(node.kind) {
+                    self.try_mark_green(tcx, &node);
+                }
+                if (external || tcx.is_eval_always(node.kind))
                     && matches!(self.colors.get(previous), DepNodeColor::Unknown)
                 {
                     let frame = MarkFrame { index: previous, parent: None };
