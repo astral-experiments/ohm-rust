@@ -4,9 +4,9 @@ use std::sync::OnceLock;
 
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_data_structures::memmap::Mmap;
-use rustc_serialize::opaque::MemDecoder;
 
 use super::*;
+use crate::dep_graph::serialized::IndexedDepGraph;
 use crate::query::on_disk_cache::OnDiskCache;
 
 /// A compatible check checkpoint, mapped without decoding its graph or query tables.
@@ -19,14 +19,17 @@ pub struct CheckCacheSource {
 
 impl CheckCacheSource {
     /// Both headers and the graph's argument hash must have been validated.
-    pub fn new(graph: Mmap, graph_start: usize, cache: Mmap, cache_start: usize) -> Self {
-        Self { graph, graph_start, cache, cache_start }
+    pub fn new(graph: Mmap, graph_start: usize, cache: Mmap, cache_start: usize) -> Option<Self> {
+        IndexedDepGraph::new(&graph, graph_start)?;
+        Some(Self { graph, graph_start, cache, cache_start })
     }
 }
 
 pub(super) struct CheckCache {
-    source: Lock<Option<CheckCacheSource>>,
-    decoded: OnceLock<Option<CheckedQueries>>,
+    graph: Lock<Option<Arc<Mmap>>>,
+    graph_start: usize,
+    cache_source: Lock<Option<(Mmap, usize)>>,
+    cache: OnceLock<Option<OnDiskCache>>,
     /// Green build nodes already have a usable fingerprint in the build graph.
     /// Retain current fingerprints only for recomputed red nodes and new nodes.
     current: Lock<FxHashMap<DepNode, (Option<Fingerprint>, DepNodeIndex)>>,
@@ -40,24 +43,22 @@ struct CheckedDependencies {
     features: Vec<Symbol>,
 }
 
-struct CheckedQueries {
-    graph: Arc<SerializedDepGraph>,
-    cache: OnDiskCache,
-}
-
 impl CheckCache {
     pub(super) fn new(source: CheckCacheSource) -> Self {
-        Self { source: Lock::new(Some(source)), decoded: OnceLock::new(), current: Lock::default() }
+        Self {
+            graph: Lock::new(Some(Arc::new(source.graph))),
+            graph_start: source.graph_start,
+            cache_source: Lock::new(Some((source.cache, source.cache_start))),
+            cache: OnceLock::new(),
+            current: Lock::default(),
+        }
     }
 
-    fn get(&self, sess: &Session) -> Option<&CheckedQueries> {
-        self.decoded
+    fn cache(&self, sess: &Session) -> Option<&OnDiskCache> {
+        self.cache
             .get_or_init(|| {
-                let source = self.source.lock().take()?;
-                let mut decoder = MemDecoder::new(&source.graph, source.graph_start).ok()?;
-                let graph = SerializedDepGraph::decode(&mut decoder, &sess.prof);
-                let cache = OnDiskCache::new(sess, source.cache, source.cache_start).ok()?;
-                Some(CheckedQueries { graph, cache })
+                let (cache, start) = self.cache_source.lock().take()?;
+                OnDiskCache::new(sess, cache, start).ok()
             })
             .as_ref()
     }
@@ -72,9 +73,10 @@ impl CheckCache {
     }
 
     fn close(&self) {
-        self.source.lock().take();
-        if let Some(Some(checked)) = self.decoded.get() {
-            checked.cache.close_serialized_data_mmap();
+        self.graph.lock().take();
+        self.cache_source.lock().take();
+        if let Some(Some(cache)) = self.cache.get() {
+            cache.close_serialized_data_mmap();
         }
     }
 }
@@ -103,32 +105,36 @@ impl DepGraphData {
         load: impl FnOnce(&OnDiskCache, SerializedDepNodeIndex) -> Option<R>,
     ) -> Option<(R, DepNodeIndex)> {
         let check = self.latest_check.as_ref()?;
-        let checked = check.get(tcx.sess)?;
-        let index = checked.graph.node_to_index_opt(&node)?;
-        if !checked.cache.loadable_from_disk(index) {
+        let data = Arc::clone(check.graph.lock().as_ref()?);
+        let graph = IndexedDepGraph::new(&data, check.graph_start)?;
+        let index = graph.node_to_index_opt(&node)?;
+        let root = graph.node(index)?;
+        let cache = check.cache(tcx.sess)?;
+        if !cache.loadable_from_disk(index) {
             return None;
         }
         tracing::info!(?node, "ohm_latest_check_candidate");
         let _timer = tcx.prof.generic_activity("incr_comp_reuse_latest_check");
         let mut dependencies = tcx.dep_graph.with_ignore(|| {
             let mut dependencies = CheckedDependencies::default();
-            for dependency in checked.graph.edge_targets_from(index) {
+            for dependency in root.edges() {
                 self.validate_checked_dependency(
                     tcx,
                     check,
-                    checked,
+                    cache,
+                    &graph,
                     dependency,
                     &mut dependencies,
                 )?;
             }
             Some(dependencies)
         })?;
-        let value = load(&checked.cache, index)?;
+        let value = load(cache, index)?;
         if verify {
             let fingerprint = hash_result.map_or(Fingerprint::ZERO, |hash| {
                 tcx.with_stable_hashing_context(|mut hcx| hash(&mut hcx, &value))
             });
-            assert_eq!(fingerprint, checked.graph.value_fingerprint_for_index(index));
+            assert_eq!(fingerprint, root.fingerprint);
         }
         self.assert_dep_node_not_yet_allocated_in_current_session(tcx.sess, &node, || {
             format!("reusing a checked query with an existing dep node: {node:?}")
@@ -140,12 +146,18 @@ impl DepGraphData {
         }
         // The checked value already has a stable hash. Its dependencies were
         // validated above; retain ordinary sampled verification when decoding.
-        let fingerprint = hash_result.map(|_| checked.graph.value_fingerprint_for_index(index));
+        let fingerprint = hash_result.map(|_| root.fingerprint);
         let current = self.alloc_and_color_node(node, &dependencies.edges, fingerprint);
         if tcx.sess.opts.unstable_opts.query_dep_graph {
             self.mark_debug_loaded_from_disk(node);
         }
-        tracing::info!(kind = ?node.kind, "ohm_latest_check_reuse");
+        tracing::info!(
+            kind = ?node.kind,
+            dependency_nodes = dependencies.validated.len(),
+            node_reads = graph.node_reads(),
+            graph_nodes = graph.node_count(),
+            "ohm_latest_check_reuse"
+        );
         Some((value, current))
     }
 
@@ -156,7 +168,8 @@ impl DepGraphData {
         &self,
         tcx: TyCtxt<'tcx>,
         check: &CheckCache,
-        checked: &CheckedQueries,
+        cache: &OnDiskCache,
+        graph: &IndexedDepGraph<'_>,
         index: SerializedDepNodeIndex,
         dependencies: &mut CheckedDependencies,
     ) -> Option<()> {
@@ -170,12 +183,12 @@ impl DepGraphData {
         {
             return None;
         }
-        let node = *checked.graph.index_to_node(index);
+        let entry = graph.node(index)?;
+        let node = entry.node;
         if node.kind == DepKind::SideEffect {
             // Replay feature-use bookkeeping only after the entire checked result
             // has been validated. Diagnostics conservatively use the provider.
-            let QuerySideEffect::CheckFeature { symbol } =
-                checked.cache.load_side_effect(tcx, index)?
+            let QuerySideEffect::CheckFeature { symbol } = cache.load_side_effect(tcx, index)?
             else {
                 return None;
             };
@@ -188,7 +201,7 @@ impl DepGraphData {
             tracing::info!(?node, reason = "untracked dependency", "ohm_latest_check_miss");
             return None;
         }
-        let expected = checked.graph.value_fingerprint_for_index(index);
+        let expected = entry.fingerprint;
         // Anonymous keys are session-local. Validate their edges rather than matching
         // their key against a separately saved build graph.
         // A zero fingerprint may denote a `no_hash` query. Equal placeholders
@@ -260,8 +273,8 @@ impl DepGraphData {
             tracing::info!(?node, reason = "unvalidated input", "ohm_latest_check_miss");
             return None;
         }
-        for dependency in checked.graph.edge_targets_from(index) {
-            self.validate_checked_dependency(tcx, check, checked, dependency, dependencies)?;
+        for dependency in entry.edges() {
+            self.validate_checked_dependency(tcx, check, cache, graph, dependency, dependencies)?;
         }
         dependencies.active.remove(&index);
         dependencies.validated.insert(index);
