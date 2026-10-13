@@ -12,14 +12,25 @@ fn source(delta: u64, width: &str, checked_width: &str) {
         r#"
 #![feature(rustc_attrs)]
 #![allow(internal_features)]
+#![rustc_partition_reused(module = "stage_dep-untouched", cfg = "latest_check")]
 
-#[rustc_clean(cfg = "from_check", loaded_from_disk = "typeck_root")]
-#[rustc_clean(cfg = "check_again", loaded_from_disk = "typeck_root")]
+pub mod untouched {
+    #[inline(never)]
+    pub fn value() -> u64 { 3 }
+}
+
+#[rustc_clean(cfg = "from_check")]
+#[rustc_clean(cfg = "check_again")]
 #[rustc_clean(cfg = "warm_build")]
 pub const BASE: u64 = 41;
 
 pub fn width() -> WIDTH { 0 }
 fn measured_width<T>(_: T) -> u64 { std::mem::size_of::<T>() as u64 }
+#[rustc_clean(
+    cfg = "latest_check",
+    except = "hir_owner,optimized_mir",
+    loaded_from_disk = "typeck_root,mir_borrowck"
+)]
 pub fn value() -> u64 { BASE + DELTA + measured_width(width()) }
 pub fn generic<T>(value: T) -> T { value }
 pub fn opaque() -> impl Fn() -> u64 { || value() }
@@ -43,14 +54,14 @@ fn compile(emit: &str, revision: &str, incremental: bool, success: bool) {
         .edition("2024")
         .emit(emit)
         .cfg(revision)
-        .codegen_units(2)
+        .codegen_units(16)
         .arg("-Zohm-shared-stages")
         .arg("-Zquery-dep-graph")
         .arg("-Zincremental-verify-ich");
     if incremental {
         command.incremental("incremental");
     }
-    if emit == "metadata" {
+    if emit == "metadata" && revision == "check_signature" {
         command.cfg("check_only");
     }
     if success {
@@ -110,16 +121,23 @@ fn main() {
     source(2, "u64", "u64");
     compile("metadata", "check_again", true, true);
     assert_native_checkpoint();
-    compile("metadata,link", "warm_build", true, true);
+    compile("metadata,link", "latest_check", true, true);
     consumer(51);
+
+    compile("metadata", "check_again", true, true);
+    source(2, "bool", "bool");
+    compile("metadata,link", "unchecked_error", true, false);
+    source(3, "u64", "u64");
+    compile("metadata,link", "unchecked_edit", true, true);
+    consumer(52);
 
     source(2, "u32", "u64");
     compile("metadata,link", "warm_build", true, true);
     consumer(47);
-    compile("metadata", "check_again", true, false);
+    compile("metadata", "check_signature", true, false);
 
     source(2, "u32", "u32");
-    compile("metadata", "check_again", true, true);
+    compile("metadata", "check_signature", true, true);
     assert_native_checkpoint();
     compile("metadata,link", "warm_build", true, true);
     consumer(47);
