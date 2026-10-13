@@ -66,3 +66,73 @@ fn reverse_index_rejects_other_duplicate_nodes() {
     let duplicate = node(DepKind::CompileCodegenUnit, 1, 2);
     graph(vec![duplicate, duplicate]).node_to_index_opt(&duplicate);
 }
+
+#[test]
+fn check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges() {
+    let checked = node(DepKind::typeck_root, 1, 2);
+    let borrowed = node(DepKind::mir_borrowck, 2, 1);
+    let mut file = MemEncoder::new();
+    file.emit_raw_bytes(&[0; 8]);
+    let mut seek = SeekIndexBuilder::default();
+    let dependencies: Vec<_> = (10..28).chain([300]).map(DepNodeIndex::from_u32).collect();
+    let mut count = 0u64;
+    // Chunks can arrive out of allocation order from different compiler threads.
+    for indices in [vec![300, 500], (0..80).collect()] {
+        let mut chunk = MemEncoder::new();
+        let mut offsets = Vec::new();
+        let mut roots = Vec::new();
+        for raw in indices {
+            let index = DepNodeIndex::from_u32(raw);
+            let node = match raw {
+                3 => checked,
+                500 => borrowed,
+                _ => node(DepKind::CompileCodegenUnit, raw.into(), 0),
+            };
+            offsets.push((index, chunk.data.len()));
+            if matches!(raw, 3 | 500) {
+                roots.push((node, index));
+            }
+            NodeInfo {
+                node,
+                value_fingerprint: Fingerprint::new(u64::from(raw), 99),
+                edges: if raw == 3 { &dependencies } else { &[] },
+            }
+            .encode(&mut chunk, index);
+            count += 1;
+        }
+        seek.record_chunk(file.data.len(), &mut offsets, &mut roots);
+        file.emit_raw_bytes(&chunk.data);
+    }
+    let start = file.data.len();
+    seek.encode(&mut file, start, 501);
+    for value in [501, count, dependencies.len() as u64] {
+        file.emit_raw_bytes(&value.to_le_bytes());
+    }
+    file.emit_raw_bytes(rustc_serialize::opaque::MAGIC_END_BYTES);
+
+    let graph = IndexedDepGraph::new(&file.data, 8).unwrap();
+    assert_eq!(graph.node_reads(), 0);
+    let index = graph.node_to_index_opt(&checked).unwrap();
+    assert_eq!(index.as_u32(), 3);
+    let entry = graph.node(index).unwrap();
+    assert_eq!(entry.fingerprint, Fingerprint::new(3, 99));
+    assert_eq!(
+        entry.edges().map(|index| index.as_u32()).collect::<Vec<_>>(),
+        dependencies.iter().map(|index| index.as_u32()).collect::<Vec<_>>()
+    );
+    assert_eq!(graph.node_to_index_opt(&borrowed).unwrap().as_u32(), 500);
+    assert!(graph.node_to_index_opt(&node(DepKind::typeck_root, 2, 1)).is_none());
+    assert!(graph.node(SerializedDepNodeIndex::from_u32(99)).is_none());
+    assert!(graph.node(SerializedDepNodeIndex::from_u32(501)).is_none());
+    assert!(graph.node_reads() < graph.node_count() / 4);
+
+    // Old graphs and incomplete seek directories conservatively have no index.
+    let mut truncated = file.data.clone();
+    truncated.remove(start);
+    assert!(IndexedDepGraph::new(&truncated, 8).is_none());
+    let mut legacy = file.data[..start].to_vec();
+    legacy.extend_from_slice(
+        &file.data[file.data.len() - 24 - rustc_serialize::opaque::MAGIC_END_BYTES.len()..],
+    );
+    assert!(IndexedDepGraph::new(&legacy, 8).is_none());
+}
