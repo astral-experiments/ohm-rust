@@ -241,14 +241,18 @@ pub fn setup_dep_graph(
         LoadResult::Ok { prev_graph, prev_work_products } => (prev_graph, prev_work_products),
     };
 
-    let latest_check = if should_codegen && checkpoint.is_some() {
-        // A check's metadata is not a built crate's metadata, even when native
-        // work products survive the transition.
+    if checkpoint_files.is_some() {
+        // The ordinary work-product index belongs to the other stage. Restore
+        // metadata only from the checkpoint whose graph we actually selected.
         prev_work_products = prev_work_products
-            .into_sorted_stable_ord()
-            .into_iter()
+            .into_items()
             .filter(|(_, product)| !product.cgu_name.starts_with("metadata"))
             .collect();
+        if checkpoint.is_some() {
+            load_metadata_checkpoint(sess, &incr_comp_session, &mut prev_work_products);
+        }
+    }
+    let latest_check = if should_codegen && checkpoint.is_some() {
         load_latest_check(sess, &incr_comp_session)
     } else {
         None
@@ -276,6 +280,33 @@ pub fn setup_dep_graph(
         Some(incr_comp_session),
         query_cache,
     )
+}
+
+/// Selects the metadata and optional prefix manifest recorded for this stage.
+fn load_metadata_checkpoint(
+    sess: &Session,
+    session: &IncrCompSession,
+    work_products: &mut WorkProductMap,
+) {
+    let filename =
+        if sess.opts.output_types.should_codegen() { BUILD_METADATA } else { CHECK_METADATA };
+    let Some(path) = in_old_incr_comp_dir_sess(session, filename) else { return };
+    let Ok(OpenFile { mmap, start_pos }) = file_format::open_incremental_file(sess, &path) else {
+        return;
+    };
+    let Ok(mut decoder) = MemDecoder::new(&mmap, start_pos) else { return };
+    let metadata: Vec<SerializedWorkProduct> = Decodable::decode(&mut decoder);
+    for saved in metadata {
+        // Consumers open these filenames in the immutable previous session. Keep the
+        // stage-specific name to avoid accidentally using the other stage's metadata.
+        if saved.work_product.cgu_name.starts_with("metadata")
+            && saved.work_product.saved_files.items().all(|(_, name)| {
+                in_old_incr_comp_dir_sess(session, name).is_some_and(|path| path.is_file())
+            })
+        {
+            work_products.insert(saved.id, saved.work_product);
+        }
+    }
 }
 
 /// Maps the current check snapshot without decoding it until a build query needs it.
