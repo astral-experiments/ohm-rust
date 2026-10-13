@@ -104,8 +104,9 @@ fn check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges() {
         file.emit_raw_bytes(&chunk.data);
     }
     let start = file.data.len();
-    seek.encode(&mut file, start, 501);
-    for value in [501, count, dependencies.len() as u64] {
+    let node_max = 512;
+    seek.encode(&mut file, start, node_max);
+    for value in [u64::from(node_max), count, dependencies.len() as u64] {
         file.emit_raw_bytes(&value.to_le_bytes());
     }
     file.emit_raw_bytes(rustc_serialize::opaque::MAGIC_END_BYTES);
@@ -124,6 +125,8 @@ fn check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges() {
     assert!(graph.node_to_index_opt(&node(DepKind::typeck_root, 2, 1)).is_none());
     assert!(graph.node(SerializedDepNodeIndex::from_u32(99)).is_none());
     assert!(graph.node(SerializedDepNodeIndex::from_u32(501)).is_none());
+    assert!(graph.node(SerializedDepNodeIndex::from_u32(node_max - 1)).is_none());
+    assert!(graph.node(SerializedDepNodeIndex::from_u32(node_max)).is_none());
     assert!(graph.node_reads() < graph.node_count() / 4);
 
     // Old graphs and incomplete seek directories conservatively have no index.

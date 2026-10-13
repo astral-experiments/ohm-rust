@@ -42,7 +42,8 @@ impl SeekIndexBuilder {
 
     /// Appends an optional seek directory before the ordinary graph footer.
     pub(super) fn encode(&mut self, encoder: &mut impl Encoder, start: usize, node_max: u32) {
-        assert_eq!(self.offsets.len(), node_max as usize);
+        assert!(self.offsets.len() <= node_max as usize);
+        self.offsets.resize(node_max as usize, 0);
         for offset in &self.offsets {
             encoder.emit_raw_bytes(&offset.to_le_bytes());
         }
