@@ -122,6 +122,10 @@ pub fn save_work_product_index(
         e.finish()
     });
 
+    if sess.opts.unstable_opts.ohm_shared_stages {
+        save_metadata_checkpoint(sess, incr_comp_session.unwrap(), &new_work_products);
+    }
+
     // We also need to clean out old work-products, as not all of them are
     // deleted during invalidation. Some object files don't change their
     // content, they are just not needed anymore.
@@ -147,6 +151,51 @@ pub fn save_work_product_index(
                 .all(|(_, path)| in_incr_comp_dir_sess(incr_comp_session.unwrap(), path).exists())
         })
     });
+}
+
+/// Keeps metadata and its optional prefix manifest paired with each stage's graph.
+fn save_metadata_checkpoint(
+    sess: &Session,
+    session: &IncrCompSession,
+    work_products: &WorkProductMap,
+) {
+    let (stage, index_filename) = if sess.opts.output_types.should_codegen() {
+        ("build", BUILD_METADATA)
+    } else {
+        ("check", CHECK_METADATA)
+    };
+    let mut metadata = WorkProductMap::default();
+    for (id, product) in work_products.to_sorted_stable_ord() {
+        if !product.cgu_name.starts_with("metadata") {
+            continue;
+        }
+        let mut product = product.clone();
+        let files = std::mem::take(&mut product.saved_files);
+        for (extension, filename) in files.into_sorted_stable_ord() {
+            let saved = format!("ohm-{stage}-{filename}");
+            if rustc_fs_util::link_or_copy(
+                in_incr_comp_dir_sess(session, &filename),
+                in_incr_comp_dir_sess(session, &saved),
+            )
+            .is_err()
+            {
+                // This optional optimization must not publish a partial checkpoint.
+                let _ = fs::remove_file(in_incr_comp_dir_sess(session, index_filename));
+                return;
+            }
+            product.saved_files.insert(extension, saved);
+        }
+        metadata.insert(*id, product);
+    }
+    file_format::save_in(
+        sess,
+        in_incr_comp_dir_sess(session, index_filename),
+        "stage metadata",
+        |mut e| {
+            encode_work_product_index(&metadata, &mut e);
+            e.finish()
+        },
+    );
 }
 
 /// Keeps each stage's graph and query cache inside the immutable incremental session.
