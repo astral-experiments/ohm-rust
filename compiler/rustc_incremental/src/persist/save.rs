@@ -43,6 +43,10 @@ pub(crate) fn save_dep_graph(tcx: TyCtxt<'_>) {
         sess.time("check_clean", || clean::check_clean_annotations(tcx));
         sess.time("check_rdr_hashes", || rdr_hashes::check_rdr_test_attrs(tcx));
 
+        // Neither the check graph nor its query cache may remain mapped when
+        // their files are replaced below (including a lazily unopened cache).
+        tcx.dep_graph.close_latest_check_cache();
+
         par_join(
             move || {
                 sess.time("incr_comp_persist_dep_graph", || {
