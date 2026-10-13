@@ -6,10 +6,10 @@ use std::sync::Arc;
 
 use rustc_data_structures::unord::UnordMap;
 use rustc_hashes::Hash64;
-use rustc_middle::dep_graph::{DepGraph, SerializedDepGraph, WorkProductMap};
+use rustc_middle::dep_graph::{CheckCacheSource, DepGraph, SerializedDepGraph, WorkProductMap};
 use rustc_middle::query::on_disk_cache::OnDiskCache;
 use rustc_serialize::opaque::{FileEncoder, MemDecoder};
-use rustc_serialize::{Decodable, Encodable};
+use rustc_serialize::{Decodable, Decoder, Encodable};
 use rustc_session::config::IncrementalStateAssertion;
 use rustc_session::{IncrCompSession, Session, StableCrateId};
 use rustc_span::Symbol;
@@ -246,7 +246,7 @@ pub fn setup_dep_graph(
         LoadResult::Ok { prev_graph, prev_work_products } => (prev_graph, prev_work_products),
     };
 
-    if should_codegen && checkpoint.is_some() {
+    let latest_check = if should_codegen && checkpoint.is_some() {
         // A check's metadata is not a built crate's metadata, even when native
         // work products survive the transition.
         prev_work_products = prev_work_products
@@ -254,7 +254,10 @@ pub fn setup_dep_graph(
             .into_iter()
             .filter(|(_, product)| !product.cgu_name.starts_with("metadata"))
             .collect();
-    }
+        load_latest_check(sess, &incr_comp_session)
+    } else {
+        None
+    };
     let query_cache = checkpoint
         .map(|(_, cache)| cache)
         .or_else(|| load_query_result_cache(sess, Some(&incr_comp_session)));
@@ -274,10 +277,24 @@ pub fn setup_dep_graph(
     sess.opts.dep_tracking_hash(false).encode(&mut encoder);
 
     (
-        DepGraph::new(sess, prev_graph, prev_work_products, encoder),
+        DepGraph::new(sess, prev_graph, prev_work_products, encoder, latest_check),
         Some(incr_comp_session),
         query_cache,
     )
+}
+
+/// Maps the current check snapshot without decoding it until a build query needs it.
+fn load_latest_check(sess: &Session, session: &IncrCompSession) -> Option<CheckCacheSource> {
+    let OpenFile { mmap: graph, start_pos } =
+        file_format::open_incremental_file(sess, &dep_graph_path(session)).ok()?;
+    let mut decoder = MemDecoder::new(&graph, start_pos).ok()?;
+    if Hash64::decode(&mut decoder) != sess.opts.dep_tracking_hash(false) {
+        return None;
+    }
+    let graph_start = decoder.position();
+    let OpenFile { mmap: cache, start_pos: cache_start } =
+        file_format::open_incremental_file(sess, &query_cache_path(session)).ok()?;
+    Some(CheckCacheSource::new(graph, graph_start, cache, cache_start))
 }
 
 fn load_stage_checkpoint(
