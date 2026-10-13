@@ -218,17 +218,17 @@ macro_rules! define_queries {
                         invoke_provider_fn: self::invoke_provider_fn::__rust_begin_short_backtrace,
 
                         #[cfg($cache_on_disk)]
-                        try_load_from_disk_fn: |tcx, prev_index| {
+                        try_load_from_disk_fn: |tcx, cache, prev_index| {
                             use rustc_middle::queries::$name::{ProvidedValue, provided_to_erased};
 
                             let loaded_value: ProvidedValue<'tcx> =
-                                $crate::incremental::try_load_from_disk(tcx, prev_index)?;
+                                $crate::incremental::try_load_from_disk(tcx, cache, prev_index)?;
 
                             // Arena-alloc the value if appropriate, and erase it.
                             Some(provided_to_erased(tcx, loaded_value))
                         },
                         #[cfg(not($cache_on_disk))]
-                        try_load_from_disk_fn: |_tcx, _prev_index| None,
+                        try_load_from_disk_fn: |_tcx, _cache, _prev_index| None,
 
                         #[cfg($handle_cycle_error)]
                         handle_cycle_error_fn: |tcx, key, cycle, err| {

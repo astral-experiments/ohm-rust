@@ -1322,6 +1322,7 @@ rustc_queries! {
         ErrorGuaranteed
     > {
         desc { "borrow-checking `{}`", tcx.def_path_str(key) }
+        cache_on_disk
     }
 
     /// Gets a complete map from all types to their inherent impls.
