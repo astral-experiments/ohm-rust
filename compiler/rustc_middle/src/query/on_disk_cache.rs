@@ -185,7 +185,7 @@ impl OnDiskCache {
 
         let data_len = data.len();
         let cache_id = NEXT_CACHE_ID
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
             .expect("incremental cache namespace exhausted");
         Self::new_shared(Arc::new(data), start_pos, data_len, 0, cache_id)
     }
