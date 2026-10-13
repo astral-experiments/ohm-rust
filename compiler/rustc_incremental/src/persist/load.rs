@@ -246,14 +246,24 @@ pub fn setup_dep_graph(
         LoadResult::Ok { prev_graph, prev_work_products } => (prev_graph, prev_work_products),
     };
 
+    if checkpoint_files.is_some() {
+        // The ordinary work-product index belongs to the other stage. Restore
+        // metadata only from the checkpoint whose graph we actually selected.
+        let previous = std::mem::take(&mut prev_work_products);
+        for (id, product) in previous.into_sorted_stable_ord() {
+            if product.cgu_name.starts_with("metadata") {
+                // A missing optional manifest must not leave the other stage's
+                // canonical manifest attached to otherwise reusable metadata.
+                work_product::delete_workproduct_files(sess, &incr_comp_session, &product);
+            } else {
+                prev_work_products.insert(id, product);
+            }
+        }
+        if checkpoint.is_some() {
+            load_metadata_checkpoint(sess, &incr_comp_session, &mut prev_work_products);
+        }
+    }
     let latest_check = if should_codegen && checkpoint.is_some() {
-        // A check's metadata is not a built crate's metadata, even when native
-        // work products survive the transition.
-        prev_work_products = prev_work_products
-            .into_sorted_stable_ord()
-            .into_iter()
-            .filter(|(_, product)| !product.cgu_name.starts_with("metadata"))
-            .collect();
         load_latest_check(sess, &incr_comp_session)
     } else {
         None
@@ -281,6 +291,45 @@ pub fn setup_dep_graph(
         Some(incr_comp_session),
         query_cache,
     )
+}
+
+/// Restores stage-local metadata filenames, including the prefix manifest's canonical path.
+fn load_metadata_checkpoint(
+    sess: &Session,
+    session: &IncrCompSession,
+    work_products: &mut WorkProductMap,
+) {
+    let filename =
+        if sess.opts.output_types.should_codegen() { BUILD_METADATA } else { CHECK_METADATA };
+    let path = in_incr_comp_dir_sess(session, filename);
+    let Ok(OpenFile { mmap, start_pos }) = file_format::open_incremental_file(sess, &path) else {
+        return;
+    };
+    let Ok(mut decoder) = MemDecoder::new(&mmap, start_pos) else { return };
+    let metadata: Vec<SerializedWorkProduct> = Decodable::decode(&mut decoder);
+    for mut saved in metadata {
+        if !saved.work_product.cgu_name.starts_with("metadata") {
+            continue;
+        }
+        let mut restored = true;
+        let files = std::mem::take(&mut saved.work_product.saved_files);
+        for (extension, filename) in files.into_sorted_stable_ord() {
+            let canonical = format!("{}.{}", saved.work_product.cgu_name, extension);
+            if rustc_fs_util::link_or_copy(
+                in_incr_comp_dir_sess(session, &filename),
+                in_incr_comp_dir_sess(session, &canonical),
+            )
+            .is_err()
+            {
+                restored = false;
+                break;
+            }
+            saved.work_product.saved_files.insert(extension, canonical);
+        }
+        if restored {
+            work_products.insert(saved.id, saved.work_product);
+        }
+    }
 }
 
 /// Maps the current check snapshot without decoding it until a build query needs it.

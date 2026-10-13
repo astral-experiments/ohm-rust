@@ -56,6 +56,7 @@ fn compile(emit: &str, revision: &str, incremental: bool, success: bool) {
         .cfg(revision)
         .codegen_units(16)
         .arg("-Zohm-shared-stages")
+        .arg("-Zpublic-api-hash")
         .arg("-Zquery-dep-graph")
         .arg("-Zincremental-verify-ich");
     if incremental {
@@ -97,6 +98,8 @@ fn assert_native_checkpoint() {
     let session = latest_session();
     assert!(session.join("ohm-build-dep-graph.bin").is_file());
     assert!(session.join("ohm-build-query-cache.bin").is_file());
+    assert!(session.join("ohm-build-metadata.bin").is_file());
+    assert!(session.join("ohm-build-metadata.rmeta").is_file());
     assert!(fs::read_dir(session).unwrap().any(|entry| {
         entry.unwrap().path().extension().is_some_and(|extension| extension == "o")
     }));
@@ -147,15 +150,23 @@ fn main() {
     assert!(!std::path::Path::new("libstage_dep.rlib").exists());
     compile("metadata,link", "from_check", true, true);
     assert_native_checkpoint();
+    let built_metadata = rfs::read(latest_session().join("ohm-build-metadata.rmeta"));
     consumer(50);
 
     source(2, "u64", "u64");
     compile("metadata", "check_again", true, true);
     assert_native_checkpoint();
+    assert_eq!(rfs::read(latest_session().join("ohm-build-metadata.rmeta")), built_metadata);
+    let checked_metadata = rfs::read(latest_session().join("ohm-check-metadata.rmeta"));
+    assert_ne!(checked_metadata, built_metadata);
     compile("metadata,link", "latest_check", true, true);
+    assert_eq!(rfs::read(latest_session().join("ohm-check-metadata.rmeta")), checked_metadata);
     consumer(51);
 
     compile("metadata", "check_again", true, true);
+    assert_eq!(rfs::read(latest_session().join("metadata.rmeta")), checked_metadata);
+    // Older checkpoints without saved metadata conservatively regenerate it.
+    rfs::remove_file(latest_session().join("ohm-build-metadata.bin"));
     source(2, "bool", "bool");
     compile("metadata,link", "unchecked_error", true, false);
     source(3, "u64", "u64");
