@@ -294,7 +294,7 @@ fn load_latest_check(sess: &Session, session: &IncrCompSession) -> Option<CheckC
     let graph_start = decoder.position();
     let OpenFile { mmap: cache, start_pos: cache_start } =
         file_format::open_incremental_file(sess, &query_cache_path(session)).ok()?;
-    Some(CheckCacheSource::new(graph, graph_start, cache, cache_start))
+    CheckCacheSource::new(graph, graph_start, cache, cache_start)
 }
 
 fn load_stage_checkpoint(
