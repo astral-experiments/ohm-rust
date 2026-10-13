@@ -1,5 +1,6 @@
 use std::collections::hash_map::Entry;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::{fmt, mem};
 
 use rustc_data_structures::fx::{FxHashMap, FxIndexMap, FxIndexSet};
@@ -34,6 +35,7 @@ use crate::ty::{self, Ty, TyCtxt};
 
 const TAG_FILE_FOOTER: u128 = 0xC0FFEE_C0FFEE_C0FFEE_C0FFEE_C0FFEE;
 const MAX_CACHE_GENERATIONS: usize = 3;
+static NEXT_CACHE_ID: AtomicU32 = AtomicU32::new(1);
 
 // A normal span encoded with both location information and a `SyntaxContext`
 const TAG_FULL_SPAN: u8 = 0;
@@ -60,6 +62,8 @@ const SYMBOL_PREDEFINED: u8 = 2;
 /// Keeping absolute byte positions preserves type and symbol shorthands. After
 /// `MAX_CACHE_GENERATIONS`, normal promotion re-encodes live values into a fresh file.
 pub struct OnDiskCache {
+    /// Type shorthands are offsets in one cache lineage, not process-global keys.
+    cache_id: u32,
     // The complete cache data in serialized form.
     serialized_data: RwLock<Option<Arc<Mmap>>>,
     start_pos: usize,
@@ -180,7 +184,10 @@ impl OnDiskCache {
         assert!(sess.opts.incremental.is_some());
 
         let data_len = data.len();
-        Self::new_shared(Arc::new(data), start_pos, data_len, 0)
+        let cache_id = NEXT_CACHE_ID
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .expect("incremental cache namespace exhausted");
+        Self::new_shared(Arc::new(data), start_pos, data_len, 0, cache_id)
     }
 
     /// Reads one generation while sharing its backing storage with retained generations.
@@ -189,6 +196,7 @@ impl OnDiskCache {
         start_pos: usize,
         data_len: usize,
         depth: usize,
+        cache_id: u32,
     ) -> Result<Self, ()> {
         if depth >= MAX_CACHE_GENERATIONS {
             return Err(());
@@ -210,7 +218,13 @@ impl OnDiskCache {
             if previous_len <= start_pos || previous_len > footer_pos {
                 return Err(());
             }
-            Some(Box::new(Self::new_shared(Arc::clone(&data), start_pos, previous_len, depth + 1)?))
+            Some(Box::new(Self::new_shared(
+                Arc::clone(&data),
+                start_pos,
+                previous_len,
+                depth + 1,
+                cache_id,
+            )?))
         } else {
             if !footer.forwarded_query_values.is_empty() {
                 return Err(());
@@ -246,6 +260,7 @@ impl OnDiskCache {
             Arc::new(AllocDecodingState::new(footer.interpret_alloc_index).with_aliases(aliases));
 
         Ok(Self {
+            cache_id,
             serialized_data: RwLock::new(Some(data)),
             start_pos,
             data_len,
@@ -267,6 +282,7 @@ impl OnDiskCache {
 
     pub fn new_empty() -> Self {
         Self {
+            cache_id: 0,
             serialized_data: RwLock::new(None),
             start_pos: 0,
             data_len: 0,
@@ -564,6 +580,7 @@ impl OnDiskCache {
     {
         let serialized_data = self.serialized_data.read();
         let mut decoder = CacheDecoder {
+            cache_id: self.cache_id,
             tcx,
             opaque: MemDecoder::new(
                 serialized_data.as_ref().map_or(&[], |data| &data[..self.data_len]),
@@ -588,6 +605,7 @@ impl OnDiskCache {
 /// we use for crate metadata decoding in that it can rebase spans and eventually
 /// will also handle things that contain `Ty` instances.
 pub struct CacheDecoder<'a, 'tcx> {
+    cache_id: u32,
     tcx: TyCtxt<'tcx>,
     opaque: MemDecoder<'a>,
     file_index_to_file: &'a Lock<FxHashMap<SourceFileIndex, Arc<SourceFile>>>,
@@ -683,7 +701,7 @@ impl<'a, 'tcx> TyDecoder<'tcx> for CacheDecoder<'a, 'tcx> {
     {
         let tcx = self.tcx;
 
-        let cache_key = ty::CReaderCacheKey { cnum: None, pos: shorthand };
+        let cache_key = ty::CReaderCacheKey { cnum: None, cache_id: self.cache_id, pos: shorthand };
 
         if let Some(&ty) = tcx.ty_rcache.borrow().get(&cache_key) {
             return ty;

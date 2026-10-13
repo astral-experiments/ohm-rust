@@ -31,7 +31,7 @@ fn measured_width<T>(_: T) -> u64 { std::mem::size_of::<T>() as u64 }
     except = "hir_owner,optimized_mir",
     loaded_from_disk = "typeck_root,mir_borrowck"
 )]
-pub fn value() -> u64 { BASE + DELTA + measured_width(width()) }
+pub fn value() -> u64 { stage_api::id(BASE + DELTA + measured_width(width())) }
 pub fn generic<T>(value: T) -> T { value }
 pub fn opaque() -> impl Fn() -> u64 { || value() }
 pub async fn future() -> u64 { value() }
@@ -61,6 +61,14 @@ fn compile(emit: &str, revision: &str, incremental: bool, success: bool) {
     if incremental {
         command.incremental("incremental");
     }
+    command.extern_(
+        "stage_api",
+        if emit == "metadata" {
+            "api-check/libstage_api.rmeta"
+        } else {
+            "api-build/libstage_api.rlib"
+        },
+    );
     if emit == "metadata" && revision == "check_signature" {
         command.cfg("check_only");
     }
@@ -95,11 +103,34 @@ fn assert_native_checkpoint() {
 }
 
 fn consumer(expected: u64) {
-    rustc().input("main.rs").edition("2024").extern_("stage_dep", "libstage_dep.rlib").run();
+    rustc()
+        .input("main.rs")
+        .edition("2024")
+        .extern_("stage_dep", "libstage_dep.rlib")
+        .arg("-Ldependency=api-build")
+        .run();
     run("main").assert_stdout_equals(format!("{expected}\n"));
 }
 
 fn main() {
+    rfs::write("api.rs", "pub fn id<T>(value: T) -> T { value }\npub fn seed() -> u64 { id(0) }\n");
+    for (directory, emit) in [("api-check", "metadata"), ("api-build", "metadata,link")] {
+        rfs::create_dir(directory);
+        rustc()
+            .input("api.rs")
+            .crate_name("stage_api")
+            .crate_type("rlib")
+            .emit(emit)
+            .out_dir(directory)
+            .arg("-Zpublic-api-hash")
+            .run();
+    }
+    let public_hash = |path| rustc().input(path).arg("-Zls=public_hash").run().stdout_utf8();
+    assert_ne!(
+        public_hash("api-check/libstage_api.rmeta"),
+        public_hash("api-build/libstage_api.rmeta")
+    );
+
     rfs::write(
         "main.rs",
         r#"
@@ -147,6 +178,7 @@ fn main() {
 
     rustc()
         .input("dep.rs")
+        .extern_("stage_api", "api-build/libstage_api.rlib")
         .crate_name("stage_dep")
         .crate_type("rlib")
         .edition("2024")
