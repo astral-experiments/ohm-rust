@@ -7,3 +7,8 @@ pub fn observe(input: TokenStream) -> TokenStream {
     let token = input.into_iter().next().expect("macro input did not contain a token");
     format!("{}u32", token.span().column()).parse().expect("macro output was not a token stream")
 }
+
+#[proc_macro]
+pub fn value(input: TokenStream) -> TokenStream {
+    input
+}
