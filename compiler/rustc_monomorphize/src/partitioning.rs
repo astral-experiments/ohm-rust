@@ -122,7 +122,7 @@ use rustc_middle::ty::print::{characteristic_def_id_of_type, with_no_trimmed_pat
 use rustc_middle::ty::{self, InstanceKind, ShimKind, TyCtxt};
 use rustc_middle::util::Providers;
 use rustc_session::CodegenUnits;
-use rustc_session::config::{DumpMonoStatsFormat, SwitchWithOptPath};
+use rustc_session::config::{DumpMonoStatsFormat, OptLevel, SwitchWithOptPath};
 use rustc_span::Symbol;
 use rustc_target::spec::SymbolVisibility;
 use tracing::debug;
@@ -174,6 +174,15 @@ where
         let _prof_timer = tcx.prof.generic_activity("cgu_partitioning_merge_cgus");
         merge_codegen_units(cx, &mut codegen_units);
         debug_dump(tcx, "MERGE", &codegen_units);
+    }
+
+    if tcx.sess.opts.unstable_opts.ohm_split_large_cgus
+        && tcx.sess.opts.optimize == OptLevel::No
+        && tcx.sess.opts.incremental.is_some()
+    {
+        let _prof_timer = tcx.prof.generic_activity("cgu_partitioning_split_large_cgus");
+        split_large_codegen_units(cx, &mut codegen_units);
+        debug_dump(tcx, "SPLIT", &codegen_units);
     }
 
     // Make as many symbols "internal" as possible, so LLVM has more freedom to
@@ -309,21 +318,99 @@ where
         cgu.compute_size_estimate();
     }
 
-    return PlacedMonoItems { codegen_units, internalization_candidates };
+    PlacedMonoItems { codegen_units, internalization_candidates }
+}
 
-    fn get_reachable_inlined_items<'tcx>(
-        tcx: TyCtxt<'tcx>,
-        item: MonoItem<'tcx>,
-        usage_map: &UsageMap<'tcx>,
-        visited: &mut FxIndexSet<MonoItem<'tcx>>,
-    ) {
-        usage_map.for_each_inlined_used_item(tcx, item, |inlined_item| {
-            let is_new = visited.insert(inlined_item);
-            if is_new {
-                get_reachable_inlined_items(tcx, inlined_item, usage_map, visited);
+fn get_reachable_inlined_items<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    item: MonoItem<'tcx>,
+    usage_map: &UsageMap<'tcx>,
+    visited: &mut FxIndexSet<MonoItem<'tcx>>,
+) {
+    usage_map.for_each_inlined_used_item(tcx, item, |inlined_item| {
+        let is_new = visited.insert(inlined_item);
+        if is_new {
+            get_reachable_inlined_items(tcx, inlined_item, usage_map, visited);
+        }
+    });
+}
+
+fn split_large_codegen_units<'tcx>(
+    cx: &PartitioningCx<'_, 'tcx>,
+    codegen_units: &mut Vec<CodegenUnit<'tcx>>,
+) {
+    const TARGET_SIZE: usize = 16_384;
+    // Splitting only spends unused slots from the existing CGU budget. Stable root hashes
+    // keep ordinary body edits in the same shard, along with the root's private inline copies.
+    let mut remaining = cx.tcx.sess.codegen_units().as_usize() - codegen_units.len();
+    for source in std::mem::take(codegen_units) {
+        if remaining == 0
+            || source.size_estimate() < 2 * TARGET_SIZE
+            || source.items().iter().any(|(item, data)| {
+                matches!(item, MonoItem::GlobalAsm(_))
+                    || (!data.inlined && data.linkage == Linkage::Internal)
+            })
+        {
+            codegen_units.push(source);
+            continue;
+        }
+
+        let roots: Vec<_> = source.items().iter().filter(|(_, data)| !data.inlined).collect();
+        let count = source
+            .size_estimate()
+            .div_ceil(TARGET_SIZE)
+            .next_power_of_two()
+            .min(8)
+            .min(remaining + 1)
+            .min(roots.len());
+        if count <= 1 {
+            codegen_units.push(source);
+            continue;
+        }
+
+        let mut shards: Vec<_> = (0..count)
+            .map(|index| {
+                let name = format!("{}-ohm-split-{index}", source.name());
+                let name = if cx.tcx.sess.opts.unstable_opts.human_readable_cgu_names {
+                    Symbol::intern(&CodegenUnit::shorten_name(&name))
+                } else {
+                    Symbol::intern(&CodegenUnit::mangle_name(&name))
+                };
+                let mut cgu = CodegenUnit::new(name);
+                cgu.set_symbol_name(Symbol::intern(&rustc_symbol_mangling::mangle_cgu(
+                    cx.tcx,
+                    LOCAL_CRATE,
+                    Either::Right(name.as_str()),
+                )));
+                cgu
+            })
+            .collect();
+
+        cx.tcx.with_stable_hashing_context(|mut hcx| {
+            for (&item, &data) in roots {
+                let hash = item.to_stable_hash_key(&mut hcx).to_smaller_hash().as_u64();
+                let shard = &mut shards[(hash % count as u64) as usize];
+                shard.items_mut().insert(item, data);
+                let mut inlined_items = FxIndexSet::default();
+                get_reachable_inlined_items(cx.tcx, item, cx.usage_map, &mut inlined_items);
+                for inlined_item in inlined_items {
+                    shard.items_mut().entry(inlined_item).or_insert(source.items()[&inlined_item]);
+                }
             }
         });
+
+        shards.retain(|cgu| !cgu.items().is_empty());
+        if shards.len() <= 1 {
+            codegen_units.push(source);
+            continue;
+        }
+        remaining -= shards.len() - 1;
+        for shard in &mut shards {
+            shard.compute_size_estimate();
+        }
+        codegen_units.extend(shards);
     }
+    codegen_units.sort_by(|a, b| a.name().as_str().cmp(b.name().as_str()));
 }
 
 // This function requires the CGUs to be sorted by name on input, and ensures
