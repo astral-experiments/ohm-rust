@@ -50,11 +50,12 @@ use rustc_span::{
     ByteSymbol, ExternalSource, FileName, SourceFile, Span, SpanData, SpanEncoder,
     StableSourceFileId, Symbol, SyntaxContext, sym,
 };
-use tracing::{debug, instrument, trace};
+use tracing::{debug, info, instrument, trace};
 
 use self::metadata_prefix::{
     MetadataPrefixManifest, MetadataPrefixManifestBuilder, hash_definition_span,
-    metadata_fingerprint, relocate_metadata_table, source_file_layout_fingerprint,
+    hash_macro_token_spans, metadata_fingerprint, relocate_metadata_table,
+    source_file_layout_fingerprint,
 };
 use self::public_api_hasher::{
     HashableCrateHeader, HashableCrateRoot, Hashed, NoneIfHashed, PublicApiHasher,
@@ -1321,10 +1322,11 @@ fn should_encode_local_definition(tcx: TyCtxt<'_>, def_id: LocalDefId, def_kind:
 }
 
 /// Reconstructs the exact definition and identifier locations copied from previous metadata.
-fn metadata_definition_span_fingerprint(tcx: TyCtxt<'_>) -> (usize, Fingerprint) {
+fn metadata_definition_span_fingerprint(tcx: TyCtxt<'_>) -> Option<(usize, Fingerprint)> {
     let mut count = 0;
     let mut hasher = StableHasher::new();
     let early_bodies = early::enabled(tcx).then(|| early::interface_bodies(tcx));
+    let macro_artifacts = tcx.sess.opts.unstable_opts.ohm_metadata_macro_reuse;
 
     for local_id in metadata_definitions(tcx, early_bodies.as_ref()) {
         let def_kind = tcx.def_kind(local_id);
@@ -1350,9 +1352,16 @@ fn metadata_definition_span_fingerprint(tcx: TyCtxt<'_>) -> (usize, Fingerprint)
             &mut count,
             &mut hasher,
         );
+        if macro_artifacts
+            && matches!(def_kind, DefKind::Macro(_))
+            && tcx.effective_visibilities(()).is_exported(local_id)
+            && !hash_macro_token_spans(tcx, local_id, &mut count, &mut hasher)
+        {
+            return None;
+        }
     }
 
-    (count, hasher.finish())
+    Some((count, hasher.finish()))
 }
 
 fn metadata_definitions(
@@ -2123,9 +2132,13 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 self.encode_info_for_mod(local_id, hcx);
             }
             if let DefKind::Macro(_) = def_kind {
-                // Exported macro tokens expose definition-site positions to downstream
-                // procedural macros. Their token spans are not covered by definition spans.
-                if tcx.effective_visibilities(()).is_exported(local_id) {
+                // Downstream procedural macros can observe each exported token's exact location.
+                // Reuse requires both unchanged body text and separately validated token spans.
+                if tcx.effective_visibilities(()).is_exported(local_id)
+                    && let Some(builder) = &mut self.metadata_prefix_manifest
+                    && (!tcx.sess.opts.unstable_opts.ohm_metadata_macro_reuse
+                        || !builder.capture_macro_tokens(tcx, local_id))
+                {
                     self.metadata_prefix_manifest = None;
                 }
                 self.encode_info_for_macro(local_id, hcx);
@@ -3383,7 +3396,7 @@ fn try_reuse_metadata_prefix(
     }
 
     let (definition_span_count, definition_span_fingerprint) =
-        metadata_definition_span_fingerprint(tcx);
+        metadata_definition_span_fingerprint(tcx)?;
     if manifest.definition_span_count != definition_span_count
         || manifest.definition_span_fingerprint != definition_span_fingerprint
     {
@@ -3456,7 +3469,7 @@ fn try_reuse_metadata_prefix(
     if let Ok(metadata) = std::fs::metadata(path) {
         tcx.prof.artifact_size("crate_metadata", "crate_metadata", metadata.len());
     }
-    debug!(target: "ohm_metadata_reuse", "reused metadata item prefix with a freshly encoded source map");
+    info!(target: "ohm_metadata_reuse", "reused metadata item prefix with a freshly encoded source map");
     Some(())
 }
 

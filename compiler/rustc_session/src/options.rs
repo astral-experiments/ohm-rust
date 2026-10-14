@@ -2733,6 +2733,8 @@ options! {
         "pipeline metadata-only checks before checking all function bodies (default: no)"),
     ohm_incremental_mono_partitions: bool = (false, parse_bool, [TRACKED],
         "reuse unchanged incremental monomorphization partitions without public API hashing"),
+    ohm_metadata_macro_reuse: bool = (true, parse_bool, [TRACKED],
+        "reuse validated metadata for source-written exported macros (default: yes)"),
     ohm_shared_stages: bool = (false, parse_bool, [TRACKED],
         "reuse frontend incremental queries between metadata and link emission"),
     ohm_split_large_cgus: bool = (true, parse_bool, [TRACKED],
