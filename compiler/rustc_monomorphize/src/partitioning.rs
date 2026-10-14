@@ -348,7 +348,8 @@ fn split_large_codegen_units<'tcx>(
             || source.size_estimate() < 2 * TARGET_SIZE
             || source.items().iter().any(|(item, data)| {
                 matches!(item, MonoItem::GlobalAsm(_))
-                    || (!data.inlined && data.linkage == Linkage::Internal)
+                    || (!data.inlined
+                        && matches!(data.linkage, Linkage::Internal | Linkage::AvailableExternally))
             })
         {
             codegen_units.push(source);
