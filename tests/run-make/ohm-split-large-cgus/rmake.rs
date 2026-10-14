@@ -13,15 +13,22 @@ const FUNCTIONS: u64 = 64;
 const OPERATIONS: u64 = 128;
 const MULTIPLIER: u64 = 6364136223846793005;
 
-fn source(delta: u64) -> u64 {
+fn source(delta: u64, available_externally: bool) -> u64 {
     let mut source = String::from(
-        "#![allow(dead_code)]\n\
+        "#![feature(linkage)]\n\
+         #![allow(dead_code, unused_attributes)]\n\
          static SEED: u64 = 0xa09e667f3bcc908b;\n\
-         #[inline] fn helper<T: Into<u64>>(x: T) -> u64 { x.into().rotate_left(7) ^ SEED }\n",
+         #[inline(always)] fn leaf(x: u64) -> u64 { x.rotate_left(7) ^ SEED }\n\
+         #[inline(always)] fn helper<T: Into<u64>>(x: T) -> u64 { leaf(x.into()) }\n",
     );
     let mut expected = 0;
     for function in 0..FUNCTIONS {
-        writeln!(source, "#[inline(never)] pub fn f{function:03}(mut x: u64) -> u64 {{").unwrap();
+        if available_externally && function < 16 {
+            source.push_str("#[linkage = \"available_externally\"]\n#[inline(always)]\n");
+        } else {
+            source.push_str("#[inline(never)]\n");
+        }
+        writeln!(source, "pub fn f{function:03}(mut x: u64) -> u64 {{").unwrap();
         let mut value = function + 11;
         for operation in 0..OPERATIONS {
             let add = if function == 0 && operation == 0 {
@@ -59,15 +66,19 @@ fn compile(
         .crate_name("fixture")
         .edition("2024")
         .opt_level(optimization)
-        .arg("-Zhuman-readable-cgu-names")
-        .arg("-Zprint-mono-items");
+        .arg("-Zhuman-readable-cgu-names");
     if kind == "test" {
         command.arg("--test");
     } else {
         command.crate_type(kind);
     }
     if let Some(cache) = cache {
-        command.incremental(cache).arg("-Zincremental-verify-ich");
+        command
+            .incremental(cache)
+            .arg("-Zohm-incremental-mono-partitions")
+            .arg("-Zincremental-verify-ich");
+    } else {
+        command.arg("-Zprint-mono-items");
     }
     if let Some(split) = split {
         command.arg(format!("-Zohm-split-large-cgus={}", if split { "yes" } else { "no" }));
@@ -75,8 +86,11 @@ fn compile(
     if let Some(cap) = cap {
         command.codegen_units(cap);
     }
-    command
-        .run()
+    let output = command.run();
+    if let Some(cache) = cache {
+        return objects(cache).into_keys().map(|name| name.to_str().unwrap().to_owned()).collect();
+    }
+    output
         .stdout_utf8()
         .lines()
         .filter_map(|line| line.split_once("@@"))
@@ -114,14 +128,16 @@ fn objects(cache: &str) -> BTreeMap<PathBuf, (SystemTime, Vec<u8>)> {
 }
 
 fn main() {
-    let expected = source(1);
+    let expected = source(1, false);
     let original = compile("bin", Some("incremental"), None, "0", None);
     assert!(split(&original), "the default did not split the oversized unit: {original:?}");
     assert!(original.len() <= 256);
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
     let before = objects("incremental");
+    assert_eq!(original, compile("bin", Some("incremental"), None, "0", None));
+    assert_eq!(before, objects("incremental"), "an unchanged build regenerated native objects");
 
-    let expected = source(7);
+    let expected = source(7, false);
     let edited = compile("bin", Some("incremental"), None, "0", None);
     assert_eq!(original, edited, "a body edit changed the partition names");
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
@@ -136,6 +152,12 @@ fn main() {
     assert_eq!(edited, compile("bin", Some("incremental"), None, "0", None));
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
 
+    let limited = compile("bin", Some("incremental"), None, "0", Some(1));
+    assert!(!split(&limited) && limited.len() == 1);
+    run("fixture").assert_stdout_equals(format!("{expected}\n"));
+    assert_eq!(edited, compile("bin", Some("incremental"), None, "0", None));
+    run("fixture").assert_stdout_equals(format!("{expected}\n"));
+
     assert!(split(&compile("rlib", Some("library"), None, "0", None)));
     rfs::write("consumer.rs", "fn main() { println!(\"{}\", fixture::checksum()); }\n");
     rustc().input("consumer.rs").edition("2024").extern_("fixture", "libfixture.rlib").run();
@@ -145,7 +167,9 @@ fn main() {
 
     assert!(!split(&compile("bin", Some("optimized"), None, "1", None)));
     assert!(!split(&compile("bin", None, None, "0", None)));
-    let limited = compile("bin", Some("limited"), None, "0", Some(1));
-    assert!(!split(&limited) && limited.len() == 1);
+    let expected = source(9, true);
+    assert!(!split(&compile("bin", Some("available"), Some(false), "0", None)));
+    run("fixture").assert_stdout_equals(format!("{expected}\n"));
+    assert!(!split(&compile("bin", Some("available"), None, "0", None)));
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
 }
