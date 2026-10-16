@@ -2729,6 +2729,8 @@ options! {
         Currently the only option available"),
     ohm_caller_local_cgus: bool = (false, parse_bool, [TRACKED],
         "place upstream generics containing local closures in caller-local codegen units"),
+    ohm_cgu_split_limit: Option<NonZero<usize>> = (None, parse_opt_number, [TRACKED],
+        "maximum shards per oversized incremental codegen unit at opt-level 0 or 1; 1 disables splitting"),
     ohm_early_metadata: bool = (false, parse_bool, [TRACKED],
         "pipeline metadata-only checks before checking all function bodies (default: no)"),
     ohm_incremental_mono_partitions: bool = (false, parse_bool, [TRACKED],
