@@ -340,6 +340,8 @@ fn split_large_codegen_units<'tcx>(
     codegen_units: &mut Vec<CodegenUnit<'tcx>>,
 ) {
     const TARGET_SIZE: usize = 16_384;
+    let split_limit =
+        cx.tcx.sess.opts.unstable_opts.ohm_cgu_split_limit.map_or(8, |limit| limit.get());
     // Splitting only spends unused slots from the existing CGU budget. Stable root hashes
     // keep ordinary body edits in the same shard, along with the root's private inline copies.
     let mut remaining = cx.tcx.sess.codegen_units().as_usize() - codegen_units.len();
@@ -361,7 +363,7 @@ fn split_large_codegen_units<'tcx>(
             .size_estimate()
             .div_ceil(TARGET_SIZE)
             .next_power_of_two()
-            .min(8)
+            .min(split_limit)
             .min(remaining + 1)
             .min(roots.len());
         if count <= 1 {
