@@ -7,10 +7,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use run_make_support::{rfs, run, rustc};
+use run_make_support::{rfs, run, run_in_tmpdir, rustc};
 
 const FUNCTIONS: u64 = 64;
-const OPERATIONS: u64 = 128;
+const OPERATIONS: u64 = 256;
 const MULTIPLIER: u64 = 6364136223846793005;
 
 fn source(delta: u64, available_externally: bool) -> u64 {
@@ -127,18 +127,18 @@ fn objects(cache: &str) -> BTreeMap<PathBuf, (SystemTime, Vec<u8>)> {
         .collect()
 }
 
-fn main() {
+fn check(optimization: &str) {
     let expected = source(1, false);
-    let original = compile("bin", Some("incremental"), None, "0", None);
+    let original = compile("bin", Some("incremental"), None, optimization, None);
     assert!(split(&original), "the default did not split the oversized unit: {original:?}");
     assert!(original.len() <= 256);
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
     let before = objects("incremental");
-    assert_eq!(original, compile("bin", Some("incremental"), None, "0", None));
+    assert_eq!(original, compile("bin", Some("incremental"), None, optimization, None));
     assert_eq!(before, objects("incremental"), "an unchanged build regenerated native objects");
 
     let expected = source(7, false);
-    let edited = compile("bin", Some("incremental"), None, "0", None);
+    let edited = compile("bin", Some("incremental"), None, optimization, None);
     assert_eq!(original, edited, "a body edit changed the partition names");
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
     let after = objects("incremental");
@@ -146,30 +146,40 @@ fn main() {
     let reused = before.iter().filter(|(name, value)| after.get(*name) == Some(value)).count();
     assert!(reused > 0 && reused < before.len(), "expected partial native reuse: {reused}");
 
-    let disabled = compile("bin", Some("incremental"), Some(false), "0", None);
+    let disabled = compile("bin", Some("incremental"), Some(false), optimization, None);
     assert!(!split(&disabled));
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
-    assert_eq!(edited, compile("bin", Some("incremental"), None, "0", None));
+    assert_eq!(edited, compile("bin", Some("incremental"), None, optimization, None));
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
 
-    let limited = compile("bin", Some("incremental"), None, "0", Some(1));
+    let limited = compile("bin", Some("incremental"), None, optimization, Some(1));
     assert!(!split(&limited) && limited.len() == 1);
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
-    assert_eq!(edited, compile("bin", Some("incremental"), None, "0", None));
+    assert_eq!(edited, compile("bin", Some("incremental"), None, optimization, None));
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
 
-    assert!(split(&compile("rlib", Some("library"), None, "0", None)));
+    assert!(split(&compile("rlib", Some("library"), None, optimization, None)));
     rfs::write("consumer.rs", "fn main() { println!(\"{}\", fixture::checksum()); }\n");
     rustc().input("consumer.rs").edition("2024").extern_("fixture", "libfixture.rlib").run();
     run("consumer").assert_stdout_equals(format!("{expected}\n"));
-    assert!(split(&compile("test", Some("tests"), None, "0", None)));
+    assert!(split(&compile("test", Some("tests"), None, optimization, None)));
     run("fixture").assert_stdout_contains("1 passed");
 
-    assert!(!split(&compile("bin", Some("optimized"), None, "1", None)));
-    assert!(!split(&compile("bin", None, None, "0", None)));
+    assert!(!split(&compile("bin", None, None, optimization, None)));
     let expected = source(9, true);
-    assert!(!split(&compile("bin", Some("available"), Some(false), "0", None)));
+    assert!(!split(&compile("bin", Some("available"), Some(false), optimization, None)));
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
-    assert!(!split(&compile("bin", Some("available"), None, "0", None)));
+    assert!(!split(&compile("bin", Some("available"), None, optimization, None)));
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
+}
+
+fn main() {
+    for optimization in ["0", "1"] {
+        run_in_tmpdir(|| check(optimization));
+    }
+    let expected = source(1, false);
+    for optimization in ["2", "3", "s", "z"] {
+        assert!(!split(&compile("bin", Some("optimized"), None, optimization, None)));
+        run("fixture").assert_stdout_equals(format!("{expected}\n"));
+    }
 }
