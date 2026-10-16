@@ -59,6 +59,7 @@ fn compile(
     split: Option<bool>,
     optimization: &str,
     cap: Option<usize>,
+    split_limit: Option<usize>,
 ) -> BTreeSet<String> {
     let mut command = rustc();
     command
@@ -82,6 +83,9 @@ fn compile(
     }
     if let Some(split) = split {
         command.arg(format!("-Zohm-split-large-cgus={}", if split { "yes" } else { "no" }));
+    }
+    if let Some(limit) = split_limit {
+        command.arg(format!("-Zohm-cgu-split-limit={limit}"));
     }
     if let Some(cap) = cap {
         command.codegen_units(cap);
@@ -129,16 +133,16 @@ fn objects(cache: &str) -> BTreeMap<PathBuf, (SystemTime, Vec<u8>)> {
 
 fn check(optimization: &str) {
     let expected = source(1, false);
-    let original = compile("bin", Some("incremental"), None, optimization, None);
+    let original = compile("bin", Some("incremental"), None, optimization, None, None);
     assert!(split(&original), "the default did not split the oversized unit: {original:?}");
     assert!(original.len() <= 256);
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
     let before = objects("incremental");
-    assert_eq!(original, compile("bin", Some("incremental"), None, optimization, None));
+    assert_eq!(original, compile("bin", Some("incremental"), None, optimization, None, None));
     assert_eq!(before, objects("incremental"), "an unchanged build regenerated native objects");
 
     let expected = source(7, false);
-    let edited = compile("bin", Some("incremental"), None, optimization, None);
+    let edited = compile("bin", Some("incremental"), None, optimization, None, None);
     assert_eq!(original, edited, "a body edit changed the partition names");
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
     let after = objects("incremental");
@@ -146,40 +150,62 @@ fn check(optimization: &str) {
     let reused = before.iter().filter(|(name, value)| after.get(*name) == Some(value)).count();
     assert!(reused > 0 && reused < before.len(), "expected partial native reuse: {reused}");
 
-    let disabled = compile("bin", Some("incremental"), Some(false), optimization, None);
+    let disabled = compile("bin", Some("incremental"), Some(false), optimization, None, None);
     assert!(!split(&disabled));
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
-    assert_eq!(edited, compile("bin", Some("incremental"), None, optimization, None));
+    assert_eq!(edited, compile("bin", Some("incremental"), None, optimization, None, None));
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
 
-    let limited = compile("bin", Some("incremental"), None, optimization, Some(1));
+    let limited = compile("bin", Some("incremental"), None, optimization, Some(1), None);
     assert!(!split(&limited) && limited.len() == 1);
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
-    assert_eq!(edited, compile("bin", Some("incremental"), None, optimization, None));
+    assert_eq!(edited, compile("bin", Some("incremental"), None, optimization, None, None));
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
 
-    assert!(split(&compile("rlib", Some("library"), None, optimization, None)));
+    for limit in [8, 4, 2, 1] {
+        let units = compile("bin", Some("incremental"), None, optimization, None, Some(limit));
+        assert_eq!(split(&units), limit > 1);
+        let mut shards = BTreeMap::new();
+        for unit in &units {
+            if let Some((source, _)) = unit.split_once("-ohm-split-") {
+                *shards.entry(source).or_insert(0) += 1;
+            }
+        }
+        assert!(shards.values().all(|&count| count <= limit), "{units:?}");
+        assert!(units.len() <= 256);
+        run("fixture").assert_stdout_equals(format!("{expected}\n"));
+    }
+    assert!(!split(&compile("bin", Some("incremental"), Some(false), optimization, None, Some(8))));
+    assert_eq!(edited, compile("bin", Some("incremental"), None, optimization, None, None));
+
+    assert!(split(&compile("rlib", Some("library"), None, optimization, None, None)));
     rfs::write("consumer.rs", "fn main() { println!(\"{}\", fixture::checksum()); }\n");
     rustc().input("consumer.rs").edition("2024").extern_("fixture", "libfixture.rlib").run();
     run("consumer").assert_stdout_equals(format!("{expected}\n"));
-    assert!(split(&compile("test", Some("tests"), None, optimization, None)));
+    assert!(split(&compile("test", Some("tests"), None, optimization, None, None)));
     run("fixture").assert_stdout_contains("1 passed");
 
-    assert!(!split(&compile("bin", None, None, optimization, None)));
+    assert!(!split(&compile("bin", None, None, optimization, None, None)));
     let expected = source(9, true);
-    assert!(!split(&compile("bin", Some("available"), Some(false), optimization, None)));
+    assert!(!split(&compile("bin", Some("available"), Some(false), optimization, None, None)));
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
-    assert!(!split(&compile("bin", Some("available"), None, optimization, None)));
+    assert!(!split(&compile("bin", Some("available"), None, optimization, None, None)));
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
 }
 
 fn main() {
+    rfs::write("fixture.rs", "fn main() {}\n");
+    rustc()
+        .input("fixture.rs")
+        .arg("-Zohm-cgu-split-limit=0")
+        .run_fail()
+        .assert_stderr_contains("incorrect value");
     for optimization in ["0", "1"] {
         run_in_tmpdir(|| check(optimization));
     }
     let expected = source(1, false);
     for optimization in ["2", "3", "s", "z"] {
-        assert!(!split(&compile("bin", Some("optimized"), None, optimization, None)));
+        assert!(!split(&compile("bin", Some("optimized"), None, optimization, None, None)));
         run("fixture").assert_stdout_equals(format!("{expected}\n"));
     }
 }
