@@ -177,7 +177,7 @@ where
     }
 
     if tcx.sess.opts.unstable_opts.ohm_split_large_cgus
-        && tcx.sess.opts.optimize == OptLevel::No
+        && matches!(tcx.sess.opts.optimize, OptLevel::No | OptLevel::Less)
         && tcx.sess.opts.incremental.is_some()
     {
         let _prof_timer = tcx.prof.generic_activity("cgu_partitioning_split_large_cgus");
