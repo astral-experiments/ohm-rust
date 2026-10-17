@@ -14,13 +14,26 @@ const OPERATIONS: u64 = 256;
 const MULTIPLIER: u64 = 6364136223846793005;
 
 fn source(delta: u64, available_externally: bool) -> u64 {
+    source_with_helper(delta, available_externally, 0)
+}
+
+fn source_with_helper(delta: u64, available_externally: bool, helper_operations: u64) -> u64 {
     let mut source = String::from(
         "#![feature(linkage)]\n\
          #![allow(dead_code, unused_attributes)]\n\
-         static SEED: u64 = 0xa09e667f3bcc908b;\n\
-         #[inline(always)] fn leaf(x: u64) -> u64 { x.rotate_left(7) ^ SEED }\n\
-         #[inline(always)] fn helper<T: Into<u64>>(x: T) -> u64 { leaf(x.into()) }\n",
+         static SEED: u64 = 0xa09e667f3bcc908b;\n",
     );
+    if helper_operations == 0 {
+        source.push_str("#[inline(always)] fn leaf(x: u64) -> u64 { x.rotate_left(7) ^ SEED }\n");
+    } else {
+        source.push_str("#[inline] fn leaf(mut x: u64) -> u64 {\n");
+        for operation in 0..helper_operations {
+            writeln!(source, "x = x.wrapping_mul({MULTIPLIER}).wrapping_add({});", operation + 1)
+                .unwrap();
+        }
+        source.push_str("x.rotate_left(7) ^ SEED\n}\n");
+    }
+    source.push_str("#[inline(always)] fn helper<T: Into<u64>>(x: T) -> u64 { leaf(x.into()) }\n");
     let mut expected = 0;
     for function in 0..FUNCTIONS {
         if available_externally && function < 16 {
@@ -40,6 +53,9 @@ fn source(delta: u64, available_externally: bool) -> u64 {
             value = value.wrapping_mul(MULTIPLIER).wrapping_add(add);
         }
         source.push_str("helper(x)\n}\n");
+        for operation in 0..helper_operations {
+            value = value.wrapping_mul(MULTIPLIER).wrapping_add(operation + 1);
+        }
         expected ^= value.rotate_left(7) ^ 0xa09e667f3bcc908b;
     }
     source.push_str("pub fn checksum() -> u64 {\nlet mut value = 0;\n");
@@ -61,13 +77,26 @@ fn compile(
     cap: Option<usize>,
     split_limit: Option<usize>,
 ) -> BTreeSet<String> {
+    compile_with_options(kind, cache, split, optimization, cap, split_limit, &[])
+}
+
+fn compile_with_options(
+    kind: &str,
+    cache: Option<&str>,
+    split: Option<bool>,
+    optimization: &str,
+    cap: Option<usize>,
+    split_limit: Option<usize>,
+    options: &[&str],
+) -> BTreeSet<String> {
     let mut command = rustc();
     command
         .input("fixture.rs")
         .crate_name("fixture")
         .edition("2024")
         .opt_level(optimization)
-        .arg("-Zhuman-readable-cgu-names");
+        .arg("-Zhuman-readable-cgu-names")
+        .args(options);
     if kind == "test" {
         command.arg("--test");
     } else {
@@ -193,6 +222,54 @@ fn check(optimization: &str) {
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
 }
 
+fn check_growth(optimization: &str) {
+    let options = ["-Zohm-cgu-split-max-growth=10", "-Zohm-incremental-inline-threshold=8"];
+    let build = |kind, cache| {
+        compile_with_options(kind, Some(cache), None, optimization, None, None, &options)
+    };
+    let expected = source(1, false);
+    let original = build("bin", "growth");
+    assert!(split(&original));
+    run("fixture").assert_stdout_equals(format!("{expected}\n"));
+    let before = objects("growth");
+    assert_eq!(original, build("bin", "growth"));
+    assert_eq!(before, objects("growth"));
+
+    let expected = source(7, false);
+    assert_eq!(original, build("bin", "growth"));
+    run("fixture").assert_stdout_equals(format!("{expected}\n"));
+    let after = objects("growth");
+    let reused = before.iter().filter(|(name, value)| after.get(*name) == Some(value)).count();
+    assert!(reused > 0 && reused < before.len(), "expected partial native reuse: {reused}");
+
+    assert!(split(&build("rlib", "library-growth")));
+    rfs::write("consumer.rs", "fn main() { println!(\"{}\", fixture::checksum()); }\n");
+    rustc().input("consumer.rs").edition("2024").extern_("fixture", "libfixture.rlib").run();
+    run("consumer").assert_stdout_equals(format!("{expected}\n"));
+    assert!(split(&build("test", "test-growth")));
+    run("fixture").assert_stdout_contains("1 passed");
+}
+
+fn check_expensive_copies() {
+    let expected = source_with_helper(1, false, 4096);
+    for (limit, expected_split) in [
+        (None, true),
+        (Some(10), false),
+        (Some(0), false),
+        (Some(usize::MAX), true),
+        (Some(10), false),
+    ] {
+        let mut options = vec!["-Zohm-incremental-inline-threshold=8".to_owned()];
+        if let Some(limit) = limit {
+            options.push(format!("-Zohm-cgu-split-max-growth={limit}"));
+        }
+        let options: Vec<_> = options.iter().map(String::as_str).collect();
+        let units = compile_with_options("bin", Some("expensive"), None, "1", None, None, &options);
+        assert_eq!(split(&units), expected_split, "growth limit: {limit:?}");
+        run("fixture").assert_stdout_equals(format!("{expected}\n"));
+    }
+}
+
 fn main() {
     rfs::write("fixture.rs", "fn main() {}\n");
     rustc()
@@ -200,9 +277,16 @@ fn main() {
         .arg("-Zohm-cgu-split-limit=0")
         .run_fail()
         .assert_stderr_contains("incorrect value");
+    rustc()
+        .input("fixture.rs")
+        .arg("-Zohm-cgu-split-max-growth=-1")
+        .run_fail()
+        .assert_stderr_contains("incorrect value");
     for optimization in ["0", "1"] {
         run_in_tmpdir(|| check(optimization));
+        run_in_tmpdir(|| check_growth(optimization));
     }
+    run_in_tmpdir(check_expensive_copies);
     let expected = source(1, false);
     for optimization in ["2", "3", "s", "z"] {
         assert!(!split(&compile("bin", Some("optimized"), None, optimization, None, None)));

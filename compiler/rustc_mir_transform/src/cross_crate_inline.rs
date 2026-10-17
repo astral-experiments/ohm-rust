@@ -74,11 +74,18 @@ fn cross_crate_inlinable(tcx: TyCtxt<'_>, def_id: LocalDefId) -> bool {
         }
     }
 
-    // Don't do any inference when incremental compilation is enabled; the additional inlining that
-    // inference permits also creates more work for small edits.
-    if tcx.sess.opts.incremental.is_some() {
-        return false;
-    }
+    let incremental_threshold = if tcx.sess.opts.incremental.is_some() {
+        let threshold = tcx.sess.opts.unstable_opts.ohm_incremental_inline_threshold;
+        if threshold == 0
+            || tcx.sess.opts.optimize != OptLevel::Less
+            || tcx.sess.codegen_units().as_usize() == 1
+        {
+            return false;
+        }
+        Some(threshold)
+    } else {
+        None
+    };
 
     // Don't do any inference if codegen optimizations are disabled and also MIR inlining is not
     // enabled. This ensures that we do inference even if someone only passes -Zinline-mir,
@@ -98,8 +105,12 @@ fn cross_crate_inlinable(tcx: TyCtxt<'_>, def_id: LocalDefId) -> bool {
         InliningThreshold::Sometimes(threshold) => threshold,
         InliningThreshold::Never => return false,
     };
+    let threshold = incremental_threshold.map_or(threshold, |limit| threshold.min(limit));
 
     let mir = tcx.optimized_mir(def_id);
+    if incremental_threshold.is_some() && mir.basic_blocks.len() > threshold {
+        return false;
+    }
     let mut checker =
         CostChecker { tcx, callee_body: mir, calls: 0, statements: 0, landing_pads: 0, resumes: 0 };
     checker.visit_body(mir);
