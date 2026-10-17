@@ -56,6 +56,8 @@ pub enum QuerySideEffect {
     /// if we mark the query as green, as that query will have
     /// the side effect dep node as a dependency.
     CheckFeature { symbol: Symbol },
+    /// Marks query feeding, which imports from a separate check cache cannot replay.
+    QueryFeed,
 }
 
 #[derive(Clone)]
@@ -569,6 +571,21 @@ impl DepGraph {
             })
         }
     }
+    /// Records query feeding so a check-cache import can reject its unreplayed effects.
+    #[inline]
+    pub(crate) fn record_query_feed(&self, tcx: TyCtxt<'_>) {
+        if tcx.sess.opts.unstable_opts.ohm_shared_stages
+            && let Some(data) = &self.data
+        {
+            read_deps(|task_deps| {
+                if let TaskDepsRef::Allow(..) = task_deps {
+                    let index = data.encode_side_effect(tcx, QuerySideEffect::QueryFeed);
+                    self.read_index(index);
+                }
+            });
+        }
+    }
+
     /// This forces a side effect node green by running its side effect. `prev_index` would
     /// refer to a node created used `encode_side_effect` in the previous session.
     #[inline]
@@ -789,6 +806,8 @@ impl DepGraphData {
                 QuerySideEffect::CheckFeature { symbol } => {
                     tcx.sess.used_features.lock().insert(*symbol, dep_node_index.as_u32());
                 }
+                // The ordinary dependency graph retains the fed queries themselves.
+                QuerySideEffect::QueryFeed => {}
             }
 
             // This will just overwrite the same value for concurrent calls.
