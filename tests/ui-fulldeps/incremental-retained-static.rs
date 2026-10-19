@@ -46,7 +46,10 @@ impl rustc_driver::Callbacks for LoadConstant {
         let ConstValue::Scalar(Scalar::Ptr(pointer, _)) = tcx.const_eval_poly(constant_id).unwrap() else {
             panic!("expected a constant pointer");
         };
-        assert!(matches!(tcx.global_alloc(pointer.provenance.alloc_id()), GlobalAlloc::Static(id) if id == static_id));
+        assert!(matches!(
+            tcx.global_alloc(pointer.provenance.alloc_id()),
+            GlobalAlloc::Static(id) if id == static_id
+        ));
         if self.first {
             let _ = tcx.codegen_fn_attrs(static_id);
             Compilation::Continue
@@ -54,7 +57,9 @@ impl rustc_driver::Callbacks for LoadConstant {
             tcx.ensure_ok().codegen_fn_attrs(static_id);
             let node = DepNode::construct(tcx, DepKind::codegen_fn_attrs, &static_id);
             assert!(tcx.dep_graph.is_green(&node));
-            assert!(tcx.query_system.query_vtables.codegen_fn_attrs.cache.lookup(&static_id).is_none());
+            assert!(
+                tcx.query_system.query_vtables.codegen_fn_attrs.cache.lookup(&static_id).is_none()
+            );
             // Skip metadata encoding, which can eagerly load the same attributes.
             // The driver still finishes the query context and saves its cache.
             Compilation::Stop
