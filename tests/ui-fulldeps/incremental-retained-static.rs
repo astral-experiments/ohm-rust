@@ -32,18 +32,23 @@ impl rustc_driver::Callbacks for LoadConstant {
         tcx.sess.dcx().abort_if_errors();
         let item = |name: &str| {
             tcx.iter_local_def_id()
-                .find(|&id| tcx.opt_item_name(id.to_def_id()).is_some_and(|symbol| symbol.as_str() == name))
+                .find(|&id| {
+                    tcx.opt_item_name(id.to_def_id()).is_some_and(|symbol| symbol.as_str() == name)
+                })
                 .unwrap()
                 .to_def_id()
         };
         let static_id = item("VALUE");
         let constant_id = item("POINTER");
 
-        assert!(tcx.query_system.query_vtables.codegen_fn_attrs.will_cache_on_disk_for_key(static_id));
+        assert!(
+            tcx.query_system.query_vtables.codegen_fn_attrs.will_cache_on_disk_for_key(static_id)
+        );
 
         // Loading the retained constant recreates its static allocation, without
         // needing the static's cached codegen attributes until serialization.
-        let ConstValue::Scalar(Scalar::Ptr(pointer, _)) = tcx.const_eval_poly(constant_id).unwrap() else {
+        let ConstValue::Scalar(Scalar::Ptr(pointer, _)) = tcx.const_eval_poly(constant_id).unwrap()
+        else {
             panic!("expected a constant pointer");
         };
         assert!(matches!(
