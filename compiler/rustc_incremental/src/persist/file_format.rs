@@ -122,8 +122,8 @@ pub(crate) fn open_incremental_file(
 
     // SAFETY: This process must not modify nor remove the backing file while the memory map lives.
     // For the dep-graph and the work product index, it is as soon as the decoding is done.
-    // For the query result cache, the memory map is dropped in save_dep_graph before calling
-    // save_in and trying to remove the backing file.
+    // For the query result cache, save_dep_graph writes the replacement to a staging file
+    // and drops the memory map before renaming that file over the backing file.
     //
     // There is no way to prevent another process from modifying this file.
     let mmap = unsafe { Mmap::map(file) }?;

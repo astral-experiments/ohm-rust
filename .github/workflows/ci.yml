@@ -151,6 +151,12 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 2 tests/ui-fulldeps/coroutine-layout-projection.rs
 
+      - name: Run retained static allocation regression
+        if: matrix.os == 'depot-ubuntu-24.04-16'
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 2 tests/ui-fulldeps/incremental-retained-static.rs
+
       - name: Inspect coroutine states with GDB
         if: matrix.os == 'depot-ubuntu-24.04-16'
         shell: bash
