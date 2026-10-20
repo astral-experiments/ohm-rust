@@ -136,6 +136,7 @@ use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_data_structures::fx::{FxHashSet, FxIndexSet};
 use rustc_data_structures::graph::scc::Sccs;
 use rustc_data_structures::graph::{DirectedGraph, Successors};
+use rustc_data_structures::sso::SsoHashSet;
 use rustc_data_structures::stable_hash::{StableHash, StableHashCtxt, StableHasher};
 use rustc_data_structures::svh::Svh;
 use rustc_data_structures::unord::UnordMap;
@@ -764,7 +765,7 @@ pub(super) struct ReachabilityGraphBuilder<'tcx> {
     // `None` suppresses recording; an empty stack records roots.
     record_mode: Vec<Option<NodeIdx>>,
     nodes: FxIndexSet<Node<'tcx>>,
-    edges: IndexVec<NodeIdx, FxHashSet<NodeIdx>>,
+    edges: IndexVec<NodeIdx, SsoHashSet<NodeIdx>>,
     roots: FxHashSet<NodeIdx>,
 }
 
@@ -809,7 +810,7 @@ impl<'tcx> ReachabilityGraphBuilder<'tcx> {
     fn node_index(&mut self, node: Node<'tcx>) -> NodeIdx {
         let (index, inserted) = self.nodes.insert_full(node);
         if inserted {
-            let edge_index = self.edges.push(FxHashSet::default());
+            let edge_index = self.edges.push(SsoHashSet::default());
             debug_assert_eq!(index, edge_index);
         }
         index
