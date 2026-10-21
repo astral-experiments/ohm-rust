@@ -407,10 +407,20 @@ fn split_large_codegen_units<'tcx>(
             codegen_units.push(source);
             continue;
         }
-        remaining -= shards.len() - 1;
         for shard in &mut shards {
             shard.compute_size_estimate();
         }
+        if let Some(max_growth) = cx.tcx.sess.opts.unstable_opts.ohm_cgu_split_max_growth {
+            let original_size = source.size_estimate() as u128;
+            let split_size: u128 = shards.iter().map(|cgu| cgu.size_estimate() as u128).sum();
+            // Shared inline bodies need a copy in each shard that uses them. Keep the
+            // original unit when those copies would exceed the requested growth limit.
+            if split_size.saturating_sub(original_size) * 100 > original_size * max_growth as u128 {
+                codegen_units.push(source);
+                continue;
+            }
+        }
+        remaining -= shards.len() - 1;
         codegen_units.extend(shards);
     }
     codegen_units.sort_by(|a, b| a.name().as_str().cmp(b.name().as_str()));
