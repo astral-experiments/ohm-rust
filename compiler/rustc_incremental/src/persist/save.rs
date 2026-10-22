@@ -1,4 +1,5 @@
-use std::fs;
+use std::path::Path;
+use std::{fs, io};
 
 use rustc_data_structures::sync::par_join;
 use rustc_middle::dep_graph::{DepGraph, WorkProductMap};
@@ -50,7 +51,9 @@ pub(crate) fn save_dep_graph(tcx: TyCtxt<'_>) {
         par_join(
             move || {
                 sess.time("incr_comp_persist_dep_graph", || {
-                    if let Err(err) = fs::rename(&staging_dep_graph_path, &dep_graph_path) {
+                    if let Err(err) =
+                        replace_in_working_directory(&staging_dep_graph_path, &dep_graph_path)
+                    {
                         sess.dcx().emit_err(diagnostics::MoveDepGraph {
                             from: &staging_dep_graph_path,
                             to: &dep_graph_path,
@@ -93,7 +96,9 @@ pub(crate) fn save_dep_graph(tcx: TyCtxt<'_>) {
                         },
                     );
                     on_disk_cache.close_serialized_data_mmap();
-                    if let Err(err) = fs::rename(&staging_query_cache_path, &query_cache_path) {
+                    if let Err(err) =
+                        replace_in_working_directory(&staging_query_cache_path, &query_cache_path)
+                    {
                         sess.dcx().emit_fatal(diagnostics::WriteNew {
                             name: "query cache",
                             path: query_cache_path,
@@ -104,6 +109,17 @@ pub(crate) fn save_dep_graph(tcx: TyCtxt<'_>) {
             },
         );
     })
+}
+
+/// Replaces a cache file before its private working directory is published.
+/// Removing the destination first avoids ext4's forced writeback when rename replaces a file.
+fn replace_in_working_directory(from: &Path, to: &Path) -> io::Result<()> {
+    match fs::remove_file(to) {
+        Ok(()) => {}
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+        Err(err) => return Err(err),
+    }
+    fs::rename(from, to)
 }
 
 /// Saves the work product index.
