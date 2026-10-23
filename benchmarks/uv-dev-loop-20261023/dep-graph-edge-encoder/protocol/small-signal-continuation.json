@@ -1,0 +1,85 @@
+{
+  "created_utc": "2026-10-23T16:36:43.539174+00:00",
+  "known_discovery_result": {
+    "geometric_instruction_reduction_percent_rounded": 0.2181528,
+    "original_advance_threshold_percent": 0.5,
+    "original_discovery_gate_passed": false,
+    "pairs": 4,
+    "valid": true,
+    "wins": 4
+  },
+  "known_discovery_summary": {
+    "bytes": 1352,
+    "path": "${WORKSPACE}/work/dep-graph-edge-encoder-discovery-20261023/analysis-01/summary.json",
+    "sha256": "b3ab090d7fd9987894b5fae8bbd6d37e51fa1fa06b5df5eb5c062c939d9b814b"
+  },
+  "original_plan": {
+    "bytes": 17360,
+    "path": "${WORKSPACE}/work/dep-graph-edge-encoder-measurement-proposal-20261023/plan.json",
+    "sha256": "3f8fbafad32e7262d41358990b032b30233f1c733300b523c8846cefe7c8311f"
+  },
+  "performance_execution_authorized_by_this_record": false,
+  "rationale": "The user requires repeatable statistically significant improvements and specified no minimum percentage. The original exploratory triage cutoff can discard a smaller repeatable effect. Authorize the already-planned fresh confirmations to evaluate that possibility; do not reinterpret the failed discovery or use it for confirmation inference.",
+  "remaining_authority": "Separate exact stage authority after independent discovery validity review.",
+  "requirements": [
+    "Independent discovery validity audit must pass before execution.",
+    "Each of the two fresh eight-pair blocks must independently pass the existing all-wins and 99% lower-bound-above-0.1% criteria.",
+    "No retry or sample extension after a valid confirmation failure; any collection failure stops pending review without comparative effects.",
+    "No discovery observations enter either confirmation or their statistical estimates.",
+    "All native endpoint, regression-blocker, output, restoration and publication-availability rules remain unchanged.",
+    "Any publication must disclose the failed original0.5% triage gate and this after-discovery, pre-confirmation continuation amendment.",
+    "Nominal bootstrap/sign inference retains its existing sampling and scheduling-dependence assumptions; balanced order alone does not establish independence."
+  ],
+  "schema": 1,
+  "scope": {
+    "analyzer_sha256": "b4c96d905f409c901e77f48d5d3dabecf78ec00bd5c61bbb27c1c306f626286f",
+    "candidate_tree": "986928f9d972b1e6634a74f93a17f285e202fd29",
+    "collector_sha256": "204a9d78a9d9e7842bf5a9f5cb1f995b8c789cfec656c35c4a780e66c36cc1c0",
+    "discovery_observations_in_confirmations": 0,
+    "endpoint_changed": false,
+    "full_original_protocol_success_claim": false,
+    "inputs_sha256": "4bd4f67240532767cecdb45fb88f9de18b92d690c255560b6be9fa0f553a2d24",
+    "sample_counts_orders_seeds_estimators_or_confirmation_gates_changed": false,
+    "screen_or_confirmation_samples_replaced": false,
+    "source_changed": false
+  },
+  "state": "prospective-one-candidate-continuation-exception-before-any-confirmation",
+  "unchanged_confirmation_stages": [
+    {
+      "gate": {
+        "all_pair_reductions_strictly_positive": true,
+        "ci99_reduction_lower_percent_strictly_greater_than": 0.1
+      },
+      "name": "instruction_confirmation_1",
+      "pairs": [
+        "AB",
+        "BA",
+        "BA",
+        "AB",
+        "BA",
+        "AB",
+        "AB",
+        "BA"
+      ],
+      "seed": 2026102341
+    },
+    {
+      "gate": {
+        "all_pair_reductions_strictly_positive": true,
+        "ci99_reduction_lower_percent_strictly_greater_than": 0.1
+      },
+      "name": "instruction_confirmation_2",
+      "pairs": [
+        "BA",
+        "AB",
+        "AB",
+        "BA",
+        "AB",
+        "BA",
+        "BA",
+        "AB"
+      ],
+      "seed": 2026102342
+    }
+  ]
+}

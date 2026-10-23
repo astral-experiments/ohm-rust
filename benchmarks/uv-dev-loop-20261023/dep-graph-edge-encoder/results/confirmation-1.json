@@ -1,0 +1,47 @@
+{
+  "statistics": {
+    "baseline_mean_count": 1159080996.875,
+    "baseline_median_count": 1103984896.5,
+    "bootstrap_count_reduction_interval": [
+      0.0020560062671870494,
+      0.0028293886501122856
+    ],
+    "bootstrap_ratio_interval": [
+      1.0020602421379345,
+      1.002837416805016
+    ],
+    "bootstrap_resamples": 200000,
+    "bootstrap_seed": 2026102341,
+    "candidate_mean_count": 1156271375.5,
+    "candidate_median_count": 1101218128.5,
+    "confidence": 0.99,
+    "exact_two_sided_sign_p": 0.0078125,
+    "log_ratios": [
+      0.002740037479300794,
+      0.0022665475416384015,
+      0.0019577483089488357,
+      0.002058545571785296,
+      0.0018992509444914825,
+      0.00327565697428178,
+      0.0026100998785508816,
+      0.0025276063855319665
+    ],
+    "losses": 0,
+    "order": {
+      "AB": {
+        "geometric_mean_ratio": 1.0026746555018058,
+        "pairs": 4
+      },
+      "BA": {
+        "geometric_mean_ratio": 1.0021651288087985,
+        "pairs": 4
+      }
+    },
+    "paired_geometric_mean_count_reduction": 0.0024140181959172446,
+    "paired_geometric_mean_ratio": 1.0024198597814613,
+    "paired_median_ratio": 1.0023999607889482,
+    "pairs": 8,
+    "ties": 0,
+    "wins": 8
+  }
+}

@@ -1,0 +1,313 @@
+{
+  "schema": 1,
+  "status": "proposal-for-root-review-before-any-encoder-performance-run",
+  "execution_authorized": false,
+  "objective": "Measure whether the encoder-only fixed-width Vec extension reduces dirty uv build work, with no attribute-cache stacking.",
+  "source": {
+    "repository": "astral-sh/ohm-rust",
+    "baseline_commit": "6d4a7ee3200c5311112d433cb9d1da4a2630a66f",
+    "baseline_tree": "96c30a1814bb7a6c8d22cb2fbfb1692b7e96ac38",
+    "candidate_tree": "986928f9d972b1e6634a74f93a17f285e202fd29",
+    "candidate_patch_sha256": "00db4f2a0f18f0ac5775b97c08e094e216c548ddbb53cebc02262d57d6bd0d60",
+    "candidate_full_git_patch_sha256": "49e61404ef8157d11ab4e44394106e0a5bd61f9f9fbd1345fbc438bfb1d84db2",
+    "uv_commit": "3d82a6ad5a7eab8c68236553b7846517767c4b61",
+    "attribute_candidate_or_results_reused": false
+  },
+  "build_handoff": {
+    "path": "${WORKSPACE}/work/rustc-edge-encoder-build-host3-20261023/handoff.json",
+    "sha256": "7d95bd77656e714017714eb626de64d5094dfbdf73d022e485599dd8f4534d27",
+    "bytes": 12206
+  },
+  "build_freeze": {
+    "path": "${WORKSPACE}/work/rustc-edge-encoder-build-host3-20261023/freeze.json",
+    "sha256": "04df77ba41720ae9215e14307f6b9ed3ab3fd736874c5e405b82c8cb498148fe",
+    "bytes": 19435
+  },
+  "runtime_artifacts": [
+    {
+      "role": "baseline",
+      "remote_path": "${BUILD_ROOT}/artifacts/baseline",
+      "source_tree": "96c30a1814bb7a6c8d22cb2fbfb1692b7e96ac38",
+      "manifest": {
+        "path": "${WORKSPACE}/work/rustc-edge-encoder-build-host3-20261023/evidence/baseline-runtime.json",
+        "sha256": "8a098a11c9b0669182e767b0dcdfccd92ea71373b4412e7f82ab9b3819a1c5d5",
+        "bytes": 18044
+      },
+      "file_count": 76,
+      "driver": {
+        "path": "lib/librustc_driver-6f9d0d9f466ed619.so",
+        "bytes": 215079568,
+        "mode": "0o700",
+        "sha256": "d894a8a7787c1f1e14214d3ff80461e55388a9a1c7faedb772245f6a904dd177"
+      }
+    },
+    {
+      "role": "candidate",
+      "remote_path": "${BUILD_ROOT}/artifacts/candidate",
+      "source_tree": "986928f9d972b1e6634a74f93a17f285e202fd29",
+      "manifest": {
+        "path": "${WORKSPACE}/work/rustc-edge-encoder-build-host3-20261023/evidence/candidate-runtime.json",
+        "sha256": "f714313f9dd2e2a91aa75c7e5043a408933d30095127d7f8aa814700c23773d8",
+        "bytes": 18046
+      },
+      "file_count": 76,
+      "driver": {
+        "path": "lib/librustc_driver-6f9d0d9f466ed619.so",
+        "bytes": 215097800,
+        "mode": "0o700",
+        "sha256": "6d9fabab76491c144c727c963a712bcd677538b97a6dac84fb4a7094bb1d1590"
+      }
+    }
+  ],
+  "fixed_cargo": {
+    "sha256": "77a6a04fbbd4717a5d134662cce99cbbe887a10441cfeb80386ee4c83695bcfe",
+    "bytes": 42039032,
+    "active_mode": "0o700",
+    "origin": {
+      "bytes": 42039032,
+      "mode": 509,
+      "path": "${WORKSPACE}/work/search-prefix-cache-current185-production/attempt02/binaries/stripped/cargo-search-prefix-cache-candidate",
+      "sha256": "77a6a04fbbd4717a5d134662cce99cbbe887a10441cfeb80386ee4c83695bcfe"
+    },
+    "source_scope": "The accepted dependency-search-prefix Cargo artifact is fixed identically in both arms."
+  },
+  "fixture": {
+    "proposed_root": "${WORKSPACE}/work/dep-graph-edge-encoder-uv-fixture-20261023",
+    "create_or_warm_authorized": false,
+    "source_lib_rs_sha256": "ad097b233b93d8e6fcf67aa1657fa103ca79e1227781b3989d0e83dfa2a59e81",
+    "edit": "Reuse the exact dirty_fixture.py content() function and measurement/pair marker arguments: deterministic non-doc BEFORE/AFTER comments with identical lengths. No tracked uv change beyond the reversible fixture edit.",
+    "dirty_fixture": {
+      "bytes": 15310,
+      "mode": 436,
+      "path": "${WORKSPACE}/work/fresh-devloop-current185-native-controls-v1/frozen/dirty_fixture.py",
+      "sha256": "a89570fa6080462a772ebdbc73ab4471e0b968f7c357c23b197409fb12f282ad"
+    },
+    "state": "Fresh independent runtime, target, shared/build and Cargo-home state banks for each encoder compiler, activated at identical common paths. No compiled state or outcomes imported from the attribute experiment. Source/archive dependency seeds may be reused under the existing policy.",
+    "namespaces": "Freshly capture each arm unchanged. Prove any compiler-identity namespace path delta and OUT_DIR-only environment delta with the existing validator; never rewrite argv to make arms look equal.",
+    "incremental": "Keep the captured uv -C incremental setting. The compiler-build CARGO_INCREMENTAL=0 setting is not a workload override."
+  },
+  "required_before_execution": [
+    "Root acceptance of this prospective plan; no measurements, warming or large transfer is authorized by this document.",
+    "Coordinate runtime transfer; authenticate all per-file hashes and verify both runtime/sysroot identities on the chosen measurement host.",
+    "Adapt only existing harness plan/source/path bindings and fixed threshold literals; independently review/freeze the exact runnable sources.",
+    "The terminal-observation successor must pass its pending independent review and Root acceptance before adoption. No older failed cohort or effect is admitted.",
+    "Fresh per-arm warming, captured ordered argv/environment, compiler namespace proof, exact output/diagnostic admission, host/tool bindings and preflight acceptance.",
+    "Require output equivalence under the existing source-backed admission logic with newly established encoder bindings. Do not inherit attribute-specific output hashes, exceptions or serialized-metadata conclusions.",
+    "Separate exact authority for each fixed stage, after accepted restoration from its predecessor; keep actual mutable state rows unbound until then."
+  ],
+  "correctness_preflight": [
+    "Use the sealed five-pass canonical encoder tests and exact old/new byte-equivalence regression; no attribute-cache-hit prerequisite applies.",
+    "Verify the ordinary uv-library invocation remains dirty after the same edit, has incremental state enabled, and executes the expected compiler work.",
+    "Run actual fresh check/test-build convergence and child-work/diagnostic/output validation through the existing preparation path; no uv tests execute.",
+    "Preserve source/tool/runtime/output/restoration guards and normal cache/trust policy. Investigate any mismatch before freezing a cohort."
+  ],
+  "primary": {
+    "case": "Ordinary uv-library invocation from a dirty cargo test --no-run build",
+    "metric": "Whole rustc-process Callgrind final Ir, including its threads and in-process proc macro; compiler children are not included",
+    "scope": "Isolated compiler invocation, not whole Cargo command or macro-only instructions",
+    "frontend_threads": 8,
+    "preparation": "Before every sample, activate that compiler's own state, warm the BEFORE source through the original test-build command outside measurement, apply the unchanged AFTER edit, then execute that arm's freshly captured standalone ordinary uv-library rustc argv/environment. Repeated AFTER-only replays are forbidden.",
+    "environment": "Exact fresh captured argv/ordered environment; omit only documented unusable jobserver FDs; no self-profile flags during measurement",
+    "normalizer": "Existing pinned task-owned Valgrind environment normalizer; no child instrumentation",
+    "host_policy": "Record competing activity without filtering otherwise-valid instruction samples; balanced orders; no claim of independent scheduling noise"
+  },
+  "estimator": {
+    "effect_percent": "100 * (1 - exp(mean(log(candidate / baseline))))",
+    "interval": "Two-sided 99% paired bootstrap percentile interval over log ratios",
+    "bootstrap_draws": 200000,
+    "sign_test": "Exact two-sided sign test; eight of eight wins gives p=0.0078125"
+  },
+  "stages": [
+    {
+      "name": "discovery",
+      "pairs": [
+        "AB",
+        "BA",
+        "BA",
+        "AB"
+      ],
+      "gate": {
+        "all_pair_reductions_strictly_positive": true,
+        "geometric_instruction_reduction_percent_at_least": 0.5
+      },
+      "on_failure": "Park without sample extension."
+    },
+    {
+      "name": "instruction_confirmation_1",
+      "pairs": [
+        "AB",
+        "BA",
+        "BA",
+        "AB",
+        "BA",
+        "AB",
+        "AB",
+        "BA"
+      ],
+      "seed": 2026102341,
+      "gate": {
+        "all_pair_reductions_strictly_positive": true,
+        "ci99_reduction_lower_percent_strictly_greater_than": 0.1
+      }
+    },
+    {
+      "name": "instruction_confirmation_2",
+      "pairs": [
+        "BA",
+        "AB",
+        "AB",
+        "BA",
+        "AB",
+        "BA",
+        "BA",
+        "AB"
+      ],
+      "seed": 2026102342,
+      "gate": {
+        "all_pair_reductions_strictly_positive": true,
+        "ci99_reduction_lower_percent_strictly_greater_than": 0.1
+      }
+    },
+    {
+      "name": "native_check",
+      "command": "cargo -Zohm-defaults=yes check --locked --offline -j 8",
+      "blocks": [
+        [
+          "AB",
+          "BA",
+          "BA",
+          "AB",
+          "BA",
+          "AB",
+          "AB",
+          "BA"
+        ],
+        [
+          "BA",
+          "AB",
+          "AB",
+          "BA",
+          "AB",
+          "BA",
+          "BA",
+          "AB"
+        ]
+      ],
+      "seeds": [
+        2026102343,
+        2026102344
+      ]
+    },
+    {
+      "name": "native_test_build",
+      "command": "cargo -Zohm-defaults=yes test --no-run --locked --offline -j 8",
+      "blocks": [
+        [
+          "BA",
+          "AB",
+          "AB",
+          "BA",
+          "AB",
+          "BA",
+          "BA",
+          "AB"
+        ],
+        [
+          "AB",
+          "BA",
+          "BA",
+          "AB",
+          "BA",
+          "AB",
+          "AB",
+          "BA"
+        ]
+      ],
+      "seeds": [
+        2026102345,
+        2026102346
+      ]
+    }
+  ],
+  "stage_sequence": "Both fresh instruction confirmation blocks must pass before either native endpoint starts. Stop at a failed instruction gate; do not extend or select pairs.",
+  "native": {
+    "metric": "Uninstrumented complete command elapsed wall time, no tests executed",
+    "cpu_affinity": "Workload CPUs 0-7, controller CPU 8",
+    "preparation": "Warm the same before-source version outside timing, then apply the same after-source edit before each sample",
+    "host_policy": "Pending accepted terminal-boundary amendment: strict entry admission and immediate pre/post measured-command quiet checks. Any retained guard failure invalidates the whole attempt before effects. Terminal host activity after untimed cleanup is recorded observationally only; restoration/context/output/parking failures still reject. No pair deletion or effect-based exclusions.",
+    "wall_time_claim": "Only if both fresh eight-pair blocks for that endpoint have all eight wins and each 99% lower bound exceeds zero",
+    "regression_blocker": "For either endpoint, reject performance acceptance if losses >= 12 of 16 AND the pooled reduction_CI99.upper < -1.0 percent. Pool the two fixed native blocks with equal pair weights; exclude discovery and all instruction samples.",
+    "pooled_seeds": {
+      "native_check": 2026102347,
+      "native_test_build": 2026102348
+    },
+    "inconclusive": "Report signed point estimate, interval and wins/losses. Do not infer equivalence or a wall-time improvement from instruction gains."
+  },
+  "lifecycle": {
+    "sample": "Select own arm state; restore/check original source; write BEFORE and converge the original workload outside measurement; apply equal-length AFTER; measure exactly once; validate; restore source. No convergence command is inserted between measured arms beyond the next arm's required BEFORE warm-up.",
+    "stage_end": "Restore source and mode; for each touched arm run original check and test-build convergence once; park all state. Keep the existing nested restoration handling.",
+    "affinity": "Workload CPUs 0-7; controller CPU 8. Local preparation helpers must stop for native quiet windows.",
+    "settle": "One fixed 30-second settle at stage entry, before host admission; no per-sample added sleep."
+  },
+  "terminal_boundary": {
+    "status": "pending-independent-review-and-root-adoption",
+    "policy": {
+      "path": "${WORKSPACE}/work/attribute-proc-macro-cache-terminal-guard-boundary-amendment-20261023.json",
+      "sha256": "66cd2d848d5298bd07bfa979c20a73efee354424826200a4345d5a4e676d1fad",
+      "bytes": 3318
+    },
+    "runner_freeze": {
+      "path": "${WORKSPACE}/work/attribute-proc-macro-cache-measurement-preparation-20261023/source-proposal-06/source-freeze.json",
+      "sha256": "d3bcc279f22187b5f681dd4a0759b5b56a1804d65d58f5a1e6d2bee59880605c",
+      "bytes": 10770
+    },
+    "analyzer_freeze": {
+      "path": "${WORKSPACE}/work/attribute-proc-macro-cache-measurement-preparation-20261023/offline-analysis-07/source-freeze.json",
+      "sha256": "e50f269f7973822a350d40bc4f7f95a915483f8b970c65d379e36372df3787e7",
+      "bytes": 4217
+    },
+    "acceptance": null,
+    "proposal_scope": "For all fresh encoder native blocks, retain strict entry and immediate measured BEFORE/AFTER quiet checks. Only post-cleanup terminal host activity is observational; terminal source/Cargo/runtime/output/restoration/convergence/parking validity remains mandatory.",
+    "no_retrospective_reclassification": true
+  },
+  "source_reuse": {
+    "original_plan": {
+      "path": "${WORKSPACE}/work/attribute-proc-macro-cache-measurement-plan-20261023.json",
+      "sha256": "534b5f03cb22c3c46f35cb73542edce48326164ccc6523b70291629ab3b23473",
+      "bytes": 7389
+    },
+    "prior_accepted_runner": {
+      "path": "${WORKSPACE}/work/attribute-proc-macro-cache-measurement-preparation-20261023/source-proposal-05/measure.py",
+      "sha256": "223455fa985ee9e636da6c4afe39305ea45268f22958a58bf1f2d9dccd42684e",
+      "bytes": 21493
+    },
+    "prior_accepted_analyzer": {
+      "path": "${WORKSPACE}/work/attribute-proc-macro-cache-measurement-preparation-20261023/offline-analysis-06/analyze.py",
+      "sha256": "34fcc514b81750179bbd04acf9769ba1e8369b1a8e3254947617115c0e3000c8",
+      "bytes": 20630
+    },
+    "controls_input_catalog": {
+      "path": "${WORKSPACE}/work/attribute-proc-macro-cache-measurement-preparation-20261023/source-proposal-05/inputs.template.json",
+      "sha256": "39b85dc26f587350153f0782387068e6e88cecc71894db199409f86296498b38",
+      "bytes": 157127
+    },
+    "statistics": {
+      "bytes": 26221,
+      "mode": 436,
+      "path": "${WORKSPACE}/work/benchmark/frozen/paired.py",
+      "sha256": "50d0cb2d4f595ccfa72d463fedb3ff4dadf9dfc1446c749d482d9ede8418c7cf"
+    },
+    "note": "References are source/control material only. No attribute sample, profile total, timing result, or compiled workload state is reused."
+  },
+  "raw_validity": "Authenticate all raw commands, argv/environment, diagnostics, outputs, source/runtime state, restores and profile bytes before effects. Use existing whole-process final-Ir parser and raw/self/stderr consistency checks; preserve accepted warnings/header offsets explicitly. Never substitute Cargo-parent Ir, a function subtotal or Callgrind wall time.",
+  "instruction_host_policy": "Record and retain competing activity without filtering otherwise-valid instruction samples, matching the existing prospective policy.",
+  "decision_scope": "Correctness and both instruction confirmations must pass; either native endpoint's fixed regression blocker prevents performance acceptance. Native improvement claims require that endpoint's separate wall gate. Publication and execution remain separately authorized.",
+  "retry_policy": "No sample-size extensions, effect-based exclusions or retrospective threshold changes. Infrastructure failures retain all outputs and end the attempt; any replacement attempt requires a prospective recorded reason before inspecting its new effects.",
+  "limitations": [
+    "This is one exact dirty uv edit and the ordinary uv-library compiler process, not a macro-only or whole-command instruction endpoint.",
+    "Matched development builds are compared only with each other, not with the shipped PGO/BOLT SDK.",
+    "Compiler instructions cannot establish native elapsed-time improvement; report all valid native signed estimates, intervals and wins/losses even if inconclusive.",
+    "No attribute-cache source, measurements or benefit is stacked into this candidate.",
+    "Memory and broader workloads remain unmeasured."
+  ]
+}

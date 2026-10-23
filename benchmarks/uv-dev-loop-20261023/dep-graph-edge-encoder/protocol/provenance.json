@@ -1,0 +1,5 @@
+{
+  "private_continuation_sha256": "7586ac32ae4e511582f8945f27aa466dd84e238639441da4e625cce7784e176b",
+  "private_original_plan_sha256": "3f8fbafad32e7262d41358990b032b30233f1c733300b523c8846cefe7c8311f",
+  "public_transformation": "Replaced machine and workspace path labels. Sample schedules, thresholds and statistical rules are preserved."
+}

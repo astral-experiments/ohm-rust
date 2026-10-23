@@ -1,0 +1,103 @@
+{
+  "geometric_reduction": 0.0021815276173579035,
+  "minimum_reduction": 0.005,
+  "name": "discovery",
+  "original_screen_passed": false,
+  "pairs": [
+    {
+      "baseline": 1103465034,
+      "candidate": 1101277806,
+      "order": "AB"
+    },
+    {
+      "baseline": 1099170633,
+      "candidate": 1095816883,
+      "order": "BA"
+    },
+    {
+      "baseline": 1328088212,
+      "candidate": 1326660096,
+      "order": "BA"
+    },
+    {
+      "baseline": 1103918752,
+      "candidate": 1101030484,
+      "order": "AB"
+    }
+  ],
+  "profiles": [
+    {
+      "brk_overflow_warning": false,
+      "final_ir": 1103465034,
+      "final_minus_header": 1,
+      "header_summary_ir": 1103465033,
+      "label": "pair-0-0-baseline",
+      "self_cost_sum": 1103465034,
+      "stderr_collected": 1103465034
+    },
+    {
+      "brk_overflow_warning": false,
+      "final_ir": 1101277806,
+      "final_minus_header": 1,
+      "header_summary_ir": 1101277805,
+      "label": "pair-0-1-candidate",
+      "self_cost_sum": 1101277806,
+      "stderr_collected": 1101277806
+    },
+    {
+      "brk_overflow_warning": false,
+      "final_ir": 1095816883,
+      "final_minus_header": 1,
+      "header_summary_ir": 1095816882,
+      "label": "pair-1-0-candidate",
+      "self_cost_sum": 1095816883,
+      "stderr_collected": 1095816883
+    },
+    {
+      "brk_overflow_warning": false,
+      "final_ir": 1099170633,
+      "final_minus_header": 1,
+      "header_summary_ir": 1099170632,
+      "label": "pair-1-1-baseline",
+      "self_cost_sum": 1099170633,
+      "stderr_collected": 1099170633
+    },
+    {
+      "brk_overflow_warning": false,
+      "final_ir": 1326660096,
+      "final_minus_header": 3,
+      "header_summary_ir": 1326660093,
+      "label": "pair-2-0-candidate",
+      "self_cost_sum": 1326660096,
+      "stderr_collected": 1326660096
+    },
+    {
+      "brk_overflow_warning": false,
+      "final_ir": 1328088212,
+      "final_minus_header": 1,
+      "header_summary_ir": 1328088211,
+      "label": "pair-2-1-baseline",
+      "self_cost_sum": 1328088212,
+      "stderr_collected": 1328088212
+    },
+    {
+      "brk_overflow_warning": false,
+      "final_ir": 1103918752,
+      "final_minus_header": 1,
+      "header_summary_ir": 1103918751,
+      "label": "pair-3-0-baseline",
+      "self_cost_sum": 1103918752,
+      "stderr_collected": 1103918752
+    },
+    {
+      "brk_overflow_warning": false,
+      "final_ir": 1101030484,
+      "final_minus_header": 2,
+      "header_summary_ir": 1101030482,
+      "label": "pair-3-1-candidate",
+      "self_cost_sum": 1101030484,
+      "stderr_collected": 1101030484
+    }
+  ],
+  "seed": null
+}

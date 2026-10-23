@@ -1,0 +1,33 @@
+{
+  "base_commit": "6d4a7ee3200c5311112d433cb9d1da4a2630a66f",
+  "base_tree": "96c30a1814bb7a6c8d22cb2fbfb1692b7e96ac38",
+  "drivers": {
+    "baseline": "d894a8a7787c1f1e14214d3ff80461e55388a9a1c7faedb772245f6a904dd177",
+    "candidate": "6d9fabab76491c144c727c963a712bcd677538b97a6dac84fb4a7094bb1d1590"
+  },
+  "files": {
+    ".github/workflows/ci.yml": {
+      "before_blob": "5730f144143b80fa62679e4fc22dbfba50819d42",
+      "git_blob": "315978cba96849ace4deaba33e8eee402733778c",
+      "sha256": "c4f74302bbd588361792ba69f206cf70402fa29e0d92d19f6d960ab25ddb87be"
+    },
+    "compiler/rustc_middle/src/dep_graph/serialized.rs": {
+      "git_blob": "7e0aedf1bbf441757fb2c6fdfab7aef4245eaec4",
+      "sdk6_and_sdk12_source_blob_before": "82a0e80b11eccc2b8867d17ae0f31ed794c081d2",
+      "sha256": "844449f4eae478a1027be7479c12e6eb22f66956251e54b4ddef347bd508b2dd"
+    },
+    "compiler/rustc_middle/src/dep_graph/serialized/tests.rs": {
+      "git_blob": "ce7761e3855044794132a834e06c449180b215ea",
+      "sdk6_and_sdk12_source_blob_before": "2636fde70c2e5875ce82abe804e7e6526bc9189c",
+      "sha256": "0e3c63c61a655c30492f7c7c4e158f9bf50c7faf4b83f60d0a007cabb1120836"
+    }
+  },
+  "format_returncode": 0,
+  "format_version": "rustfmt 1.9.0-nightly (eff8269f79 2026-07-18)",
+  "measured_tree": "986928f9d972b1e6634a74f93a17f285e202fd29",
+  "publication_commit": "e0f28dc5e51680522b490f6f437839ccf2d69fc4",
+  "publication_only_change": "Append byte-equivalence test to the existing rustc_middle CI test command.",
+  "publication_tree": "7f9fc7b337d50d302ec402f82ecd6dcf984aa2e8",
+  "sdk12_source_comparison_commit": "f93a752e3de7404107ea5908d65c8832aee5625a",
+  "source_production_and_test_bytes_match_measured_tree": true
+}
