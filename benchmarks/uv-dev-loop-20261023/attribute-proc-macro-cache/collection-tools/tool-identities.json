@@ -1,0 +1,29 @@
+{
+  "source_sha256": "503c8612d9972ed2ce4ef7b4431e569a8c98d0d5f0d1149dd0fff364513e691b",
+  "binary_sha256": "42f912fe052732ef964681579a3bc1acbc50966f04babb5a452f25dfe4825973",
+  "binary_bytes": 15800,
+  "packages": [
+    {
+      "file": "libc6-dbg_2.39-0ubuntu8.9_amd64.deb",
+      "sha256": "c4b086cef3a6bbb6a90299969b3c0bf3867f40cb8e9bbbb0edfe5ae23f2c04f0",
+      "bytes": 7474170,
+      "metadata": "Package: libc6-dbg\nVersion: 2.39-0ubuntu8.9\nArchitecture: amd64\n"
+    },
+    {
+      "file": "valgrind_1%3a3.22.0-0ubuntu3_amd64.deb",
+      "sha256": "744e081e5cf3d5c598b499dbb7d2250ea3f2869dde4a4d7b231fe6114f347d7d",
+      "bytes": 14911212,
+      "metadata": "Package: valgrind\nVersion: 1:3.22.0-0ubuntu3\nArchitecture: amd64\n"
+    }
+  ],
+  "compiler_version": "cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "rebuilds": [
+    {
+      "optimization": "-O2",
+      "sha256": "42f912fe052732ef964681579a3bc1acbc50966f04babb5a452f25dfe4825973",
+      "matches_original": true
+    }
+  ],
+  "rebuild_command": "cc -shared -fPIC -O2 -I \"$PROFILING_TOOLS/valgrind/usr/include\" ohm-valgrind-env.c -o ohm-valgrind-env.so",
+  "scope": "Historical measured tool identities; fresh local rebuild reproduced the original adapter binary byte-for-byte. No performance experiment was rerun."
+}
