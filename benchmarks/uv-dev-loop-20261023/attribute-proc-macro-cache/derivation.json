@@ -1,0 +1,136 @@
+{
+  "independent_confirmation_reviews": {
+    "1": {
+      "bytes": 12472,
+      "sha256": "a3ef7eb1aa45ac91ffd85e63a9a13a87aff8345a7a78c584718e563ed316f97b"
+    },
+    "2": {
+      "bytes": 13896,
+      "sha256": "d8826a26c27a8c15827b08ca202125b670df04e2086fb8e4da0daa2c66f7b859"
+    }
+  },
+  "origins": {
+    "bootstrap.matched.toml": {
+      "original": {
+        "bytes": 996,
+        "sha256": "d7962f9275f19796c7b492b043d87cd1dbd7285182d6bd682e690e3822052b23"
+      },
+      "transformation": "literal workspace, home and next-host placeholders only"
+    },
+    "candidate.patch": {
+      "original": {
+        "bytes": 21485,
+        "sha256": "27df1924be9430af3bf7f1e8275bac4bc5874b13ab7a770bedbd5d3c08aa0f2e"
+      },
+      "transformation": "byte-identical"
+    },
+    "correctness.json": {
+      "original": {
+        "bytes": 2772,
+        "sha256": "fd97e4abd0ea0b6c073c9cbcfb5710a328634879e8478867c10757f755cfb733"
+      },
+      "transformation": "byte-identical"
+    },
+    "counts-confirmation-1": {
+      "integrity": {
+        "bytes": 4185,
+        "sha256": "7b9293b6ff2b6889f03069563b3f42620c9e8fb878e883a931b2f64b936579f1"
+      },
+      "raw_gates": {
+        "bytes": 250,
+        "sha256": "deaeb914324fc491178cc9e4e6a0e4dc54613a43314cfd4ec64eac08b20c2d22"
+      },
+      "summary": {
+        "bytes": 2918,
+        "sha256": "9bc7f62803414aedca190f5943bf952e1e56f1a62c04e9e2d55c6055dd36ee44"
+      }
+    },
+    "counts-confirmation-2": {
+      "integrity": {
+        "bytes": 4189,
+        "sha256": "357b3ef84e754b302ffa248681f8ebe149e7e64b14123c606468abab28d9e545"
+      },
+      "raw_gates": {
+        "bytes": 250,
+        "sha256": "c8ee42904442c865623276f9cd087352d581f013241cc6d79fdd48adf5646538"
+      },
+      "summary": {
+        "bytes": 2914,
+        "sha256": "be99a76cfad7fd0f975b7608b3b69c9a02fbd1ab8141ba10e13e778e80fe7fc9"
+      }
+    },
+    "dirty_fixture.py": {
+      "original": {
+        "bytes": 15310,
+        "sha256": "a89570fa6080462a772ebdbc73ab4471e0b968f7c357c23b197409fb12f282ad"
+      },
+      "transformation": "byte-identical"
+    },
+    "protocol/namespace-amendment.json": {
+      "original": {
+        "bytes": 3209,
+        "sha256": "beaf43b5dc6ed140d1f17832be9a43190f50230fa44867bf97dd407da5c7b1f5"
+      },
+      "transformation": "literal workspace, home and next-host placeholders only"
+    },
+    "protocol/original-plan.json": {
+      "original": {
+        "bytes": 7389,
+        "sha256": "534b5f03cb22c3c46f35cb73542edce48326164ccc6523b70291629ab3b23473"
+      },
+      "transformation": "literal workspace, home and next-host placeholders only"
+    },
+    "protocol/output-amendment.json": {
+      "original": {
+        "bytes": 4819,
+        "sha256": "12d8775685bef05a264af22e1e9bb41a9a4377c330092b3f0d773d07d29f66fe"
+      },
+      "transformation": "literal workspace, home and next-host placeholders only"
+    },
+    "protocol/publication-availability-amendment.json": {
+      "original": {
+        "bytes": 3390,
+        "sha256": "cde1b83e60b6809dc2273e0eab587c82f45adf32fe281a0b3ab53e922f878686"
+      },
+      "transformation": "literal workspace, home and next-host placeholders only"
+    },
+    "protocol/stage-order-amendment.json": {
+      "original": {
+        "bytes": 4130,
+        "sha256": "0934aa5a55541d059365082be4fff308cfb379fe79c9254edda6713729093aa6"
+      },
+      "transformation": "literal workspace, home and next-host placeholders only"
+    },
+    "protocol/terminal-boundary-amendment.json": {
+      "original": {
+        "bytes": 3318,
+        "sha256": "66cd2d848d5298bd07bfa979c20a73efee354424826200a4345d5a4e676d1fad"
+      },
+      "transformation": "literal workspace, home and next-host placeholders only"
+    },
+    "results/confirmation-1.json": {
+      "original": {
+        "bytes": 2918,
+        "sha256": "9bc7f62803414aedca190f5943bf952e1e56f1a62c04e9e2d55c6055dd36ee44"
+      },
+      "transformation": "byte-identical"
+    },
+    "results/confirmation-2.json": {
+      "original": {
+        "bytes": 2914,
+        "sha256": "be99a76cfad7fd0f975b7608b3b69c9a02fbd1ab8141ba10e13e778e80fe7fc9"
+      },
+      "transformation": "byte-identical"
+    },
+    "workflow-only.patch": {
+      "original": {
+        "bytes": 707,
+        "sha256": "7252248b180f9103c2170256efdaa9d5af769700ff8843233c4712b4f1afd758"
+      },
+      "transformation": "byte-identical"
+    }
+  },
+  "profiles": "Separate optional extension; no profile is implied by this core manifest.",
+  "sanitation": "Only whitelisted accepted results, source/build records and protocol documents enter the core. Ambient child environments, host process argv, transport/auth logs and all failed effects are absent.",
+  "schema": 1
+}

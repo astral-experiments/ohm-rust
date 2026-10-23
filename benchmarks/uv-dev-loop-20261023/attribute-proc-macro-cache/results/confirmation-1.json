@@ -1,0 +1,109 @@
+{
+  "block": 0,
+  "block_gate_passed": true,
+  "compiler_sha256": {
+    "baseline": "a9688497f5729b9afda0e636919376e961fbf55f0eb6c3ba472f5a8ea5700818",
+    "candidate": "a9688497f5729b9afda0e636919376e961fbf55f0eb6c3ba472f5a8ea5700818"
+  },
+  "further_execution_authorized": false,
+  "geometric_reduction": 0.13846063277420406,
+  "inputs_sha256": "f020670c97c867bd2123dbd3b20f2cc83a51e867146919d5d43538d8bfc4be3c",
+  "losses": 0,
+  "metric": "whole isolated rustc-process final Ir; children excluded",
+  "metric_integrity_sha256": "7b9293b6ff2b6889f03069563b3f42620c9e8fb878e883a931b2f64b936579f1",
+  "native_pooled_blocker_pending": false,
+  "pairs": [
+    {
+      "baseline": 1104146998,
+      "candidate": 945113730,
+      "order": "AB"
+    },
+    {
+      "baseline": 1099978621,
+      "candidate": 940407896,
+      "order": "BA"
+    },
+    {
+      "baseline": 1331891765,
+      "candidate": 1170680839,
+      "order": "BA"
+    },
+    {
+      "baseline": 1103601052,
+      "candidate": 944622189,
+      "order": "AB"
+    },
+    {
+      "baseline": 1099484079,
+      "candidate": 940970457,
+      "order": "BA"
+    },
+    {
+      "baseline": 1331744049,
+      "candidate": 1171130532,
+      "order": "AB"
+    },
+    {
+      "baseline": 1103529269,
+      "candidate": 945085641,
+      "order": "AB"
+    },
+    {
+      "baseline": 1099222860,
+      "candidate": 940206099,
+      "order": "BA"
+    }
+  ],
+  "performance_accepted": false,
+  "plan_sha256": "534b5f03cb22c3c46f35cb73542edce48326164ccc6523b70291629ab3b23473",
+  "raw_gates_sha256": "deaeb914324fc491178cc9e4e6a0e4dc54613a43314cfd4ec64eac08b20c2d22",
+  "schema": 1,
+  "stage": "instruction_confirmation_1",
+  "state": "valid-fixed-block",
+  "statistics": {
+    "baseline_mean_count": 1159199836.625,
+    "baseline_median_count": 1103565160.5,
+    "bootstrap_count_reduction_interval": [
+      0.12947388596544995,
+      0.14454161957158373
+    ],
+    "bootstrap_ratio_interval": [
+      1.1487306168971645,
+      1.1689639412956558
+    ],
+    "bootstrap_resamples": 200000,
+    "bootstrap_seed": 2026102301,
+    "candidate_mean_count": 999777172.875,
+    "candidate_median_count": 944853915.0,
+    "confidence": 0.99,
+    "exact_two_sided_sign_p": 0.0078125,
+    "log_ratios": [
+      0.15552309887692958,
+      0.15673231008532865,
+      0.12901481807034945,
+      0.1555487480341906,
+      0.15568458590328257,
+      0.12851984930737348,
+      0.15499320034865416,
+      0.15625961270839567
+    ],
+    "losses": 0,
+    "order": {
+      "AB": {
+        "geometric_mean_ratio": 1.1602624437510412,
+        "pairs": 4
+      },
+      "BA": {
+        "geometric_mean_ratio": 1.1611638623038218,
+        "pairs": 4
+      }
+    },
+    "paired_geometric_mean_count_reduction": 0.13846063277420417,
+    "paired_geometric_mean_ratio": 1.160713065521376,
+    "paired_median_ratio": 1.1682839042044135,
+    "pairs": 8,
+    "ties": 0,
+    "wins": 8
+  },
+  "wins": 8
+}

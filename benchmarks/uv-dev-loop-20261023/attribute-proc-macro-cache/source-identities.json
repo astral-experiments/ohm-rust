@@ -1,0 +1,19 @@
+{
+  "baseline_commit": "6d4a7ee3200c5311112d433cb9d1da4a2630a66f",
+  "baseline_complete_manifest_sha256": "8f404c52b2ccbd1292217bf05cf54311a8eaec877dbb0fdac5e954d8b4690720",
+  "baseline_driver_sha256": "39e15187db3021d69c321c4f6cd8852d7ea1b8e76727d39c2af4904e809e9083",
+  "baseline_tree": "96c30a1814bb7a6c8d22cb2fbfb1692b7e96ac38",
+  "branch": "codex/cache-attribute-proc-macros-sdk6-20261023",
+  "candidate_complete_manifest_sha256": "ed27618f94f84e917e5c6df978bf594b0189958837ad17d249861f81839c8057",
+  "candidate_driver_sha256": "3e5e6981949dd1c4ab038be744657813d05c5bf720932a105358c7764ead2d5c",
+  "measured_candidate_tree": "0ef7385c48f753cb09c39d67aa4b8bccdb3f95c3",
+  "publication_delta": "Only two CI test selectors beyond the measured candidate tree.",
+  "published_commit": "28263153e41af6eb4ad18202bf948574cc2599a6",
+  "published_sole_parent": "6d4a7ee3200c5311112d433cb9d1da4a2630a66f",
+  "published_tree": "4e53fa454cfa8916b88c2a3948829560611358e0",
+  "repository": "astral-sh/ohm-rust",
+  "source_publication_readback_receipt": {
+    "bytes": 3749,
+    "sha256": "9cbd0b410d501a0bf975c385f1df21480770fc8b85e51d4e6cb7b395d6480e3c"
+  }
+}

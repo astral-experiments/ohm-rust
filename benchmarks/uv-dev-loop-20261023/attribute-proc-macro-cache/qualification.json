@@ -1,0 +1,17 @@
+{
+  "availability_amendment": {
+    "bytes": 3390,
+    "sha256": "cde1b83e60b6809dc2273e0eab587c82f45adf32fe281a0b3ab53e922f878686"
+  },
+  "failed_effects_read_or_used": false,
+  "instruction_qualified_draft": true,
+  "latest_native_test_stop": {
+    "bytes": 1346,
+    "sha256": "975550e33a1ff1e5a0bd03e9fe2c3f14be903ee7b5fb6e232bd23cc38562b316"
+  },
+  "native_check": "16 valid pairs; inconclusive, no wall-time claim or equivalence/regression-exclusion claim",
+  "native_test_build": "Unavailable; all failed attempts excluded and unread. Regression check incomplete.",
+  "original_full_protocol_complete": false,
+  "wall_time_improvement_or_equivalence_claim": false,
+  "whole_cargo_instruction_claim": false
+}

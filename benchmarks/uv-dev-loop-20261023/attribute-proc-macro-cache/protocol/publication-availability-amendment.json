@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "created_utc": "2026-10-23T14:11:08.903Z",
+  "status": "after_primary_confirmation_before_any_native_test_build_effect_inspection",
+  "decision": "Publish an instruction-qualified draft; retain incomplete full-protocol qualification and continue native test-build validation on another devbox.",
+  "user_authority": "User explicitly requested draft PRs with statistically significant instruction-count or reliable wall-time improvements, and authorized another or new devbox.",
+  "original_plan": {
+    "path": "work/attribute-proc-macro-cache-measurement-plan-20261023.json",
+    "sha256": "534b5f03cb22c3c46f35cb73542edce48326164ccc6523b70291629ab3b23473"
+  },
+  "publication_change": "The original requirement to finish both native endpoint regression checks before draft publication is deferred for this instruction-only draft. This is a publication-availability amendment, not completion of the original full performance protocol.",
+  "timing_and_reason": "Both instruction confirmations and native-check results were already known. Native-test effects remain unread. Repeated retained host-occupancy failures exhausted the bounded original and corrected protocols; the latest corrected policy has no valid block.",
+  "latest_native_test_stop_sha256": "975550e33a1ff1e5a0bd03e9fe2c3f14be903ee7b5fb6e232bd23cc38562b316",
+  "claim": {
+    "metric": "Whole isolated ordinary uv-library rustc-process Callgrind final Ir for the controlled dirty cargo test --no-run edit; compiler children excluded",
+    "confirmation_1": {
+      "pairs": 8,
+      "wins": 8,
+      "reduction_percent": 13.846063277420406,
+      "ci99_percent": [
+        12.94738859655,
+        14.45416195716
+      ]
+    },
+    "confirmation_2": {
+      "pairs": 8,
+      "wins": 8,
+      "reduction_percent": 13.870326322194,
+      "ci99_percent": [
+        12.903504562182,
+        14.569985492173
+      ]
+    },
+    "native_check": "16 valid pairs; inconclusive, no wall-time claim or equivalence/regression-exclusion claim",
+    "native_test_build": "Unavailable; all failed attempts excluded and unread. Regression check incomplete."
+  },
+  "unchanged": [
+    "Both predeclared instruction thresholds, counts, schedules, seeds, statistics and data selection",
+    "Original native endpoint statistical rules and regression blockers",
+    "All failed data remain excluded without effects inspection",
+    "Correctness, output, runtime and source restoration requirements",
+    "No whole-Cargo instruction or wall-time improvement claim",
+    "Matched development compiler comparison only; no distributed PGO/BOLT SDK claim"
+  ],
+  "instruction_qualification": true,
+  "original_full_protocol_complete": false,
+  "native_test_build_regression_check_complete": false,
+  "source_branch_preparation_authorized": true,
+  "draft_publication_authorized_after_reviewed_evidence": true,
+  "ready_for_review_or_merge_authorized": false,
+  "source": {
+    "baseline_commit": "6d4a7ee3200c5311112d433cb9d1da4a2630a66f",
+    "measured_tree": "0ef7385c48f753cb09c39d67aa4b8bccdb3f95c3",
+    "publication_tree": "4e53fa454cfa8916b88c2a3948829560611358e0",
+    "difference": "Two CI test selectors only"
+  },
+  "followup": "Fresh prospective host/input/output binding, followed by native test-build validation on <next-devbox>. No native data pooled across hosts; report any regression and retain draft status."
+}

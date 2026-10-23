@@ -1,0 +1,554 @@
+diff --git a/compiler/rustc_expand/src/lib.rs b/compiler/rustc_expand/src/lib.rs
+index 8bbca0ddf0f90f83c4457504de8e44c3353bcffc..4dc80ed5d1bf08be31787db4c8c3bbadd025201f 100644
+--- a/compiler/rustc_expand/src/lib.rs
++++ b/compiler/rustc_expand/src/lib.rs
+@@ -25,5 +25,6 @@
+ pub mod proc_macro;
+ 
+ pub fn provide(providers: &mut rustc_middle::query::Providers) {
++    providers.attribute_macro_expansion = proc_macro::provide_attribute_macro_expansion;
+     providers.derive_macro_expansion = proc_macro::provide_derive_macro_expansion;
+ }
+diff --git a/compiler/rustc_expand/src/proc_macro.rs b/compiler/rustc_expand/src/proc_macro.rs
+index 105d2d796aa8062ef7b1458954fe9bf560a5e896..72c8b88f60eaf370de328b522286c8e579318487 100644
+--- a/compiler/rustc_expand/src/proc_macro.rs
++++ b/compiler/rustc_expand/src/proc_macro.rs
+@@ -71,19 +71,20 @@ fn expand(
+     ) -> Result<TokenStream, ErrorGuaranteed> {
+         let _timer = record_expand_proc_macro(ecx, "expand_proc_macro", span);
+ 
+-        let proc_macro_backtrace = ecx.ecfg.proc_macro_backtrace;
+-        let strategy = exec_strategy(ecx.sess);
+-        let server = proc_macro_server::Rustc::new(ecx);
+-        self.client.run2(&strategy, server, annotation, annotated, proc_macro_backtrace).map_err(
+-            |e| {
+-                ecx.dcx().emit_err(diagnostics::CustomAttributePanicked {
+-                    span,
+-                    message: e
+-                        .into_string()
+-                        .map(|message| diagnostics::CustomAttributePanickedHelp { message }),
++        let invoc_id = ecx.current_expansion.id;
++        if ecx.sess.opts.incremental.is_some() && ecx.sess.opts.unstable_opts.cache_proc_macros {
++            ty::tls::with(|tcx| {
++                let annotation = &*tcx.arena.alloc(annotation);
++                let annotated = &*tcx.arena.alloc(annotated);
++                let key = (invoc_id, annotation, annotated);
++
++                QueryProcMacroExpandCtx::enter(ecx, self.client, span, move || {
++                    tcx.attribute_macro_expansion(key).cloned()
+                 })
+-            },
+-        )
++            })
++        } else {
++            expand_attribute_macro(annotation, annotated, ecx, self.client, span)
++        }
+     }
+ }
+ 
+@@ -117,7 +118,7 @@ fn expand(
+                 let input = &*tcx.arena.alloc(input);
+                 let key: (LocalExpnId, &TokenStream) = (invoc_id, input);
+ 
+-                QueryDeriveExpandCtx::enter(ecx, self.client, move || {
++                QueryProcMacroExpandCtx::enter(ecx, self.client, span, move || {
+                     tcx.derive_macro_expansion(key).cloned()
+                 })
+             })
+@@ -163,6 +164,40 @@ fn expand(
+     }
+ }
+ 
++pub(super) fn provide_attribute_macro_expansion<'tcx>(
++    tcx: TyCtxt<'tcx>,
++    key: (LocalExpnId, &'tcx TokenStream, &'tcx TokenStream),
++) -> Result<&'tcx TokenStream, ErrorGuaranteed> {
++    let (invoc_id, annotation, annotated) = key;
++    let _ = tcx.crate_hash(invoc_id.expn_data().macro_def_id.unwrap().krate);
++
++    QueryProcMacroExpandCtx::with(|ecx, client, span| {
++        debug_assert_eq!(invoc_id, ecx.current_expansion.id);
++        expand_attribute_macro(annotation.clone(), annotated.clone(), ecx, client, span)
++            .map(|ts| &*tcx.arena.alloc(ts))
++    })
++}
++
++fn expand_attribute_macro(
++    annotation: TokenStream,
++    annotated: TokenStream,
++    ecx: &mut ExtCtxt<'_>,
++    client: pm::bridge::client::Client,
++    span: Span,
++) -> Result<TokenStream, ErrorGuaranteed> {
++    let proc_macro_backtrace = ecx.ecfg.proc_macro_backtrace;
++    let strategy = exec_strategy(ecx.sess);
++    let server = proc_macro_server::Rustc::new(ecx);
++    client.run2(&strategy, server, annotation, annotated, proc_macro_backtrace).map_err(|e| {
++        ecx.dcx().emit_err(diagnostics::CustomAttributePanicked {
++            span,
++            message: e
++                .into_string()
++                .map(|message| diagnostics::CustomAttributePanickedHelp { message }),
++        })
++    })
++}
++
+ /// Provide a query for computing the output of a derive macro.
+ pub(super) fn provide_derive_macro_expansion<'tcx>(
+     tcx: TyCtxt<'tcx>,
+@@ -173,7 +208,7 @@ pub(super) fn provide_derive_macro_expansion<'tcx>(
+     // Make sure that we invalidate the query when the crate defining the proc macro changes
+     let _ = tcx.crate_hash(invoc_id.expn_data().macro_def_id.unwrap().krate);
+ 
+-    QueryDeriveExpandCtx::with(|ecx, client| {
++    QueryProcMacroExpandCtx::with(|ecx, client, _span| {
+         expand_derive_macro(invoc_id, input.clone(), ecx, client).map(|ts| &*tcx.arena.alloc(ts))
+     })
+ }
+@@ -216,32 +251,33 @@ fn expand_derive_macro(
+     }
+ }
+ 
+-/// Stores the context necessary to expand a derive proc macro via a query.
+-struct QueryDeriveExpandCtx {
++/// Stores the context necessary to expand a proc macro via a query.
++struct QueryProcMacroExpandCtx {
+     /// Type-erased version of `&mut ExtCtxt`
+     expansion_ctx: *mut (),
+-    client: DeriveClient,
++    client: pm::bridge::client::Client,
++    span: Span,
+ }
+ 
+-impl QueryDeriveExpandCtx {
++impl QueryProcMacroExpandCtx {
+     /// Store the extension context and the client into the thread local value.
+     /// It will be accessible via the `with` method while `f` is active.
+-    fn enter<F, R>(ecx: &mut ExtCtxt<'_>, client: DeriveClient, f: F) -> R
++    fn enter<F, R>(ecx: &mut ExtCtxt<'_>, client: pm::bridge::client::Client, span: Span, f: F) -> R
+     where
+         F: FnOnce() -> R,
+     {
+         // We need erasure to get rid of the lifetime
+-        let ctx = Self { expansion_ctx: ecx as *mut _ as *mut (), client };
+-        DERIVE_EXPAND_CTX.set(&ctx, f)
++        let ctx = Self { expansion_ctx: ecx as *mut _ as *mut (), client, span };
++        PROC_MACRO_EXPAND_CTX.set(&ctx, f)
+     }
+ 
+-    /// Accesses the thread local value of the derive expansion context.
++    /// Accesses the thread local value of the proc-macro expansion context.
+     /// Must be called while the `enter` function is active.
+     fn with<F, R>(f: F) -> R
+     where
+-        F: for<'a, 'b> FnOnce(&'b mut ExtCtxt<'a>, DeriveClient) -> R,
++        F: for<'a, 'b> FnOnce(&'b mut ExtCtxt<'a>, pm::bridge::client::Client, Span) -> R,
+     {
+-        DERIVE_EXPAND_CTX.with(|ctx| {
++        PROC_MACRO_EXPAND_CTX.with(|ctx| {
+             let ectx = {
+                 let casted = ctx.expansion_ctx.cast::<ExtCtxt<'_>>();
+                 // SAFETY: We can only get the value from `with` while the `enter` function
+@@ -252,11 +288,11 @@ fn with<F, R>(f: F) -> R
+                 unsafe { casted.as_mut().unwrap() }
+             };
+ 
+-            f(ectx, ctx.client)
++            f(ectx, ctx.client, ctx.span)
+         })
+     }
+ }
+ 
+-// When we invoke a query to expand a derive proc macro, we need to provide it with the expansion
+-// context and derive Client. We do that using a thread-local.
+-scoped_tls::scoped_thread_local!(static DERIVE_EXPAND_CTX: QueryDeriveExpandCtx);
++// When we invoke a query to expand a proc macro, we need to provide it with the expansion
++// context and Client. We do that using a thread-local.
++scoped_tls::scoped_thread_local!(static PROC_MACRO_EXPAND_CTX: QueryProcMacroExpandCtx);
+diff --git a/compiler/rustc_middle/src/queries.rs b/compiler/rustc_middle/src/queries.rs
+index db72ac6fe46333796d3ac113c85dff1768121045..2da6cfdd361ac99a3fecb5c32ed80b1e86129b3b 100644
+--- a/compiler/rustc_middle/src/queries.rs
++++ b/compiler/rustc_middle/src/queries.rs
+@@ -135,6 +135,13 @@
+ // Queries without a custom `handle_cycle_error_fn` implementation will raise a
+ // fatal error on query cycles instead.
+ rustc_queries! {
++    query attribute_macro_expansion(key: (LocalExpnId, &'tcx TokenStream, &'tcx TokenStream))
++        -> Result<&'tcx TokenStream, ErrorGuaranteed>
++    {
++        desc { "expanding an attribute (proc) macro" }
++        cache_on_disk
++    }
++
+     /// Caches the expansion of a derive proc macro, e.g. `#[derive(Serialize)]`.
+     /// The key is:
+     /// - A unique key corresponding to the invocation of a macro.
+diff --git a/compiler/rustc_middle/src/query/keys.rs b/compiler/rustc_middle/src/query/keys.rs
+index bedd1e8e4475e7037e6255555f29c0cd6b976e1e..8165d03c4b2cebb8e09e744167b4bb6b58ad98ea 100644
+--- a/compiler/rustc_middle/src/query/keys.rs
++++ b/compiler/rustc_middle/src/query/keys.rs
+@@ -407,6 +407,12 @@ fn default_span(&self, _tcx: TyCtxt<'_>) -> Span {
+     }
+ }
+ 
++impl<'tcx> QueryKey for (LocalExpnId, &'tcx TokenStream, &'tcx TokenStream) {
++    fn default_span(&self, _tcx: TyCtxt<'_>) -> Span {
++        self.0.expn_data().call_site
++    }
++}
++
+ impl<'tcx> QueryKey for (ValidityRequirement, ty::PseudoCanonicalInput<'tcx, Ty<'tcx>>) {
+     // Just forward to `Ty<'tcx>`
+ 
+diff --git a/compiler/rustc_session/src/options.rs b/compiler/rustc_session/src/options.rs
+index cd8e88505fac6137ac074607841b690a8760ec46..964cc7206f42230ef7048301ed6c9a6f327bbde6 100644
+--- a/compiler/rustc_session/src/options.rs
++++ b/compiler/rustc_session/src/options.rs
+@@ -2425,7 +2425,7 @@ pub(crate) fn parse_rust_version(slot: &mut Option<RustcVersion>, v: Option<&str
+     build_sdylib_interface: bool = (false, parse_bool, [UNTRACKED],
+         "whether the stable interface is being built"),
+     cache_proc_macros: bool = (false, parse_bool, [TRACKED],
+-        "cache the results of derive proc macro invocations (potentially unsound!) (default: no"),
++        "cache the results of derive and attribute proc macro invocations (potentially unsound!) (default: no"),
+     cf_protection: CFProtection = (CFProtection::None, parse_cfprotection, [TRACKED],
+         "instrument control-flow architecture protection"),
+     check_cfg_all_expected: bool = (false, parse_bool, [UNTRACKED],
+diff --git a/src/doc/unstable-book/src/compiler-flags/cache-proc-macros.md b/src/doc/unstable-book/src/compiler-flags/cache-proc-macros.md
+index eefaf9ca2f1bbfd6b0671b3ec648b76ad21da88c..d40cf89aacdac11b4c169d81800fff516357065a 100644
+--- a/src/doc/unstable-book/src/compiler-flags/cache-proc-macros.md
++++ b/src/doc/unstable-book/src/compiler-flags/cache-proc-macros.md
+@@ -6,4 +6,4 @@ The tracking issue for this feature is: [#151364]
+ 
+ ------------------------
+ 
+-This option instructs `rustc` to cache (derive) proc-macro invocations using the incremental system. Note that the compiler does not currently check whether the proc-macro is actually "cacheable" or not. If you use this flag when compiling a crate that uses non-pure proc-macros, it can result in stale expansions being compiled.
++This option instructs `rustc` to cache derive and attribute proc-macro invocations using the incremental system. Note that the compiler does not currently check whether the proc-macro is actually "cacheable" or not. If you use this flag when compiling a crate that uses non-pure proc-macros, it can result in stale expansions being compiled.
+diff --git a/tests/incremental/attribute_macro_expansion/auxiliary/attribute_body.rs b/tests/incremental/attribute_macro_expansion/auxiliary/attribute_body.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..37ad6a2fdfdd360e094ca10663bea4562a0108d0
+--- /dev/null
++++ b/tests/incremental/attribute_macro_expansion/auxiliary/attribute_body.rs
+@@ -0,0 +1,18 @@
++extern crate proc_macro;
++
++use proc_macro::{Delimiter, Group, TokenStream, TokenTree};
++
++#[proc_macro_attribute]
++pub fn body(annotation: TokenStream, annotated: TokenStream) -> TokenStream {
++    annotated
++        .into_iter()
++        .map(|token| match token {
++            TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
++                let mut replacement = Group::new(Delimiter::Brace, annotation.clone());
++                replacement.set_span(group.span());
++                TokenTree::Group(replacement)
++            }
++            other => other,
++        })
++        .collect()
++}
+diff --git a/tests/incremental/attribute_macro_expansion/proc_macro_unchanged.rs b/tests/incremental/attribute_macro_expansion/proc_macro_unchanged.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..317dcd90bf761b54c446dfc7832d8214fb45021c
+--- /dev/null
++++ b/tests/incremental/attribute_macro_expansion/proc_macro_unchanged.rs
+@@ -0,0 +1,41 @@
++//@ proc-macro:attribute_body.rs
++//@ revisions:rpass1 rpass2
++//@ compile-flags: -Zquery-dep-graph -Zcache-proc-macros
++//@ ignore-backends: gcc
++
++#![feature(rustc_attrs)]
++
++extern crate attribute_body;
++
++mod left {
++    const VALUE: u32 = 10;
++
++    #[rustc_clean(cfg = "rpass2", loaded_from_disk = "attribute_macro_expansion")]
++    #[attribute_body::body(VALUE)]
++    pub fn value() -> u32 {
++        0
++    }
++}
++
++mod right {
++    const VALUE: u32 = 20;
++
++    #[rustc_clean(cfg = "rpass2", loaded_from_disk = "attribute_macro_expansion")]
++    #[attribute_body::body(VALUE)]
++    pub fn value() -> u32 {
++        0
++    }
++}
++
++#[rustc_clean(cfg = "rpass2", loaded_from_disk = "attribute_macro_expansion")]
++#[attribute_body::body(1)]
++#[attribute_body::body(2)]
++pub fn ordered() -> u32 {
++    0
++}
++
++fn main() {
++    assert_eq!(left::value(), 10);
++    assert_eq!(right::value(), 20);
++    assert_eq!(ordered(), 2);
++}
+diff --git a/tests/run-make/attribute-macro-cache/attribute.rs b/tests/run-make/attribute-macro-cache/attribute.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..8167ffc4d9dc62635f2599338b610a37a24d7ed5
+--- /dev/null
++++ b/tests/run-make/attribute-macro-cache/attribute.rs
+@@ -0,0 +1,59 @@
++#![feature(proc_macro_diagnostic)]
++
++extern crate proc_macro;
++
++use proc_macro::{Delimiter, Group, TokenStream, TokenTree};
++
++#[proc_macro_derive(Answer)]
++pub fn answer(input: TokenStream) -> TokenStream {
++    let name = input
++        .into_iter()
++        .skip_while(
++            |token| !matches!(token, TokenTree::Ident(ident) if ident.to_string() == "struct"),
++        )
++        .nth(1)
++        .unwrap();
++    format!("impl {name} {{ fn answer() -> u32 {{ 42 }} }}").parse().unwrap()
++}
++
++#[proc_macro_attribute]
++pub fn identity(_annotation: TokenStream, annotated: TokenStream) -> TokenStream {
++    annotated
++}
++
++#[proc_macro_attribute]
++pub fn body(annotation: TokenStream, annotated: TokenStream) -> TokenStream {
++    annotated
++        .into_iter()
++        .map(|token| match token {
++            TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
++                let mut replacement = Group::new(Delimiter::Brace, annotation.clone());
++                replacement.set_span(group.span());
++                TokenTree::Group(replacement)
++            }
++            other => other,
++        })
++        .collect()
++}
++
++#[proc_macro_attribute]
++pub fn version(_annotation: TokenStream, annotated: TokenStream) -> TokenStream {
++    let value = if cfg!(version_two) { "2" } else { "1" };
++    body(value.parse().unwrap(), annotated)
++}
++
++#[proc_macro_attribute]
++pub fn warning(annotation: TokenStream, annotated: TokenStream) -> TokenStream {
++    annotation.into_iter().next().unwrap().span().warning("attribute cache warning").emit();
++    annotated
++}
++
++#[proc_macro_attribute]
++pub fn panicking(_annotation: TokenStream, _annotated: TokenStream) -> TokenStream {
++    panic!("attribute cache panic");
++}
++
++#[proc_macro_attribute]
++pub fn invalid(_annotation: TokenStream, _annotated: TokenStream) -> TokenStream {
++    "fn".parse().unwrap()
++}
+diff --git a/tests/run-make/attribute-macro-cache/main.rs b/tests/run-make/attribute-macro-cache/main.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..0e217e17e2707f94b930549de2f8cfefd6cda851
+--- /dev/null
++++ b/tests/run-make/attribute-macro-cache/main.rs
+@@ -0,0 +1,63 @@
++extern crate attribute;
++
++#[attribute::identity]
++#[derive(attribute::Answer)]
++struct AttributeThenDerive;
++
++#[derive(attribute::Answer)]
++#[attribute::identity]
++struct DeriveThenAttribute;
++
++#[attribute::body(ANNOTATION_VALUE)]
++fn annotation() -> u32 {
++    0
++}
++
++#[attribute::identity]
++fn item() -> u32 {
++    ITEM_VALUE
++}
++
++#[attribute::version]
++fn version() -> u32 {
++    0
++}
++
++mod left {
++    const VALUE: u32 = 10;
++
++    #[attribute::body(VALUE)]
++    pub fn value() -> u32 {
++        0
++    }
++}
++
++mod right {
++    const VALUE: u32 = 20;
++
++    #[attribute::body(VALUE)]
++    pub fn value() -> u32 {
++        0
++    }
++}
++
++#[attribute::body(1)]
++#[attribute::body(2)]
++fn ordered() -> u32 {
++    0
++}
++
++#[attribute::warning(warning_site)]
++fn warned() {}
++
++fn main() {
++    assert_eq!(AttributeThenDerive::answer(), 42);
++    assert_eq!(DeriveThenAttribute::answer(), 42);
++    assert_eq!(annotation(), ANNOTATION_VALUE);
++    assert_eq!(item(), ITEM_VALUE);
++    assert_eq!(version(), MACRO_VERSION);
++    assert_eq!(left::value(), 10);
++    assert_eq!(right::value(), 20);
++    assert_eq!(ordered(), 2);
++    warned();
++}
+diff --git a/tests/run-make/attribute-macro-cache/rmake.rs b/tests/run-make/attribute-macro-cache/rmake.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..7c98866ef819ac6808f58095edcde6d95ad2cb6c
+--- /dev/null
++++ b/tests/run-make/attribute-macro-cache/rmake.rs
+@@ -0,0 +1,118 @@
++//@ ignore-cross-compile
++//@ needs-crate-type: proc-macro
++//@ needs-target-std
++
++use run_make_support::{rfs, run, rustc, serde_json};
++use serde_json::Value;
++
++fn compile(
++    source: &str,
++    strategy: &str,
++    incremental: Option<&str>,
++    cache: bool,
++    fail: bool,
++) -> Vec<Value> {
++    rfs::write("main.rs", source);
++    let mut command = rustc();
++    command
++        .input("main.rs")
++        .edition("2021")
++        .arg("--extern=attribute")
++        .arg("-Ldependency=.")
++        .arg(format!("-Zproc-macro-execution-strategy={strategy}"))
++        .arg(format!("-Zcache-proc-macros={cache}"))
++        .error_format("json");
++    if let Some(directory) = incremental {
++        command.incremental(directory).arg("-Zincremental-verify-ich");
++    }
++    let output = if fail { command.run_fail() } else { command.run() };
++    output.assert_stderr_not_contains("internal compiler error");
++    if !fail {
++        run("main");
++    }
++    output
++        .stderr_utf8()
++        .lines()
++        .filter_map(|line| serde_json::from_str(line).ok())
++        .filter(|value: &Value| {
++            value["$message_type"] == "diagnostic" && value["level"] != "failure-note"
++        })
++        .map(|mut value| {
++            value.as_object_mut().unwrap().remove("rendered");
++            value
++        })
++        .collect()
++}
++
++fn build_macro(version_two: bool) {
++    let mut command = rustc();
++    command.input("attribute.rs").crate_type("proc-macro").edition("2021");
++    if version_two {
++        command.cfg("version_two");
++    }
++    command.run();
++}
++
++fn main() {
++    let template = rfs::read_to_string("main.rs");
++    for strategy in ["same-thread", "cross-thread"] {
++        let directory = format!("incremental-{strategy}");
++        build_macro(false);
++        let mut macro_version = 1;
++        for (annotation, item, version) in [
++            (11, 31, 1),
++            (11, 31, 1),
++            (12, 31, 1),
++            (12, 31, 1),
++            (12, 32, 1),
++            (12, 32, 2),
++            (12, 32, 2),
++        ] {
++            if version != macro_version {
++                build_macro(true);
++                macro_version = version;
++            }
++            let source = template
++                .replace("ANNOTATION_VALUE", &annotation.to_string())
++                .replace("ITEM_VALUE", &item.to_string())
++                .replace("MACRO_VERSION", &version.to_string());
++            let cached = compile(&source, strategy, Some(&directory), true, false);
++            let uncached = compile(&source, strategy, None, false, false);
++            assert_eq!(cached, uncached);
++            let warnings: Vec<_> = cached
++                .iter()
++                .filter(|value| value["message"] == "attribute cache warning")
++                .collect();
++            assert_eq!(warnings.len(), 1);
++            assert!(warnings[0]["spans"].as_array().unwrap().iter().any(|span| {
++                span["text"]
++                    .as_array()
++                    .unwrap()
++                    .iter()
++                    .any(|line| line["text"].as_str().unwrap().contains("warning_site"))
++            }));
++        }
++
++        let source = template
++            .replace("ANNOTATION_VALUE", "12")
++            .replace("ITEM_VALUE", "32")
++            .replace("MACRO_VERSION", "2");
++        let expected = compile(&source, strategy, None, false, false);
++        assert_eq!(compile(&source, strategy, None, true, false), expected);
++        assert_eq!(compile(&source, strategy, Some(&directory), false, false), expected);
++
++        for (attribute, error) in
++            [("panicking", "custom attribute panicked"), ("invalid", "expected identifier")]
++        {
++            let source = format!(
++                "extern crate attribute;\n#[attribute::{attribute}]\nfn broken() {{}}\nfn main() {{}}\n"
++            );
++            let expected = compile(&source, strategy, None, false, true);
++            assert!(
++                expected.iter().any(|value| { value["message"].as_str().unwrap().contains(error) })
++            );
++            assert_eq!(compile(&source, strategy, Some(&directory), true, true), expected);
++            assert_eq!(compile(&source, strategy, Some(&directory), true, true), expected);
++        }
++    }
++}

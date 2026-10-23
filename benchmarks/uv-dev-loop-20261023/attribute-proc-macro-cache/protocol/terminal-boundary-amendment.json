@@ -1,0 +1,51 @@
+{
+  "change": "After final untimed restoration/cleanup, record terminal host activity as an observation without a CPU-quiescence acceptance condition. Keep terminal source/Cargo/runtime/output/restoration/parking validity requirements.",
+  "closed_replacement_policy": {
+    "bytes": 4721,
+    "mode": 384,
+    "path": "${WORKSPACE}/work/attribute-proc-macro-cache-measurement-preparation-20261023/executions/native-test-build-bounded-policy-stop-01.json",
+    "sha256": "1b0553ef950b0d91c15e25086ea0eff2f44904ad62895b90cf1beb1c31eeb349"
+  },
+  "created_utc": "2026-10-23T13:43:24.110840+00:00",
+  "data_handling": "All previous native_test_build attempts remain invalid and excluded in full, including both 16-record attempts. Their effect values remain unread. Collect two fresh complete 8-pair blocks; no prior sample is reclassified or retained.",
+  "execution_authorized": false,
+  "native_test_build_effects_read": false,
+  "original_plan": {
+    "bytes": 7389,
+    "mode": 436,
+    "path": "${WORKSPACE}/work/attribute-proc-macro-cache-measurement-plan-20261023.json",
+    "sha256": "534b5f03cb22c3c46f35cb73542edce48326164ccc6523b70291629ab3b23473"
+  },
+  "original_runner": {
+    "bytes": 21493,
+    "mode": 436,
+    "path": "${WORKSPACE}/work/attribute-proc-macro-cache-measurement-preparation-20261023/source-proposal-05/measure.py",
+    "sha256": "223455fa985ee9e636da6c4afe39305ea45268f22958a58bf1f2d9dccd42684e"
+  },
+  "reason": "Two whole native test-build attempts completed all 16 sample records and every per-command quiet check, then failed solely at a terminal quiet check after untimed restoration/cleanup. Host activity at that later point is outside the measured interval. Correct that boundary prospectively rather than repeatedly rejecting completed timing windows for later activity.",
+  "required_before_execution": [
+    "Exact small collector/analyzer diff and proof that measured/statistical code is unchanged",
+    "Focused checks that nonquiet measured boundaries and restoration failures still reject",
+    "Independent review",
+    "Fresh exact source/input/output-bound authorities"
+  ],
+  "retained_strict_checks": [
+    "Native entry quiet admission",
+    "Quiet check immediately before each measured command",
+    "Quiet check after each measured command",
+    "Exact measured commands and timing boundaries",
+    "Runtime, source, output and diagnostic validation",
+    "All restoration/convergence/parking requirements",
+    "Full-attempt rejection for any retained guard failure"
+  ],
+  "schema": 1,
+  "scope": "Fresh remaining native_test_build blocks only under separately reviewed runner/analyzer and new exact authorities. Existing instruction confirmations and native_check qualification are unchanged.",
+  "statistics_unchanged": [
+    "Original balanced pair orders and bootstrap seeds2026102304/2026102305",
+    "16 equal-weight pairs for the native endpoint and pooled seed2026102308",
+    "Original native regression blocker",
+    "Original wall-time claim gate",
+    "No effect-based exclusions, extensions or optional stopping"
+  ],
+  "status": "policy-approved-implementation-review-required"
+}

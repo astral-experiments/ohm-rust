@@ -1,0 +1,73 @@
+{
+  "status": "passed",
+  "completed_at": "2026-10-23T10:32:58.363871+00:00",
+  "verified_at": "2026-10-23T10:36:06.686389+00:00",
+  "test_receipt_sha256": "532e4bca6f2e77865c0b8f1684e63598dc34206f71071df0f070d789e205db17",
+  "selected_tests": 7,
+  "passed": 7,
+  "failed": 0,
+  "ignored": 0,
+  "suites": [
+    {
+      "suite": "incremental",
+      "status": "ok",
+      "passed": 2,
+      "failed": 0,
+      "ignored": 0,
+      "measured": 0,
+      "filtered_out": 203,
+      "line": "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 203 filtered out; finished in 1.36s"
+    },
+    {
+      "suite": "run-make",
+      "status": "ok",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "measured": 0,
+      "filtered_out": 544,
+      "line": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 544 filtered out; finished in 15.01s"
+    },
+    {
+      "suite": "ui",
+      "status": "ok",
+      "passed": 4,
+      "failed": 0,
+      "ignored": 0,
+      "measured": 0,
+      "filtered_out": 22062,
+      "line": "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 22062 filtered out; finished in 377.16ms"
+    }
+  ],
+  "selectors": [
+    "tests/incremental/attribute_macro_expansion/proc_macro_unchanged.rs",
+    "tests/run-make/attribute-macro-cache",
+    "tests/incremental/derive_macro_expansion/proc_macro_unchanged.rs",
+    "tests/ui/proc-macro/attr-args.rs",
+    "tests/ui/proc-macro/attribute-spans-preserved.rs",
+    "tests/ui/proc-macro/custom-attr-panic.rs",
+    "tests/ui/proc-macro/attribute-after-derive.rs"
+  ],
+  "source_tree": "0ef7385c48f753cb09c39d67aa4b8bccdb3f95c3",
+  "source_head": "6d4a7ee3200c5311112d433cb9d1da4a2630a66f",
+  "source_patch_sha256": "27df1924be9430af3bf7f1e8275bac4bc5874b13ab7a770bedbd5d3c08aa0f2e",
+  "source_unchanged_after_tests": true,
+  "archives_unchanged_after_tests": {
+    "baseline": {
+      "identity_sha256": "14857ef8e395293a5c8c5aaa3243149200ca7d292c5e143e7108510723438627",
+      "file_manifest_sha256": "8f404c52b2ccbd1292217bf05cf54311a8eaec877dbb0fdac5e954d8b4690720",
+      "files_rehashed": 76
+    },
+    "candidate": {
+      "identity_sha256": "c156a9239734a2e942b97ca6ae13a744746c1ec3251f0bb69f481ad8dc3a038b",
+      "file_manifest_sha256": "ed27618f94f84e917e5c6df978bf594b0189958837ad17d249861f81839c8057",
+      "files_rehashed": 76
+    }
+  },
+  "limits": [
+    "Focused Linux/x86_64 stage1 checks, not the entire Rust test suite.",
+    "Canonical run-make setup additionally built rustdoc support after runtime archives were frozen.",
+    "Full-tree formatter reported unrelated baseline differences; candidate-file formatting and diff checks passed in the author packet.",
+    "No uv benchmark or performance qualification performed by this build/test task."
+  ]
+}

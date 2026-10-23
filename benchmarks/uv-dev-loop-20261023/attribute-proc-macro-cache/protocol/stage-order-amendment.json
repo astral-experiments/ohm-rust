@@ -1,0 +1,82 @@
+{
+  "change": "Execution order only: run instruction_confirmation_2 next; then finish native_check block1 and both native_test_build blocks before final qualification.",
+  "created_utc": "2026-10-23T12:38:03.657835+00:00",
+  "failed_attempt_treatment": "Retain all files unchanged and leave all failed-attempt effects unread; exclude each complete failed attempt.",
+  "failed_attempts": [
+    {
+      "completed_samples": 9,
+      "terminal": {
+        "bytes": 73763,
+        "mode": 384,
+        "path": "${WORKSPACE}/work/attribute-proc-macro-cache-measurement-preparation-20261023/executions/native-check-block-1-01/terminal.json",
+        "sha256": "08223c7ff10aaf46bb7efd17f00865235c32d3db9e13b45723f0e6921d737fab"
+      }
+    },
+    {
+      "completed_samples": 4,
+      "stop_receipt": {
+        "bytes": 1885,
+        "mode": 384,
+        "path": "${WORKSPACE}/work/attribute-proc-macro-cache-measurement-preparation-20261023/executions/native-check-block-1-02-stop.json",
+        "sha256": "237f3cd72466963f768b41b72ff5be3dc42eb5135eb5dd637c1f6107afafa357"
+      },
+      "terminal": {
+        "bytes": 39943,
+        "mode": 384,
+        "path": "${WORKSPACE}/work/attribute-proc-macro-cache-measurement-preparation-20261023/executions/native-check-block-1-02/terminal.json",
+        "sha256": "67bbcba2f9dfc7a56e6d25d66567e5af26b7a3450f908fff9af23afc523e7288"
+      }
+    }
+  ],
+  "inputs": {
+    "bytes": 385539,
+    "mode": 384,
+    "path": "${WORKSPACE}/work/attribute-proc-macro-cache-measurement-preparation-20261023/input-binding-01/inputs.json",
+    "sha256": "f020670c97c867bd2123dbd3b20f2cc83a51e867146919d5d43538d8bfc4be3c"
+  },
+  "native_effects_read": false,
+  "original_plan": {
+    "bytes": 7389,
+    "mode": 436,
+    "path": "${WORKSPACE}/work/attribute-proc-macro-cache-measurement-plan-20261023.json",
+    "sha256": "534b5f03cb22c3c46f35cb73542edce48326164ccc6523b70291629ab3b23473"
+  },
+  "preserved_valid_block0": {
+    "bytes": 111616,
+    "mode": 384,
+    "path": "${WORKSPACE}/work/attribute-proc-macro-cache-measurement-preparation-20261023/executions/native-check-block-0-01/terminal.json",
+    "sha256": "40a1acb3fb4177a7eb8a3e8e64945bbea8a075336592edf2c3d2c70cd6dc7fd5"
+  },
+  "reason": "Two complete native-check block1 attempts stopped at the unchanged quiet-host guard on automatic host maintenance. No native effects have been read. Move the already planned second instruction confirmation ahead of remaining native work so wall-time infrastructure does not hold up the primary instruction result.",
+  "schema": 1,
+  "second_confirmation": {
+    "fresh_output": "${WORKSPACE}/work/attribute-proc-macro-cache-measurement-preparation-20261023/executions/instruction-confirmation-2-01",
+    "order": [
+      "BA",
+      "AB",
+      "AB",
+      "BA",
+      "AB",
+      "BA",
+      "BA",
+      "AB"
+    ],
+    "pairs": 8,
+    "seed": 2026102306
+  },
+  "source": {
+    "bytes": 21493,
+    "mode": 436,
+    "path": "${WORKSPACE}/work/attribute-proc-macro-cache-measurement-preparation-20261023/source-proposal-05/measure.py",
+    "sha256": "223455fa985ee9e636da6c4afe39305ea45268f22958a58bf1f2d9dccd42684e"
+  },
+  "status": "approved",
+  "unchanged": [
+    "All sample counts, pair orders and seeds",
+    "Both instruction confirmation gates: all 8 wins and 99% paired-bootstrap lower bound greater than 3%",
+    "All native regression blockers and requirements for any wall-time gain claim",
+    "Source, inputs, runner, analyzer, output/runtime/source guards and restoration",
+    "Whole-attempt infrastructure exclusion; no effect-based exclusions or extensions",
+    "No PR qualification before remaining native endpoints are evaluated"
+  ]
+}

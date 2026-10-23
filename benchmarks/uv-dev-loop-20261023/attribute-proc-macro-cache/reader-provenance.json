@@ -1,0 +1,40 @@
+{
+  "functions": {
+    "exact_sign_test": {
+      "exact_function_source_sha256": "e5da811bd10fa8c1f27ad8b6bd8983c4b9fdda9a99fa9016f9c937daf4885b0b",
+      "original_module": {
+        "bytes": 26221,
+        "sha256": "50d0cb2d4f595ccfa72d463fedb3ff4dadf9dfc1446c749d482d9ede8418c7cf"
+      }
+    },
+    "final_ir": {
+      "exact_function_source_sha256": "eae0304b3107d0448c2c449675f5590e06dfec5aff0f03ac4346a2d09f23e7e6",
+      "original_module": {
+        "bytes": 20630,
+        "sha256": "34fcc514b81750179bbd04acf9769ba1e8369b1a8e3254947617115c0e3000c8"
+      }
+    },
+    "paired_count_statistics": {
+      "exact_function_source_sha256": "f66fdd09e0bff92d2042ce08b92fd4dd65df4ae5bc80ba2fd2d0af4c695aeebb",
+      "original_module": {
+        "bytes": 26221,
+        "sha256": "50d0cb2d4f595ccfa72d463fedb3ff4dadf9dfc1446c749d482d9ede8418c7cf"
+      }
+    },
+    "paired_statistics": {
+      "exact_function_source_sha256": "f149c51954d78666f6cdd5d80303181dbf1c5b30630239081df9c40ae8b9d551",
+      "original_module": {
+        "bytes": 26221,
+        "sha256": "50d0cb2d4f595ccfa72d463fedb3ff4dadf9dfc1446c749d482d9ede8418c7cf"
+      }
+    },
+    "quantile": {
+      "exact_function_source_sha256": "84feed73e9f320a7f94bd0bf751bf4e96add9a1c6bcd3f3ae67d4dfd1a02aa03",
+      "original_module": {
+        "bytes": 26221,
+        "sha256": "50d0cb2d4f595ccfa72d463fedb3ff4dadf9dfc1446c749d482d9ede8418c7cf"
+      }
+    }
+  },
+  "scope": "Five function bodies are copied exactly. New CLI authenticates public members, labels, counts and original statistics; optional profiles replay the same numerical parser after declared textual sanitation. It does not reproduce private argv/environment/host/state/output checks."
+}

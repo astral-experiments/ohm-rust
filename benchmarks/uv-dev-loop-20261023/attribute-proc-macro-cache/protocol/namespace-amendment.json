@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "created_utc": "2026-10-23T11:00:00Z",
+  "status": "prospective_before_any_candidate_effect_measurement",
+  "original_plan": "work/attribute-proc-macro-cache-measurement-plan-20261023.json",
+  "original_plan_sha256": "534b5f03cb22c3c46f35cb73542edce48326164ccc6523b70291629ab3b23473",
+  "reason": "Cargo intentionally incorporates runtime-driver identity in the shared-context namespace. The candidate driver genuinely differs; matching launcher bytes/version and common top-level paths do not imply identical namespaces.",
+  "design_review": "work/attribute-proc-macro-cache-namespace-design-review-20261023/review.json",
+  "design_review_sha256": "8ab87281b0f2f52688c134de2adeb22c04251e0c7ab808306b28d558c657b4d0",
+  "observed_namespace_delta": "work/attribute-proc-macro-cache-measurement-preparation-20261023/preflight-01/namespace-delta.json",
+  "observed_namespace_delta_sha256": "8028b9c68fdd8cbd2592929103619a4c6d74e037a86968ea584b2b8d589be857",
+  "namespaces": {
+    "baseline": "v2-9b6e0357b2f639cc",
+    "candidate": "v2-ec2e7197a38703f5"
+  },
+  "supersedes": "Only the original plan's requirement that all complete cross-arm paths/argv/environment bytes be identical.",
+  "admission": [
+    "Keep identical task-owned top-level active roots and separate complete per-compiler state banks.",
+    "Bind each exact namespace and require it remain unchanged within its arm.",
+    "For cross-arm input comparison only, allow the enumerated literal namespace path-component substitution at observed path-bearing argument positions and OUT_DIR. Preserve every other byte, argument order, flag and environment entry; only the previously declared unusable CARGO_MAKEFLAGS omission remains allowed.",
+    "Execute original captured commands and environment values. Do not rewrite runtime/compiler identity, metadata, provenance checks or actual command paths.",
+    "Admit outputs only after narrow source-supported accounting of expected namespace/debug metadata differences and all other semantic/output checks. No blanket ELF, DWARF or metadata mask is authorized.",
+    "Retain raw captures, raw outputs, all comparisons and this amendment."
+  ],
+  "unchanged": [
+    "Discovery and confirmation sample counts/orders",
+    "All statistical estimators, seeds, confidence intervals, significance/effect thresholds and native regression blockers",
+    "Same source workload and equal-length BEFORE/AFTER edits",
+    "Full76-file runtime guards, including the differing driver",
+    "Actual BEFORE ordinary-compiler execution proof",
+    "Native pre/post/terminal quiet checks and whole-attempt failure rules",
+    "Source restoration and both-state convergence",
+    "Experimental purity limitations and matched-development-pair claim scope"
+  ],
+  "diagnostic_authority": "One successful candidate-only self-profile to establish actual tracing-attribute disk reuse is authorized within preflight. It is not a comparative effect measurement. Preserve native argv/env except declared self-profile flags and restore/converge afterward.",
+  "remaining": "Final concrete input freeze, output/semantic preflight, actual cache-hit proof and fixed discovery-stage authority remain required."
+}

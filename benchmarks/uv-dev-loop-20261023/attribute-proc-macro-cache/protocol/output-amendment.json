@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "created_utc": "2026-10-23T11:18:28.077550+00:00",
+  "status": "prospective_before_any_comparative_candidate_effect_measurement",
+  "decision": "Admit the concrete source, correctness and semantic output evidence for the fixed performance study, with strict per-arm output guards and explicit cross-arm metadata limits.",
+  "reason": "Compiler-specific shared-context namespaces change dependency metadata hashes. Requiring raw rmeta equality across those independently compiled dependency graphs is stronger than the intended correctness test. Focused source tests and actual generated-code/debug-info comparisons are concrete correctness evidence. Serialized metadata equivalence is not claimed.",
+  "references": {
+    "original_plan": {
+      "path": "work/attribute-proc-macro-cache-measurement-plan-20261023.json",
+      "sha256": "534b5f03cb22c3c46f35cb73542edce48326164ccc6523b70291629ab3b23473"
+    },
+    "namespace_amendment": {
+      "path": "work/attribute-proc-macro-cache-namespace-amendment-20261023.json",
+      "sha256": "beaf43b5dc6ed140d1f17832be9a43190f50230fa44867bf97dd407da5c7b1f5"
+    },
+    "matched_build_and_correctness": {
+      "path": "work/rustc-attribute-cache-build-preparation-20261023/handoff.json",
+      "sha256": "973562966829929543d1275839651e7b50aa4aba840cb635069a52a15398ab2c"
+    },
+    "output_accounting": {
+      "path": "work/attribute-proc-macro-cache-output-accounting-20261023/review.json",
+      "sha256": "95336269639f15e59eab72c471e1c605d47375d76e3b55f77192f03b27a60667"
+    },
+    "restoration_appendix": {
+      "path": "work/attribute-proc-macro-cache-output-accounting-restoration-20261023/review.json",
+      "sha256": "d6532607cba5dc9491e369dde940c3858acc9ffebbec33566d629ddbd22f5831"
+    },
+    "actual_attribute_cache_hit": {
+      "path": "work/attribute-proc-macro-cache-measurement-preparation-20261023/cache-hit-preflight-02/attribute-query-events.json",
+      "sha256": "ab3ee54341308d607d52bd47a9cd7b233bf38728f7de5c6df063bca2623c5f1b"
+    }
+  },
+  "supersedes": "Only the original correctness-preflight requirement to resolve every cross-arm serialized metadata byte difference before measurement. All input, source, runtime, restoration, diagnostics and statistical requirements remain.",
+  "evidence": [
+    "All seven focused compiler correctness tests pass, including attribute hit/invalidation/hygiene/diagnostics and existing derive-cache guards.",
+    "Actual uv tracing attribute query expn131 for skip_all on run loads from disk with no provider invocation.",
+    "All207 ordered native library archive object payloads are identical across arms.",
+    "Executable code, data, relocation and symbol payloads are exact. Complete decoded DWARF matches after only the two bound namespace path components; source/line/span/checksum records are preserved.",
+    "All four retained rmeta listings succeed with empty stderr. All listed items, fields and target modifiers match except117 dependency hashes and uv private/public hashes.",
+    "Per-arm rmeta hashes remain exactly stable between controlled AFTER and restored-original builds.",
+    "The new uvx-test alternate has exactly33 differing bytes: .rodata section-header sh_entsize8 versus0 and the32-byte GNU build-ID descriptor. All other bytes and program headers are exact."
+  ],
+  "measurement_output_guards": [
+    "Bind exact per-arm rmeta hashes; unexpected within-arm changes fail the attempt.",
+    "Bind exact per-arm executable hashes. For uvx-test only, accept the two newly authenticated concrete hashes; do not carry over any prior fixture allowance.",
+    "For rlib, preserve all207 ordered native object payloads and archive structure; allow only the actual source-defined per-invocation CGU filename substitutions reviewed in the accounting.",
+    "No broad ELF, DWARF or metadata masks; retain raw outputs and exact exception manifests.",
+    "Bind the fresh fixture registry-directory absence as None and require it remain absent, rather than assuming a directory must exist."
+  ],
+  "metadata_limit": {
+    "known_hash_occurrences_per_file": 119,
+    "check_unclassified_changed_bytes_after_known_hash_substitution": 8689,
+    "test_build": "A one-byte length difference and remaining differences including shifted encodings remain unclassified.",
+    "full_metadata_equivalence_established": false,
+    "instruction": "Retain and report this limit. Do not describe all metadata bytes as equivalent or fully explained."
+  },
+  "unchanged": "Four discovery pairs and all confirmation/native sample orders, counts, estimators, seeds, confidence thresholds, failure/retry policies and regression blockers are unchanged. No A/B effect has been observed or produced.",
+  "remaining": "Concrete final harness/input freeze and stage-specific run authority."
+}

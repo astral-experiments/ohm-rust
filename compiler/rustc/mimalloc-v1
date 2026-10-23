@@ -1,1 +1,0 @@
-Native mimalloc 3.5.1 for Linux GNU rustc, selected independently of jemalloc in other tools.

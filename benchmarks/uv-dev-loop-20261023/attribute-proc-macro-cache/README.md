@@ -1,0 +1,13 @@
+# Attribute-macro cache: instruction-qualified draft evidence
+
+Two separate predeclared eight-pair confirmations reduce **whole isolated ordinary uv-library rustc instructions** by **13.8461%** (99% CI 12.9474–14.4542%) and **13.8703%** (99% CI 12.9035–14.5700%). Each has eight wins; exact two-sided sign p = 0.0078125. Compiler children are excluded. These are matched development compilers, not the distributed PGO/BOLT SDK.
+
+The original full protocol is incomplete. Native check is inconclusive. Native test-build has no valid complete cohort and its regression check remains pending; every failed attempt is excluded and its effects unread. No whole-Cargo instruction, wall-time improvement, equivalence or regression-exclusion claim is made. The publication-only availability amendment was recorded **after** the primary confirmations and known native-check outcome; it does not change thresholds, samples or exclusions.
+
+Run `python3 -I -B reproduce.py` with CPython 3.11 or later. This verifies the core manifest, all 32 exact final/self/stderr counts, both fixed schedules and the original 200000-draw bootstrap/sign gates. Confirmations remain separate; discovery is not pooled. Header summaries can differ from authoritative final/self/stderr totals by 0–2 instructions; all differences are retained. Optional sanitized full profiles can be checked with `--profiles profiles` when that extension is present.
+
+The five numerical reader/statistics function bodies are unchanged from the accepted local analysis. Public numerical replay is **not** a replay of private collection validity: original full argv/ordered environments, exec traces, host observations, file/alias identities, source restoration, exact output admissions and runtime manifests were independently checked privately. Their omitted records cannot be verified from this core. Original result documents correctly retain `performance_accepted: false`; `qualification.json` and the explicit later availability amendment describe only instruction-qualified draft publication.
+
+The experimental `-Zcache-proc-macros` purity restriction still applies. This change adds attribute expansion to the existing gated mechanism; it does not claim general environment/file/process input tracking for arbitrary procedural macros. Focused correctness covers seven selectors, not the full compiler suite.
+
+See REPRODUCTION.md for source, build, state and workload instructions; protocol/ contains the original plan and all material amendments. Plans are retained as dated records, including original full-qualification requirements that remain incomplete.
