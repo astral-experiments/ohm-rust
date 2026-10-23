@@ -30,6 +30,7 @@ use rustc_index::IndexVec;
 use rustc_middle::dep_graph::{DepKind, DepNode, WorkProduct, WorkProductId};
 use rustc_middle::hir::map::compute_hir_hash;
 use rustc_middle::ich::StableHashState;
+use rustc_middle::middle::resolve::ModChild;
 use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use rustc_middle::middle::dependency_format::Linkage;
 use rustc_middle::middle::exported_symbols::SymbolExportLevel;
@@ -1017,40 +1018,6 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         })
     }
 
-    /// Finish the private SVH at the boundary between the hashed root and the filename trailer.
-    fn finish_crate_hash(&mut self) -> Svh {
-        // By default the crate hash (SVH) is derived from the encoded metadata bytes. With
-        // `-Z metadata-crate-hash=no` we instead store the legacy HIR-based hash, which the
-        // `crate_hash` query computes directly without consulting `local_crate_hash`.
-        let hash = if self.tcx.sess.opts.unstable_opts.metadata_crate_hash {
-            self.opaque.flush();
-            Svh::new(Fingerprint::from_le_bytes(
-                self.metadata_hasher.lock().unwrap().finish_128().to_le_bytes(),
-            ))
-        } else {
-            self.tcx.crate_hash(LOCAL_CRATE)
-        };
-        self.tcx.untracked().local_crate_hash.set(hash).expect("local_crate_hash set twice");
-        hash
-    }
-
-    fn encode_unhashed_crate_root(&mut self) -> LazyValue<CrateRootUnhashed> {
-        // Indexed by dependency `CrateNum`, matching the numbering `encode_crate_deps` uses.
-        // Slot 0 (`LOCAL_CRATE`) is filler; this crate's own value is `extra_filename`.
-        let mut dep_extra_filenames = IndexVec::from_elem_n(String::new(), 1);
-        if !self.is_proc_macro {
-            for &cnum in self.tcx.crates(()).iter() {
-                let idx = dep_extra_filenames.push(self.tcx.extra_filename(cnum).to_owned());
-                assert_eq!(idx, cnum, "dep_extra_filenames must be indexed by CrateNum");
-            }
-        }
-
-        self.lazy(CrateRootUnhashed {
-            extra_filename: self.tcx.sess.opts.cg.extra_filename.clone(),
-            dep_extra_filenames,
-        })
-    }
-
     fn encode_crate_root<'h>(
         &mut self,
         hcx: &mut impl PublicApiHashState<'h>,
@@ -1243,7 +1210,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             lang_items,
             diagnostic_items,
             canonical_symbols,
-            fake_doc_items,
+                fake_doc_items,
             lang_items_missing,
             stripped_cfg_items,
             native_libraries,
@@ -1267,8 +1234,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             specialization_enabled_in: tcx.specialization_enabled_in(LOCAL_CRATE),
             public_api_hash_opt_enabled: hcx.enabled(),
         };
-        let (crate_root, public_hash) =
-            stat!("public hashes", || crate_root.into_crate_root(self, hcx));
+        let (crate_root, public_hash) = stat!("public hashes", || crate_root.into_crate_root(self, hcx));
 
         let root = stat!("final", || { self.lazy(crate_root) });
 
@@ -1338,20 +1304,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             eprint!("{s}");
         }
 
-        // Green marking stops at the first red edge. Record all fields that the prefix must
-        // preserve before the inputs whose bytes or source maps can be refreshed.
-        if M::HASH_PUBLIC_API
-            && tcx.dep_graph.is_fully_enabled()
-            && tcx.sess.opts.unstable_opts.metadata_crate_hash
-        {
-            let _ = tcx.ohm_metadata_input_hashes(());
-        }
-        track_metadata_source_files(tcx, source_files);
-        (
-            root,
-            unhashed,
-            CrateHashes { private_hash: hash, public_hash: public_hash.unwrap_or(hash) },
-        )
+        (root, unhashed, CrateHashes { private_hash: hash, public_hash: public_hash.unwrap_or(hash) })
     }
 }
 
@@ -2209,9 +2162,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             if let DefKind::Static { .. } = def_kind {
                 if !self.tcx.is_foreign_item(def_id) {
                     match self.tcx.eval_static_initializer(def_id) {
-                        Ok(data) => {
-                            record!(self.tables.eval_static_initializer[def_id] <- data, hcx)
-                        }
+                        Ok(data) => record!(self.tables.eval_static_initializer[def_id] <- data, hcx),
                         Err(err) => match err {
                             interpret::ErrorHandled::Reported(_, _) => {
                                 self.tcx.dcx().delayed_bug(format!(
@@ -2733,7 +2684,8 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             },
             |(this, _, expn_data_table, expn_hash_table), index, expn_data, hash| {
                 if let Some(index) = index.as_local() {
-                    this.with_record_mode(RecordMode::From(index.into()), |this| {
+                    this
+                        .with_record_mode(RecordMode::From(index.into()), |this| {
                         expn_data_table.set_some_hashed(
                             index,
                             this.lazy(expn_data.expect("local expn")),
@@ -2969,18 +2921,10 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         )
     }
 
-    fn encode_fake_doc_items<'h>(
-        &mut self,
-        hcx: &mut impl PublicApiHashState<'h>,
-    ) -> Hashed<LazyArray<DefIndex>> {
+    fn encode_fake_doc_items<'h>(&mut self, hcx: &mut impl PublicApiHashState<'h>) -> Hashed<LazyArray<DefIndex>> {
         empty_proc_macro!(self);
         let tcx = self.tcx;
-        hashed_lazy_array!(
-            self,
-            tcx.fake_doc_items(LOCAL_CRATE).iter().copied(),
-            hcx,
-            |id: DefId| id.index
-        )
+        hashed_lazy_array!(self, tcx.fake_doc_items(LOCAL_CRATE).iter().copied(), hcx, |id: DefId| id.index)
     }
 
     fn encode_diagnostic_items<'h>(
@@ -3667,19 +3611,30 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
         return;
     }
 
-    if tcx.sess.opts.jobs.frontend.is_some() {
-        // Prefetch some queries used by metadata encoding.
-        // This is not necessary for correctness, but is only done for performance reasons.
-        // It can be removed if it turns out to cause trouble or be detrimental to performance.
-        par_join(
-            || prefetch_mir(tcx),
-            || {
-                let _ = tcx.exported_non_generic_symbols(LOCAL_CRATE);
-                let _ = tcx.exported_generic_symbols(LOCAL_CRATE);
-            },
-        );
+    let encode = || encode_fresh_metadata(tcx, path, ref_path, dep_node);
+    if let Some(threads) = tcx.sess.opts.jobs.frontend {
+        let prefetch_exports = || {
+            let _ = tcx.exported_non_generic_symbols(LOCAL_CRATE);
+            let _ = tcx.exported_generic_symbols(LOCAL_CRATE);
+        };
+        if threads.get() > 1 && tcx.sess.opts.output_types.should_codegen() {
+            // Start encoding once MIR is ready. The encoder waits for exported symbols on demand.
+            let _timer = tcx.prof.verbose_generic_activity("metadata_export_prefetch_overlap");
+            par_join(
+                || {
+                    prefetch_mir(tcx);
+                    encode();
+                },
+                prefetch_exports,
+            );
+            return;
+        }
+        par_join(|| prefetch_mir(tcx), prefetch_exports);
     }
+    encode();
+}
 
+fn encode_fresh_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>, dep_node: DepNode) {
     let mut hashes = None;
 
     // Perform metadata encoding inside a task, so the dep-graph can check if any encoded
