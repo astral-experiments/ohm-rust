@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use run_make_support::{CompletedProcess, run, rustc};
+use run_make_support::{CompletedProcess, cmd, run, rustc};
 
 fn build(cache: Option<&str>, extra: &[&str]) -> CompletedProcess {
     let mut command = rustc();
@@ -31,6 +31,11 @@ fn entries(root: &str) -> Vec<PathBuf> {
 }
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("fifo") {
+        build(Some("cache"), &[]).assert_stderr_contains("ohm_thinlto_cache_miss");
+        return;
+    }
+
     rustc().input("dep.rs").crate_type("rlib").opt_level("3").run();
     build(None, &[]);
     let baseline = fs::read("main").unwrap();
@@ -38,6 +43,13 @@ fn main() {
     build(Some("cache"), &[]).assert_stderr_contains("ohm_thinlto_cache_hit");
     assert_eq!(baseline, fs::read("main").unwrap());
     run("main").assert_stdout_equals("42\n");
+
+    let entry = entries("cache").pop().unwrap();
+    fs::remove_file(&entry).unwrap();
+    cmd("mkfifo").arg(&entry).run();
+    cmd("timeout").arg("60").arg(std::env::current_exe().unwrap()).arg("fifo").run();
+    assert!(entry.is_file());
+    assert_eq!(baseline, fs::read("main").unwrap());
 
     for entry in entries("cache") {
         fs::write(entry, "corrupt").unwrap();
