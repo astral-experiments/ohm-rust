@@ -1,0 +1,29 @@
+{
+  "baseline_tree": "c2ff29766b923dd3d339443b20fd9bc0f6d539fc",
+  "build_scope": "Matched optimized SDK12-source developer builds, not shipped distribution compiler binaries.",
+  "byte_identical_shared_runtime_files": 73,
+  "candidate_patch_sha256": "a972c29795fc6b5aa3e639dc9b6b28d31a2cc9b769e6f0e66fba5d9d64417f04",
+  "cargo_commit": "fdd26156be98618e2e01a9e02703edac71b79a35",
+  "cargo_sha256": "75eff38f65a16abae0a7b9603fc4fa02c846a0b6cb60a72d08b68393849b914b",
+  "correctness": {
+    "baseline_candidate_diagnostics_and_positive_metadata_equal": true,
+    "external_real_path_cases": 32,
+    "incremental_revisions_passed": 5,
+    "large_16385_case_generator_executed": false,
+    "negative_family_cases": 3,
+    "new_unit_tests_passed": 2
+  },
+  "driver_sha256": {
+    "baseline": "9f761910ab2aed891dc400cc798964b17e44b94cdb1ff14ab49a820e1b6920b3",
+    "candidate": "783a4150d02602620f4eef14844de8df5b945f040515c374e798d75dba2439cc"
+  },
+  "measured_candidate_tree": "e8f15a7a03e3dffe2a62ff81daab727cd28162d5",
+  "measured_rust_blobs_sha256": {
+    "compiler/rustc_middle/src/ty/context.rs": "c515363f55f4996ad91d877258a0671dd27b3f18c097508780c44ba3911dba25",
+    "compiler/rustc_middle/src/ty/context/tests.rs": "6b16c9858876b59251ef1191036f0498086710dba7601f53dadc4e45370e52b6"
+  },
+  "recipe": "stage1 compiler plus freshly built matching std; opt3, ThinLTO, CGU1, debug1, no compiler-build incremental/PGO, debug assertions disabled; same physical source/build paths and pinned LLVM 23.1.1.",
+  "runtime_files_per_arm": 74,
+  "rust_commit": "f93a752e3de7404107ea5908d65c8832aee5625a",
+  "uv_commit": "3d82a6ad5a7eab8c68236553b7846517767c4b61"
+}

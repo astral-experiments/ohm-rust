@@ -1,0 +1,84 @@
+{
+  "collection": {
+    "compiler_build": "Common source/build paths and verified stage0/LLVM/optimized developer recipe for baseline and candidates. Keep exact compiler driver identities and all shared runtime file checks. Verify focused correctness tests.",
+    "contexts": "Compare executed argv and ordered environments using only verified compiler-specific namespace substitutions and the stale jobserver exclusion. Retain the actual SDK12 unit counts and output classes.",
+    "cpus": "Controller CPU8 and measured process CPUs0\u20137 with eight compiler threads. Separate all heavy builders from the measurement window.",
+    "edit": "Use the known equal-length comment fixture. Before every sample, warm on BEFORE with native Cargo and capture the exact ordinary library compiler invocation. Measure once on AFTER and restore original source/mode. Restore/converge each arm at block end.",
+    "state": "Fresh per-arm Cargo target/shared/package state at common physical paths. Reuse immutable locked dependency archives. Verify native invocation and freshness for the actual SDK12 command.",
+    "validity": "Require exit success, expected source/target/output kinds, complete raw final Ir matching self-cost sum and stderr, input/output context integrity, restoration and parked state. Record host observations without filtering count results. Preserve technical failures and correct the cause before fresh collection. Any technical failure ends the complete attempt before effects; replacements require a separate prospective decision. No automatic retry."
+  },
+  "comparisons": {
+    "lazy_worker_caches": {
+      "block_seeds": [
+        2026102381,
+        2026102382
+      ],
+      "candidate_tree": "e8f15a7a03e3dffe2a62ff81daab727cd28162d5",
+      "endpoint": "ordinary uv library rustc invocation captured from cargo -Zohm-defaults=yes check --locked --offline -j8",
+      "purpose": "Measure lazy allocation of only supertrait, clause-instantiation and function-signature caches; the other four cache paths and all lookup semantics are unchanged."
+    }
+  },
+  "design": {
+    "A": "matched SDK12 developer baseline",
+    "B": "one isolated candidate",
+    "block_orders": [
+      [
+        "AB",
+        "BA",
+        "BA",
+        "AB",
+        "BA",
+        "AB",
+        "AB",
+        "BA"
+      ],
+      [
+        "BA",
+        "AB",
+        "AB",
+        "BA",
+        "AB",
+        "BA",
+        "BA",
+        "AB"
+      ]
+    ],
+    "blocks": 2,
+    "bootstrap_resamples": 200000,
+    "confidence": 0.99,
+    "each_block_must_have": {
+      "99_percent_lower_bound_reduction_strictly_above": 0.001,
+      "wins": 8
+    },
+    "method": "Paired geometric baseline/candidate ratios with the existing paired_count_statistics reader. Report reduction as 1 minus reciprocal ratio. Exact two-sided sign p reported per block.",
+    "metric": "whole isolated ordinary rustc final Callgrind Ir, inclusive of its own worker threads and procedural macros",
+    "new_discovery_stage": false,
+    "pairs_per_block": 8,
+    "statistical_scope": "Nominal per-block intervals and sign tests. Pair scheduling and exchangeability assumptions apply. Each endpoint has its own claim.",
+    "stopping": "Stop on the first valid block failing either gate. No extra pairs, retries of valid failures, or pooling with SDK6. Report per-block results and order effects."
+  },
+  "fixed_utc": "2026-10-23T21:03:07.877446+00:00",
+  "original_protocol_sha256": "1162d1f5f4cf458e10cda85b8dcb47c0f8151c6da1db54b30b171a60d02c583d",
+  "public_derivative": "Only private source-reference paths and unbound authorization slots are omitted; all counts, schedules, seeds, gates and collection boundaries are unchanged.",
+  "publication": "A new current-stack performance claim requires both fresh blocks and complete correctness checks. A valid failure is reported. Native whole-command time is separate and receives a claim only from its own prospectively fixed validation.",
+  "schema": 1,
+  "scope": "One prospective comparison of three lazily allocated worker-local substitution caches on exact SDK12; dirty check only. Frozen before any candidate effects.",
+  "source": {
+    "baseline_runtime_identity": {
+      "bytes": 16987,
+      "mode": "0o664",
+      "sha256": "a1387e69d224437c52a0a77574b8773eb5fdd638bf0cef2b2ba98ddecc41f7cf"
+    },
+    "candidate_source": {
+      "bytes": 2160,
+      "mode": "0o664",
+      "sha256": "6f3c7628d97ee448b445bc4c9f903b225bc937e62ae7daf5c0cb2b6830b0ebbc"
+    },
+    "cargo": "fdd26156be98618e2e01a9e02703edac71b79a35",
+    "dirty_fixture_sha256": "a89570fa6080462a772ebdbc73ab4471e0b968f7c357c23b197409fb12f282ad",
+    "published_linux_bundle_sha256": "177751bcef731909e9fa2c89983804ec6fe663101711dc46003a743914d37203",
+    "rust": "f93a752e3de7404107ea5908d65c8832aee5625a",
+    "uv": "3d82a6ad5a7eab8c68236553b7846517767c4b61",
+    "uv_file": "crates/uv/src/lib.rs"
+  }
+}

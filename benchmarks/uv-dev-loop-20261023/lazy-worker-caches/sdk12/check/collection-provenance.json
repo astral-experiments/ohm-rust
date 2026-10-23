@@ -1,0 +1,20 @@
+{
+  "blocks": {
+    "confirmation-1": {
+      "completion_sha256": "385c27cfd43321b6ecf8c3f8230eb3552b8438662ac607667d57256306718cbc",
+      "metric_integrity_sha256": "0f8a96de48ab0b31c422ddfdb9b399867abaa6bea5f31e7d69478e3d8b7e63f0",
+      "raw_gates_sha256": "d4a4659341b0f071301350b54b5a4cddaf264ee9bfd2f3430d219f2be3e0b3ee",
+      "summary_sha256": "7c4a75581e42d3c9282bdb7595f23876e64808e63bd92840f93ec3f73903e29e"
+    },
+    "confirmation-2": {
+      "completion_sha256": "bda3758895179d4eb4b25f5e2024db3b4591904c7bc5afa9edfe6bb52549b66d",
+      "metric_integrity_sha256": "f50a0b54082be4b71ca97d2bd62e9ecd8af76b8db39bd0487f7acc3428d3028e",
+      "raw_gates_sha256": "2eefaa309b5b79f287c60e93ab22b1ecf9302074b946ecf79e95546447b8fa17",
+      "summary_sha256": "b6bd44b18fd3c425f77465cb60a135e2ffee319f4c5dc46ce66659f736f2877c"
+    }
+  },
+  "correction": "The exact predeclared statistics helper was installed at its missing declared path. No workload, input, analyzer, count or math change. The failed offline analysis and identical raw/metric receipts remain retained privately.",
+  "inputs_sha256": "d218b7556a308a0744658d1427cbd98d3f849bdd3cc4f52133aab7186043c0c9",
+  "offline_installation_stop_preserved": true,
+  "private_environment_host_transport_and_path_maps_included": false
+}
