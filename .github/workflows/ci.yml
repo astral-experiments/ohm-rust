@@ -251,6 +251,7 @@ jobs:
         shell: bash
         run: |
           tests=(
+            tests/run-make/non-unicode-args
             tests/run-make/public-api-hash*
             tests/run-make/rdr-public-hash*
             tests/run-make/ohm-early-metadata
@@ -265,7 +266,6 @@ jobs:
             tests/run-make/ohm-split-large-cgus
             tests/run-make/test-harness-exact-filter
             tests/run-make/parallel-query-depth-limits
-            tests/run-make/non-unicode-args
             tests/run-make/incremental-attribute-proc-macro-cache
             tests/run-make/incremental-retained-cache-snapshot
             tests/run-make/incremental-loaded-cache-values
