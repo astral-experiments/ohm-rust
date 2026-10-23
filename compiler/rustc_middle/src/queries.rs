@@ -135,6 +135,13 @@ use crate::{mir, thir};
 // Queries without a custom `handle_cycle_error_fn` implementation will raise a
 // fatal error on query cycles instead.
 rustc_queries! {
+    query attribute_macro_expansion(key: (LocalExpnId, &'tcx TokenStream, &'tcx TokenStream))
+        -> Result<&'tcx TokenStream, ErrorGuaranteed>
+    {
+        desc { "expanding an attribute (proc) macro" }
+        cache_on_disk
+    }
+
     /// Caches the expansion of a derive proc macro, e.g. `#[derive(Serialize)]`.
     /// The key is:
     /// - A unique key corresponding to the invocation of a macro.

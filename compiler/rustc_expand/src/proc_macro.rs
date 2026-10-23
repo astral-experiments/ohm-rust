@@ -71,19 +71,20 @@ impl base::AttrProcMacro for AttrProcMacro {
     ) -> Result<TokenStream, ErrorGuaranteed> {
         let _timer = record_expand_proc_macro(ecx, "expand_proc_macro", span);
 
-        let proc_macro_backtrace = ecx.ecfg.proc_macro_backtrace;
-        let strategy = exec_strategy(ecx.sess);
-        let server = proc_macro_server::Rustc::new(ecx);
-        self.client.run2(&strategy, server, annotation, annotated, proc_macro_backtrace).map_err(
-            |e| {
-                ecx.dcx().emit_err(diagnostics::CustomAttributePanicked {
-                    span,
-                    message: e
-                        .into_string()
-                        .map(|message| diagnostics::CustomAttributePanickedHelp { message }),
+        let invoc_id = ecx.current_expansion.id;
+        if ecx.sess.opts.incremental.is_some() && ecx.sess.opts.unstable_opts.cache_proc_macros {
+            ty::tls::with(|tcx| {
+                let annotation = &*tcx.arena.alloc(annotation);
+                let annotated = &*tcx.arena.alloc(annotated);
+                let key = (invoc_id, annotation, annotated);
+
+                QueryProcMacroExpandCtx::enter(ecx, self.client, span, move || {
+                    tcx.attribute_macro_expansion(key).cloned()
                 })
-            },
-        )
+            })
+        } else {
+            expand_attribute_macro(annotation, annotated, ecx, self.client, span)
+        }
     }
 }
 
@@ -117,7 +118,7 @@ impl MultiItemModifier for DeriveProcMacro {
                 let input = &*tcx.arena.alloc(input);
                 let key: (LocalExpnId, &TokenStream) = (invoc_id, input);
 
-                QueryDeriveExpandCtx::enter(ecx, self.client, move || {
+                QueryProcMacroExpandCtx::enter(ecx, self.client, span, move || {
                     tcx.derive_macro_expansion(key).cloned()
                 })
             })
@@ -163,6 +164,40 @@ impl MultiItemModifier for DeriveProcMacro {
     }
 }
 
+pub(super) fn provide_attribute_macro_expansion<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    key: (LocalExpnId, &'tcx TokenStream, &'tcx TokenStream),
+) -> Result<&'tcx TokenStream, ErrorGuaranteed> {
+    let (invoc_id, annotation, annotated) = key;
+    let _ = tcx.crate_hash(invoc_id.expn_data().macro_def_id.unwrap().krate);
+
+    QueryProcMacroExpandCtx::with(|ecx, client, span| {
+        debug_assert_eq!(invoc_id, ecx.current_expansion.id);
+        expand_attribute_macro(annotation.clone(), annotated.clone(), ecx, client, span)
+            .map(|ts| &*tcx.arena.alloc(ts))
+    })
+}
+
+fn expand_attribute_macro(
+    annotation: TokenStream,
+    annotated: TokenStream,
+    ecx: &mut ExtCtxt<'_>,
+    client: pm::bridge::client::Client,
+    span: Span,
+) -> Result<TokenStream, ErrorGuaranteed> {
+    let proc_macro_backtrace = ecx.ecfg.proc_macro_backtrace;
+    let strategy = exec_strategy(ecx.sess);
+    let server = proc_macro_server::Rustc::new(ecx);
+    client.run2(&strategy, server, annotation, annotated, proc_macro_backtrace).map_err(|e| {
+        ecx.dcx().emit_err(diagnostics::CustomAttributePanicked {
+            span,
+            message: e
+                .into_string()
+                .map(|message| diagnostics::CustomAttributePanickedHelp { message }),
+        })
+    })
+}
+
 /// Provide a query for computing the output of a derive macro.
 pub(super) fn provide_derive_macro_expansion<'tcx>(
     tcx: TyCtxt<'tcx>,
@@ -173,7 +208,7 @@ pub(super) fn provide_derive_macro_expansion<'tcx>(
     // Make sure that we invalidate the query when the crate defining the proc macro changes
     let _ = tcx.crate_hash(invoc_id.expn_data().macro_def_id.unwrap().krate);
 
-    QueryDeriveExpandCtx::with(|ecx, client| {
+    QueryProcMacroExpandCtx::with(|ecx, client, _span| {
         expand_derive_macro(invoc_id, input.clone(), ecx, client).map(|ts| &*tcx.arena.alloc(ts))
     })
 }
@@ -216,32 +251,33 @@ fn expand_derive_macro(
     }
 }
 
-/// Stores the context necessary to expand a derive proc macro via a query.
-struct QueryDeriveExpandCtx {
+/// Stores the context necessary to expand a proc macro via a query.
+struct QueryProcMacroExpandCtx {
     /// Type-erased version of `&mut ExtCtxt`
     expansion_ctx: *mut (),
-    client: DeriveClient,
+    client: pm::bridge::client::Client,
+    span: Span,
 }
 
-impl QueryDeriveExpandCtx {
+impl QueryProcMacroExpandCtx {
     /// Store the extension context and the client into the thread local value.
     /// It will be accessible via the `with` method while `f` is active.
-    fn enter<F, R>(ecx: &mut ExtCtxt<'_>, client: DeriveClient, f: F) -> R
+    fn enter<F, R>(ecx: &mut ExtCtxt<'_>, client: pm::bridge::client::Client, span: Span, f: F) -> R
     where
         F: FnOnce() -> R,
     {
         // We need erasure to get rid of the lifetime
-        let ctx = Self { expansion_ctx: ecx as *mut _ as *mut (), client };
-        DERIVE_EXPAND_CTX.set(&ctx, f)
+        let ctx = Self { expansion_ctx: ecx as *mut _ as *mut (), client, span };
+        PROC_MACRO_EXPAND_CTX.set(&ctx, f)
     }
 
-    /// Accesses the thread local value of the derive expansion context.
+    /// Accesses the thread local value of the proc-macro expansion context.
     /// Must be called while the `enter` function is active.
     fn with<F, R>(f: F) -> R
     where
-        F: for<'a, 'b> FnOnce(&'b mut ExtCtxt<'a>, DeriveClient) -> R,
+        F: for<'a, 'b> FnOnce(&'b mut ExtCtxt<'a>, pm::bridge::client::Client, Span) -> R,
     {
-        DERIVE_EXPAND_CTX.with(|ctx| {
+        PROC_MACRO_EXPAND_CTX.with(|ctx| {
             let ectx = {
                 let casted = ctx.expansion_ctx.cast::<ExtCtxt<'_>>();
                 // SAFETY: We can only get the value from `with` while the `enter` function
@@ -252,11 +288,11 @@ impl QueryDeriveExpandCtx {
                 unsafe { casted.as_mut().unwrap() }
             };
 
-            f(ectx, ctx.client)
+            f(ectx, ctx.client, ctx.span)
         })
     }
 }
 
-// When we invoke a query to expand a derive proc macro, we need to provide it with the expansion
-// context and derive Client. We do that using a thread-local.
-scoped_tls::scoped_thread_local!(static DERIVE_EXPAND_CTX: QueryDeriveExpandCtx);
+// When we invoke a query to expand a proc macro, we need to provide it with the expansion
+// context and Client. We do that using a thread-local.
+scoped_tls::scoped_thread_local!(static PROC_MACRO_EXPAND_CTX: QueryProcMacroExpandCtx);
