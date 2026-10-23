@@ -1,0 +1,38 @@
+{
+  "argv": [
+    "taskset",
+    "-c",
+    "0-23",
+    "./x",
+    "build",
+    "--config",
+    "<BUILD_ROOT>/bootstrap.matched.toml",
+    "--build-dir",
+    "<BUILD_ROOT>/build",
+    "--stage",
+    "1",
+    "-j",
+    "24",
+    "library"
+  ],
+  "compiler_metadata": "Authentic SDK12 HEAD stays fixed for both arms; candidate patch and full tree recorded separately.",
+  "cwd": "<BUILD_ROOT>/source",
+  "environment_handling": "Small explicit child environment, retaining existing HOME without changing it. No inherited Rust flags/wrappers, global configuration writes, or credential environment dump.",
+  "environment_overrides": {
+    "CARGO_BUILD_JOBS": "24",
+    "CARGO_HOME": "<BUILD_ROOT>/cargo-home",
+    "CARGO_INCREMENTAL": "0",
+    "CARGO_TERM_COLOR": "never",
+    "LANG": "C.UTF-8",
+    "LC_ALL": "C.UTF-8",
+    "LD_LIBRARY_PATH": "<LLVM_ROOT>/lib",
+    "PATH": "/usr/bin:/bin",
+    "TMPDIR": "<BUILD_ROOT>/tmp"
+  },
+  "matching_std_rebuilt_for_each_arm": true,
+  "optional_runtime_source_trees_excluded": [
+    "lib/rustlib/src",
+    "lib/rustlib/rustc-src"
+  ],
+  "same_physical_source_and_build_paths": true
+}

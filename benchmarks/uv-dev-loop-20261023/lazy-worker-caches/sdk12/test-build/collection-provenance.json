@@ -1,0 +1,20 @@
+{
+  "blocks": {
+    "confirmation-1": {
+      "completion_sha256": "09aa4e6197ade7cec42d16b7b536569b47909c2ff2d6ee2a2ae8bdef775578e3",
+      "metric_integrity_sha256": "fead2b2daebbb4a6c8198c3967cdaf189c9a6e6c2fe0b4ee62ae10f07d5e1f56",
+      "raw_gates_sha256": "34c344f97dd6f59c94496aa21979ad11fcd908d10a99316b2f7113816b819bf0",
+      "summary_sha256": "15090507652635592917f0ec9df3d9eaac19897a6ec61ac8b94130f65a24666b"
+    },
+    "confirmation-2": {
+      "completion_sha256": "0c55df1ca593f753fe65fcb56874d28437c21d0f02d020eb4c7eeb7c1850025b",
+      "metric_integrity_sha256": "76f0ef38bf3c6c33ca783d6ef7a7f35441a35f0eb594fbabf1485047b114a63e",
+      "raw_gates_sha256": "b70dc800f85825a1167395f39817a500eae4a6ea6a8e03e08f2b4b1f44ec0a60",
+      "summary_sha256": "cd1bd1d5bb5728399955aafc563815ab4007cf39b87751573c474d09eff9cb4b"
+    }
+  },
+  "correction": "A null host binding stopped before any workload and was corrected prospectively. The first completed block then hit an offline-only local-variable ordering error before raw gates or effects; moving the two existing reads preserved all guards and statistics. No measured sample was rerun. Read-only ELF-accounting and binding-smoke refusals are retained privately.",
+  "inputs_sha256": "9971e7b74bf5e60f896174aaf0128d57303aec4fbef765e608ae4585fa1b8d73",
+  "pre_entry_binding_and_offline_ordering_stops_preserved": true,
+  "private_environment_host_transport_and_path_maps_included": false
+}

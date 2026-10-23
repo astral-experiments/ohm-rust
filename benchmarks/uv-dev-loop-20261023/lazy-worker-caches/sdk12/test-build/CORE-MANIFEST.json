@@ -1,0 +1,61 @@
+{
+  "files": {
+    "BUILD-AND-SAMPLE.md": {
+      "bytes": 3945,
+      "sha256": "459357419d70176000964153d68f549e68c2a2c06f0a58f9529d93cb3ac8d863"
+    },
+    "README.md": {
+      "bytes": 4177,
+      "sha256": "e0562701ac1a0ce0b5db29fdc67471f5960bc42d2a05b876c09c4cbed74dbcfa"
+    },
+    "bootstrap.matched.toml": {
+      "bytes": 1038,
+      "sha256": "d1dc8c5b0732de328f5e130b86c989da350e142b8100a4058fee903b2e515c95"
+    },
+    "candidate.patch": {
+      "bytes": 6115,
+      "sha256": "a972c29795fc6b5aa3e639dc9b6b28d31a2cc9b769e6f0e66fba5d9d64417f04"
+    },
+    "collection-provenance.json": {
+      "bytes": 1451,
+      "sha256": "b7d2f205376bd922cb64adb74a7eb626906fcb6f63528d6bc44fde127a8ce4b7"
+    },
+    "counts.json": {
+      "bytes": 11535,
+      "sha256": "afe9b93be3bb1ef53d092cb1822c93301b786215e34bd380621dde8cac7032b2"
+    },
+    "dirty_fixture.py": {
+      "bytes": 15310,
+      "sha256": "a89570fa6080462a772ebdbc73ab4471e0b968f7c357c23b197409fb12f282ad"
+    },
+    "matched-build-recipe.json": {
+      "bytes": 1122,
+      "sha256": "2677e97d4675e650d7f8c754bc016cc77e56c9818f751743cf24be425059bce0"
+    },
+    "profiles/PROFILE-MANIFEST.json": {
+      "bytes": 40568,
+      "sha256": "5d8228705fb4354f005ba9b52409aec53f016238e1e60a004d02db23d8b9b30d"
+    },
+    "protocol.json": {
+      "bytes": 5403,
+      "sha256": "81d0101c57dc7310e11a55871cc1998a5d5e5a7d028bb5c82190046b9f737291"
+    },
+    "reproduce.py": {
+      "bytes": 8234,
+      "sha256": "9e05c93f780924a843565e7a2d11fe417c2d8f68d3e9720ac7f17af809f1be00"
+    },
+    "results/confirmation-1.json": {
+      "bytes": 1309,
+      "sha256": "94b2bf21f384254bec3c5ad8840a8203d440349b71700beacb1f440b7f2e7f01"
+    },
+    "results/confirmation-2.json": {
+      "bytes": 1309,
+      "sha256": "539da6516b735031837fe522182edf713f8aac76d919a221f3bbb4dfc15758d8"
+    },
+    "source-identities.json": {
+      "bytes": 1656,
+      "sha256": "b6e5dccbc71d95fa15d38f55656896b879f4b3259cc40aa3b4326fa347461908"
+    }
+  },
+  "schema": 1
+}
