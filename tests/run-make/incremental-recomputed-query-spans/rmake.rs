@@ -11,6 +11,8 @@ fn main() {
     Some(std::str::from_utf8(input).ok()?)
 }";
 
+    let assertion = "assert_eq!(parse(b\"hi\"), Some(\"hi\"));";
+
     // Moving the question mark changes its expansion span but preserves the mono-item edges.
     // Adding a call then makes the collector read those edges from the preceding compilation.
     for (padding, extra_call) in
@@ -18,9 +20,7 @@ fn main() {
     {
         rfs::write(
             "main.rs",
-            format!(
-                "{padding}{parse}\nfn main() {{ assert_eq!(parse(b\"hi\"), Some(\"hi\")); {extra_call} }}"
-            ),
+            format!("{padding}{parse}\nfn main() {{ {assertion} {extra_call} }}"),
         );
         rustc().input("main.rs").incremental("incr").arg("-Zohm-incremental-mono-partitions").run();
         run("main");
