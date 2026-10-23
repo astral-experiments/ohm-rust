@@ -1,0 +1,108 @@
+diff --git a/compiler/rustc_middle/src/dep_graph/serialized.rs b/compiler/rustc_middle/src/dep_graph/serialized.rs
+index 82a0e80b1..7e0aedf1b 100644
+--- a/compiler/rustc_middle/src/dep_graph/serialized.rs
++++ b/compiler/rustc_middle/src/dep_graph/serialized.rs
+@@ -615,12 +615,17 @@ fn encode(&self, e: &mut MemEncoder, index: DepNodeIndex) {
+             e.emit_u32(edges.len().try_into().unwrap());
+         }
+ 
+-        let bytes_per_index = header.bytes_per_index();
+-        for node_index in edges.iter() {
+-            e.write_with(|dest| {
+-                *dest = node_index.as_u32().to_le_bytes();
+-                bytes_per_index
+-            });
++        match header.bytes_per_index() {
++            1 => e.data.extend(edges.iter().map(|index| index.as_u32() as u8)),
++            2 => {
++                e.data.extend(edges.iter().flat_map(|index| (index.as_u32() as u16).to_le_bytes()));
++            }
++            3 => e.data.extend(edges.iter().flat_map(|index| {
++                let [a, b, c, _] = index.as_u32().to_le_bytes();
++                [a, b, c]
++            })),
++            4 => e.data.extend(edges.iter().flat_map(|index| index.as_u32().to_le_bytes())),
++            _ => unreachable!(),
+         }
+     }
+ }
+diff --git a/compiler/rustc_middle/src/dep_graph/serialized/tests.rs b/compiler/rustc_middle/src/dep_graph/serialized/tests.rs
+index 2636fde70..ce7761e38 100644
+--- a/compiler/rustc_middle/src/dep_graph/serialized/tests.rs
++++ b/compiler/rustc_middle/src/dep_graph/serialized/tests.rs
+@@ -139,3 +139,75 @@ fn check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges() {
+     );
+     assert!(IndexedDepGraph::new(&legacy, 8).is_none());
+ }
++
++#[test]
++fn edge_encoding_matches_original_across_widths_and_lengths() {
++    fn encode_original(info: &NodeInfo<'_>, e: &mut MemEncoder, index: DepNodeIndex) {
++        let NodeInfo { ref node, value_fingerprint, edges } = *info;
++        let edge_max = edges.iter().map(|e| e.as_u32()).max().unwrap_or(0);
++        let header =
++            SerializedNodeHeader::new(node, index, value_fingerprint, edge_max, edges.len());
++        e.write_array(header.bytes);
++        if header.len().is_none() {
++            e.emit_u32(edges.len().try_into().unwrap());
++        }
++        let bytes_per_index = header.bytes_per_index();
++        for node_index in edges.iter() {
++            e.write_with(|dest| {
++                *dest = node_index.as_u32().to_le_bytes();
++                bytes_per_index
++            });
++        }
++    }
++
++    let maxima = [
++        0,
++        0xff,
++        0x100,
++        0xffff,
++        0x1_0000,
++        0xff_ffff,
++        0x100_0000,
++        SerializedDepNodeIndex::MAX_AS_U32,
++    ];
++    let lengths = [
++        0,
++        1,
++        2,
++        SerializedNodeHeader::MAX_INLINE_LEN,
++        SerializedNodeHeader::MAX_INLINE_LEN + 1,
++        SerializedNodeHeader::MAX_INLINE_LEN + 2,
++        256,
++        16_385,
++    ];
++    for maximum in maxima {
++        for length in lengths {
++            if length > maximum as usize + 1 {
++                continue;
++            }
++            let mut edges: Vec<_> = (0..length.saturating_sub(1))
++                .map(|index| DepNodeIndex::from_u32(index as u32))
++                .collect();
++            if length != 0 {
++                edges.push(DepNodeIndex::from_u32(maximum));
++                edges.swap(0, length - 1);
++            }
++            let info = NodeInfo {
++                node: node(DepKind::CompileCodegenUnit, 17, 31),
++                value_fingerprint: Fingerprint::new(47, 59),
++                edges: &edges,
++            };
++            let index = DepNodeIndex::from_u32(71);
++            for prefix_len in [0, 7, 64 * 1024 - 40] {
++                let mut actual = MemEncoder { data: vec![0xa5; prefix_len] };
++                let mut expected = MemEncoder { data: vec![0xa5; prefix_len] };
++                info.encode(&mut actual, index);
++                encode_original(&info, &mut expected, index);
++                assert_eq!(actual.data, expected.data);
++                info.encode(&mut actual, index);
++                encode_original(&info, &mut expected, index);
++                assert_eq!(actual.data, expected.data);
++            }
++        }
++    }
++}

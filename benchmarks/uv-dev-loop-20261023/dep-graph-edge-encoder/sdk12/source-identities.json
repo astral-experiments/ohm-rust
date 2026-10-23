@@ -1,0 +1,28 @@
+{
+  "baseline_tree": "c2ff29766b923dd3d339443b20fd9bc0f6d539fc",
+  "build_scope": "Matched optimized SDK12-source developer builds; not the shipped distribution compiler binaries.",
+  "byte_equivalence_tests": {
+    "failed": 0,
+    "ignored": 0,
+    "passed": 5
+  },
+  "byte_identical_shared_runtime_files": 73,
+  "candidate_tree": "afe348f2f07441345fdc68d7480f335d612f5e2d",
+  "cargo_commit": "fdd26156be98618e2e01a9e02703edac71b79a35",
+  "cargo_sha256": "75eff38f65a16abae0a7b9603fc4fa02c846a0b6cb60a72d08b68393849b914b",
+  "compiler_recipe": "stage1 compiler and freshly rebuilt matching std; opt3, ThinLTO, one codegen unit, debug1, no incremental compiler build, debug assertions disabled, mimalloc",
+  "driver_sha256": {
+    "baseline": "9f761910ab2aed891dc400cc798964b17e44b94cdb1ff14ab49a820e1b6920b3",
+    "candidate": "751bc0a826eddaa63fb9475cd41b9b3a7e185f5a118dc9a1186301d38fd6bfda"
+  },
+  "llvm_commit": "1b9c0d5ff9bbe7634aead059efe6b11a7eeba145",
+  "llvm_library_sha256": "e79195cf3d08c82bf0c0edaf8f40aa766bb00c1978a4278c2b753539f5a3a904",
+  "llvm_version": "23.1.1-rust-dev",
+  "original_encoder_patch_sha256": "00db4f2a0f18f0ac5775b97c08e094e216c548ddbb53cebc02262d57d6bd0d60",
+  "runtime_files_per_arm": 74,
+  "rust_commit": "f93a752e3de7404107ea5908d65c8832aee5625a",
+  "sdk12_patch_sha256": "29740ef72ebc5474ba303714e21b4e137e4883873a499916685a153851684589",
+  "stage0_date": "2026-08-20",
+  "stage0_rust": "1.98.0",
+  "uv_commit": "3d82a6ad5a7eab8c68236553b7846517767c4b61"
+}
