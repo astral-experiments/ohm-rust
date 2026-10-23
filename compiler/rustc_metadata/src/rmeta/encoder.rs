@@ -3504,19 +3504,30 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
         return;
     }
 
-    if tcx.sess.opts.jobs.frontend.is_some() {
-        // Prefetch some queries used by metadata encoding.
-        // This is not necessary for correctness, but is only done for performance reasons.
-        // It can be removed if it turns out to cause trouble or be detrimental to performance.
-        par_join(
-            || prefetch_mir(tcx),
-            || {
-                let _ = tcx.exported_non_generic_symbols(LOCAL_CRATE);
-                let _ = tcx.exported_generic_symbols(LOCAL_CRATE);
-            },
-        );
+    let encode = || encode_fresh_metadata(tcx, path, ref_path, dep_node);
+    if let Some(threads) = tcx.sess.opts.jobs.frontend {
+        let prefetch_exports = || {
+            let _ = tcx.exported_non_generic_symbols(LOCAL_CRATE);
+            let _ = tcx.exported_generic_symbols(LOCAL_CRATE);
+        };
+        if threads.get() > 1 && tcx.sess.opts.output_types.should_codegen() {
+            // Start encoding once MIR is ready. The encoder waits for exported symbols on demand.
+            let _timer = tcx.prof.verbose_generic_activity("metadata_export_prefetch_overlap");
+            par_join(
+                || {
+                    prefetch_mir(tcx);
+                    encode();
+                },
+                prefetch_exports,
+            );
+            return;
+        }
+        par_join(|| prefetch_mir(tcx), prefetch_exports);
     }
+    encode();
+}
 
+fn encode_fresh_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>, dep_node: DepNode) {
     let mut hashes = CrateHashes {
         private_hash: tcx.crate_hash(LOCAL_CRATE),
         public_hash: tcx.crate_hash(LOCAL_CRATE),
