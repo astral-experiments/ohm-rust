@@ -105,7 +105,10 @@ fn main() {
             [("panicking", "custom attribute panicked"), ("invalid", "expected identifier")]
         {
             let source = format!(
-                "extern crate attribute;\n#[attribute::{attribute}]\nfn broken() {{}}\nfn main() {{}}\n"
+                "extern crate attribute;\n\
+                 #[attribute::{attribute}]\n\
+                 fn broken() {{}}\n\
+                 fn main() {{}}\n"
             );
             let expected = compile(&source, strategy, None, false, true);
             assert!(
