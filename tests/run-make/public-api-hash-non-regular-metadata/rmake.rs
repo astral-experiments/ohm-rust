@@ -29,9 +29,24 @@ fn main() {
             .unwrap();
     };
     let public_hash = || rustc().input("liblib.rmeta").arg("-Zls=public_hash").run().stdout_utf8();
-    let files = |name: &str| recursive_find_files("incremental", |path| path.ends_with(name));
+    let files = |dir: &str, name: &str| recursive_find_files(dir, |path| path.ends_with(name));
+    let replace_with_pipe = |dir, name| {
+        let [entry]: [_; 1] = files(dir, name).try_into().unwrap();
+        fs::remove_file(&entry).unwrap();
+        cmd("mkfifo").arg(entry).run();
+    };
 
     edit(0);
+    // An unchanged crate reuses the entire metadata file without public API hashing.
+    let check =
+        || rustc().input("lib.rs").crate_type("rlib").emit("metadata").incremental("plain").run();
+    check();
+    let original = fs::read("liblib.rmeta").unwrap();
+    replace_with_pipe("plain", "metadata.rmeta");
+    check();
+    assert!(std::path::Path::new("liblib.rmeta").is_file());
+    assert_eq!(original, fs::read("liblib.rmeta").unwrap());
+
     compile("metadata");
     edit(1);
     compile("metadata").assert_stderr_contains("reused metadata item prefix");
@@ -49,12 +64,10 @@ fn main() {
         if name.starts_with("ohm-check-") {
             compile("metadata,link");
         }
-        let [entry]: [_; 1] = files(name).try_into().unwrap();
-        fs::remove_file(&entry).unwrap();
-        cmd("mkfifo").arg(&entry).run();
+        replace_with_pipe("incremental", name);
         edit(revision + 2);
         compile("metadata").assert_stderr_not_contains("reused metadata item prefix");
         assert_eq!(expected, public_hash());
-        assert_eq!(files(name).len(), 1, "rustc did not recreate {name} as a regular file");
+        assert_eq!(files("incremental", name).len(), 1, "rustc did not recreate {name}");
     }
 }
