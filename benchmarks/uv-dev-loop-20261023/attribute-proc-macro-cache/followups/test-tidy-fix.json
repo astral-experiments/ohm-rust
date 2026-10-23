@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "created_utc": "2026-10-23T14:36:36.430Z",
+  "pull_request": "https://github.com/astral-sh/ohm-rust/pull/209",
+  "initial_publication_commit": "28263153e41af6eb4ad18202bf948574cc2599a6",
+  "followup_commit": "8c08b220b95b5052cf36cdbd0cc48a2101ccf053",
+  "followup_tree": "522917e35d9023aea6ed88e5347d66772164c682",
+  "changes": [
+    {
+      "path": "tests/run-make/attribute-macro-cache/rmake.rs",
+      "git_blob_sha1": "217c223d7163a15f15f1a200143bbc91aad86671",
+      "additions": 4,
+      "deletions": 1
+    }
+  ],
+  "reason": "Initial CI formatting passed; tidy rejected a test-harness string longer than 100 columns.",
+  "correction": "Split the single Rust string literal with line continuations. Removing continuation whitespace yields exactly the previous literal, preserving generated test-source bytes.",
+  "validation": {
+    "all_harness_lines_at_most_100_columns": true,
+    "exact_pinned_formatter_passed": true,
+    "github_compare_readback_verified": true,
+    "compiler_implementation_files_unchanged": true,
+    "measured_sources_and_runtimes_unchanged": true
+  },
+  "evidence_core": "The immutable core identifies the initial source publication. This followup changes only test formatting, not measured compiler implementation.",
+  "new_ci_pending": true
+}

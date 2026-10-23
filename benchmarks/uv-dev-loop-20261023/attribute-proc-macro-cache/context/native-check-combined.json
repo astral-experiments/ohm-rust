@@ -1,0 +1,69 @@
+{
+  "block_sha256": [
+    "01c02ce19b6e091cd71514e5ee59c4b22235732cbe38182a3f343040b742e011",
+    "a29462ab3d15bb97baa89fb39c1ae0063acec7ac7c793e22d9bdf7eae9fa44d6"
+  ],
+  "further_execution_authorized": false,
+  "inconclusive": true,
+  "losses": 4,
+  "pairs": 16,
+  "performance_accepted": false,
+  "regression_blocker": false,
+  "schema": 1,
+  "stage": "native_check",
+  "state": "valid-two-block-native-result",
+  "statistics": {
+    "baseline_mean_count": 1984163094.4375,
+    "baseline_median_count": 1792992356.5,
+    "bootstrap_count_reduction_interval": [
+      -0.11195173270630598,
+      0.20168528047737144
+    ],
+    "bootstrap_ratio_interval": [
+      0.8993196112624116,
+      1.2526388096639054
+    ],
+    "bootstrap_resamples": 200000,
+    "bootstrap_seed": 2026102307,
+    "candidate_mean_count": 1865022185.5,
+    "candidate_median_count": 1653515248.0,
+    "confidence": 0.99,
+    "exact_two_sided_sign_p": 0.076812744140625,
+    "log_ratios": [
+      0.015468620862557656,
+      0.44339008180846406,
+      0.01895046680685628,
+      -0.3664802902608798,
+      0.03041793785468548,
+      0.262970090408016,
+      0.0009515408549065575,
+      0.0003710885397318047,
+      0.33108490074139346,
+      -0.2643597616592917,
+      0.3771914123573739,
+      0.0284383946471298,
+      -0.3541255538565453,
+      0.3936459313536902,
+      0.30494203939937614,
+      -0.23748028301416288
+    ],
+    "losses": 4,
+    "order": {
+      "AB": {
+        "geometric_mean_ratio": 0.9317105995334677,
+        "pairs": 8
+      },
+      "BA": {
+        "geometric_mean_ratio": 1.2139810769305057,
+        "pairs": 8
+      }
+    },
+    "paired_geometric_mean_count_reduction": 0.059727957386612074,
+    "paired_geometric_mean_ratio": 1.0635219964858302,
+    "paired_median_ratio": 1.0239888964844512,
+    "pairs": 16,
+    "ties": 0,
+    "wins": 12
+  },
+  "wall_time_claim_gate": false
+}

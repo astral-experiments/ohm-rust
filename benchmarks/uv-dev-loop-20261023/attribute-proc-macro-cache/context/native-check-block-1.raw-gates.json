@@ -1,0 +1,6 @@
+{
+  "completion_sha256": "5558e90bb3b3ea9355ecc7cf247bb89f95af8adf6bd614bcb97184a98e862b98",
+  "samples": 16,
+  "state": "all-raw-gates-passed-before-effects",
+  "terminal_sha256": "ce1aa9a81be5971c7963dafa6dc63e8d9e843cc756516a0c94dc517048a7bace"
+}

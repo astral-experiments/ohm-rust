@@ -1,0 +1,77 @@
+{
+  "profiles": [
+    {
+      "brk_overflow_warning": false,
+      "final_ir": 1104359280,
+      "final_minus_header": 1,
+      "header_summary_ir": 1104359279,
+      "label": "pair-0-0-baseline",
+      "self_cost_sum": 1104359280,
+      "stderr_collected": 1104359280
+    },
+    {
+      "brk_overflow_warning": false,
+      "final_ir": 944959190,
+      "final_minus_header": 1,
+      "header_summary_ir": 944959189,
+      "label": "pair-0-1-candidate",
+      "self_cost_sum": 944959190,
+      "stderr_collected": 944959190
+    },
+    {
+      "brk_overflow_warning": false,
+      "final_ir": 940075186,
+      "final_minus_header": 1,
+      "header_summary_ir": 940075185,
+      "label": "pair-1-0-candidate",
+      "self_cost_sum": 940075186,
+      "stderr_collected": 940075186
+    },
+    {
+      "brk_overflow_warning": false,
+      "final_ir": 1099567427,
+      "final_minus_header": 1,
+      "header_summary_ir": 1099567426,
+      "label": "pair-1-1-baseline",
+      "self_cost_sum": 1099567427,
+      "stderr_collected": 1099567427
+    },
+    {
+      "brk_overflow_warning": false,
+      "final_ir": 1170990404,
+      "final_minus_header": 1,
+      "header_summary_ir": 1170990403,
+      "label": "pair-2-0-candidate",
+      "self_cost_sum": 1170990404,
+      "stderr_collected": 1170990404
+    },
+    {
+      "brk_overflow_warning": false,
+      "final_ir": 1330492852,
+      "final_minus_header": 1,
+      "header_summary_ir": 1330492851,
+      "label": "pair-2-1-baseline",
+      "self_cost_sum": 1330492852,
+      "stderr_collected": 1330492852
+    },
+    {
+      "brk_overflow_warning": false,
+      "final_ir": 1104121624,
+      "final_minus_header": 1,
+      "header_summary_ir": 1104121623,
+      "label": "pair-3-0-baseline",
+      "self_cost_sum": 1104121624,
+      "stderr_collected": 1104121624
+    },
+    {
+      "brk_overflow_warning": false,
+      "final_ir": 945032319,
+      "final_minus_header": 1,
+      "header_summary_ir": 945032318,
+      "label": "pair-3-1-candidate",
+      "self_cost_sum": 945032319,
+      "stderr_collected": 945032319
+    }
+  ],
+  "state": "all-metrics-valid-before-comparison"
+}

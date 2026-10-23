@@ -1,0 +1,45 @@
+{
+  "block": 0,
+  "block_gate_passed": true,
+  "compiler_sha256": {
+    "baseline": "a9688497f5729b9afda0e636919376e961fbf55f0eb6c3ba472f5a8ea5700818",
+    "candidate": "a9688497f5729b9afda0e636919376e961fbf55f0eb6c3ba472f5a8ea5700818"
+  },
+  "further_execution_authorized": false,
+  "geometric_reduction": 0.13840438132973742,
+  "inputs_sha256": "f020670c97c867bd2123dbd3b20f2cc83a51e867146919d5d43538d8bfc4be3c",
+  "losses": 0,
+  "metric": "whole isolated rustc-process final Ir; children excluded",
+  "metric_integrity_sha256": "fc0a76c2a95d28349294bdcb7a53420afef52bfb34ef1447f3fcee733e574537",
+  "native_pooled_blocker_pending": false,
+  "pairs": [
+    {
+      "baseline": 1104359280,
+      "candidate": 944959190,
+      "order": "AB"
+    },
+    {
+      "baseline": 1099567427,
+      "candidate": 940075186,
+      "order": "BA"
+    },
+    {
+      "baseline": 1330492852,
+      "candidate": 1170990404,
+      "order": "BA"
+    },
+    {
+      "baseline": 1104121624,
+      "candidate": 945032319,
+      "order": "AB"
+    }
+  ],
+  "performance_accepted": false,
+  "plan_sha256": "534b5f03cb22c3c46f35cb73542edce48326164ccc6523b70291629ab3b23473",
+  "raw_gates_sha256": "4a46166b23b8f3e49705f3e10a6fe83b0fc2d03a5c0b11a9c9db2bbe373c71d1",
+  "schema": 1,
+  "stage": "discovery",
+  "state": "valid-fixed-block",
+  "statistics": null,
+  "wins": 4
+}
