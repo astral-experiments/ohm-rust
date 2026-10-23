@@ -615,12 +615,17 @@ impl NodeInfo<'_> {
             e.emit_u32(edges.len().try_into().unwrap());
         }
 
-        let bytes_per_index = header.bytes_per_index();
-        for node_index in edges.iter() {
-            e.write_with(|dest| {
-                *dest = node_index.as_u32().to_le_bytes();
-                bytes_per_index
-            });
+        match header.bytes_per_index() {
+            1 => e.data.extend(edges.iter().map(|index| index.as_u32() as u8)),
+            2 => {
+                e.data.extend(edges.iter().flat_map(|index| (index.as_u32() as u16).to_le_bytes()));
+            }
+            3 => e.data.extend(edges.iter().flat_map(|index| {
+                let [a, b, c, _] = index.as_u32().to_le_bytes();
+                [a, b, c]
+            })),
+            4 => e.data.extend(edges.iter().flat_map(|index| index.as_u32().to_le_bytes())),
+            _ => unreachable!(),
         }
     }
 }
