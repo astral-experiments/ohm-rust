@@ -5,8 +5,11 @@
 mod impl_interner;
 pub mod tls;
 
+#[cfg(test)]
+mod tests;
+
 use std::borrow::{Borrow, Cow};
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::cmp::Ordering;
 use std::env::VarError;
 use std::ffi::OsStr;
@@ -143,6 +146,29 @@ type ClauseInstantiationCacheEntry<'tcx> =
 type FnSigInstantiationCacheEntry<'tcx> =
     (PolyFnSig<'tcx>, GenericArgsRef<'tcx>, ty::Unnormalized<'tcx, PolyFnSig<'tcx>>);
 
+// A worker may never use a substitution cache. Keep its fixed set of slots
+// unallocated until the first lookup.
+struct LazyWorkerCache<T, const N: usize> {
+    entries: OnceCell<Box<[Cell<Option<T>>]>>,
+}
+
+impl<T, const N: usize> LazyWorkerCache<T, N> {
+    fn new() -> Self {
+        Self { entries: OnceCell::new() }
+    }
+}
+
+impl<T, const N: usize> std::ops::Index<usize> for LazyWorkerCache<T, N> {
+    type Output = Cell<Option<T>>;
+
+    #[inline]
+    fn index(&self, index: usize) -> &Self::Output {
+        // Collect directly into heap storage instead of constructing a large
+        // temporary array on the stack of the first caller.
+        &self.entries.get_or_init(|| (0..N).map(|_| Cell::new(None)).collect())[index]
+    }
+}
+
 pub struct CtxtInterners<'tcx> {
     /// The arena that types, regions, etc. are allocated from.
     arena: &'tcx WorkerLocal<Arena<'tcx>>,
@@ -180,12 +206,13 @@ pub struct CtxtInterners<'tcx> {
     args_cache: WorkerLocal<[Cell<Option<GenericArgsRef<'tcx>>>; INTERNER_CACHE_LEN]>,
     type_lists_cache: WorkerLocal<[Cell<Option<&'tcx List<Ty<'tcx>>>>; INTERNER_CACHE_LEN]>,
     predicate_cache: WorkerLocal<[Cell<Option<Predicate<'tcx>>>; INTERNER_CACHE_LEN]>,
-    supertrait_cache: WorkerLocal<[Cell<Option<SupertraitCacheEntry<'tcx>>>; SUPERTRAIT_CACHE_LEN]>,
+    supertrait_cache:
+        WorkerLocal<LazyWorkerCache<SupertraitCacheEntry<'tcx>, SUPERTRAIT_CACHE_LEN>>,
     clause_instantiation_cache: WorkerLocal<
-        [Cell<Option<ClauseInstantiationCacheEntry<'tcx>>>; CLAUSE_INSTANTIATION_CACHE_LEN],
+        LazyWorkerCache<ClauseInstantiationCacheEntry<'tcx>, CLAUSE_INSTANTIATION_CACHE_LEN>,
     >,
     fn_sig_instantiation_cache: WorkerLocal<
-        [Cell<Option<FnSigInstantiationCacheEntry<'tcx>>>; FN_SIG_INSTANTIATION_CACHE_LEN],
+        LazyWorkerCache<FnSigInstantiationCacheEntry<'tcx>, FN_SIG_INSTANTIATION_CACHE_LEN>,
     >,
 }
 
@@ -229,15 +256,9 @@ impl<'tcx> CtxtInterners<'tcx> {
             args_cache: WorkerLocal::new(|_| [const { Cell::new(None) }; INTERNER_CACHE_LEN]),
             type_lists_cache: WorkerLocal::new(|_| [const { Cell::new(None) }; INTERNER_CACHE_LEN]),
             predicate_cache: WorkerLocal::new(|_| [const { Cell::new(None) }; INTERNER_CACHE_LEN]),
-            supertrait_cache: WorkerLocal::new(|_| {
-                [const { Cell::new(None) }; SUPERTRAIT_CACHE_LEN]
-            }),
-            clause_instantiation_cache: WorkerLocal::new(|_| {
-                [const { Cell::new(None) }; CLAUSE_INSTANTIATION_CACHE_LEN]
-            }),
-            fn_sig_instantiation_cache: WorkerLocal::new(|_| {
-                [const { Cell::new(None) }; FN_SIG_INSTANTIATION_CACHE_LEN]
-            }),
+            supertrait_cache: WorkerLocal::new(|_| LazyWorkerCache::new()),
+            clause_instantiation_cache: WorkerLocal::new(|_| LazyWorkerCache::new()),
+            fn_sig_instantiation_cache: WorkerLocal::new(|_| LazyWorkerCache::new()),
         }
     }
 
