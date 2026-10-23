@@ -212,6 +212,7 @@ jobs:
           --compiletest-rustc-args=-Zthreads=8
           --compiletest-rustc-args=-Zincremental-verify-ich
           tests/incremental/hygiene tests/incremental/derive_macro_expansion
+          tests/incremental/attribute_macro_expansion
           tests/incremental/promote-cached-query-value.rs
           tests/incremental/forward-cached-query-value.rs
 
@@ -248,6 +249,7 @@ jobs:
         shell: bash
         run: |
           tests=(
+            tests/run-make/attribute-macro-cache
             tests/run-make/public-api-hash*
             tests/run-make/rdr-public-hash*
             tests/run-make/ohm-early-metadata
