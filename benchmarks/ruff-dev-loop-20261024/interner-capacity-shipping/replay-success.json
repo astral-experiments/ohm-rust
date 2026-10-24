@@ -1,0 +1,18 @@
+{
+  "all_endpoint_values_exactly_match": true,
+  "alpha_ledger_actions": 0,
+  "canonical_endpoints_sha256": "734189c1a1895792292f6c6624e8ae2d55fad8acf7ff9eb9a048d11d210e68d1",
+  "csv_rows": 60,
+  "expected_file_sha256": "0448af1b74be08879b5894558c2110ac048eefd420f85073ef6c8edf171dff4c",
+  "files_verified": 11,
+  "manifest_sha256": "6521737fcbaeb8689c79fe1370991752940a0becc1d827ce25aceeaea9e7c09d",
+  "native_commands": 0,
+  "native_guard_pairs": 36,
+  "native_wall_gain_claim": false,
+  "new_measurements": 0,
+  "numpy_version": "2.3.5",
+  "passed": true,
+  "primary_pairs": 24,
+  "qualification_passed": true,
+  "selected_compiler_observations": 48
+}

@@ -1,0 +1,1226 @@
+[
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 4.895107583,
+      "drain_seconds": 0.000118561,
+      "family_cpu_seconds": 5.157788,
+      "family_wall_seconds": 4.895226144,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.3451710000000001,
+      "user_cpu_seconds": 3.812617
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.402379206,
+      "drain_seconds": 0.000100858,
+      "family_cpu_seconds": 5.70735,
+      "family_wall_seconds": 5.402480064,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.555609,
+      "user_cpu_seconds": 4.151741
+    },
+    "component": "a-check",
+    "flags": [],
+    "mode": "check",
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 0,
+    "session": "a",
+    "source_sha256": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.474765209,
+      "drain_seconds": 0.000102331,
+      "family_cpu_seconds": 5.801093,
+      "family_wall_seconds": 5.47486754,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.5885989999999999,
+      "user_cpu_seconds": 4.212494
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.407988646,
+      "drain_seconds": 0.000168182,
+      "family_cpu_seconds": 5.725288000000001,
+      "family_wall_seconds": 5.408156828,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.586274,
+      "user_cpu_seconds": 4.139014
+    },
+    "component": "a-check",
+    "flags": [],
+    "mode": "check",
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 1,
+    "session": "a",
+    "source_sha256": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.913893416,
+      "drain_seconds": 0.000159407,
+      "family_cpu_seconds": 6.252574999999999,
+      "family_wall_seconds": 5.914052823,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.611724,
+      "user_cpu_seconds": 4.640851
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.826432571,
+      "drain_seconds": 0.000148707,
+      "family_cpu_seconds": 6.13993,
+      "family_wall_seconds": 5.826581278,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.527692,
+      "user_cpu_seconds": 4.612238
+    },
+    "component": "a-check",
+    "flags": [],
+    "mode": "check",
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 2,
+    "session": "a",
+    "source_sha256": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.378087569,
+      "drain_seconds": 0.000168423,
+      "family_cpu_seconds": 5.698697,
+      "family_wall_seconds": 5.378255992,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.5846239999999998,
+      "user_cpu_seconds": 4.114073
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.281709809,
+      "drain_seconds": 0.000161803,
+      "family_cpu_seconds": 5.60045,
+      "family_wall_seconds": 5.281871612,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.579499,
+      "user_cpu_seconds": 4.020951
+    },
+    "component": "a-check",
+    "flags": [],
+    "mode": "check",
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 3,
+    "session": "a",
+    "source_sha256": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.518138621,
+      "drain_seconds": 0.000152865,
+      "family_cpu_seconds": 5.865657000000001,
+      "family_wall_seconds": 5.518291486,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.56796,
+      "user_cpu_seconds": 4.297697
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.390983931,
+      "drain_seconds": 0.000102841,
+      "family_cpu_seconds": 5.710163,
+      "family_wall_seconds": 5.391086772,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.5121769999999999,
+      "user_cpu_seconds": 4.197986
+    },
+    "component": "a-check",
+    "flags": [],
+    "mode": "check",
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 4,
+    "session": "a",
+    "source_sha256": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.836040455,
+      "drain_seconds": 0.000200174,
+      "family_cpu_seconds": 6.213776,
+      "family_wall_seconds": 5.836240629,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.570317,
+      "user_cpu_seconds": 4.643459
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.682391239,
+      "drain_seconds": 0.000174065,
+      "family_cpu_seconds": 6.040451,
+      "family_wall_seconds": 5.682565304,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.515264,
+      "user_cpu_seconds": 4.525187
+    },
+    "component": "a-check",
+    "flags": [],
+    "mode": "check",
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 5,
+    "session": "a",
+    "source_sha256": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 7.470798258,
+      "drain_seconds": 0.000374409,
+      "family_cpu_seconds": 9.09212,
+      "family_wall_seconds": 7.471172667,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 3.321533,
+      "user_cpu_seconds": 5.770587
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 6.686302839,
+      "drain_seconds": 0.000436223,
+      "family_cpu_seconds": 8.481974000000001,
+      "family_wall_seconds": 6.686739062,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 2.988172,
+      "user_cpu_seconds": 5.4938020000000005
+    },
+    "component": "a-build",
+    "flags": [],
+    "mode": "build",
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 0,
+    "session": "a",
+    "source_sha256": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 7.451923189,
+      "drain_seconds": 0.000411958,
+      "family_cpu_seconds": 9.260825,
+      "family_wall_seconds": 7.452335147,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 3.0508360000000003,
+      "user_cpu_seconds": 6.209989
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 7.34859449,
+      "drain_seconds": 0.000423871,
+      "family_cpu_seconds": 9.139346,
+      "family_wall_seconds": 7.349018361,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 2.963132,
+      "user_cpu_seconds": 6.176214
+    },
+    "component": "a-build",
+    "flags": [],
+    "mode": "build",
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 1,
+    "session": "a",
+    "source_sha256": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 6.447631145,
+      "drain_seconds": 0.000494021,
+      "family_cpu_seconds": 8.168493999999999,
+      "family_wall_seconds": 6.448125166,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 2.9249889999999996,
+      "user_cpu_seconds": 5.243505
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 6.318258087,
+      "drain_seconds": 0.000406578,
+      "family_cpu_seconds": 8.075969,
+      "family_wall_seconds": 6.318664665,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 2.807785,
+      "user_cpu_seconds": 5.268184
+    },
+    "component": "a-build",
+    "flags": [],
+    "mode": "build",
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 2,
+    "session": "a",
+    "source_sha256": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 6.699942456,
+      "drain_seconds": 0.000454399,
+      "family_cpu_seconds": 8.4844,
+      "family_wall_seconds": 6.700396855,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 3.023788,
+      "user_cpu_seconds": 5.460612
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 6.213484231,
+      "drain_seconds": 0.000341608,
+      "family_cpu_seconds": 7.963639,
+      "family_wall_seconds": 6.213825839,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 2.718774,
+      "user_cpu_seconds": 5.244865
+    },
+    "component": "a-build",
+    "flags": [],
+    "mode": "build",
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 3,
+    "session": "a",
+    "source_sha256": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 7.412503216,
+      "drain_seconds": 0.00049343,
+      "family_cpu_seconds": 9.221677,
+      "family_wall_seconds": 7.412996646,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 2.990457,
+      "user_cpu_seconds": 6.23122
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 7.410429231,
+      "drain_seconds": 0.00050936,
+      "family_cpu_seconds": 9.217773999999999,
+      "family_wall_seconds": 7.410938591,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 2.9998009999999997,
+      "user_cpu_seconds": 6.217973
+    },
+    "component": "a-build",
+    "flags": [],
+    "mode": "build",
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 4,
+    "session": "a",
+    "source_sha256": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 6.7353345,
+      "drain_seconds": 0.000366434,
+      "family_cpu_seconds": 8.51622,
+      "family_wall_seconds": 6.735700934,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 2.9454960000000003,
+      "user_cpu_seconds": 5.570724
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 6.480743779,
+      "drain_seconds": 0.000554014,
+      "family_cpu_seconds": 8.2047,
+      "family_wall_seconds": 6.481297793,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 3.0642,
+      "user_cpu_seconds": 5.1405
+    },
+    "component": "a-build",
+    "flags": [],
+    "mode": "build",
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 5,
+    "session": "a",
+    "source_sha256": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 395,
+      "command_wall_seconds": 6.856256831,
+      "drain_seconds": 0.001501803,
+      "family_cpu_seconds": 11.150838,
+      "family_wall_seconds": 6.857758634,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 3.9248879999999997,
+      "user_cpu_seconds": 7.22595
+    },
+    "candidate": {
+      "artifact_count": 395,
+      "command_wall_seconds": 8.079678845,
+      "drain_seconds": 0.001677239,
+      "family_cpu_seconds": 12.456722,
+      "family_wall_seconds": 8.081356084,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.4020150000000005,
+      "user_cpu_seconds": 8.054706999999999
+    },
+    "component": "a-test",
+    "flags": [],
+    "mode": "test",
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 0,
+    "session": "a",
+    "source_sha256": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 395,
+      "command_wall_seconds": 7.619163008,
+      "drain_seconds": 0.001487546,
+      "family_cpu_seconds": 11.918654,
+      "family_wall_seconds": 7.620650554,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.229636,
+      "user_cpu_seconds": 7.689017999999999
+    },
+    "candidate": {
+      "artifact_count": 395,
+      "command_wall_seconds": 7.617089896,
+      "drain_seconds": 0.001384674,
+      "family_cpu_seconds": 11.934916,
+      "family_wall_seconds": 7.61847457,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.246233999999999,
+      "user_cpu_seconds": 7.688682
+    },
+    "component": "a-test",
+    "flags": [],
+    "mode": "test",
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 1,
+    "session": "a",
+    "source_sha256": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 395,
+      "command_wall_seconds": 8.390283149,
+      "drain_seconds": 0.001697137,
+      "family_cpu_seconds": 12.93951,
+      "family_wall_seconds": 8.391980286,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.55874,
+      "user_cpu_seconds": 8.38077
+    },
+    "candidate": {
+      "artifact_count": 395,
+      "command_wall_seconds": 8.41032094,
+      "drain_seconds": 0.002045077,
+      "family_cpu_seconds": 13.041723000000001,
+      "family_wall_seconds": 8.412366017,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.353468,
+      "user_cpu_seconds": 8.688255
+    },
+    "component": "a-test",
+    "flags": [],
+    "mode": "test",
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 2,
+    "session": "a",
+    "source_sha256": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 395,
+      "command_wall_seconds": 7.685245655,
+      "drain_seconds": 0.001833742,
+      "family_cpu_seconds": 12.079654999999999,
+      "family_wall_seconds": 7.687079397,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.538086,
+      "user_cpu_seconds": 7.541569
+    },
+    "candidate": {
+      "artifact_count": 395,
+      "command_wall_seconds": 7.55783241,
+      "drain_seconds": 0.001603852,
+      "family_cpu_seconds": 11.775133,
+      "family_wall_seconds": 7.559436262,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.264056,
+      "user_cpu_seconds": 7.511077
+    },
+    "component": "a-test",
+    "flags": [],
+    "mode": "test",
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 3,
+    "session": "a",
+    "source_sha256": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 395,
+      "command_wall_seconds": 7.74136062,
+      "drain_seconds": 0.001543922,
+      "family_cpu_seconds": 12.010273999999999,
+      "family_wall_seconds": 7.742904542,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.270599,
+      "user_cpu_seconds": 7.739675
+    },
+    "candidate": {
+      "artifact_count": 395,
+      "command_wall_seconds": 7.645201981,
+      "drain_seconds": 0.00140955,
+      "family_cpu_seconds": 11.91849,
+      "family_wall_seconds": 7.646611531,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.301341,
+      "user_cpu_seconds": 7.617149
+    },
+    "component": "a-test",
+    "flags": [],
+    "mode": "test",
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 4,
+    "session": "a",
+    "source_sha256": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 395,
+      "command_wall_seconds": 8.341154143,
+      "drain_seconds": 0.001488768,
+      "family_cpu_seconds": 12.997808,
+      "family_wall_seconds": 8.342642911,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.374546,
+      "user_cpu_seconds": 8.623262
+    },
+    "candidate": {
+      "artifact_count": 395,
+      "command_wall_seconds": 8.201325271,
+      "drain_seconds": 0.001545945,
+      "family_cpu_seconds": 12.767896,
+      "family_wall_seconds": 8.202871216,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.401929,
+      "user_cpu_seconds": 8.365967
+    },
+    "component": "a-test",
+    "flags": [],
+    "mode": "test",
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 5,
+    "session": "a",
+    "source_sha256": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 395,
+      "command_wall_seconds": 7.801321625,
+      "drain_seconds": 0.001574839,
+      "family_cpu_seconds": 11.882501000000001,
+      "family_wall_seconds": 7.802896464,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.119651,
+      "user_cpu_seconds": 7.76285
+    },
+    "candidate": {
+      "artifact_count": 395,
+      "command_wall_seconds": 7.569110381,
+      "drain_seconds": 0.001599025,
+      "family_cpu_seconds": 11.62585,
+      "family_wall_seconds": 7.570709406,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.254767999999999,
+      "user_cpu_seconds": 7.3710819999999995
+    },
+    "component": "b-test",
+    "flags": [],
+    "mode": "test",
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 0,
+    "session": "b",
+    "source_sha256": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 395,
+      "command_wall_seconds": 7.564167884,
+      "drain_seconds": 0.001603992,
+      "family_cpu_seconds": 11.857459,
+      "family_wall_seconds": 7.565771876,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.315383,
+      "user_cpu_seconds": 7.542076000000001
+    },
+    "candidate": {
+      "artifact_count": 395,
+      "command_wall_seconds": 7.606606009,
+      "drain_seconds": 0.001763812,
+      "family_cpu_seconds": 11.817025,
+      "family_wall_seconds": 7.608369821,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.373137,
+      "user_cpu_seconds": 7.443887999999999
+    },
+    "component": "b-test",
+    "flags": [],
+    "mode": "test",
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 1,
+    "session": "b",
+    "source_sha256": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 395,
+      "command_wall_seconds": 8.142757246,
+      "drain_seconds": 0.002036501,
+      "family_cpu_seconds": 12.649948,
+      "family_wall_seconds": 8.144793747,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.196738,
+      "user_cpu_seconds": 8.45321
+    },
+    "candidate": {
+      "artifact_count": 395,
+      "command_wall_seconds": 8.136275505,
+      "drain_seconds": 0.001492235,
+      "family_cpu_seconds": 12.663868,
+      "family_wall_seconds": 8.13776774,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.258045,
+      "user_cpu_seconds": 8.405823
+    },
+    "component": "b-test",
+    "flags": [],
+    "mode": "test",
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 2,
+    "session": "b",
+    "source_sha256": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 395,
+      "command_wall_seconds": 7.511143797,
+      "drain_seconds": 0.00177872,
+      "family_cpu_seconds": 11.795297999999999,
+      "family_wall_seconds": 7.512922517,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.280098,
+      "user_cpu_seconds": 7.5152
+    },
+    "candidate": {
+      "artifact_count": 395,
+      "command_wall_seconds": 7.495168507,
+      "drain_seconds": 0.001598303,
+      "family_cpu_seconds": 11.733634,
+      "family_wall_seconds": 7.49676681,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.229761,
+      "user_cpu_seconds": 7.5038730000000005
+    },
+    "component": "b-test",
+    "flags": [],
+    "mode": "test",
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 3,
+    "session": "b",
+    "source_sha256": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 395,
+      "command_wall_seconds": 7.564453616,
+      "drain_seconds": 0.001736681,
+      "family_cpu_seconds": 11.974309,
+      "family_wall_seconds": 7.566190297,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.354457,
+      "user_cpu_seconds": 7.619852
+    },
+    "candidate": {
+      "artifact_count": 395,
+      "command_wall_seconds": 7.578053031,
+      "drain_seconds": 0.001662262,
+      "family_cpu_seconds": 11.780586,
+      "family_wall_seconds": 7.579715293,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.002047,
+      "user_cpu_seconds": 7.778538999999999
+    },
+    "component": "b-test",
+    "flags": [],
+    "mode": "test",
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 4,
+    "session": "b",
+    "source_sha256": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 395,
+      "command_wall_seconds": 8.228670637,
+      "drain_seconds": 0.001518073,
+      "family_cpu_seconds": 12.914560999999999,
+      "family_wall_seconds": 8.23018871,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.538799,
+      "user_cpu_seconds": 8.375762
+    },
+    "candidate": {
+      "artifact_count": 395,
+      "command_wall_seconds": 8.253852989,
+      "drain_seconds": 0.001531739,
+      "family_cpu_seconds": 13.228722999999999,
+      "family_wall_seconds": 8.255384728,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 4.611947,
+      "user_cpu_seconds": 8.616776
+    },
+    "component": "b-test",
+    "flags": [],
+    "mode": "test",
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 5,
+    "session": "b",
+    "source_sha256": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 6.44514412,
+      "drain_seconds": 0.000539197,
+      "family_cpu_seconds": 8.185865,
+      "family_wall_seconds": 6.445683317,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 2.600876,
+      "user_cpu_seconds": 5.584989
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 6.936425081,
+      "drain_seconds": 0.000463736,
+      "family_cpu_seconds": 8.247008000000001,
+      "family_wall_seconds": 6.936888817,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 2.773524,
+      "user_cpu_seconds": 5.473484
+    },
+    "component": "b-build",
+    "flags": [],
+    "mode": "build",
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 0,
+    "session": "b",
+    "source_sha256": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 7.563737515,
+      "drain_seconds": 0.0003696,
+      "family_cpu_seconds": 9.395446,
+      "family_wall_seconds": 7.564107115,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 3.224848,
+      "user_cpu_seconds": 6.170598
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 7.467850532,
+      "drain_seconds": 0.000448056,
+      "family_cpu_seconds": 9.302106,
+      "family_wall_seconds": 7.468298588,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 3.044507,
+      "user_cpu_seconds": 6.257599
+    },
+    "component": "b-build",
+    "flags": [],
+    "mode": "build",
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 1,
+    "session": "b",
+    "source_sha256": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 6.308800279,
+      "drain_seconds": 0.000362717,
+      "family_cpu_seconds": 8.069056,
+      "family_wall_seconds": 6.309162996,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 2.800924,
+      "user_cpu_seconds": 5.2681320000000005
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 6.441926295,
+      "drain_seconds": 0.000335566,
+      "family_cpu_seconds": 8.216013,
+      "family_wall_seconds": 6.442261861,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 2.904206,
+      "user_cpu_seconds": 5.311807
+    },
+    "component": "b-build",
+    "flags": [],
+    "mode": "build",
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 2,
+    "session": "b",
+    "source_sha256": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 6.546650787,
+      "drain_seconds": 0.000406438,
+      "family_cpu_seconds": 8.294476,
+      "family_wall_seconds": 6.547057225,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 2.822293,
+      "user_cpu_seconds": 5.472183
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 6.446082498,
+      "drain_seconds": 0.000480557,
+      "family_cpu_seconds": 8.173014,
+      "family_wall_seconds": 6.446563055,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 2.7295030000000002,
+      "user_cpu_seconds": 5.443511
+    },
+    "component": "b-build",
+    "flags": [],
+    "mode": "build",
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 3,
+    "session": "b",
+    "source_sha256": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 7.472012794,
+      "drain_seconds": 0.000332721,
+      "family_cpu_seconds": 9.284417000000001,
+      "family_wall_seconds": 7.472345515,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 3.02933,
+      "user_cpu_seconds": 6.2550870000000005
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 7.258686245,
+      "drain_seconds": 0.000451974,
+      "family_cpu_seconds": 9.031254,
+      "family_wall_seconds": 7.259138219,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 2.876242,
+      "user_cpu_seconds": 6.155012
+    },
+    "component": "b-build",
+    "flags": [],
+    "mode": "build",
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 4,
+    "session": "b",
+    "source_sha256": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 6.490931387,
+      "drain_seconds": 0.000396611,
+      "family_cpu_seconds": 8.25944,
+      "family_wall_seconds": 6.491327998,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 2.880429,
+      "user_cpu_seconds": 5.379010999999999
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 6.570400275,
+      "drain_seconds": 0.000382003,
+      "family_cpu_seconds": 8.382014,
+      "family_wall_seconds": 6.570782278,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 2.8495909999999998,
+      "user_cpu_seconds": 5.532423
+    },
+    "component": "b-build",
+    "flags": [],
+    "mode": "build",
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 5,
+    "session": "b",
+    "source_sha256": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 4.9902972,
+      "drain_seconds": 0.000125214,
+      "family_cpu_seconds": 5.011787,
+      "family_wall_seconds": 4.990422414,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.398088,
+      "user_cpu_seconds": 3.613699
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.70073024,
+      "drain_seconds": 0.000150411,
+      "family_cpu_seconds": 5.5646640000000005,
+      "family_wall_seconds": 5.700880651,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.5741100000000001,
+      "user_cpu_seconds": 3.990554
+    },
+    "component": "b-check",
+    "flags": [],
+    "mode": "check",
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 0,
+    "session": "b",
+    "source_sha256": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.48081874,
+      "drain_seconds": 0.000178934,
+      "family_cpu_seconds": 5.820583,
+      "family_wall_seconds": 5.480997674,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.5943969999999998,
+      "user_cpu_seconds": 4.226186
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.336515019,
+      "drain_seconds": 0.000100857,
+      "family_cpu_seconds": 5.67345,
+      "family_wall_seconds": 5.336615876,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.454434,
+      "user_cpu_seconds": 4.219016
+    },
+    "component": "b-check",
+    "flags": [],
+    "mode": "check",
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 1,
+    "session": "b",
+    "source_sha256": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.837700836,
+      "drain_seconds": 0.000122989,
+      "family_cpu_seconds": 6.186688999999999,
+      "family_wall_seconds": 5.837823825,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.587018,
+      "user_cpu_seconds": 4.599671
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.692655204,
+      "drain_seconds": 0.000139099,
+      "family_cpu_seconds": 6.0458300000000005,
+      "family_wall_seconds": 5.692794303,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.4257360000000001,
+      "user_cpu_seconds": 4.620094
+    },
+    "component": "b-check",
+    "flags": [],
+    "mode": "check",
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 2,
+    "session": "b",
+    "source_sha256": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.349006175,
+      "drain_seconds": 0.000159608,
+      "family_cpu_seconds": 5.6827950000000005,
+      "family_wall_seconds": 5.349165783,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.5196939999999999,
+      "user_cpu_seconds": 4.163101
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.421276321,
+      "drain_seconds": 0.000188171,
+      "family_cpu_seconds": 5.753850999999999,
+      "family_wall_seconds": 5.421464492,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.546198,
+      "user_cpu_seconds": 4.207653
+    },
+    "component": "b-check",
+    "flags": [],
+    "mode": "check",
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 3,
+    "session": "b",
+    "source_sha256": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.602160074,
+      "drain_seconds": 0.000202548,
+      "family_cpu_seconds": 5.943939,
+      "family_wall_seconds": 5.602362622,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.669359,
+      "user_cpu_seconds": 4.27458
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.474932147,
+      "drain_seconds": 0.000162173,
+      "family_cpu_seconds": 5.8081879999999995,
+      "family_wall_seconds": 5.47509432,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.580377,
+      "user_cpu_seconds": 4.227811
+    },
+    "component": "b-check",
+    "flags": [],
+    "mode": "check",
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 4,
+    "session": "b",
+    "source_sha256": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.828572872,
+      "drain_seconds": 0.000176609,
+      "family_cpu_seconds": 6.159803999999999,
+      "family_wall_seconds": 5.828749481,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.598234,
+      "user_cpu_seconds": 4.56157
+    },
+    "candidate": {
+      "artifact_count": 373,
+      "command_wall_seconds": 5.804819556,
+      "drain_seconds": 0.000189103,
+      "family_cpu_seconds": 6.145277,
+      "family_wall_seconds": 5.805008659,
+      "nonzero_adopted_exit_count": 0,
+      "system_cpu_seconds": 1.564466,
+      "user_cpu_seconds": 4.580811
+    },
+    "component": "b-check",
+    "flags": [],
+    "mode": "check",
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 5,
+    "session": "b",
+    "source_sha256": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de",
+    "source_variant": "before"
+  }
+]

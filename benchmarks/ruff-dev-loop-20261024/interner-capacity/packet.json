@@ -1,0 +1,76 @@
+{
+  "all_cargo_calls": 136,
+  "alpha_ledger_actions": 0,
+  "discovery_rows_in_inference": 0,
+  "files": {
+    "README.md": {
+      "bytes": 6066,
+      "sha256": "8a18739b54ee3e505f7950f3f3f65c0eb1981cca695ab3ac90d41157f1db3fe4"
+    },
+    "expected.json": {
+      "bytes": 5209,
+      "sha256": "ffc3a79fa1b98b327d781fd9dd07672e6f4ecaac2c38f17bc19771efcc527b8f"
+    },
+    "frozen_numeric.py": {
+      "bytes": 8653,
+      "sha256": "cfb87993aab7d8b08b7059696db9f9859791c596734f657c64e3c624d007d2bc"
+    },
+    "manifest.json": {
+      "bytes": 1729,
+      "sha256": "c52c856eb734db8d14d93e586f318b99c81a43fce8e2dcc3b531910f48e429e1"
+    },
+    "native-guard-pairs.json": {
+      "bytes": 35048,
+      "sha256": "f60e2e48dc726a07124330435ddd0aa2500a67b2ec33e74b69b46da8e8acdd6e"
+    },
+    "pairs.csv": {
+      "bytes": 12667,
+      "sha256": "1a78b1086127d574ab5d9df7ead362eb5a3078119dc1ac5081a8dcef77382934"
+    },
+    "plan.json": {
+      "bytes": 6368,
+      "sha256": "9840640ceced27a3a1dabf50f1b2d51fae2964a7111d1b4441641cdcd1133e7a"
+    },
+    "primary-pairs.json": {
+      "bytes": 11757,
+      "sha256": "c05cd327440802f7aa5450ea3bdd1d59bf5f028f4f6cc385b156f04dcde206cc"
+    },
+    "profile-references.json": {
+      "bytes": 20559,
+      "sha256": "4dd58dfda923653d950ce1bd563425a6a32dd5f52fb21a9c7bb43ce143de1b47"
+    },
+    "provenance.json": {
+      "bytes": 4696,
+      "sha256": "82cc61324a19175f49a3eee3b3e6206ecb8b1be75e5cf40087a90db0baef373d"
+    },
+    "replay-success.json": {
+      "bytes": 655,
+      "sha256": "a473740d37a65ec6b4a6288cce7f92d52557bae8a2f7668e42cfa945ec23dfa2"
+    },
+    "replay.py": {
+      "bytes": 13388,
+      "sha256": "9652aeccc4ea07ae6f2687f8f2139ae470f6db2ec032fe6c4c7c2220b9571446"
+    }
+  },
+  "full_raw_capture_included": false,
+  "intended_public_path": "benchmarks/ruff-dev-loop-20261024/interner-capacity",
+  "native_commands": 0,
+  "native_guard_pairs": 36,
+  "native_wall_gain_claim": false,
+  "new_measurements": 0,
+  "no_exclusions_or_extensions": true,
+  "numpy_version": "2.3.5",
+  "only_qualified_gain_endpoint": "selected original compiler PID Ir",
+  "portable_native_runner_included": false,
+  "primary_pairs": 24,
+  "private_routes_or_environment_included": false,
+  "publication_action_taken": false,
+  "qualification_passed": true,
+  "schema": "interner-capacity-public-evidence-packet-v1",
+  "selected_compiler_observations": 48,
+  "source_analysis_sha256": "314a3fc9a31166c8f6e4bf5f895ec3cf1ba412fa2559d8b2379a3447380f6fa6",
+  "source_independent_review_sha256": "ec6a578418d6b6c4e07a2f3c1c2b231c80027e926cae6738f5bcbc2c06b3048f",
+  "source_packer_preparation_sha256": "412f0efb7e8b18d98c9bbfdfa1bf37a726d119bb1b6214d0738b141e82c12669",
+  "statistical_replay_executions": 1,
+  "unchanged_numeric_functions": true
+}

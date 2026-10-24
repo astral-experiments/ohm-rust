@@ -1,0 +1,222 @@
+{
+  "adaptive_extension": false,
+  "all_cargo_calls": 136,
+  "alpha": 4.8828125e-06,
+  "alpha_ordinal": 11,
+  "alpha_seed_record_sha256": "93efc89171e312eb0241d48816fa497475f1b3477dd76f0939a5de70447020b7",
+  "alpha_spend_sha256": "19aaf65c5faddd3e4231273d92cbdcc0faf3845a0083292f4547ce2b961a2d58",
+  "analysis_seed": 15944151719915126639,
+  "bootstrap_caveat": "Approximate interval; temporal correlation and cache-cycle effects can invalidate within-stratum exchangeability. Blocks are freshly warmed and separately scheduled, not claimed statistically independent.",
+  "bootstrap_samples": 50000,
+  "bootstrap_strata": "block x observed AB/BA order; six observations per stratum",
+  "both_block_geometric_reductions_positive": true,
+  "comparison": {
+    "A": "lint1",
+    "A_descriptor_sha256": "aa30abc7419b138df8574abc98863a52ed5f9dec2847acd244c627e576d1ebe2",
+    "B": "interner-capacity1",
+    "B_descriptor_sha256": "85d5381ecce8778b79f4184af0693703e2a63b3ef724323126fb9bea834cefbd",
+    "fixture": "parser"
+  },
+  "cumulative_alpha": 0.0099951171875,
+  "cycle_observation": "Record edit ordinal and modulo-3 position; four complete groups of three edits per arm/block. No assumed cache-hit or compaction proof.",
+  "exact_randomization_assignments": 853776,
+  "exclusions": [],
+  "frozen_utc": "2026-10-24T07:08:58.542918+00:00",
+  "gain_hypotheses": 1,
+  "holm": "identity for one Ir gain hypothesis",
+  "lower_99_percent_strictly_above": 0.2,
+  "native_guard_components": [
+    {
+      "block": "a",
+      "id": "a-check",
+      "mode": "check",
+      "pairs": 6,
+      "schedule_seed": 13392109501757988891
+    },
+    {
+      "block": "a",
+      "id": "a-build",
+      "mode": "build",
+      "pairs": 6,
+      "schedule_seed": 2326964639991381837
+    },
+    {
+      "block": "a",
+      "id": "a-test",
+      "mode": "test",
+      "pairs": 6,
+      "schedule_seed": 10528498670063256091
+    },
+    {
+      "block": "b",
+      "id": "b-test",
+      "mode": "test",
+      "pairs": 6,
+      "schedule_seed": 428521029767798708
+    },
+    {
+      "block": "b",
+      "id": "b-build",
+      "mode": "build",
+      "pairs": 6,
+      "schedule_seed": 9654313464570034775
+    },
+    {
+      "block": "b",
+      "id": "b-check",
+      "mode": "check",
+      "pairs": 6,
+      "schedule_seed": 15536401225978703477
+    }
+  ],
+  "native_guard_pairs": 36,
+  "native_guard_timed_calls": 72,
+  "native_pair_orders": {
+    "a-build": [
+      "AB",
+      "BA",
+      "AB",
+      "AB",
+      "BA",
+      "BA"
+    ],
+    "a-check": [
+      "AB",
+      "BA",
+      "BA",
+      "BA",
+      "AB",
+      "AB"
+    ],
+    "a-test": [
+      "AB",
+      "BA",
+      "AB",
+      "BA",
+      "AB",
+      "BA"
+    ],
+    "b-build": [
+      "AB",
+      "AB",
+      "BA",
+      "BA",
+      "BA",
+      "AB"
+    ],
+    "b-check": [
+      "AB",
+      "AB",
+      "BA",
+      "BA",
+      "AB",
+      "BA"
+    ],
+    "b-test": [
+      "AB",
+      "AB",
+      "BA",
+      "AB",
+      "BA",
+      "BA"
+    ]
+  },
+  "native_regression_guard": {
+    "all_36_pairs_required_before_final_decision": true,
+    "alpha_gain_hypotheses": 0,
+    "component_order": [
+      "a-check",
+      "a-build",
+      "a-test",
+      "b-test",
+      "b-build",
+      "b-check"
+    ],
+    "effect_statistic": "100 * (1 - exp(mean(log(B/A)))) over paired observations, overall and separately within each block",
+    "either_block_reduction_percent_lte_veto": -5.0,
+    "endpoint": "command_wall_seconds",
+    "fixture": "linter",
+    "fresh_stores_once": true,
+    "implementation_readiness_is_separate_from_mandatory_policy": true,
+    "needle": "suppression",
+    "noninferiority_claim": false,
+    "order_rule": "Uniform shuffle of exactly 3 AB and 3 BA within each six-pair component; no cycle-position balancing",
+    "overall_reduction_percent_lte_veto": -2.0,
+    "pairs_per_block_mode": 6,
+    "pairs_per_mode": 12,
+    "positive_native_gain_claim": false,
+    "replacement": "suppr3ssion",
+    "selected_crate": "ruff_linter",
+    "selected_crate_and_api_validation": "Unchanged exercised native-wall carrier validators",
+    "separate_from_Ir_stores": true,
+    "source_suffix": "crates/ruff_linter/src/rules/ruff/rules/unused_noqa.rs",
+    "stores_reused_across_components": true,
+    "timed_calls": 72,
+    "warm_calls": 12,
+    "warms_excluded_from_effects": true,
+    "warms_per_component": 2
+  },
+  "next_unused_alpha": 2.44140625e-06,
+  "numeric_sha256": "cfb87993aab7d8b08b7059696db9f9859791c596734f657c64e3c624d007d2bc",
+  "pair_orders": {
+    "1": [
+      "BA",
+      "AB",
+      "BA",
+      "AB",
+      "BA",
+      "AB",
+      "BA",
+      "AB",
+      "BA",
+      "AB",
+      "AB",
+      "BA"
+    ],
+    "2": [
+      "AB",
+      "BA",
+      "BA",
+      "BA",
+      "BA",
+      "AB",
+      "BA",
+      "BA",
+      "AB",
+      "AB",
+      "AB",
+      "AB"
+    ]
+  },
+  "permutation_samples": 2000000,
+  "primary_endpoint": "selected original compiler PID Ir",
+  "primary_pairs": 24,
+  "primary_profiled_calls": 48,
+  "prior_exploratory_observations_in_inference": 0,
+  "prior_proposal_sha256": "65e59732c8437203386d0e6a6b6b3a366f81e54a719c18028a0659906bbaee9a",
+  "prospective_revision": "Root removed the separate 0.5% point floor before any confirmation freeze/data; retain strict lower99 > 0.2%, positive blocks, and exact primary p <= planned next alpha.",
+  "raw_profile_policy": "Retain every call raw profile/tool log/argv/owner ledger; select original compiler PID only; never sum other PIDs.",
+  "schedule_seeds": {
+    "1": 5121875754872579010,
+    "2": 11452308912789869193
+  },
+  "schema": "interner-capacity-public-statistical-plan-v1",
+  "separate_point_floor_applied": false,
+  "source_image_hashes": {
+    "linter": {
+      "after": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+      "before": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de"
+    },
+    "parser": {
+      "after": "6e8d93d333bece527c3bd3d880e1fb0b93b57ee7ca2ac4621231ff97a4c4bdfd",
+      "before": "022f3cf7a1c2cfe546fa0361cd7ba10adfd95e8764b9ce79bd8423735c1b35ba"
+    }
+  },
+  "source_plan_sha256": "312fe8a0851bed0f2d9b2c931a24aeda77cd1ee918a80bf5de1f616f7fd26590",
+  "source_sequence": "Native original warm; after on odd edit ordinals, before on even ordinals; each arm previous content must differ.",
+  "warm_orders": {
+    "1": "AB",
+    "2": "BA"
+  },
+  "warms": 16
+}
