@@ -1,0 +1,248 @@
+{
+  "activity": {
+    "entry_and_each_profile": "Existing strict quiet check at entry and immediately before/after every profiled Cargo command, on each separately leased VM. Retain every observation.",
+    "pair_windows": "Before each pair, prepare both pristine copies, then require all three named services inactive/dead and each concrete timer deadline at least 270 seconds away: kube-proxy-reconcile, azure-session and teleport-reconcile. Keep the 1200-second maximum wait and all original entry/before/after occupancy checks; no change inside pairs.",
+    "policy_changes": "No service, scheduler, affinity, CPU governor, kernel or global auth changes.",
+    "terminal_after_cleanup": "Record activity observationally after restoration, preserving the already accepted terminal boundary distinction."
+  },
+  "design": {
+    "A": "Matched source-equivalent #222 baseline",
+    "B": "Only opaque-item region-environment setup reuse, with its approved per-item eligibility and fallback",
+    "blocks": 2,
+    "bootstrap_resamples": 200000,
+    "collection_mode": "concurrent-independent-machines",
+    "confidence": 0.99,
+    "discovery_or_extension": false,
+    "each_block_gate": {
+      "lower_count_reduction_strictly_above": 0.001,
+      "two_sided_sign_p_strictly_below": 0.01,
+      "wins": 8
+    },
+    "masking": "Only operational status and restoration/manifest identities may be reported during collection. No partial counts, pairs, confidence intervals, mechanism attribution or comparative native durations. The sole analyzer entry validates both full collections before computing either paired result.",
+    "method": "Existing paired_count_statistics geometric baseline/candidate ratios and exact two-sided sign probability. No pooled substitute for either block.",
+    "metric": "Whole selected rustc final Callgrind Ir, including all its threads and in-process macros; not the query-only region and not whole Cargo/child instructions.",
+    "order_effects_reported": true,
+    "orders": [
+      [
+        "AB",
+        "BA",
+        "BA",
+        "AB",
+        "BA",
+        "AB",
+        "AB",
+        "BA"
+      ],
+      [
+        "BA",
+        "AB",
+        "AB",
+        "BA",
+        "AB",
+        "BA",
+        "BA",
+        "AB"
+      ]
+    ],
+    "pairs_per_block": 8,
+    "seeds": [
+      2026102497,
+      2026102498
+    ],
+    "stopping": "One final replacement cohort only. Commit and authorize both independent eight-pair blocks before either starts; neither depends on the other result. Keep both effects masked until both complete every original raw/restoration gate. Any operational/validity failure of this cohort or any valid per-machine gate failure closes the candidate. No additional cohort, retry, sample replacement, extension or pooled substitute. The other already-launched fixed member may finish under its unchanged guards."
+  },
+  "frozen_at": "2026-10-24T13:57:12.231387+00:00",
+  "hosts": {
+    "1": {
+      "baseline_history": "Fresh cold source-only parent warm; no compiled target/shared/package-state import from any older study.",
+      "candidate_history": "Fresh cold source-only parent warm in independent arm state.",
+      "name": "host-1"
+    },
+    "2": {
+      "baseline_history": "The predeclared cold fallback was selected before the original cohort because no authenticated historical driver inode triplet existed. Reuse that now-authenticated source-only parent template only after fresh checks.",
+      "candidate_history": "Fresh cold source-only parent warm; no compiled target/shared/incremental state from #222.",
+      "name": "host-2"
+    }
+  },
+  "independence": {
+    "actual_host_evidence": null,
+    "controller_cpus": [
+      8
+    ],
+    "no_shared_host": "excluded-host is not part of this design.",
+    "required": "Separate dedicated dbox VM resource IDs and machine IDs, exclusive leases, separate writable home volumes/state, no shared writable target/shared/package-home. Hostnames alone are insufficient. Fresh evidence and both input/authority packages must be bound in one cohort before either starts.",
+    "workload_cpus": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ]
+  },
+  "original_protocol_sha256": "7af0d7fd22b669797594185ed970e34919b5557897a685d8ac4ffeb29d0d1d52",
+  "prior_cohort": {
+    "cohort": {
+      "bytes": 1825,
+      "sha256": "5f6c0f1b6fdd17513b5c6477b07a0a8473ffbb8bc6456f0f7d39c4e1f8655d03"
+    },
+    "complete_restoration_closure": {
+      "bytes": 7358,
+      "sha256": "5e3feb50f24574d63383d26456e7ab11906006f8afc741fc8e4cc787cddf8776"
+    },
+    "effects_permanently_masked": true,
+    "observations_used_for_inference": 0
+  },
+  "public_derivative": "Private reference paths, host identifiers and unfilled execution-authority slots omitted; workload, fixed orders, seeds, masking, gates and final stopping rule unchanged.",
+  "raw_gates": [
+    "complete prescribed schedule and successful compiler/Cargo exit",
+    "exact source/runtime/context and selected role; expected upstream transition artifacts retained",
+    "exact parent-only snapshot and first-child lineage for every sample",
+    "final Callgrind Ir equals self-cost sum and matching stderr; preserve old header separately",
+    "successful source/Cargo restoration and parent convergence; both banks parked",
+    "all operational/raw validity established before paired effects",
+    "Both machines have complete16-profile/34-command collections, restored parent and parked banks before either effect calculation.",
+    "Full manifest/source/input/cohort identities and final/self/stderr equalities pass on both; header summary stays separately recorded."
+  ],
+  "replacement_admission": {
+    "fresh_host_readiness": {
+      "generic": null,
+      "trait": null
+    },
+    "generic_timer_feasibility": {
+      "bytes": 6549,
+      "sha256": "34cfa36f1e071e42ea92039035502d85e77302de65c304ea3bdf19f92d2fb307"
+    },
+    "requirements": [
+      "Both original owners terminal and fully opaque raw packets authenticated.",
+      "Separate baseline timing-map observation returns its source/runtime/bank restored before new binding.",
+      "Both machines freshly pass three-service 270-second admission and original quiet checks.",
+      "Pristine banks, fixed tools, all 74 runtime files per arm and actual driver dev/inode/ctime remain exact.",
+      "One passing validate-only start per final input packet, with new output directories absent.",
+      "Root explicitly approves one combined final cohort authority after reviewing actual bindings."
+    ],
+    "root_preparation_instruction": {
+      "bytes": 899,
+      "sha256": "27747bb75d2932e3b31e15709d5fb917045cba5e35a29a1d8356038d1cf80ec2"
+    },
+    "timing_map_bank_release": {
+      "bytes": 4853,
+      "sha256": "054827d7b5bd793cdf7ae30efa5814cea406c7b9e87001aaf72a2b3695eb2b16"
+    },
+    "timing_map_returned_bank": null,
+    "validate_only_receipts": {
+      "generic": null,
+      "trait": null
+    }
+  },
+  "reuse": {
+    "accepted_joint_preparation": {
+      "bytes": 12404,
+      "sha256": "274e7e0fbab2dd781a59ddd77b942bc5764ab087051387944fcd33c87868e26b"
+    },
+    "accepted_source_freeze": {
+      "bytes": 15741,
+      "sha256": "6130ca70eef041089860afec421fdd6add37045b02c4dedfdba8c7dba452230b"
+    },
+    "local_readiness_note": {
+      "bytes": 632,
+      "sha256": "50e8fe712cc2f53b92e1e8b5b2204530fd19562fbb98e549b24bf61ba9725d95"
+    },
+    "predecessor_protocol": {
+      "bytes": 12170,
+      "sha256": "1c87d3453b7227ab0cd34ed37eb225d3dc53ed37a2eb3d3bbc4de5f885a1271d"
+    },
+    "repeat_profiling_rehearsals": false,
+    "retained_preflight_inputs": {
+      "generic": {
+        "bytes": 181192,
+        "sha256": "c7ea34e9ce4a94e1bc5d4984a4184c4a51f0706b3969878e21acf1db408a1ae3"
+      },
+      "trait": {
+        "bytes": 181188,
+        "sha256": "d149e31cfa159ed75ab879c35676a6bf12385a5b4cc733d11cab4b1d1afec0ff"
+      }
+    },
+    "unchanged_files": [
+      "measure.py",
+      "analyze.py",
+      "admit.py",
+      "metric.py",
+      "retain.py",
+      "helpers/occupancy.py",
+      "helpers/occupancy_observation.py",
+      "helpers/paired.py"
+    ]
+  },
+  "schema": 1,
+  "scope": "Ordinary uv-library rustc in the first authentic uv #22049 parent-to-child cargo check transition. Two dedicated VMs; whole selected-process final Ir only. No whole-Cargo, native wall-time or test-build claim.",
+  "source": {
+    "actual_compiled_candidate": null,
+    "baseline_measured_commit": "5ad468b19b3cd377c00519fb0bc7e020d117d338",
+    "baseline_published_commit": "9d583ffee18d3cb132ac9b2a0279f449447bf0af",
+    "baseline_runtime": {
+      "bytes": 17042,
+      "sha256": "d3050f061e014f0474c8c286b60006930c4770371f2663a72819a9076dd465bd"
+    },
+    "baseline_source_equivalence": {
+      "bytes": 4454,
+      "sha256": "06f9040bbf13395d8f843eb9a84c260c9bbdc5bd17eddcc37f6144279c9f717d"
+    },
+    "baseline_tree": "792811f296f5c16ba12c942ea916a79cfe83bf26",
+    "candidate_proposed_patch_sha256": "2c4764f2a2a34cfbaee044cba9753f39f5cd62305677c72e10f6baa1dd82d829",
+    "candidate_proposed_tree": "eb40fac7381f0af86c9d69ab07c10148177a34a2",
+    "candidate_source_proposal": {
+      "bytes": 1963,
+      "sha256": "2a1afc3428b02d70288f144bc25bccf9d07e1b873f95289e7ee0b5694cbec881"
+    },
+    "common_embedded_commit": "f93a752e3de7404107ea5908d65c8832aee5625a"
+  },
+  "state": {
+    "capture": "Keep the selective wrapper installed from the first parent warm. Retain every compiler argv and ordered environment. Execute original live Cargo jobserver arguments and descriptors unchanged; no isolated stale-jobserver substitution. Child compiler profiling only, including its threads/in-process macros; all other children uninstrumented.",
+    "contexts": "Before qualification, bind native selected context and exact per-arm path/namespace mapping. Preserve every actual argv/environment byte. Any additional unexplained input difference stops preparation.",
+    "initial_warming": "Both machines and both arms already completed the prescribed cold source-only parent histories. Reuse only their authenticated pristine parent templates and immutable runtime inodes; no rewarming or cross-arm compiled state import is proposed.",
+    "outputs": "Fresh native/instrumented preflights bind all39 compiler calls, all outputs, parent freshness and exact per-arm hashes/diagnostics. No prior output hashes, opaque-metadata rules or generic masks are inherited. Actual ordered argv/environment/live jobserver are preserved; only the new explicit full namespace components are compared offline.",
+    "placement": "Reuse the admitted canonical active path and independent pristine arm banks in opaque-study-01 after exact restoration and identity checks. Put all final-cohort controls, inputs, launch records, authorities and output identities in distinct replacement-* paths; preserve every original run.",
+    "pristine_parent": "Before any child transition, preserve and authenticate a parent-only state snapshot for each arm, including source metadata, Cargo target/shared/package state and rustc-info. Never copy one arm incremental files into the other.",
+    "restoration": "Restore authentic parent source and original fixed Cargo, converge/freshness-check each touched arm and park both banks after every completed/failed block. Keep pristine snapshots unchanged.",
+    "runtime_identity": "Validate all74 runtime/compiler/std/LLVM/Wild files per arm and preserve the active runtime inode across samples. New candidate has independent writable state even if its embedded version is identical.",
+    "sample": "Restore that arm pristine parent snapshot at the same physical paths, retaining its actual runtime identity. Require original parent check to be fresh with zero compilation. Apply the exact authentic child edit and run Cargo once, profiling exactly its selected ordinary uv library compiler. That compiler has never seen the child in this state."
+  },
+  "study": "opaque-region-environment-reuse-sdk12-final-concurrent-20261024",
+  "workload": {
+    "cargo_args": [
+      "-Zohm-defaults=yes",
+      "check",
+      "--locked",
+      "--offline",
+      "-j",
+      "8",
+      "--timings",
+      "--message-format=json-render-diagnostics"
+    ],
+    "cargo_commit": "fdd26156be98618e2e01a9e02703edac71b79a35",
+    "cargo_sha256": "75eff38f65a16abae0a7b9603fc4fa02c846a0b6cb60a72d08b68393849b914b",
+    "compiler_threads": 8,
+    "lock_sha256": "74b8ae645079c1be4797acce1fd2361ecb15dddf0ba13b2f78d52bee919bd57f",
+    "patch": {
+      "bytes": 12598,
+      "sha256": "90e638f2dba28a6e626d7eb83a59d3efe8c536a8941fb0584a00a942d7f1e037"
+    },
+    "selection": {
+      "crate": "uv",
+      "crate_type": "lib",
+      "emit": "dep-info,metadata",
+      "input": "crates/uv/src/lib.rs",
+      "test": false
+    },
+    "source_selection": {
+      "bytes": 13002,
+      "sha256": "cf5e721649e2e0061f32d8504bcbb4a5d4942856fcdfefe39dbb9d797b621496"
+    },
+    "tests_execute": false,
+    "uv_child": "73337b788c9057f6f3db1035d64be02b61b6ce7b",
+    "uv_parent": "cd050e4b18dfc4c5354ead52fa2b54756121b091"
+  }
+}

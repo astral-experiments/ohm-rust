@@ -1,0 +1,38 @@
+{
+  "closure_sha256": "5e3feb50f24574d63383d26456e7ab11906006f8afc741fc8e4cc787cddf8776",
+  "effect_reader_invocations": 0,
+  "members": [
+    {
+      "banks_parked": true,
+      "block": 1,
+      "completion_sha256": "7362e8c4a00c5aee38b9d5cad1109f0e073028ec9ce93bc0c5340649e5771eeb",
+      "files_authenticated": 814,
+      "opaque_archive_sha256": "a656a265ddd2becebf9fdb9339bba69bd66de4cae4440ade1b4a60119230d983",
+      "operational_state": "failed",
+      "sample_records_saved": 7,
+      "source_parent_restored": true,
+      "terminal_sha256": "81df53634ac8c1235bb5195e5622f39c96dee6a72775f7173e30b0181ef4822e"
+    },
+    {
+      "banks_parked": true,
+      "block": 2,
+      "completion_sha256": "91ebd2ff5e3d51d661369deb6817f14883c96d6f0449b3c808266ff0aebe8b45",
+      "files_authenticated": 1617,
+      "opaque_archive_sha256": "52a7342ae25c060f2afdf87febcca0349cf41d4c56845cdce485e9ece7bf1ba3",
+      "operational_state": "complete",
+      "sample_records_saved": 16,
+      "source_parent_restored": true,
+      "terminal_sha256": "333e19bebcfeecdcae171da614ae8840105889c32a49534fdf4d5ae19933ac2a"
+    }
+  ],
+  "observations_used_for_inference": 0,
+  "profiles_in_this_public_packet": 0,
+  "protocol_sha256": "1c87d3453b7227ab0cd34ed37eb225d3dc53ed37a2eb3d3bbc4de5f885a1271d",
+  "reason": "The first machine failed the unchanged post-command host-occupancy guard during automatic Ansible/Python maintenance. The other original fixed member completed, but both members remain excluded and their effects unread.",
+  "replacement": "One final concurrent cohort was fixed prospectively with seeds 2026102497/98 and the added Teleport timer admission. No first-cohort observation is reused or pooled; any final operational or effect-gate failure closes qualification.",
+  "seeds": [
+    2026102495,
+    2026102496
+  ],
+  "state": "entire-original-cohort-operationally-excluded-effects-permanently-masked"
+}

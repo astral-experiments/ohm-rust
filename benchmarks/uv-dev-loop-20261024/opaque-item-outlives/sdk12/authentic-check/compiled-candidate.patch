@@ -1,0 +1,223 @@
+diff --git a/compiler/rustc_trait_selection/src/regions.rs b/compiler/rustc_trait_selection/src/regions.rs
+index c63b7773739d0f8fcc3842434e56e08d9cd37ab1..8b60b347243b6fa3dcf46495911597d025d0ee52 100644
+--- a/compiler/rustc_trait_selection/src/regions.rs
++++ b/compiler/rustc_trait_selection/src/regions.rs
+@@ -120,6 +120,45 @@ pub fn region_known_to_outlive<'tcx>(
+     })
+ }
+ 
++pub(crate) struct RegionOutlivesTest<'tcx> {
++    infcx: InferCtxt<'tcx>,
++    outlives_env: OutlivesEnvironment<'tcx>,
++    id: LocalDefId,
++}
++
++impl<'tcx> RegionOutlivesTest<'tcx> {
++    pub(crate) fn new(
++        tcx: TyCtxt<'tcx>,
++        id: LocalDefId,
++        param_env: ty::ParamEnv<'tcx>,
++        wf_tys: &FxIndexSet<Ty<'tcx>>,
++    ) -> Self {
++        let infcx = tcx.infer_ctxt().build(TypingMode::non_body_analysis());
++        let outlives_env = OutlivesEnvironment::new(&infcx, id, param_env, wf_tys.iter().copied());
++        Self { infcx, outlives_env, id }
++    }
++
++    pub(crate) fn known_to_outlive(
++        &self,
++        region_a: ty::Region<'tcx>,
++        region_b: ty::Region<'tcx>,
++    ) -> bool {
++        // Keep any variables and constraints introduced by implied-bound normalization,
++        // but never solve or add a tested inequality to the shared preparation.
++        let infcx = self.infcx.fork();
++        infcx.sub_regions(
++            SubregionOrigin::RelateRegionParamBound(DUMMY_SP, None),
++            region_b,
++            region_a,
++            ty::VisibleForLeakCheck::Unreachable,
++        );
++        let errors = infcx
++            .resolve_regions_with_outlives_env(&self.outlives_env, infcx.tcx.def_span(self.id));
++        tracing::debug!(?errors, "errors");
++        errors.is_empty()
++    }
++}
++
+ /// Given a known `param_env` and a set of well formed types, set up an
+ /// `InferCtxt`, call the passed function (to e.g. set up region constraints
+ /// to be tested), then resolve region and return errors
+diff --git a/compiler/rustc_trait_selection/src/traits/outlives_for_liveness.rs b/compiler/rustc_trait_selection/src/traits/outlives_for_liveness.rs
+index 5cba32d742f62219e30fe1ef7add3c33acd64b3e..be5825f11599b323d55f65eeae31458d2a200c1d 100644
+--- a/compiler/rustc_trait_selection/src/traits/outlives_for_liveness.rs
++++ b/compiler/rustc_trait_selection/src/traits/outlives_for_liveness.rs
+@@ -9,7 +9,7 @@
+ 
+ use crate::infer::outlives::test_type_match;
+ use crate::infer::region_constraints::VerifyIfEq;
+-use crate::regions::{region_known_to_outlive, ty_known_to_outlive};
++use crate::regions::{RegionOutlivesTest, region_known_to_outlive, ty_known_to_outlive};
+ 
+ /// For a given alias type, this returns the set of (identity) generic args that
+ /// are relevant for liveness, that can be inferred from outlives bounds on the
+@@ -222,6 +222,11 @@ pub(crate) fn args_known_to_outlive_opaque_params<'tcx>(
+     }
+     tracing::debug!(?parent_outlives_regions);
+ 
++    let can_reuse_region_outlives_test = parent_outlives_regions
++        .iter()
++        .all(|(region, _)| matches!(region.kind(), ty::ReEarlyParam(_) | ty::ReLateParam(_)));
++    let mut region_outlives_test = None;
++
+     // For every captured region, we want to consider outlived args from two sources:
+     // 1) *Types*: These come from *parent* generics (and are not duplicated to the opaque)
+     // 2) *Captured Regions*
+@@ -254,14 +259,22 @@ pub(crate) fn args_known_to_outlive_opaque_params<'tcx>(
+ 
+         for &(parent_outlives_region, opaque_region) in parent_outlives_regions.iter() {
+             let region_outlives = parent_outlives_region == *parent_outlived_region
+-                || region_known_to_outlive(
+-                    tcx,
+-                    def_id,
+-                    parent_param_env,
+-                    &wf_tys,
+-                    parent_outlives_region,
+-                    *parent_outlived_region,
+-                );
++                || if can_reuse_region_outlives_test && tcx.dcx().has_errors().is_none() {
++                    region_outlives_test
++                        .get_or_insert_with(|| {
++                            RegionOutlivesTest::new(tcx, def_id, parent_param_env, &wf_tys)
++                        })
++                        .known_to_outlive(parent_outlives_region, *parent_outlived_region)
++                } else {
++                    region_known_to_outlive(
++                        tcx,
++                        def_id,
++                        parent_param_env,
++                        &wf_tys,
++                        parent_outlives_region,
++                        *parent_outlived_region,
++                    )
++                };
+             if !region_outlives {
+                 continue;
+             }
+diff --git a/tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.rs b/tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..9e7157b1f8898dcc9362d80ddfe1c665aa28b354
+--- /dev/null
++++ b/tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.rs
+@@ -0,0 +1,39 @@
++//@ edition: 2024
++//@ revisions: current next
++//@[next] compile-flags: -Znext-solver
++
++#![allow(dead_code)]
++
++fn forward<'short: 'short, 'long: 'long, 'other: 'other>(
++    _: &'short &'long (),
++    value: &'short (),
++    _: &'other (),
++) -> impl Copy + 'short + use<'short, 'long, 'other> {
++    value
++}
++
++fn reverse<'other: 'other, 'long: 'long, 'short: 'short>(
++    _: &'short &'long (),
++    value: &'short (),
++    _: &'other (),
++) -> impl Copy + 'short + use<'other, 'long, 'short> {
++    value
++}
++
++fn reject_forward<'short, 'long>(
++    nested: &'short &'long (),
++    value: &'short (),
++) -> impl Copy + 'long {
++    forward(nested, value, &())
++    //~^ ERROR lifetime may not live long enough
++}
++
++fn reject_reverse<'short, 'long>(
++    nested: &'short &'long (),
++    value: &'short (),
++) -> impl Copy + 'long {
++    reverse(nested, value, &())
++    //~^ ERROR lifetime may not live long enough
++}
++
++fn main() {}
+diff --git a/tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.stderr b/tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.stderr
+new file mode 100644
+index 0000000000000000000000000000000000000000..07058aefb37e8fafbd55524a9bdca6f8b449900e
+--- /dev/null
++++ b/tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.stderr
+@@ -0,0 +1,28 @@
++error: lifetime may not live long enough
++  --> $DIR/outlives-pair-isolation-reject.rs:27:5
++   |
++LL | fn reject_forward<'short, 'long>(
++   |                   ------  ----- lifetime `'long` defined here
++   |                   |
++   |                   lifetime `'short` defined here
++...
++LL |     forward(nested, value, &())
++   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ function was supposed to return data with lifetime `'long` but it is returning data with lifetime `'short`
++   |
++   = help: consider adding the following bound: `'short: 'long`
++
++error: lifetime may not live long enough
++  --> $DIR/outlives-pair-isolation-reject.rs:35:5
++   |
++LL | fn reject_reverse<'short, 'long>(
++   |                   ------  ----- lifetime `'long` defined here
++   |                   |
++   |                   lifetime `'short` defined here
++...
++LL |     reverse(nested, value, &())
++   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ function was supposed to return data with lifetime `'long` but it is returning data with lifetime `'short`
++   |
++   = help: consider adding the following bound: `'short: 'long`
++
++error: aborting due to 2 previous errors
++
+diff --git a/tests/ui/impl-trait/precise-capturing/outlives-pair-isolation.rs b/tests/ui/impl-trait/precise-capturing/outlives-pair-isolation.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..f109990be4a69428410b1490a91b5cabfe6ef623
+--- /dev/null
++++ b/tests/ui/impl-trait/precise-capturing/outlives-pair-isolation.rs
+@@ -0,0 +1,32 @@
++//@ check-pass
++//@ edition: 2024
++//@ revisions: current next
++//@[next] compile-flags: -Znext-solver
++
++#![allow(dead_code)]
++
++fn forward<'short: 'short, 'long: 'long, 'other: 'other>(
++    _: &'short &'long (),
++    value: &'short (),
++    _: &'other (),
++) -> impl Copy + 'short + use<'short, 'long, 'other> {
++    value
++}
++
++fn reverse<'other: 'other, 'long: 'long, 'short: 'short>(
++    _: &'short &'long (),
++    value: &'short (),
++    _: &'other (),
++) -> impl Copy + 'short + use<'other, 'long, 'short> {
++    value
++}
++
++fn needs_outlives<'a, T: 'a>(_: T) {}
++
++fn test<'short, 'long>(nested: &'short &'long (), value: &'short ()) {
++    let local = ();
++    needs_outlives::<'short, _>(forward(nested, value, &local));
++    needs_outlives::<'short, _>(reverse(nested, value, &local));
++}
++
++fn main() {}

@@ -1,0 +1,307 @@
+diff --git a/crates/uv-pep440/src/version.rs b/crates/uv-pep440/src/version.rs
+index 1ce5ed08d8a330a7a8b73f88040465a8f179c69c..da03b73172f825bcc92a3c8b797220af0a312f69 100644
+--- a/crates/uv-pep440/src/version.rs
++++ b/crates/uv-pep440/src/version.rs
+@@ -846,6 +846,32 @@ impl Version {
+         }
+     }
+ 
++    /// Compare this version, without its post and dev components, to another version.
++    #[inline]
++    pub(crate) fn without_post_and_dev_eq(&self, other: &Self) -> bool {
++        match (&self.inner, &other.inner) {
++            (VersionInner::Small { small }, VersionInner::Small { small: other }) => {
++                // Copy the inline representation without allocating.
++                let mut base = small.clone();
++                let _ = base.set_post(None);
++                let _ = base.set_dev(None);
++                base.repr == other.repr
++            }
++            (VersionInner::Small { .. }, VersionInner::Full { .. })
++            | (VersionInner::Full { .. }, VersionInner::Small { .. } | VersionInner::Full { .. }) => {
++                self.without_post_and_dev_eq_slow(other)
++            }
++        }
++    }
++
++    #[cold]
++    #[inline(never)]
++    fn without_post_and_dev_eq_slow(&self, other: &Self) -> bool {
++        self.epoch() == other.epoch()
++            && compare_release(&self.release(), &other.release()) == Ordering::Equal
++            && sortable_tuple_with(self, None, None) == sortable_tuple(other)
++    }
++
+     /// Performs a "slow" but complete comparison between two versions.
+     ///
+     /// This comparison is done using only the public API of a `Version`, and
+@@ -2760,7 +2786,7 @@ impl From<VersionParseError> for VersionPatternParseError {
+ 
+ /// Compare the release parts of two versions, e.g. `4.3.1` > `4.2`, `1.1.0` ==
+ /// `1.1` and `1.16` < `1.19`
+-pub(crate) fn compare_release(this: &[u64], other: &[u64]) -> Ordering {
++fn compare_release(this: &[u64], other: &[u64]) -> Ordering {
+     if this.len() == other.len() {
+         return this.cmp(other);
+     }
+@@ -2801,13 +2827,21 @@ pub(crate) fn compare_release(this: &[u64], other: &[u64]) -> Ordering {
+ ///
+ /// [pep440-suffix-ordering]: https://peps.python.org/pep-0440/#summary-of-permitted-suffixes-and-relative-ordering
+ fn sortable_tuple(version: &Version) -> (u64, u64, Option<u64>, u64, LocalVersionSlice<'_>) {
++    sortable_tuple_with(version, version.post(), version.dev())
++}
++
++fn sortable_tuple_with(
++    version: &Version,
++    post: Option<u64>,
++    dev: Option<u64>,
++) -> (u64, u64, Option<u64>, u64, LocalVersionSlice<'_>) {
+     // If the version is a "max" version, use a post version larger than any possible post version.
+     let post = if version.max().is_some() {
+         Some(u64::MAX)
+     } else {
+-        version.post()
++        post
+     };
+-    match (version.pre(), post, version.dev(), version.min()) {
++    match (version.pre(), post, dev, version.min()) {
+         // min release
+         (_pre, post, _dev, Some(n)) => (0, 0, post, n, version.local()),
+         // dev release
+diff --git a/crates/uv-pep440/src/version_ranges.rs b/crates/uv-pep440/src/version_ranges.rs
+index 7ba3e84c88176b96f8c00d69f7c19822b941f843..d368d98dcfa4dc48d0656528e20c9d9211233239 100644
+--- a/crates/uv-pep440/src/version_ranges.rs
++++ b/crates/uv-pep440/src/version_ranges.rs
+@@ -791,6 +791,52 @@ mod tests {
+         }
+     }
+ 
++    /// Test that `>V` excludes only post-releases of the specified version.
++    ///
++    /// See: <https://github.com/pypa/packaging/pull/1141>
++    #[test]
++    fn greater_than_post_release_exclusion() {
++        for (specifier, candidate, expected) in [
++            // Development releases have no post-releases of their own.
++            (">1.0.dev0", "1.0.post0", true),
++            (">1.0.dev1", "1.0a1.post0", true),
++            (">1.0a1.dev1", "1.0a1.post0", true),
++            (">1.0.dev1", "1.0.dev0", false),
++            // A pre-release bound excludes only its own post-releases.
++            (">1.0a1", "1.0.post0", true),
++            (">1.0b1", "1.0.post0", true),
++            (">1.0rc1", "1.0.post0", true),
++            (">1.0a1", "1.0a2.post0", true),
++            (">1.0a1", "1.0a1.post0", false),
++            (">1.0a1", "1.0a1.post0.dev0", false),
++            (">1.0a1", "1.0.0a1.post0", false),
++            // Final and post-release bounds retain their usual exclusions and ordering.
++            (">1.0", "1.0.post0", false),
++            (">1.0", "1.1.post0", true),
++            (">1.0.post0", "1.0.post1", true),
++            // Epochs and local labels participate in the same comparisons.
++            (">1!1.0.dev0", "1!1.0.post0", true),
++            (">1!1.0", "2!1.0.post0", true),
++            (">1!1.0.dev0", "1.0.post0", false),
++            (">1.0.dev0", "1.0.post0+local", true),
++            (">1.0.dev0", "1.0.dev0+local", false),
++            (">1.0a1", "1.0a1.post0+local", false),
++        ] {
++            let specifier = specifier.parse::<VersionSpecifier>().unwrap();
++            let candidate = version(candidate);
++            assert_eq!(
++                specifier.contains(&candidate),
++                expected,
++                "expected `{specifier}` to contain `{candidate}`: {expected}"
++            );
++            assert_eq!(
++                Ranges::<Version>::from(specifier.clone()).contains(&candidate),
++                expected,
++                "expected range for `{specifier}` to contain `{candidate}`: {expected}"
++            );
++        }
++    }
++
+     /// Test the compound `<V.postN` cases covered by `packaging`.
+     ///
+     /// See: <https://github.com/pypa/packaging/pull/1140>
+diff --git a/crates/uv-pep440/src/version_specifier.rs b/crates/uv-pep440/src/version_specifier.rs
+index 02ce2f66b2f6784a3cc949091656dfa38837e2a5..62384d5e86578820c0e3519662935928249afe82 100644
+--- a/crates/uv-pep440/src/version_specifier.rs
++++ b/crates/uv-pep440/src/version_specifier.rs
+@@ -5,9 +5,7 @@ use std::hash::{Hash, Hasher};
+ use std::ops::Bound;
+ use std::str::FromStr;
+ 
+-use crate::{
+-    Operator, OperatorParseError, Version, VersionPattern, VersionPatternParseError, version,
+-};
++use crate::{Operator, OperatorParseError, Version, VersionPattern, VersionPatternParseError};
+ use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
+ #[cfg(feature = "tracing")]
+ use tracing::warn;
+@@ -716,19 +714,11 @@ impl VersionSpecifier {
+                     return true;
+                 }
+ 
+-                if version::compare_release(&this.release(), &other.release()) == Ordering::Equal {
+-                    // This special case is here so that, unless the specifier itself
+-                    // includes is a post-release version, that we do not accept
+-                    // post-release versions for the version mentioned in the specifier
+-                    // (e.g. >3.1 should not match 3.0.post0, but should match 3.2.post0).
+-                    if !this.is_post() && other.is_post() {
+-                        return false;
+-                    }
+-
+-                    // We already checked that self doesn't have a local version
+-                    if other.is_local() {
+-                        return false;
+-                    }
++                // `>V` excludes post-releases of V unless V is itself a post-release.
++                // A post-release's base retains its pre-release component, so `>1.0a1`
++                // excludes `1.0a1.post0` but accepts `1.0.post0`.
++                if !this.is_post() && other.is_post() && other.without_post_and_dev_eq(this) {
++                    return false;
+                 }
+ 
+                 other.as_ref() > this
+@@ -1076,11 +1066,11 @@ impl std::fmt::Display for TildeVersionSpecifier<'_> {
+ 
+ #[cfg(test)]
+ mod tests {
+-    use std::{cmp::Ordering, str::FromStr};
++    use std::{cmp::Ordering, error::Error, str::FromStr};
+ 
+     use indoc::indoc;
+ 
+-    use crate::LocalSegment;
++    use crate::{LocalSegment, version};
+ 
+     use super::*;
+ 
+@@ -1127,6 +1117,60 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn greater_than_post_release_with_long_versions() -> Result<(), Box<dyn Error>> {
++        // Long release numbers use the full version representation. Trailing zeros
++        // do not change which post-releases belong to the bound.
++        let short: VersionSpecifier = ">1.0".parse()?;
++        assert!(!short.contains(&"1.0.0.0.0.post1".parse()?));
++        assert!(short.contains(&"1.0.0.0.1.post1".parse()?));
++
++        let long: VersionSpecifier = ">1.0.0.0.0".parse()?;
++        assert!(!long.contains(&"1.0.post1".parse()?));
++        assert!(long.contains(&"1.1.post1".parse()?));
++
++        // A post-release belongs to a pre-release only when the pre-release
++        // component matches, even if it also has a development component.
++        let prerelease: VersionSpecifier = ">1.0.0.0.0a1".parse()?;
++        assert!(!prerelease.contains(&"1.0a1.post1.dev2".parse()?));
++        assert!(prerelease.contains(&"1.0a2.post1".parse()?));
++        assert!(prerelease.contains(&"1.0.post1".parse()?));
++
++        Ok(())
++    }
++
++    #[test]
++    fn greater_than_post_release_with_maximum_development_number() -> Result<(), Box<dyn Error>> {
++        // The largest parsed development number is still before the
++        // corresponding post-release.
++        let prerelease: VersionSpecifier = ">1.0a1.dev18446744073709551614".parse()?;
++        assert!(prerelease.contains(&"1.0a1.post0".parse()?));
++
++        // An internal maximum development number compares equal to an absent
++        // development component on a pre-release.
++        let lower = "1.0a1".parse::<Version>()?.with_dev(Some(u64::MAX));
++        let specifier = VersionSpecifier::from_version(Operator::GreaterThan, lower)?;
++        assert!(!specifier.contains(&"1.0a1.post0".parse()?));
++
++        Ok(())
++    }
++
++    #[test]
++    fn greater_than_post_release_with_internal_minimum() -> Result<(), Box<dyn Error>> {
++        // Internal minimum bounds compare before ordinary versions and retain
++        // their ordering when their candidate has other version components.
++        let lower = Version::new([1, 0]).with_min(Some(0));
++        let specifier = VersionSpecifier::from_version(Operator::GreaterThan, lower)?;
++
++        let same_minimum = "1.0.post1".parse::<Version>()?.with_min(Some(0));
++        assert!(!specifier.contains(&same_minimum));
++
++        let later_minimum = "1.0.post1".parse::<Version>()?.with_min(Some(1));
++        assert!(specifier.contains(&later_minimum));
++
++        Ok(())
++    }
++
+     const VERSIONS_ALL: &[&str] = &[
+         // Implicit epoch of 0
+         "1.0.dev456",
+diff --git a/crates/uv/tests/pip/pip_check.rs b/crates/uv/tests/pip/pip_check.rs
+index 1874f5b28b6e16cf6672085b1d236da033268f20..4f42e4ae1a143fbd5c76466d1e1e7076e5aa69a0 100644
+--- a/crates/uv/tests/pip/pip_check.rs
++++ b/crates/uv/tests/pip/pip_check.rs
+@@ -123,6 +123,60 @@ fn check_arbitrary_equality() -> Result<()> {
+     Ok(())
+ }
+ 
++#[test]
++fn check_post_release_after_prerelease() -> Result<()> {
++    let scenario = toml::from_str::<Scenario>(indoc! {r#"
++        name = "post-release-after-prerelease"
++
++        [root]
++
++        [expected]
++        satisfiable = true
++
++        [packages.package-a.versions."1.0.0"]
++        sdist = false
++        requires = ["package-b>1.0.dev0,>1.0a1"]
++
++        [packages.package-b.versions."1.0.post0"]
++        sdist = false
++    "#})?;
++    let index = PackseServer::from_scenario(&scenario);
++    let context = uv_test::test_context!("3.12");
++
++    uv_snapshot!(context.filters(), context.pip_install()
++        .arg("package-a")
++        .arg("--strict")
++        .arg("--index-url")
++        .arg(index.index_url()), @"
++    exit_code: 0 (success)
++    ----- stderr -----
++    Resolved 2 packages in [TIME]
++    Prepared 2 packages in [TIME]
++    Installed 2 packages in [TIME]
++     + package-a==1.0.0
++     + package-b==1.0.post0
++    ");
++
++    uv_snapshot!(context.pip_check(), @"
++    exit_code: 0 (success)
++    ----- stderr -----
++    Checked 2 packages in [TIME]
++    All installed packages are compatible
++    ");
++
++    uv_snapshot!(context.filters(), context.pip_install()
++        .args(["package-a", "package-b>1.0.dev0,>1.0a1"])
++        .arg("--strict")
++        .arg("--index-url")
++        .arg(index.index_url()), @"
++    exit_code: 0 (success)
++    ----- stderr -----
++    Checked 2 packages in [TIME]
++    ");
++
++    Ok(())
++}
++
+ /// Check a versionless `.egg-info` file installed by distutils.
+ #[test]
+ fn check_versionless_egg_info_file() -> Result<()> {

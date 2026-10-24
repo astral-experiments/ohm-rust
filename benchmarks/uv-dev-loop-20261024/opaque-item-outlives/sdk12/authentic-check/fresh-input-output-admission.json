@@ -1,0 +1,43 @@
+{
+  "compiler_contexts_per_first_transition": 39,
+  "concurrent_unit_arrival_order_is_not_an_eligibility_gate": true,
+  "cross_arm_serialized_metadata_equivalence_claimed": false,
+  "host_receipts": [
+    {
+      "actual_compiler_vectors_rewritten": false,
+      "all_16_exact_per_arm_child_output_checks_passed": true,
+      "banks_parked": true,
+      "block": 1,
+      "inputs_sha256": "b0a8fa841acbcb46f87c59607e9e627560554e84a2d7dc36e6370b4ae5927424",
+      "live_jobserver_preserved": true,
+      "native_preflight_admission_sha256": "efdd4401ff174595d8e106bcce6659c35c07039259c702ad19771e16a9d0cde5",
+      "pristine_manifest_sha256": {
+        "baseline": "6d32560d88aa55bcd404d688f159ced5eb5f9bd55d297bd1e7e88c87744dce12",
+        "candidate": "99bfba9fa51ba99ace38727d472a2f9dca0f939a1609101e78b408bdce82e600"
+      },
+      "raw_gates_sha256": "788bbf0e4dd82490bc12afcebc10a22e4b36d77d6f8cc1bc85c1492e472f5a17",
+      "whole_source_parent_restored": true
+    },
+    {
+      "actual_compiler_vectors_rewritten": false,
+      "all_16_exact_per_arm_child_output_checks_passed": true,
+      "banks_parked": true,
+      "block": 2,
+      "inputs_sha256": "8887f0063fd34edda921505764b5c513630b7eda585a3153497a1fcfa779a02b",
+      "live_jobserver_preserved": true,
+      "native_preflight_admission_sha256": "fe218a1bdb91df8ab0fa54d42df5b50500d5226022c46e9bb1114ccb6dcd8b61",
+      "pristine_manifest_sha256": {
+        "baseline": "262c4418d3588fae30cfd145cd31174513a16ac3016dd6b5b6253067c32a9bfc",
+        "candidate": "ab6eaf6d4a31286250da22faa0663c7494938e5486095e83e6e84f8586d36cae"
+      },
+      "raw_gates_sha256": "672512be3eb0f25d2e1f7aff9f665a1d226a091d36ddd44ed0c8772a52054b18",
+      "whole_source_parent_restored": true
+    }
+  ],
+  "independent_virtual_machines": 2,
+  "namespace_mappings": "Fresh per-arm components only; actual commands/ordered environments retained.",
+  "output_rule": "Exact fresh per-arm identities; no inherited generic metadata masks or prior output exceptions.",
+  "pristine_source_only_parent_histories": true,
+  "state": "passed",
+  "within_arm_ordered_argv_and_environment_exact": true
+}

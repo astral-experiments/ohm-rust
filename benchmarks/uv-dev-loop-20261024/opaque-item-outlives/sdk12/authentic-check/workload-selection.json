@@ -1,0 +1,215 @@
+{
+  "after": "73337b788c9057f6f3db1035d64be02b61b6ce7b",
+  "after_tree": "c77063c04fe7987c70d15b00acca1e44e21ac98d",
+  "api_scope": "Externally reachable Rust names, signatures, types and configuration remain unchanged. Private/pub(crate) helpers and the implementation of version matching change. This is a genuine correctness fix: e.g. >1.0a1 newly accepts1.0.post0 while excluding1.0a1.post0; dependent native behavior must update. No semantic equivalence or automatic skip is assumed.",
+  "before": "cd050e4b18dfc4c5354ead52fa2b54756121b091",
+  "before_tree": "ee9f36fc68743542c31bd46a9b891af90604d667",
+  "changed_paths": [
+    "crates/uv-pep440/src/version.rs",
+    "crates/uv-pep440/src/version_ranges.rs",
+    "crates/uv-pep440/src/version_specifier.rs",
+    "crates/uv/tests/pip/pip_check.rs"
+  ],
+  "complete_patch_sha256": "90e638f2dba28a6e626d7eb83a59d3efe8c536a8941fb0584a00a942d7f1e037",
+  "exported_api_behavior_equivalent": false,
+  "exported_api_declarations_unchanged": true,
+  "identical_manifest_lock_configuration": {
+    ".cargo/config.toml": "100644 blob bc7bfd60d31860a33da6577f4c4096d96caa3afc",
+    ".cargo/deny.toml": "100644 blob 6612dd3cb6261ad4d2ae85d2dd37ae307677a9f5",
+    "Cargo.lock": "100644 blob c4df8a3709959b79a72397212475b22b669457af",
+    "Cargo.toml": "100644 blob 476343fcfc23f4ffbd009aaf1df107e53305f6ce",
+    "crates/uv-audit/Cargo.toml": "100644 blob b4b5f1c15b444044472df0e083268bed3111752f",
+    "crates/uv-auth/Cargo.toml": "100644 blob f161a065ced1af8f626656fcc9453ca0d656fb97",
+    "crates/uv-bench/Cargo.toml": "100644 blob 19cbf99768875d071689b0433b106b010307f5f2",
+    "crates/uv-bin-install/Cargo.toml": "100644 blob 2d01cb1ffcf929feccd6df4f6345c9eb8c4945d5",
+    "crates/uv-build-backend/Cargo.toml": "100644 blob 7da3a337a0b938035d0ad93dce8fe0953912bc15",
+    "crates/uv-build-frontend/Cargo.toml": "100644 blob edf7d7761d4e211d7f44acff4f5a74ec8950ffe2",
+    "crates/uv-build/Cargo.toml": "100644 blob 2f5cbbf7bd57e6df4cff5c4d78b6ad246da1f4e8",
+    "crates/uv-cache-info/Cargo.toml": "100644 blob 54fbdf7f3d1c557ade90c5728c2a360a54b4866c",
+    "crates/uv-cache-key/Cargo.toml": "100644 blob d87be14608a0309cadc77817b316c1926b097a4d",
+    "crates/uv-cache/Cargo.toml": "100644 blob b73529a20610abb7ff3280b934e49c23249ad44e",
+    "crates/uv-cli/Cargo.toml": "100644 blob e4e9b36107ceccf286edfb457398a14cedacc311",
+    "crates/uv-client/Cargo.toml": "100644 blob b97ec0e3f62a2ce4409cde7934dd9a06c9cd4dfe",
+    "crates/uv-configuration/Cargo.toml": "100644 blob fceba8405f528f9aad337a7189b4434431a611ba",
+    "crates/uv-console/Cargo.toml": "100644 blob de7c5a73b8cd0cacdbd28c2513c802941ca19e5a",
+    "crates/uv-dev/Cargo.toml": "100644 blob ad6310a857f2d7d1123c9a5befc7a43b57c958e7",
+    "crates/uv-dirs/Cargo.toml": "100644 blob 22a7981cbc7025f8f99fdf8f6735972e91ab8aa6",
+    "crates/uv-dispatch/Cargo.toml": "100644 blob 36c8eb83fdd6b1989dbd2980677f5c3ac41936db",
+    "crates/uv-distribution-filename/Cargo.toml": "100644 blob bf8c9004e0aaa33326ac8d32180320580df45229",
+    "crates/uv-distribution-types/Cargo.toml": "100644 blob 1517de8462784f1f9ca09a488a01ad6b50811d4a",
+    "crates/uv-distribution/Cargo.toml": "100644 blob f0899eecc46dd5644fee7ff29188f138566f8500",
+    "crates/uv-errors/Cargo.toml": "100644 blob 5c0283119d31f79b9a732c9b13289c01d1fc1a4d",
+    "crates/uv-extract/Cargo.toml": "100644 blob 080b8c474c7ec0ecf2a23978efb18df0b9ffc60b",
+    "crates/uv-fastid/Cargo.toml": "100644 blob 263fa67ff806c5f7be9c4921d6b5b01dda913415",
+    "crates/uv-flags/Cargo.toml": "100644 blob e7a9afcf578a8678424e91d8b3ca50c686fbbb0a",
+    "crates/uv-fs/Cargo.toml": "100644 blob e53d6c06cbe53bb4924dfbffc98f644eddeee965",
+    "crates/uv-git-types/Cargo.toml": "100644 blob d540c1d51af2ee9744ff994260854b0dcf88777a",
+    "crates/uv-git/Cargo.toml": "100644 blob dae04b86ac359ca2d5431fafe77f12701f67bc9c",
+    "crates/uv-globfilter/Cargo.toml": "100644 blob 1078edb170730c0d3aa60f59396b14c9d01b07af",
+    "crates/uv-install-wheel/Cargo.toml": "100644 blob de144b7ca403831e9e90802d2c6ae64da93be5cb",
+    "crates/uv-installer/Cargo.toml": "100644 blob ae88f76aa7964938798215104cd201b79579bc47",
+    "crates/uv-keyring/Cargo.toml": "100644 blob 4da7ad2d27732f8006835219f6b5918846327476",
+    "crates/uv-lock/Cargo.toml": "100644 blob 52e3f696148f429f13868818936e53ba6d3bcac2",
+    "crates/uv-logging/Cargo.toml": "100644 blob c85d89774f3fe85332029bd572b496683673265b",
+    "crates/uv-macros/Cargo.toml": "100644 blob e775d651534d5bd9f15bb425e8c3a2f2e6f87ecf",
+    "crates/uv-metadata/Cargo.toml": "100644 blob fde64e231a0195501fd140c1f1a50f0b201a0abd",
+    "crates/uv-netrc/Cargo.toml": "100644 blob da7e41b2626785a0c1971163a255c725b1f8bb67",
+    "crates/uv-normalize/Cargo.toml": "100644 blob 7640157d12efdabc49e39eb4d31c0ac7ae6d8b59",
+    "crates/uv-once-map/Cargo.toml": "100644 blob bbf51663fe68296434ae47d738d118a7d092dbfd",
+    "crates/uv-options-metadata/Cargo.toml": "100644 blob aa67a4bebfc58ca9cdd01ca77dd9990f27c4d077",
+    "crates/uv-pep440/Cargo.toml": "100644 blob c7ce0c0d9ffc007637a3aa759c295da0ccb2f458",
+    "crates/uv-pep508/Cargo.toml": "100644 blob aa82f648f18bb83663947bb0e681f0a803b862f2",
+    "crates/uv-performance-memory-allocator/Cargo.toml": "100644 blob 54b77cce88c2d2c120e67d49ae525208a4702e1f",
+    "crates/uv-platform-tags/Cargo.toml": "100644 blob 8a8bc61d4a1d2f7b4ec8ecd954ad019be9ac685a",
+    "crates/uv-platform/Cargo.toml": "100644 blob 6c019271d8c09ddd6a0e3e9f61710c98cde6ed5f",
+    "crates/uv-preview/Cargo.toml": "100644 blob a00a971d2cf70d9925fcd338857f127143c7301c",
+    "crates/uv-publish/Cargo.toml": "100644 blob 6450c68fc5dac43a448f77e19b0d659025c8060d",
+    "crates/uv-pypi-types/Cargo.toml": "100644 blob e74b7fe20b23ecbdd2dce4a500e471370a4e477f",
+    "crates/uv-python/Cargo.toml": "100644 blob 73e431c551f24054a82ab5ee5b5bbbeaafef95ec",
+    "crates/uv-redacted/Cargo.toml": "100644 blob cc9c5f43390c43ae957dcaa6bd13bfa8f34f548e",
+    "crates/uv-requirements-txt/Cargo.toml": "100644 blob 74d4a8e2e7bf27ddfb33a1e595ea4b84e081fc6b",
+    "crates/uv-requirements/Cargo.toml": "100644 blob 503b4288cdf793ba4d34a5a74e9ca41f26d8c973",
+    "crates/uv-resolver-types/Cargo.toml": "100644 blob 281e14826e94a1fb8e85d00507aad4899d5ca6b0",
+    "crates/uv-resolver/Cargo.toml": "100644 blob 07e654452419a7aa3fa3e5ad1ae38d02df52713f",
+    "crates/uv-scripts/Cargo.toml": "100644 blob 5e74e4271e994354f0c23d698e61707bcee37bdb",
+    "crates/uv-settings/Cargo.toml": "100644 blob ec72f8c729ed9c1beafb66a986d9bdabcffc8fff",
+    "crates/uv-shell/Cargo.toml": "100644 blob 4c179f077150821880d49a82fa29d2396467f223",
+    "crates/uv-small-str/Cargo.toml": "100644 blob 4798397dbb15b89ebc7e4ecc69bfa917fefa02dc",
+    "crates/uv-state/Cargo.toml": "100644 blob c3357a0253ed0b06cae3bf3c1558032edde6c6c9",
+    "crates/uv-static/Cargo.toml": "100644 blob f417d87ecb8f12d851abdbd4e164128ade4ad4a8",
+    "crates/uv-test/Cargo.toml": "100644 blob 358a12d8d786cac6209e922cb236feabc4ce5fc1",
+    "crates/uv-threads/Cargo.toml": "100644 blob 7aa476b0151594a5e161c71f371e5d0a237c2946",
+    "crates/uv-toml/Cargo.toml": "100644 blob 3793d61dd06d08d97a367f046e89592083e81a77",
+    "crates/uv-tool/Cargo.toml": "100644 blob 126e521df110e26b2162429681e00df0bcee338c",
+    "crates/uv-torch/Cargo.toml": "100644 blob 5fcdf383972e796068b08590248ecea1fcada63d",
+    "crates/uv-trampoline-builder/Cargo.toml": "100644 blob 65dc1e808ef9cb854320403141c5bf7ad6ac5b46",
+    "crates/uv-trampoline/.cargo/config.toml": "100644 blob 91bed71cadb469e545c39a99f4eba296516da11a",
+    "crates/uv-trampoline/Cargo.lock": "100644 blob 66192d7391ad8f4596557c0041a7de0d8e4c72a2",
+    "crates/uv-trampoline/Cargo.toml": "100644 blob 8582a0b1a6bc65df4ed4dbc1125dc39898b306df",
+    "crates/uv-types/Cargo.toml": "100644 blob ee8ae380a9584745c5cf3b98f47d9f8911324ef5",
+    "crates/uv-unix/Cargo.toml": "100644 blob d4b8d632f3af510f96cc31919f19afa6aceaa571",
+    "crates/uv-version/Cargo.toml": "100644 blob 1ce8cbb31f55cb8c034e67bc1c0d318f6464c112",
+    "crates/uv-virtualenv/Cargo.toml": "100644 blob d7ef9d83eddbb197479fb4bbbb51ce18d1cb3e37",
+    "crates/uv-warnings/Cargo.toml": "100644 blob 27c00f98f15d510fdfe173bdacdfcdd19d6952b0",
+    "crates/uv-windows/Cargo.toml": "100644 blob ed206c6653c52f6f5e011a1ca109d363a35d2073",
+    "crates/uv-workspace/Cargo.toml": "100644 blob f8735f5a468a4485d22459fde12960df2b0bce26",
+    "crates/uv/Cargo.toml": "100644 blob 4aaadf11889f33d480b96546160e4f10f9c095fe",
+    "rust-toolchain.toml": "100644 blob 642220914d8a76aeeea19648fb26ce7bb12e33b6",
+    "test/packages/deptry_reproducer/Cargo.lock": "100644 blob 1c831357b5fc80fda71265325760e05b603f720f",
+    "test/packages/deptry_reproducer/Cargo.toml": "100644 blob d685993bd93688cdd2a566b93d3cd814b8cde10f"
+  },
+  "identical_manifest_lock_configuration_count": 83,
+  "newer_candidates_rejected": [
+    {
+      "crates": [
+        "uv-normalize",
+        "uv-pep440"
+      ],
+      "rejection": "Cargo.toml workspace/crate version changes",
+      "sha": "7456b60bc6bc348e13e06e3691bf08e78d3aef54",
+      "title": "Bump version to 0.13.4 (#22761)"
+    },
+    {
+      "crates": [
+        "uv-normalize",
+        "uv-pep440"
+      ],
+      "rejection": "Cargo.toml workspace/crate version changes",
+      "sha": "502f93ca6145cbc78bfb9dd6bb37fa05340be0b3",
+      "title": "Bump version to 0.13.3 (#22752)"
+    },
+    {
+      "crates": [
+        "uv-normalize",
+        "uv-pep440"
+      ],
+      "rejection": "Cargo.toml workspace/crate version changes",
+      "sha": "52dc1defb0c40d4c406cd3624e7fa6e392e92532",
+      "title": "Bump version to 0.13.2 (#22744)"
+    },
+    {
+      "crates": [
+        "uv-pep440"
+      ],
+      "rejection": "Removes exported Operator::negate and changes other production crates",
+      "sha": "2978e7602404676a54f329612c849968e4e60467",
+      "title": "Extract marker DNF covers from decision diagrams (#22651)"
+    },
+    {
+      "crates": [
+        "uv-normalize",
+        "uv-pep440"
+      ],
+      "rejection": "Cargo.toml workspace/crate version changes",
+      "sha": "62faed3351cfee2121b3c28b937b1f4b93233a93",
+      "title": "Bump version to 0.13.1 (#22525)"
+    },
+    {
+      "crates": [
+        "uv-normalize",
+        "uv-pep440"
+      ],
+      "rejection": "Cargo.toml workspace/crate version changes",
+      "sha": "ee7b9f09c6b335235fb81bcabc24d9876db70198",
+      "title": "Bump version to 0.13.0 (#22415)"
+    },
+    {
+      "crates": [
+        "uv-normalize",
+        "uv-pep440"
+      ],
+      "rejection": "Cargo.toml workspace/crate version changes",
+      "sha": "5411378eb76dc1ea1ad90aeb10e84e997e5bbd96",
+      "title": "Bump version to 0.12.24 (#22371)"
+    },
+    {
+      "crates": [
+        "uv-normalize",
+        "uv-pep440"
+      ],
+      "rejection": "Cargo.toml workspace/crate version changes",
+      "sha": "46b84fd0bfec23b72f29e8e2185ba68a65052f48",
+      "title": "Bump version to 0.12.23 (#22165)"
+    },
+    {
+      "crates": [
+        "uv-normalize",
+        "uv-pep440"
+      ],
+      "rejection": "Cargo.toml workspace/crate version changes",
+      "sha": "70fe1196a546e49148a73b1c592b2f74c33af80e",
+      "title": "Bump version to 0.12.22 (#22148)"
+    },
+    {
+      "crates": [
+        "uv-normalize"
+      ],
+      "rejection": "Changes 147 files across many unrelated production crates/CLI diagnostics",
+      "sha": "27bfef0eb025e40ebe51970255f19dacbaadfb91",
+      "title": "Consistently quote URLs and paths in CLI messages (#21937)"
+    },
+    {
+      "crates": [
+        "uv-normalize"
+      ],
+      "rejection": "Adds exported DefaultGroups::from_groups and new lock/workspace API behavior",
+      "sha": "d8755192604faff856df2c011c5ed4333e840d83",
+      "title": "Record dependency group metadata for non-project roots (#22104)"
+    },
+    {
+      "crates": [
+        "uv-normalize",
+        "uv-pep440"
+      ],
+      "rejection": "Cargo.toml workspace/crate version changes",
+      "sha": "7af826859382eb191e47467540850caa8f493e5b",
+      "title": "Bump version to 0.12.21 (#22081)"
+    }
+  ],
+  "original_selection_sha256": "cf5e721649e2e0061f32d8504bcbb4a5d4942856fcdfefe39dbb9d797b621496",
+  "selected_at": "2026-10-24T00:49:54.318128+00:00",
+  "selection": "Newest qualifying private implementation edit from the predetermined uv-normalize/uv-pep440 shortlist before the original pinned checkout; selected before performance observations. Declared API and manifest identities do not imply equivalent runtime behavior.",
+  "title": "Fix post-release matching for exclusive version bounds",
+  "upstream_commit_url": "https://github.com/astral-sh/uv/commit/73337b788c9057f6f3db1035d64be02b61b6ce7b",
+  "upstream_pr_url": "https://github.com/astral-sh/uv/pull/22049"
+}

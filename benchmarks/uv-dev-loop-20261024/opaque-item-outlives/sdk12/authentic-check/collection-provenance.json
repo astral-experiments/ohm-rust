@@ -1,0 +1,37 @@
+{
+  "analyzer_sha256": "5ec8d2f5988f7d5afcb0987e234f2d4ed220ad0a0b4b9f21743229f53f2e0a9e",
+  "blocks": [
+    {
+      "block": 1,
+      "cohort_sha256": "93af9c3c7d5eaead3f0e5e4e83a5df6508e5e863ae0e5dcdf4848d0db074a539",
+      "completion_sha256": "c6800d39a90803b562663919956fbc069bb116d3c3944e74e996217f40642ba7",
+      "inputs_sha256": "b0a8fa841acbcb46f87c59607e9e627560554e84a2d7dc36e6370b4ae5927424",
+      "integrity_sha256": "92742983c2650107b35cada33c5b492c52cbabdbf212b0f1aea9dbe52728b030",
+      "raw_gates_sha256": "788bbf0e4dd82490bc12afcebc10a22e4b36d77d6f8cc1bc85c1492e472f5a17",
+      "summary_sha256": "78fbc2460caa01025c540a30be9573d1610c9664126c50cfbf04aa5b45a7eed5",
+      "terminal_sha256": "147252a31bd1ce22ec64ad639ba301c04577a8a474fbfe33df6d6f955506de6e"
+    },
+    {
+      "block": 2,
+      "cohort_sha256": "93af9c3c7d5eaead3f0e5e4e83a5df6508e5e863ae0e5dcdf4848d0db074a539",
+      "completion_sha256": "8cc554f8a9e3f57623bfbc7de47252b6608e94ab86a0dbc8ba2f9ef55e868d5a",
+      "inputs_sha256": "8887f0063fd34edda921505764b5c513630b7eda585a3153497a1fcfa779a02b",
+      "integrity_sha256": "00803a1815501189ea690d06d932a08dabc79948fcca9457a0e53b5358870fec",
+      "raw_gates_sha256": "672512be3eb0f25d2e1f7aff9f665a1d226a091d36ddd44ed0c8772a52054b18",
+      "summary_sha256": "bc181c31b212664ab12f6c8c440ad9ab2d44ddeb8b3d4be052e3c54b0a61e1b2",
+      "terminal_sha256": "d23a8729e903f7471c73f18e78d5dc606eddd3b8bf561542c10a1f70a70ace59"
+    }
+  ],
+  "both_effect_gates_preceded_this_package_profile_access": true,
+  "both_raw_and_restoration_gates_preceded_either_effect": true,
+  "both_raw_gates_sha256": "32190a43076ce1f9fb351f28363b2cd951fe8c8f460c0209c0c35c33ecbb7aa6",
+  "cohort_decision_sha256": "558a8e75b6ba634f1245589acb55790188bf023b923db947474ddc05f2c1ab96",
+  "first_opaque_cohort_profiles_included": false,
+  "independent_virtual_machines": 2,
+  "native_or_whole_cargo_claim": false,
+  "pooled_statistics": null,
+  "prior_222_excluded_profiles_included": false,
+  "private_environment_or_path_map_included": false,
+  "protocol_sha256": "7af0d7fd22b669797594185ed970e34919b5557897a685d8ac4ffeb29d0d1d52",
+  "root_publication_release_sha256": "76c9345f171fc22b69adf9ad9b95b4cf477deb63cb3bfad6d9815ed3fa8055a5"
+}

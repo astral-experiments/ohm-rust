@@ -1,0 +1,59 @@
+{
+  "assertion_driver": {
+    "failed": 0,
+    "ignored": 0,
+    "passed": 230
+  },
+  "both_solvers": true,
+  "diagnostic_std_compilation_passed": true,
+  "focused_selectors": {
+    "differential_scope": "Separate driver compares every region-pair answer with original helper; archive remains ineligible for comparative measurements.",
+    "new_positive_and_negative": "Both new cases are included in precise-capturing; actual compiletest snapshots required, without bless.",
+    "new_revisions": [
+      "current",
+      "next"
+    ],
+    "performance_authorized": false,
+    "production_and_differential_selectors": [
+      {
+        "rust_files": 38,
+        "selector": "tests/ui/impl-trait/precise-capturing"
+      },
+      {
+        "rust_files": 36,
+        "selector": "tests/ui/implied-bounds"
+      },
+      {
+        "rust_files": 94,
+        "selector": "tests/ui/impl-trait/in-trait"
+      },
+      {
+        "rust_files": 1,
+        "selector": "tests/ui/impl-trait/higher-ranked-lifetime-capture-deduplication.rs"
+      },
+      {
+        "rust_files": 1,
+        "selector": "tests/ui/rfcs/type-alias-impl-trait/higher-ranked-regions-basic.rs"
+      },
+      {
+        "rust_files": 1,
+        "selector": "tests/ui/rfcs/type-alias-impl-trait/higher-ranked-regions-gat.rs"
+      },
+      {
+        "rust_files": 1,
+        "selector": "tests/ui/rfcs/impl-trait/higher-ranked-regions-diag.rs"
+      }
+    ]
+  },
+  "genuine_uv_results": "See genuine-uv-differential.json; that driver is never a performance arm.",
+  "private_receipt_sha256": "2c558cf4852d7782f08601ae47a75de92f53c7935e37c3f679f6376e0e6d2f7a",
+  "production": {
+    "failed": 0,
+    "ignored": 0,
+    "passed": 230
+  },
+  "retained_setup_correction": "First UI suite lacked revision-specific expected-file names (228 passed,2 failed). Actual output matched the existing baseline snapshot. The final production and assertion suites were fully forced,230/230 each; no blessed diagnostic or Rust source change.",
+  "semantic_bindings_sha256": "9de3a97b260991a9a7c2c220ecff6ac2c84ed0697cf65ccace2962df35368d5b",
+  "semantic_review_sha256": "ecbae4dfbed2859ee6ec7bbe6de6a01d853974b81cfd6fcc73af78b97d29c7b3",
+  "state": "passed"
+}

@@ -1,0 +1,51 @@
+{
+  "baseline_compiled_tree": "792811f296f5c16ba12c942ea916a79cfe83bf26",
+  "baseline_published_commit": "9d583ffee18d3cb132ac9b2a0279f449447bf0af",
+  "baseline_published_delta": "Only CI and deletion of one empty test file; compiler source byte-identical.",
+  "baseline_published_tree": "9b175cca8256a0d6993f042251e3f38cdae12e49",
+  "candidate_compiled_tree": "eb40fac7381f0af86c9d69ab07c10148177a34a2",
+  "candidate_published_commit": null,
+  "candidate_shipping_tree": "fc5cb82737be5c7325e6eec097f16b389133483c",
+  "candidate_test_delta": "Only shared-to-revision-specific identical stderr snapshots; Rust source bytes unchanged.",
+  "candidate_tested_tree": "eaa760a80c938c6e9d4693bfcc9aa9252cc5383b",
+  "diagnostic_tree": "3aaff114f783aaf1a6b72e80e84334dfb36d08ae",
+  "embedded_commit": "f93a752e3de7404107ea5908d65c8832aee5625a",
+  "patches": {
+    "baseline-measured-to-published.patch": "20c773a4731e5ab649114cc2cd660af4a3f240cb1a5c03d6891146b4cb032ac5",
+    "baseline-sdk12.patch": "93895abba159c5c197ae5ea6926d4810db11bb675ead22948513fce1ca3371a2",
+    "candidate.patch": "84f81744e2231eaa5876ca156cdece7a034454239ae366acef71aa91fe2402f2",
+    "compiled-candidate.patch": "2c4764f2a2a34cfbaee044cba9753f39f5cd62305677c72e10f6baa1dd82d829",
+    "compiled-to-tested-snapshots.patch": "4bc72499304b653bdbe12f12fe7725ef4a66e4065e7c4960f5704fc73a248556",
+    "differential.patch": "13d9efb2c95d8ec3415194de2dee32635b2fd1e0bb9f3030da04f98598cd447d",
+    "shipping-ci-only.patch": "f0ba71cf80ba9dbfe23b86e82133cb26766d5604cf1e3b32b7a2a22e7b910a98",
+    "shipping.patch": "898b84251c7cfb7ae7b2055f0f864c5788e8942582f7a2ae89282a92770f65c0",
+    "uv-upstream.patch": "90e638f2dba28a6e626d7eb83a59d3efe8c536a8941fb0584a00a942d7f1e037"
+  },
+  "private_build_handoff_sha256": "0a8f14de4f6177473b7f2d65411d606a2cf99c4cdc88af9d3d705a2eb1399b51",
+  "runtime_files": 74,
+  "runtimes": {
+    "baseline": {
+      "driver_sha256": "6f10e36b07b6e26772ca1c54fc03bd6b7a92a65a95174c538e29a2ec019694d0",
+      "files_sha256": "86d6168cf3282edddece7e9fbb72ed27997d42fc0b48cac88c4e6ab77195c3cd",
+      "identity_sha256": "01c1d658073753cf2a17bc2f3221b0d4ba653b432d2c0c16c4aead71142a0a64"
+    },
+    "candidate": {
+      "driver_sha256": "7111b273dcbf62a4aa368110d36d1b3c21f25ea97345961b261af8b3e52044dd",
+      "files_sha256": "bab120e7348839cdb6183cd7d85abe1754177c3790d0aad8a66150ea89a78cb3",
+      "identity_sha256": "1035c239f5187ac5139da7a178cd3d9a8a85af3315568ab4d8ea767ac77e3c5d"
+    },
+    "differential": {
+      "driver_sha256": "d8936a3c2160f398d011ccf509df3324ea262d614861cd9b07dc0f22bdbe3a74",
+      "files_sha256": "4a755d38df2ff35462c4d6f71b2503be8aba8f2d09e58d1b61d2057a1db483e7",
+      "identity_sha256": "8c2c5564f8d6be694b3f8b56424021d15ec42f59bbd5d47ea7a19b81421e3b8c"
+    }
+  },
+  "schema": 1,
+  "shared_non_driver_files_exact": 73,
+  "shipping_ci_overlay_only": true,
+  "shipping_ci_paths": [
+    "tests/ui/impl-trait/precise-capturing/outlives-pair-isolation.rs",
+    "tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.rs"
+  ],
+  "shipping_source_receipt_sha256": "1cf9afbe6bc21b653cd49daa1e064df03d0c2787cc0e754e2da9db24040ca3d2"
+}

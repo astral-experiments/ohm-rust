@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index d78388abe8ef3372ad9335635fbb9cb83fbd7099..97fe9bae77e042e2418539badf45624ae037a0f8 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -115,6 +115,8 @@ jobs:
+           --set rust.lto=off test --stage 1
+           tests/ui/traits/next-solver/rerun-if-any-opaque-or-has-infer-as-hidden-in-codegen.rs
+           tests/ui/traits/object/rerun-impossible-predicates-post-analysis.rs
++          tests/ui/impl-trait/precise-capturing/outlives-pair-isolation.rs
++          tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.rs
+ 
+       - name: Run metadata UI tests
+         run: >-

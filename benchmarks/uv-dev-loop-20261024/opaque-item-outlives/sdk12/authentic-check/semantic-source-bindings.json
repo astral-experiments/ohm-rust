@@ -1,0 +1,80 @@
+[
+  {
+    "path": "compiler/rustc_infer/src/infer/mod.rs",
+    "git_blob": "583fb1d7db21a758a712d056c51171b5bc99fd34",
+    "sha256": "1443458e14e3d7d838e85ad8e47b96c04f39d600426ff7f61170863183d1b346",
+    "bytes": 76070
+  },
+  {
+    "path": "compiler/rustc_infer/src/infer/at.rs",
+    "git_blob": "bab3c207984f681a7115d8a1bbbea3a2ef5a5652",
+    "sha256": "f6ef0277d733b9d00077efcb26db04ea5d8246c22a4707067eab208c58ff944c",
+    "bytes": 15836
+  },
+  {
+    "path": "compiler/rustc_infer/src/infer/outlives/mod.rs",
+    "git_blob": "4a107b1325932f4664aac83fe2a67e83bb5459c3",
+    "sha256": "8d7bcf357b4a2e0062b409550753e2e09b2ea070a6a0d6ab8e0bbf17cf90e881",
+    "bytes": 5126
+  },
+  {
+    "path": "compiler/rustc_infer/src/infer/outlives/env.rs",
+    "git_blob": "b9eb1ed5a08e2e2f862b66226f52f3686f31e21f",
+    "sha256": "770a34ae12648737ae43cde59ac3387a8e754612bd6291b96d5081857377166e",
+    "bytes": 5392
+  },
+  {
+    "path": "compiler/rustc_infer/src/infer/region_constraints/mod.rs",
+    "git_blob": "7db45fde6c8d731e825a64367185562fe9d1111d",
+    "sha256": "cd1e0efa0664999a677f706be32f54be627383bb12ec9fedd19fb939f813819c",
+    "bytes": 31180
+  },
+  {
+    "path": "compiler/rustc_infer/src/infer/canonical/query_response.rs",
+    "git_blob": "cd35af8be73cf4cf71b664d09d49c46d811e0c93",
+    "sha256": "2a78a81590a1c80fcec6126cc9a9385682d1968ef4ecaa9bfb201734c227f08a",
+    "bytes": 29766
+  },
+  {
+    "path": "compiler/rustc_infer/src/infer/opaque_types/mod.rs",
+    "git_blob": "08c7c49417124ce05f60360448bb45b16c1e5d8a",
+    "sha256": "322ce4cf425246a0dc9563fbfb480612ea18a9f4ae18bf03b305705196744850",
+    "bytes": 16355
+  },
+  {
+    "path": "compiler/rustc_type_ir/src/infer_ctxt.rs",
+    "git_blob": "1cd070365f6519cbb5b1954661da89ae80e65a77",
+    "sha256": "854ebb26034dcd640bac2f76e7545fef22810f27b915db428c6e21b7651d5539",
+    "bytes": 28847
+  },
+  {
+    "path": "compiler/rustc_type_ir/src/canonical.rs",
+    "git_blob": "bba271ba1303362cfc1ce68bfc5797c599e7bdab",
+    "sha256": "a8b3a7c600e65613837964ca74af29418ecde3120bb012240079bfd85afc0192",
+    "bytes": 16018
+  },
+  {
+    "path": "compiler/rustc_next_trait_solver/src/canonical/canonicalizer.rs",
+    "git_blob": "cf36b1922b8c16a0ae33de2aada31161f67f4580",
+    "sha256": "7d79153911685dd45abc2b932d20ef27708f0b7423b17e23a1ec168dbde97dea",
+    "bytes": 26520
+  },
+  {
+    "path": "compiler/rustc_next_trait_solver/src/solve/project_goals/opaque_types.rs",
+    "git_blob": "3387c8599b911826b4bc5385e0e7370387ae616a",
+    "sha256": "cceff08a3c29cbe2c731fb012bd9e7ae3c5e708b981bd62ec8c34d087ed27735",
+    "bytes": 9729
+  },
+  {
+    "path": "compiler/rustc_middle/src/ty/context.rs",
+    "git_blob": "dc201998ff716bb9c15a986c33f5c922e6259ed9",
+    "sha256": "c515363f55f4996ad91d877258a0671dd27b3f18c097508780c44ba3911dba25",
+    "bytes": 125252
+  },
+  {
+    "path": "compiler/rustc_trait_selection/src/traits/outlives_bounds.rs",
+    "git_blob": "747ede68d6a39b4e576774db4ef79ba3f6d31a70",
+    "sha256": "34af2f125b19f6bfed7de5d16a2489afab29cb1ce589164e65d408008668f5ec",
+    "bytes": 6445
+  }
+]

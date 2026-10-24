@@ -1,0 +1,19 @@
+{
+  "assertion_invocations_counted": false,
+  "assertion_runtime_identity_sha256": "8c2c5564f8d6be694b3f8b56424021d15ec42f59bbd5d47ea7a19b81421e3b8c",
+  "assertion_source_sha256": "492e8c6eba74c8f09f0b3df5821f05d800397f523018a37ac44cc6d81e4db8fb",
+  "banks_parked": true,
+  "comparative_samples": 0,
+  "diagnostic_only": true,
+  "exact_production_context_or_output_equivalence_claimed": false,
+  "first_child_compiler_calls": 39,
+  "focused_correctness_sha256": "2c558cf4852d7782f08601ae47a75de92f53c7935e37c3f679f6376e0e6d2f7a",
+  "four_freshness_checks_zero_compilers": true,
+  "genuine_source_flags_features_and_ordered_extern_names_match": true,
+  "limit": "A separate assertion-enabled compiler completed cold parent and genuine first-child checks. Its separate source/target namespace changes some unit names; this is correctness traversal, not an instruction result or a count of internal assertions.",
+  "parent_only_cold_history": true,
+  "receipt_sha256": "d11fcc06ed2b923ed47ca23e52e6e6c79015dab1aa627424cd2cf6c3f1b8ef97",
+  "runtime_files_exact": 74,
+  "source_parent_restored": true,
+  "state": "passed"
+}

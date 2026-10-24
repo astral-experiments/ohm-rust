@@ -1,0 +1,23 @@
+diff --git a/compiler/rustc_trait_selection/src/traits/outlives_for_liveness.rs b/compiler/rustc_trait_selection/src/traits/outlives_for_liveness.rs
+index be5825f11599b323d55f65eeae31458d2a200c1d..0a36660fff40e315f05463adbd6fbb58a8d17ec3 100644
+--- a/compiler/rustc_trait_selection/src/traits/outlives_for_liveness.rs
++++ b/compiler/rustc_trait_selection/src/traits/outlives_for_liveness.rs
+@@ -275,6 +275,18 @@ pub(crate) fn args_known_to_outlive_opaque_params<'tcx>(
+                         *parent_outlived_region,
+                     )
+                 };
++            assert_eq!(
++                region_outlives,
++                parent_outlives_region == *parent_outlived_region
++                    || region_known_to_outlive(
++                        tcx,
++                        def_id,
++                        parent_param_env,
++                        &wf_tys,
++                        parent_outlives_region,
++                        *parent_outlived_region,
++                    ),
++            );
+             if !region_outlives {
+                 continue;
+             }

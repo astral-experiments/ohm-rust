@@ -1,0 +1,20 @@
+{
+  "base": "9d583ffee18d3cb132ac9b2a0279f449447bf0af",
+  "base_tree": "9b175cca8256a0d6993f042251e3f38cdae12e49",
+  "ci_overlay_only": true,
+  "compiled_tree": "eb40fac7381f0af86c9d69ab07c10148177a34a2",
+  "differential_assertion_included": false,
+  "exact_ui_diagnostic_sha256": "556278558fa977ec27cf379257fb77fc8df7d37d2756aa424a621b9cc6f43ea5",
+  "files": [
+    ".github/workflows/ci.yml",
+    "compiler/rustc_trait_selection/src/regions.rs",
+    "compiler/rustc_trait_selection/src/traits/outlives_for_liveness.rs",
+    "tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.current.stderr",
+    "tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.next.stderr",
+    "tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.rs",
+    "tests/ui/impl-trait/precise-capturing/outlives-pair-isolation.rs"
+  ],
+  "focused_test_tree": "eaa760a80c938c6e9d4693bfcc9aa9252cc5383b",
+  "production_source_freeze": "5cd3a724d14dd129b9a260e93f252c8a0a08d2eda4482a4a39176863ceac04eb",
+  "tree": "fc5cb82737be5c7325e6eec097f16b389133483c"
+}

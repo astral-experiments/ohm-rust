@@ -1,0 +1,9 @@
+# Independent solves from a prepared environment
+
+An opaque item repeatedly asks whether one fixed parent region outlives another. The change prepares that item's non-body implied-bound environment once, then forks the complete unsolved inference context for every pair. The fork carries inference variables, substitutions, obligations, constraints, assumptions, taint and universe state. Canonicalization scratch is reset by the existing fork API. Only the fork receives the tested inequality and is solved; one pair's result or constraints cannot enter another pair.
+
+Reuse is limited to items whose mapped regions are all early/late parameters, with the compiler error-state check retained at each decision. Other region forms and all type/general queries use the existing helpers. The parent context is non-body analysis with no defining opaque types, so it cannot populate opaque-type storage; the existing Drop check is not disabled. Fixed setup may precede the tested concrete inequality without changing its inputs or creating new variables. These helpers expose a Boolean, not the solver's internal debug ordering.
+
+The source review follows the existing `InferCtxt::fork`, outlives environment, canonical response instantiation, universe and opaque-storage paths. `semantic-source-bindings.json` pins those source blobs. The new UI cases exercise interacting lifetime bounds and the rejected reverse implication under both solver revisions. Production and a separate release assertion driver each pass all 230 focused cases with zero failures or ignored tests. The latter evaluates the unchanged original helper as well and asserts equality for every region answer; its std build also succeeds. Its separately excluded genuine-uv result is recorded in `genuine-uv-differential.json`.
+
+Forking still has a cost; the complete selected-compiler profiles determine whether the change helps this workload.

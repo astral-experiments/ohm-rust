@@ -1,0 +1,38 @@
+diff --git a/tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.stderr b/tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.current.stderr
+similarity index 100%
+rename from tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.stderr
+rename to tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.current.stderr
+diff --git a/tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.next.stderr b/tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.next.stderr
+new file mode 100644
+index 0000000000000000000000000000000000000000..07058aefb37e8fafbd55524a9bdca6f8b449900e
+--- /dev/null
++++ b/tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.next.stderr
+@@ -0,0 +1,28 @@
++error: lifetime may not live long enough
++  --> $DIR/outlives-pair-isolation-reject.rs:27:5
++   |
++LL | fn reject_forward<'short, 'long>(
++   |                   ------  ----- lifetime `'long` defined here
++   |                   |
++   |                   lifetime `'short` defined here
++...
++LL |     forward(nested, value, &())
++   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ function was supposed to return data with lifetime `'long` but it is returning data with lifetime `'short`
++   |
++   = help: consider adding the following bound: `'short: 'long`
++
++error: lifetime may not live long enough
++  --> $DIR/outlives-pair-isolation-reject.rs:35:5
++   |
++LL | fn reject_reverse<'short, 'long>(
++   |                   ------  ----- lifetime `'long` defined here
++   |                   |
++   |                   lifetime `'short` defined here
++...
++LL |     reverse(nested, value, &())
++   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ function was supposed to return data with lifetime `'long` but it is returning data with lifetime `'short`
++   |
++   = help: consider adding the following bound: `'short: 'long`
++
++error: aborting due to 2 previous errors
++
