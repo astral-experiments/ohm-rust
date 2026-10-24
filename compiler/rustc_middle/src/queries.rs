@@ -2576,6 +2576,11 @@ rustc_queries! {
         separate_provide_extern
     }
 
+    query has_generic_symbols_for_c_linker(cnum: CrateNum) -> bool {
+        desc { "checking generic symbols needed for C-level linking in crate `{}`", cnum }
+        separate_provide_extern
+    }
+
     query collect_and_partition_mono_items(_: ()) -> MonoItemPartitions<'tcx> {
         eval_always
         desc { "collect_and_partition_mono_items" }

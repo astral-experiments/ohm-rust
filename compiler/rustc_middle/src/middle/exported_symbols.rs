@@ -45,6 +45,17 @@ pub struct SymbolExportInfo {
     pub rustc_std_internal_symbol: bool,
 }
 
+impl SymbolExportInfo {
+    /// Symbols retained even above the consumer's export threshold.
+    pub fn requires_linker_retention(self) -> bool {
+        self.used || self.rustc_std_internal_symbol
+    }
+
+    pub fn is_relevant_for_c_linker(self) -> bool {
+        self.level.is_below_threshold(SymbolExportLevel::C) || self.requires_linker_retention()
+    }
+}
+
 #[derive(Eq, PartialEq, Debug, Copy, Clone, TyEncodable, TyDecodable, StableHash)]
 pub enum ExportedSymbol<'tcx> {
     NonGeneric(DefId),
@@ -89,4 +100,30 @@ pub fn metadata_symbol_name(tcx: TyCtxt<'_>) -> String {
         tcx.crate_name(LOCAL_CRATE),
         tcx.stable_crate_id(LOCAL_CRATE),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SymbolExportInfo, SymbolExportKind, SymbolExportLevel};
+
+    #[test]
+    fn c_linker_generic_summary_keeps_retention_exceptions() {
+        for kind in [SymbolExportKind::Text, SymbolExportKind::Data, SymbolExportKind::Tls] {
+            for (level, used, internal, expected) in [
+                (SymbolExportLevel::Rust, false, false, false),
+                (SymbolExportLevel::Rust, true, false, true),
+                (SymbolExportLevel::Rust, false, true, true),
+                (SymbolExportLevel::Rust, true, true, true),
+                (SymbolExportLevel::C, false, false, true),
+                (SymbolExportLevel::C, true, false, true),
+                (SymbolExportLevel::C, false, true, true),
+                (SymbolExportLevel::C, true, true, true),
+            ] {
+                let info =
+                    SymbolExportInfo { level, kind, used, rustc_std_internal_symbol: internal };
+                assert_eq!(info.is_relevant_for_c_linker(), expected, "{info:?}");
+                assert_eq!(info.requires_linker_retention(), used || internal, "{info:?}");
+            }
+        }
+    }
 }
