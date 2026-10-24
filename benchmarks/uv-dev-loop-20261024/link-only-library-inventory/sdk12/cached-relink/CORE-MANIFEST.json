@@ -1,0 +1,93 @@
+{
+  "files": {
+    "BUILD-AND-SAMPLE.md": {
+      "bytes": 8071,
+      "sha256": "003314382b6fffe6b9ddada246dee422d7fadf73c8e953b9ecf1292da31d7f3a"
+    },
+    "README.md": {
+      "bytes": 2671,
+      "sha256": "36666f5bb5eb42bcc07f592cff9eb7387ab5d954df6dcb8868067fc0642762a7"
+    },
+    "baseline-runtime-files.json": {
+      "bytes": 15601,
+      "sha256": "ff8ce99ad2586192ec990049c30daf25ac43dfbe4a9f55c94d5743d8a0d441f3"
+    },
+    "bootstrap.matched.toml": {
+      "bytes": 1038,
+      "sha256": "d1dc8c5b0732de328f5e130b86c989da350e142b8100a4058fee903b2e515c95"
+    },
+    "candidate-runtime-files.json": {
+      "bytes": 15601,
+      "sha256": "20aa45b25511a43c983c22d25a14a9387d16df12234079f8d27904a2c88a5c45"
+    },
+    "candidate.patch": {
+      "bytes": 12828,
+      "sha256": "57083631a0726cb9bcb6bec7033215f64d8bb68cf314c7f021fda236314d7ca7"
+    },
+    "collection-provenance.json": {
+      "bytes": 1537,
+      "sha256": "73a69d3fdbf637615c57e097f6f5400352abe124b85ae8276aa0f99e2258d905"
+    },
+    "correctness.json": {
+      "bytes": 1397,
+      "sha256": "746fb02da15a96286fdafcde5a414d9a061cddc1de0df5f38767e8067195d304"
+    },
+    "counts.json": {
+      "bytes": 11693,
+      "sha256": "7852d92b1b116eaadd3cc4709075b830a904de21cf72686c9d564fe93ec27eac"
+    },
+    "env_trace.py": {
+      "bytes": 5049,
+      "sha256": "adb537e0ebc6c970e0e6a2da9813e0033148429e3c2dcd4b693b994e7f6372c0"
+    },
+    "jobserver.py": {
+      "bytes": 902,
+      "sha256": "c9f6ba593cf5e2a386d55b048618b31c20a357354094f5d7479a7b62f3b4a991"
+    },
+    "matched-build-recipe.json": {
+      "bytes": 1601,
+      "sha256": "d8681b3ef2f033f364441bf9fbfabc3db26297c03d8dbd1549189a9387ca45a6"
+    },
+    "mechanism.json": {
+      "bytes": 1434,
+      "sha256": "390419c7f327759699bd541b46485ea151751391609717792d16ef5732ce8f0b"
+    },
+    "ohm-valgrind-env.c": {
+      "bytes": 832,
+      "sha256": "503c8612d9972ed2ce4ef7b4431e569a8c98d0d5f0d1149dd0fff364513e691b"
+    },
+    "profiles/PROFILE-MANIFEST.json": {
+      "bytes": 40233,
+      "sha256": "bcc578bfcf41b9598577b8db474d1f196acec7f2e0120b6eb25f713bf9f72e37"
+    },
+    "protocol.json": {
+      "bytes": 4284,
+      "sha256": "87758902cb335c3d6956ac31ba54dc8ad564b783b92df17a8879564ec78894ad"
+    },
+    "publication-ci-overlay.patch": {
+      "bytes": 1294,
+      "sha256": "a2c59156469aee1a20e1231e90692f3b756f2f7597353ae9f7b3bdaeb65c25ba"
+    },
+    "reproduce.py": {
+      "bytes": 8315,
+      "sha256": "40671cebac0bb264cf14420125f3f10849c4be16b33f616c6a7d26865103b481"
+    },
+    "results/confirmation-1.json": {
+      "bytes": 1297,
+      "sha256": "bc686b31f98a7fd0cd0f93cbbf05f31a2779905b564eac9baa3f591a1fa0c661"
+    },
+    "results/confirmation-2.json": {
+      "bytes": 1297,
+      "sha256": "7805c7a53f71ebf66e053a633a94aea78e3730ca3ebd2acdd3b640a9ef138192"
+    },
+    "runtime-comparison.json": {
+      "bytes": 957,
+      "sha256": "10e45b79d3a13006360e1f5ba903bbb1d5060fb3d39b16989277dcbb147819c2"
+    },
+    "source-identities.json": {
+      "bytes": 2950,
+      "sha256": "359cc102817506f3b2fffab2e84e7b1e807a3f09b35c92b2f9f7c92331f6f88b"
+    }
+  },
+  "schema": 1
+}

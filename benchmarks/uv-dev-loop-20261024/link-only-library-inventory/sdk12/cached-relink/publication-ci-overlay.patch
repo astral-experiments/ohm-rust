@@ -1,0 +1,24 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 99b9467816ce7c69cc386652ed40b803dcfa85ad..b7eac994f58aa4fabb7eef58ba71346f53cbda91 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -222,6 +222,11 @@ jobs:
+           --set rust.lto=off test --stage 1 compiler/rustc_middle
+           --test-args 'aliases_preserve_allocation_identity check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges lazy_worker_cache c_linker_generic_summary_keeps_retention_exceptions'
+ 
++      - name: Run library search tests
++        run: >-
++          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
++          --set rust.lto=off test --stage 1 compiler/rustc_session --test-args search
++
+       - name: Run incremental directory copy tests
+         run: >-
+           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+@@ -254,6 +259,7 @@ jobs:
+             tests/run-make/ohm-early-metadata
+             tests/run-make/metadata-export-prefetch
+             tests/run-make/c-linker-generic-summary
++            tests/run-make/separate-link
+             tests/run-make/ohm-shared-stages
+             tests/run-make/ohm-thinlto-cache
+             tests/run-make/caller-local-codegen

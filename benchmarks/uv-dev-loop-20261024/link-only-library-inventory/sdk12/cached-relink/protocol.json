@@ -1,0 +1,98 @@
+{
+  "affinity": {
+    "controller": [
+      8
+    ],
+    "workload": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ]
+  },
+  "blocks": [
+    {
+      "block": 1,
+      "host": "independent-host-1",
+      "order": [
+        "AB",
+        "BA",
+        "BA",
+        "AB",
+        "BA",
+        "AB",
+        "AB",
+        "BA"
+      ],
+      "seed": 2026102491
+    },
+    {
+      "block": 2,
+      "host": "independent-host-2",
+      "order": [
+        "BA",
+        "AB",
+        "AB",
+        "BA",
+        "AB",
+        "BA",
+        "BA",
+        "AB"
+      ],
+      "seed": 2026102492
+    }
+  ],
+  "bootstrap_resamples": 200000,
+  "claims": "Instruction-count scope only. No rustc wall-time, linker, whole-Cargo or whole-dev-loop gain claimed.",
+  "confidence": 0.99,
+  "endpoint": "isolated replay of an actual ordinary uv library-test cached Cargo relink after the genuine uv-client one-byte comment edit",
+  "gate": {
+    "maximum_two_sided_sign_p_exclusive": 0.01,
+    "minimum_lower_count_reduction_exclusive": 0.001,
+    "wins": 8
+  },
+  "input_policy": "Exact same portable captured rlink/object/dependency/source/runtime-tool bytes, modes and file mtimes at identical absolute paths. Separate private complete arm banks; selected writable unit reset from the same pristine image before every sample. Actual ordered rustc argv/environment unchanged.",
+  "jobserver": {
+    "available_tokens": 7,
+    "capacity": 8,
+    "implicit_job": 1,
+    "limitation": "uncontested standalone replay; not reconstruction of original Cargo-parent concurrent token availability",
+    "original_ordered_environment_unchanged": true,
+    "read_fd": 5,
+    "write_fd": 7
+  },
+  "maintenance": {
+    "kind": "prospective-complete-pair-maintenance-window",
+    "minimum_remaining_seconds": 120,
+    "poll_seconds": 5,
+    "scope": "only before entry/complete pairs; unavailable deadlines wait; strict sample guards unchanged",
+    "services": [
+      "<bound-heavy-service-1>",
+      "<bound-heavy-service-2>",
+      "<bound-heavy-service-3>"
+    ]
+  },
+  "metric": "complete rustc process Callgrind Ir, all rustc threads combined",
+  "native_child_scope": "cc, collect2 and Wild execute natively; their instructions are outside this metric",
+  "occupancy": "Original strict require_quiet at entry and before/after every sampled command. Post-restoration activity observational only.",
+  "origin_uv_commit": "73337b788c9057f6f3db1035d64be02b61b6ce7b",
+  "original_protocol_sha256": "568631003176a896b347c830f384ddc3576d73292f769d8d1890f0f988a029ae",
+  "output_policy": "Exact original full ELF SHA256, size and mode; exact native stdout/stderr; unchanged rlink/object inputs; seven jobserver tokens returned. No ELF masks or hash exceptions.",
+  "pairs_per_block": 8,
+  "public_derivative": "Only private host/service names are replaced; all workload, scope, order, count, seed, gate and restoration rules are retained.",
+  "raw_gate": "Authenticate complete restoration, all 16 samples, source/runtime/input/output/occupancy guards and raw/gzip identities before decoding effects. Then require final profile totals == sum of exclusive self costs == Valgrind stderr Collected count.",
+  "replication": "Independent dedicated VM, same CPU class and placement. Exact portable input image from the real host1 Cargo capture; no new Cargo namespace is synthesized for host2. Host/system tools independently bound and native output parity required. Blocks reported separately, never pooled.",
+  "runtime_treatment": "defer only sorted Rust library-file inventory for link-only; native resolution/linker remain live",
+  "schema": 1,
+  "selected_role": "ordinary uv library-test cached relink (preferred role present)",
+  "selection_record_sha256": "c318eb865d6f3dcf43479dd2bfa070e3483951a1b845197623c90a0c374d14d3",
+  "shipping_parent": "5e95666f875d0886e541650fa2807ed23ce501c6",
+  "status": "prospectively-fixed-no-execution-authority",
+  "stop": "A valid failed block stops qualification. Operational failure excludes the whole attempt before effects and requires separate prospective replacement authority. No pair deletion or extension.",
+  "tested_candidate": "8ed46e2a109a7f0a431841a11be3a425e2b43152",
+  "tested_tree": "023f0b79e40bf0601b22e416665eb52b2b355bf0"
+}

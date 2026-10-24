@@ -1,0 +1,33 @@
+{
+  "covered_boundaries": [
+    "ordinary eager snapshot",
+    "link-only first demand and single initialization",
+    "sorting/prefix/kind preservation",
+    "native directory iteration without inventory initialization"
+  ],
+  "existing_unit_tests": 2,
+  "failed": 0,
+  "ignored": 0,
+  "initial_test_compile_stop": "A test used &str where the pinned API requires &TargetTuple. No test ran in that attempt; a test-only successor and final matched build passed.",
+  "native_input_boundary": "The separate-link fixture replaces an unbundled external static archive and observes the new result, then deletes it and requires linking to fail.",
+  "new_unit_tests": 2,
+  "passed": 9,
+  "private_full_receipt_sha256": "d81b777e8001e7aaea3a05506aa0bcf45560b0fa2822ddbf1c0ee7a7c420cf28",
+  "run_make_selectors": [
+    "separate-link",
+    "separate-link-fail",
+    "native-link-modifier-bundle",
+    "linker-warning",
+    "split-debuginfo-incremental"
+  ],
+  "runtime_archive_reproduced_on_final_tree": true,
+  "source_commit": "8ed46e2a109a7f0a431841a11be3a425e2b43152",
+  "source_tree": "023f0b79e40bf0601b22e416665eb52b2b355bf0",
+  "state": "passed",
+  "unit_tests": [
+    "filesearch_eager_inventory_preserves_construction_snapshot",
+    "filesearch_link_only_inventory_initializes_on_demand_once",
+    "crate_search_paths_skip_codegen_objects",
+    "other_search_paths_preserve_codegen_objects"
+  ]
+}

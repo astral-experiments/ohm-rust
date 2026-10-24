@@ -1,0 +1,27 @@
+{
+  "all_modes_equal": true,
+  "baseline_identity_sha256": "97571269029c191ffdda4cf3cf20bbaf37e0f86aef8f915ec3c159d89198d084",
+  "candidate_identity_sha256": "16ff08cfaf624fd31ad942fc25c23a4d15809304e0f6553fb7f1afbbf6d50dac",
+  "differences": [
+    {
+      "baseline": {
+        "mode": 509,
+        "path": "lib/librustc_driver-6f9d0d9f466ed619.so",
+        "sha256": "897877d5f49f610be28c8c198c773b370bd413b27632ef54952a8319ee3f5ba4",
+        "size": 215397968
+      },
+      "candidate": {
+        "mode": 509,
+        "path": "lib/librustc_driver-6f9d0d9f466ed619.so",
+        "sha256": "9d410d5a106efda6ea682f8e3d4c92985bbd5395163fe9782580d724e2035d80",
+        "size": 215408168
+      },
+      "path": "lib/librustc_driver-6f9d0d9f466ed619.so"
+    }
+  ],
+  "embedded_commit": "5e95666f875d0886e541650fa2807ed23ce501c6",
+  "files_per_arm": 74,
+  "identical_files": 73,
+  "matching_std_byte_identical": true,
+  "rustc_version_verbose_identical": true
+}

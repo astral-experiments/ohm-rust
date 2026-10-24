@@ -1,0 +1,53 @@
+{
+  "archive_final_tree_join": "The archive was first produced at checkpoint19cb; the final8ed test-only successor rebuilt successfully and reproduced every runtime byte with the same fixed LLVM/Wild overlays. Production source files did not change.",
+  "cargo_commit": "fdd26156be98618e2e01a9e02703edac71b79a35",
+  "cargo_sha256": "75eff38f65a16abae0a7b9603fc4fa02c846a0b6cb60a72d08b68393849b914b",
+  "commit": "8ed46e2a109a7f0a431841a11be3a425e2b43152",
+  "embedded_commit": "5e95666f875d0886e541650fa2807ed23ce501c6",
+  "files": [
+    {
+      "git_blob": "36fdbb22ca26db9902cddf73cc81a27f708fa9e8",
+      "path": "compiler/rustc_session/src/filesearch.rs",
+      "sha256": "8137387f598d429c52145420d6f6df82cbc3b73b9c8876ba16515ef738d0d3e8",
+      "size": 14982
+    },
+    {
+      "git_blob": "f8793407cc69ed744f87fdc588f3e961c81cf4b5",
+      "path": "compiler/rustc_session/src/filesearch/tests.rs",
+      "sha256": "c0a1904f8fcedaf037401e007e7b1ef9b86244291102488853460daba735170b",
+      "size": 3821
+    },
+    {
+      "git_blob": "182b44918dc5fa5879c242d2412360a28731c094",
+      "path": "compiler/rustc_session/src/session.rs",
+      "sha256": "05d8d39553b6625bcdad6501f43395cf74e5576baf8c35418f8365378256adb8",
+      "size": 72432
+    },
+    {
+      "git_blob": "6b8ca5ba1648c20764da20499d171f48147b5766",
+      "path": "tests/run-make/separate-link/rmake.rs",
+      "sha256": "40c0ddd41d6177de1db6f296486340d53888f22d387a3ac00bf0d47b03ba3ca4",
+      "size": 2177
+    }
+  ],
+  "final_tree_build_receipt_sha256": "129e62b3379a43c055d0901a5af6f70b6d58300ef28683a09ab774bbd69ed1d1",
+  "measured_runtime_scope": "Matched optimized developer builds, not official distribution compiler binaries. Both embed exact shipping parent 5e.",
+  "parent": "5e95666f875d0886e541650fa2807ed23ce501c6",
+  "parent_tree": "d79f6d5052da7bf1d66b9bd67f57f0ecbbe57b05",
+  "patch_sha256": "57083631a0726cb9bcb6bec7033215f64d8bb68cf314c7f021fda236314d7ca7",
+  "previous_checkpoint_commit": "19cb8a23151dae7d2fa819cfabf7b69646b2a745",
+  "publication_binding": "Root authenticated the immutable GitHub commit; the complete shipping tree and all four measured file blobs were independently verified locally.",
+  "publication_only_changed_paths": [
+    ".github/workflows/ci.yml"
+  ],
+  "publication_overlay_sha256": "a2c59156469aee1a20e1231e90692f3b756f2f7597353ae9f7b3bdaeb65c25ba",
+  "published_commit": "1bc15b8d7ba87a8a9c73b5b46099dcbacf1a00c7",
+  "published_four_measured_files_byte_identical": true,
+  "published_source_url": "https://github.com/astral-sh/ohm-rust/commit/1bc15b8d7ba87a8a9c73b5b46099dcbacf1a00c7",
+  "published_tree": "9496ae9e9e1f8cfc81c8df30d63ad29288d2f5c6",
+  "pull_request": "https://github.com/astral-sh/ohm-rust/pull/225",
+  "runtime_production_files_unchanged": true,
+  "tree": "023f0b79e40bf0601b22e416665eb52b2b355bf0",
+  "uv_commit": "73337b788c9057f6f3db1035d64be02b61b6ce7b",
+  "uv_tree": "c77063c04fe7987c70d15b00acca1e44e21ac98d"
+}

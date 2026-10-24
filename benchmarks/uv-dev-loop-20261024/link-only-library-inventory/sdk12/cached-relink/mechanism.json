@@ -1,0 +1,36 @@
+{
+  "all_rustc_threads": 11,
+  "all_seven_tokens_returned_in_both": true,
+  "baseline_inventory_directory_opens": 519,
+  "baseline_inventory_getdents64": 1038,
+  "candidate_inventory_directory_opens": 0,
+  "candidate_inventory_getdents64": 0,
+  "captured_search_arguments": {
+    "dependency": 514,
+    "distinct_values": 518,
+    "native": 5,
+    "sysroot_directory_added": 1,
+    "total": 519
+  },
+  "claim": "Directory work and functional parity only; no instruction or wall-time benefit measured.",
+  "complete_per_pid_traces_independently_redecoded": true,
+  "instruction_samples": 0,
+  "jobserver_capacity": 8,
+  "native_child_context_comparison": "exact after only the two per-run compiler/GCC-created temporary paths below; no actual argv/environment rewriting",
+  "native_child_exec_chain": [
+    "cc",
+    "collect2",
+    "Wild"
+  ],
+  "native_generated_names": "Exactly one rustc temporary directory and one GCC resolution file per run; comparison only, actual argv and environment untouched.",
+  "original_cargo_elf_exact_in_both_arms": true,
+  "output": {
+    "bytes": 204340056,
+    "mode": 448,
+    "sha256": "4d5c8f7e3e7c161d08031c1764040803161ba2cee3ef47bd2ec8401ce733a8c8"
+  },
+  "private_full_report_sha256": "d96507e9995c62eb7daa2f5f395a3bb2c550792f7076865c06e65f4cf1945cee",
+  "rustc_argv_and_ordered_environment_exact": true,
+  "source_and_original_runtime_and_cargo_state_restored": true,
+  "state": "passed"
+}

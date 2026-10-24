@@ -1,0 +1,26 @@
+{
+  "blocks": {
+    "confirmation-1": {
+      "inputs_sha256": "7bc198fa07bf583094931117e6ed57866107df7b44738ebb6f526c10ebae2109",
+      "profile_integrity_sha256": "5c38543d244bd4ea02739c12ec2dfbc677474b92728809e50cee370fd653ffde",
+      "raw_gates_sha256": "dc68e17130cc645d7d449924ceda6ff658026e0a0266b407ffa38851cd1715fb",
+      "summary_sha256": "b3cdab1d722507c2d473288d3930711292539675570a9104fd0a18c3f736f2a7",
+      "terminal_sha256": "502a02fdde5f80230e0f96df76bcb1d590fc1c5071ca8275555fd929553e396a"
+    },
+    "confirmation-2": {
+      "inputs_sha256": "1be7f4405451daf2027caa2a990221d61a05111b1ba379cc4dca776755db9fc0",
+      "profile_integrity_sha256": "b893f0ad7ce80e6d8a15801ed8fa221210331c91fcd89e8972bd6ad5046cad7b",
+      "raw_gates_sha256": "3893c9ab2bb71afd904588a44848f42198fa476904b670e05d1f521f646f063a",
+      "summary_sha256": "708d132cec58e9a24467ae0f679263e5a6fc47becf13cda5b6b77a169171b55f",
+      "terminal_sha256": "8f0668a601ea7013732e6fcfde3442f0a78d2963e6afd8217d2d86a7c0c35072"
+    }
+  },
+  "blocks_pooled": false,
+  "comparative_attempts": 2,
+  "comparative_samples_rerun_or_extended": false,
+  "excluded_setup_stops_preserved": true,
+  "offline_analysis_launcher_stops": 2,
+  "offline_stop_scope": "Two analysis owners did not start the reader; no analysis output existed. The unchanged frozen reader then validated the completed collection locally. No compiler sample was rerun.",
+  "original_two_host_protocol_complete": true,
+  "private_environment_host_transport_and_path_maps_included": false
+}

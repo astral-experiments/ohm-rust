@@ -1,0 +1,303 @@
+diff --git a/compiler/rustc_session/src/filesearch.rs b/compiler/rustc_session/src/filesearch.rs
+index 618a372c9e4d4b57994696c0f0a750643fdc4ae6..36fdbb22ca26db9902cddf73cc81a27f708fa9e8 100644
+--- a/compiler/rustc_session/src/filesearch.rs
++++ b/compiler/rustc_session/src/filesearch.rs
+@@ -1,7 +1,8 @@
+ //! A module for searching for libraries
+ 
++use std::borrow::Cow;
+ use std::path::{Path, PathBuf};
+-use std::sync::Arc;
++use std::sync::{Arc, OnceLock};
+ use std::{env, fs, iter};
+ 
+ use rustc_fs_util::try_canonicalize;
+@@ -13,7 +14,8 @@ pub struct FileSearch {
+     cli_search_paths: Vec<SearchPath>,
+     tlib_path: SearchPath,
+     use_implicit_sysroot_deps: bool,
+-    files: Vec<FileSearchCandidate>,
++    files: OnceLock<Vec<FileSearchCandidate>>,
++    library_prefixes: [Cow<'static, str>; 3],
+ }
+ 
+ impl FileSearch {
+@@ -46,12 +48,13 @@ pub fn get_library_candidates<'b>(
+         kind: PathKind,
+     ) -> impl Iterator<Item = (&'b str, PathBuf)> {
+         let exclude_sysroot = kind.matches(PathKind::Crate) && !self.use_implicit_sysroot_deps;
++        let files = self.files();
+ 
+         // The indices are clipped to have only a single iterator returned from this function, to
+         // avoid allocating it.
+-        let start = self.files.partition_point(|v| *v.filename < *prefix).min(self.files.len());
+-        let end = self.files[start..].partition_point(|v| v.filename.starts_with(prefix));
+-        let prefixed_items = &self.files[start..][..end];
++        let start = files.partition_point(|v| *v.filename < *prefix).min(files.len());
++        let end = files[start..].partition_point(|v| v.filename.starts_with(prefix));
++        let prefixed_items = &files[start..][..end];
+ 
+         prefixed_items
+             .into_iter()
+@@ -68,51 +71,75 @@ pub fn new(
+         tlib_path: &SearchPath,
+         target: &Target,
+         use_implicit_sysroot_deps: bool,
++        link_only: bool,
+     ) -> Self {
+         // We keep a list of all found paths that look like libraries in `FileSearch`, to optimize
+         // lookup in `get_library_candidates`.
+         // These prefixes should be kept in sync with `CrateLocator::find_library_crate`.
+-        let prefixes = ["lib", &target.staticlib_prefix, &target.dll_prefix];
+-
+-        // Load all files from all search paths, filter them by supported prefixes, and sort them,
+-        // so that we can efficiently look them up in `get_file_candidates` via binary search.
+-        let mut files: Vec<FileSearchCandidate> = Vec::with_capacity(cli_search_paths.len());
+-        for (search_path, is_sysroot) in
+-            cli_search_paths.iter().map(|path| (path, false)).chain(iter::once((tlib_path, true)))
+-        {
+-            let Ok(dir) = fs::read_dir(&search_path.dir) else {
+-                continue;
+-            };
+-            files.extend(dir.filter_map(|entry| {
+-                let entry = entry.ok()?;
+-
+-                let filename = entry.file_name();
+-                let filename = filename.to_str()?;
+-
+-                if !SearchPath::should_index_file(search_path.kind, filename)
+-                    || !prefixes.iter().any(|prefix| filename.starts_with(prefix))
+-                {
+-                    return None;
+-                }
+-                Some(FileSearchCandidate {
+-                    dir: Arc::clone(&search_path.dir),
+-                    filename: filename.into(),
+-                    kind: search_path.kind,
+-                    from_sysroot: is_sysroot,
+-                })
+-            }));
+-        }
+-        files.sort_unstable_by(|lhs, rhs| lhs.filename.cmp(&rhs.filename));
+-
+-        FileSearch {
++        let search = FileSearch {
+             cli_search_paths: cli_search_paths.to_owned(),
+             tlib_path: tlib_path.clone(),
+             use_implicit_sysroot_deps,
+-            files,
++            files: OnceLock::new(),
++            library_prefixes: [
++                "lib".into(),
++                target.staticlib_prefix.clone(),
++                target.dll_prefix.clone(),
++            ],
++        };
++        if !link_only {
++            search.files();
+         }
++        search
++    }
++
++    fn files(&self) -> &[FileSearchCandidate] {
++        self.files.get_or_init(|| {
++            // Load all files from all search paths, filter them by supported prefixes, and sort them,
++            // so that we can efficiently look them up in `get_file_candidates` via binary search.
++            let mut files: Vec<FileSearchCandidate> =
++                Vec::with_capacity(self.cli_search_paths.len());
++            for (search_path, is_sysroot) in self
++                .cli_search_paths
++                .iter()
++                .map(|path| (path, false))
++                .chain(iter::once((&self.tlib_path, true)))
++            {
++                let Ok(dir) = fs::read_dir(&search_path.dir) else {
++                    continue;
++                };
++                files.extend(dir.filter_map(|entry| {
++                    let entry = entry.ok()?;
++
++                    let filename = entry.file_name();
++                    let filename = filename.to_str()?;
++
++                    if !SearchPath::should_index_file(search_path.kind, filename)
++                        || !self
++                            .library_prefixes
++                            .iter()
++                            .any(|prefix| filename.starts_with(prefix.as_ref()))
++                    {
++                        return None;
++                    }
++                    Some(FileSearchCandidate {
++                        dir: Arc::clone(&search_path.dir),
++                        filename: filename.into(),
++                        kind: search_path.kind,
++                        from_sysroot: is_sysroot,
++                    })
++                }));
++            }
++            files.sort_unstable_by(|lhs, rhs| lhs.filename.cmp(&rhs.filename));
++
++            files
++        })
+     }
+ }
+ 
++#[cfg(test)]
++mod tests;
++
+ /// This type stores `Box<str>` instead of `PathBuf` for the filename, because getting the
+ /// `file_name` of a `PathBuf` allocates, which is unnecessary. We have to go through the files
+ /// a lot of times, so storing file name and the directory separately saves time and memory.
+diff --git a/compiler/rustc_session/src/filesearch/tests.rs b/compiler/rustc_session/src/filesearch/tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..f8793407cc69ed744f87fdc588f3e961c81cf4b5
+--- /dev/null
++++ b/compiler/rustc_session/src/filesearch/tests.rs
+@@ -0,0 +1,84 @@
++use rustc_fs_util::TempDirBuilder;
++use rustc_target::spec::TargetTuple;
++
++use super::*;
++
++fn search_path(kind: PathKind, dir: &Path) -> SearchPath {
++    SearchPath { kind, dir: dir.into() }
++}
++
++fn candidates(search: &FileSearch, prefix: &str, suffix: &str, kind: PathKind) -> Vec<PathBuf> {
++    search.get_library_candidates(prefix, suffix, kind).map(|(_, path)| path).collect()
++}
++
++#[test]
++fn filesearch_eager_inventory_preserves_construction_snapshot() {
++    let dir = TempDirBuilder::new().tempdir_in(env::temp_dir()).unwrap();
++    let path = search_path(PathKind::Dependency, dir.path());
++    let sysroot = search_path(PathKind::All, &dir.path().join("missing-sysroot"));
++    let target = Target::expect_builtin(&TargetTuple::from_tuple("x86_64-unknown-linux-gnu"));
++    fs::write(dir.path().join("libbefore.rlib"), []).unwrap();
++    let search = FileSearch::new(&[path], &sysroot, &target, true, false);
++    fs::write(dir.path().join("libafter.rlib"), []).unwrap();
++    assert_eq!(
++        candidates(&search, "lib", ".rlib", PathKind::Dependency),
++        [dir.path().join("libbefore.rlib")],
++    );
++}
++
++#[test]
++fn filesearch_link_only_inventory_initializes_on_demand_once() {
++    let dir = TempDirBuilder::new().tempdir_in(env::temp_dir()).unwrap();
++    let native = search_path(PathKind::Native, &dir.path().join("native"));
++    let dependency = search_path(PathKind::Dependency, &dir.path().join("dependency"));
++    let sysroot = search_path(PathKind::All, &dir.path().join("sysroot"));
++    let mut target = Target::expect_builtin(&TargetTuple::from_tuple("x86_64-unknown-linux-gnu"));
++    target.staticlib_prefix = String::from("archive").into();
++    target.dll_prefix = String::from("dynamic").into();
++    let paths = [dependency.clone(), native.clone(), dependency.clone()];
++    let search = FileSearch::new(&paths, &sysroot, &target, false, true);
++    drop(target);
++
++    assert_eq!(
++        search.cli_search_paths(PathKind::Native).map(|p| &p.dir).collect::<Vec<_>>(),
++        [&native.dir],
++    );
++    assert_eq!(
++        search.search_paths(PathKind::Native).map(|p| &p.dir).collect::<Vec<_>>(),
++        [&native.dir, &sysroot.dir],
++    );
++    for path in [&dependency, &native, &sysroot] {
++        fs::create_dir(&path.dir).unwrap();
++        fs::write(path.dir.join("libexample.rlib"), []).unwrap();
++        fs::write(path.dir.join("libexample.rcgu.o"), []).unwrap();
++    }
++    fs::write(dependency.dir.join("archiveexample.a"), []).unwrap();
++    fs::write(dependency.dir.join("dynamicexample.so"), []).unwrap();
++    fs::write(dependency.dir.join("ignored.rlib"), []).unwrap();
++
++    assert_eq!(candidates(&search, "lib", ".rlib", PathKind::Crate), Vec::<PathBuf>::new(),);
++    let expected = vec![dependency.dir.join("libexample.rlib"); 2];
++    assert_eq!(candidates(&search, "lib", ".rlib", PathKind::Dependency).len(), 3);
++    assert_eq!(
++        candidates(&search, "archive", ".a", PathKind::Dependency),
++        vec![dependency.dir.join("archiveexample.a"); 2],
++    );
++    assert_eq!(
++        candidates(&search, "dynamic", ".so", PathKind::Dependency),
++        vec![dependency.dir.join("dynamicexample.so"); 2],
++    );
++    assert!(candidates(&search, "ignored", ".rlib", PathKind::All).is_empty());
++    let mut objects = candidates(&search, "lib", ".rcgu.o", PathKind::Native);
++    objects.sort();
++    assert_eq!(
++        objects,
++        [native.dir.join("libexample.rcgu.o"), sysroot.dir.join("libexample.rcgu.o")]
++    );
++
++    fs::remove_dir_all(&sysroot.dir).unwrap();
++    fs::write(dependency.dir.join("liblater.rlib"), []).unwrap();
++    let mut actual = candidates(&search, "lib", ".rlib", PathKind::Dependency);
++    actual.retain(|p| p.parent() != Some(sysroot.dir.as_ref()));
++    assert_eq!(actual, expected);
++    assert_eq!(candidates(&search, "lib", ".rlib", PathKind::Dependency).len(), 3);
++}
+diff --git a/compiler/rustc_session/src/session.rs b/compiler/rustc_session/src/session.rs
+index 7db30b38f9be4dc7ed1723b19584992831b997cf..182b44918dc5fa5879c242d2412360a28731c094 100644
+--- a/compiler/rustc_session/src/session.rs
++++ b/compiler/rustc_session/src/session.rs
+@@ -1341,6 +1341,7 @@ pub fn build_session(
+         &target_tlib_path,
+         &target,
+         sopts.unstable_opts.implicit_sysroot_deps,
++        sopts.unstable_opts.link_only,
+     ));
+     let host_filesearch = if target == host {
+         Arc::clone(&target_filesearch)
+@@ -1350,6 +1351,7 @@ pub fn build_session(
+             &host_tlib_path,
+             &host,
+             sopts.unstable_opts.implicit_sysroot_deps,
++            sopts.unstable_opts.link_only,
+         ))
+     };
+ 
+diff --git a/tests/run-make/separate-link/rmake.rs b/tests/run-make/separate-link/rmake.rs
+index b23316e41f1dbadba8596899735e7808124821f6..6b8ca5ba1648c20764da20499d171f48147b5766 100644
+--- a/tests/run-make/separate-link/rmake.rs
++++ b/tests/run-make/separate-link/rmake.rs
+@@ -5,7 +5,7 @@
+ 
+ //@ ignore-cross-compile
+ 
+-use run_make_support::{rfs, run, rustc};
++use run_make_support::{build_native_static_lib, rfs, run, rustc};
+ 
+ fn main() {
+     rustc().stdin_buf(b"fn main(){}").arg("-Zno-link").arg("-").run();
+@@ -35,4 +35,28 @@ fn main() {
+         rustc().arg("-Zemit-rlink").arg("-Zlink-only").input("simultaneous.rlink").run();
+         run("simultaneous");
+     }
++
++    rfs::write("answer.c", "int answer(void) { return 1; }");
++    let native_library = build_native_static_lib("answer");
++    rustc()
++        .stdin_buf(
++            br#"
++            #[link(name = "answer", kind = "static", modifiers = "-bundle")]
++            unsafe extern "C" { fn answer() -> i32; }
++            fn main() { println!("{}", unsafe { answer() }); }
++        "#,
++        )
++        .crate_name("native")
++        .arg("-Lnative=.")
++        .arg("-Zemit-rlink")
++        .arg("-")
++        .run();
++    run("native").assert_stdout_equals("1\n");
++
++    rfs::write("answer.c", "int answer(void) { return 2; }");
++    build_native_static_lib("answer");
++    rustc().arg("-Lnative=.").arg("-Zlink-only").input("native.rlink").run();
++    run("native").assert_stdout_equals("2\n");
++    rfs::remove_file(native_library);
++    rustc().arg("-Lnative=.").arg("-Zlink-only").input("native.rlink").run_fail();
+ }
