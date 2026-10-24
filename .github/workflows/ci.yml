@@ -120,6 +120,7 @@ jobs:
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/ui/rmeta
+          tests/ui/privacy/pub-priv-dep/shared_direct_private.rs
 
       - name: Run LLVM prelink function-merging regression
         run: >-
