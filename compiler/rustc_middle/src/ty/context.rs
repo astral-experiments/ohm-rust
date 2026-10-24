@@ -22,7 +22,7 @@ use rustc_crate_store::{CrateStoreDyn, Untracked};
 use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::intern::Interned;
 use rustc_data_structures::profiling::SelfProfilerRef;
-use rustc_data_structures::sharded::{IntoPointer, ShardedHashMap, make_hash};
+use rustc_data_structures::sharded::{IntoPointer, ShardedHashMap, make_hash, shards};
 use rustc_data_structures::stable_hash::StableHash;
 use rustc_data_structures::steal::Steal;
 use rustc_data_structures::sync::{
@@ -193,38 +193,39 @@ impl<'tcx> CtxtInterners<'tcx> {
     fn new(arena: &'tcx WorkerLocal<Arena<'tcx>>) -> CtxtInterners<'tcx> {
         // Default interner size - this value has been chosen empirically, and may need to be
         // adjusted as the compiler evolves.
-        const N: usize = 2048;
+        // Keep the total initial capacity budget independent of the number of shards.
+        let n = 2048 / shards();
         CtxtInterners {
             arena,
             // The factors have been chosen by @FractalFir based on observed interner sizes, and
             // local perf runs. To get the interner sizes, insert `eprintln` printing the size of
             // the interner in functions like `intern_ty`. Bigger benchmarks tend to give more
             // accurate ratios, so use something like `x perf eprintln --includes cargo`.
-            type_: InternedSet::with_capacity(N * 16),
-            const_lists: InternedSet::with_capacity(N * 4),
-            args: InternedSet::with_capacity(N * 4),
-            type_lists: InternedSet::with_capacity(N * 4),
-            region: InternedSet::with_capacity(N * 4),
-            poly_existential_predicates: InternedSet::with_capacity(N / 4),
-            canonical_var_kinds: InternedSet::with_capacity(N / 2),
-            predicate: InternedSet::with_capacity(N),
-            clauses: InternedSet::with_capacity(N),
-            projs: InternedSet::with_capacity(N * 4),
-            place_elems: InternedSet::with_capacity(N * 2),
-            const_: InternedSet::with_capacity(N * 2),
-            pat: InternedSet::with_capacity(N),
-            const_allocation: InternedSet::with_capacity(N),
-            bound_variable_kinds: InternedSet::with_capacity(N * 2),
-            layout: InternedSet::with_capacity(N),
-            adt_def: InternedSet::with_capacity(N),
-            external_constraints: InternedSet::with_capacity(N),
-            predefined_opaques_in_body: InternedSet::with_capacity(N),
-            fields: InternedSet::with_capacity(N * 4),
-            local_def_ids: InternedSet::with_capacity(N),
-            captures: InternedSet::with_capacity(N),
-            valtree: InternedSet::with_capacity(N),
-            patterns: InternedSet::with_capacity(N),
-            outlives: InternedSet::with_capacity(N),
+            type_: InternedSet::with_capacity(n * 16),
+            const_lists: InternedSet::with_capacity(n * 4),
+            args: InternedSet::with_capacity(n * 4),
+            type_lists: InternedSet::with_capacity(n * 4),
+            region: InternedSet::with_capacity(n * 4),
+            poly_existential_predicates: InternedSet::with_capacity(n / 4),
+            canonical_var_kinds: InternedSet::with_capacity(n / 2),
+            predicate: InternedSet::with_capacity(n),
+            clauses: InternedSet::with_capacity(n),
+            projs: InternedSet::with_capacity(n * 4),
+            place_elems: InternedSet::with_capacity(n * 2),
+            const_: InternedSet::with_capacity(n * 2),
+            pat: InternedSet::with_capacity(n),
+            const_allocation: InternedSet::with_capacity(n),
+            bound_variable_kinds: InternedSet::with_capacity(n * 2),
+            layout: InternedSet::with_capacity(n),
+            adt_def: InternedSet::with_capacity(n),
+            external_constraints: InternedSet::with_capacity(n),
+            predefined_opaques_in_body: InternedSet::with_capacity(n),
+            fields: InternedSet::with_capacity(n * 4),
+            local_def_ids: InternedSet::with_capacity(n),
+            captures: InternedSet::with_capacity(n),
+            valtree: InternedSet::with_capacity(n),
+            patterns: InternedSet::with_capacity(n),
+            outlives: InternedSet::with_capacity(n),
             type_cache: WorkerLocal::new(|_| [const { Cell::new(None) }; INTERNER_CACHE_LEN]),
             args_cache: WorkerLocal::new(|_| [const { Cell::new(None) }; INTERNER_CACHE_LEN]),
             type_lists_cache: WorkerLocal::new(|_| [const { Cell::new(None) }; INTERNER_CACHE_LEN]),
