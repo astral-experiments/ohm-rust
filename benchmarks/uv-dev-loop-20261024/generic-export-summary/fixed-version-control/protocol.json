@@ -1,0 +1,54 @@
+{
+  "actual_inputs_sha256": "6fd8b16a9f66a5e99f430267bf2503d57537373f46feacd363bcab9c9cd5b4a9",
+  "baseline_source": "83dd78b94b407779b669d2f4e6b95f2efea726d3",
+  "candidate_source": "0a72d98143f01fc7db249147df140d2797d7cf73",
+  "cargo": "75eff38f65a16abae0a7b9603fc4fa02c846a0b6cb60a72d08b68393849b914b",
+  "condition": "Both original fixed primary blocks qualify and the isolated constant-identity fixture can be validated.",
+  "controls": [
+    "Build an untreated #219 compiler and fresh std with the original matched recipe and identical rustc -vV. Authenticate the existing candidate compiler/std.",
+    "Keep separate pristine runtime, target, shared and Cargo-home banks. Equal compiler versions cannot detect incompatible metadata, so prove isolation and every artifact source before use.",
+    "Validate matched invocation and inspect exact within-arm outputs, dynamic dependencies, exports, entrypoint, all test discovery, .text bytes and demangled defined symbols before comparison.",
+    "Measure on a separate quiet host or after A releases its host. Keep every raw count and stop on the first valid failure.",
+    "This is an additional identity control. Evaluate the original primary and whole-command secondary under their original rules."
+  ],
+  "embedded_commit_both": "0a72d98143f01fc7db249147df140d2797d7cf73",
+  "frozen_utc": "2026-10-24T02:33:42.301696+00:00",
+  "metric": "Final Callgrind Ir for the one original rustc PID including worker threads; --trace-children=no excludes linker child counters. Exact captured argv including real link output remains unchanged.",
+  "observation": "The original versions have equal dynamic exports, dependencies, entrypoint and test discovery. Candidate has 144 more defined global or weak ELF symbols and 20,802 more text bytes. Different crate IDs can affect the upstream monomorphization tie-break.",
+  "order": [
+    "AB",
+    "BA",
+    "BA",
+    "AB",
+    "BA",
+    "AB",
+    "AB",
+    "BA"
+  ],
+  "original_protocol_sha256": "90cd74b0a6c2e779f21cedf8fd789e4c580f371e8de75194ef46c548c8ab51f1",
+  "primary_status": "Original first block plus accepted independently authorized cross-host inverse passed; no pooling with this control.",
+  "question": "How much of the measured compiler effect persists when the compiler version used in StableCrateId is identical across arms?",
+  "replacement_decision_sha256": "9285bda9b94d8dd60df1f43794626da66624978a55b24f140e612972a34dd712",
+  "role": {
+    "crate_name": "uv",
+    "emit": "dep-info,link",
+    "required_argument": "--test",
+    "source_argument": "crates/uv/src/lib.rs"
+  },
+  "scheduling_decision_sha256": "c654e5be100f5449eefbaba08a6166819855f1ed7a7a093295f0b4bc8dbd0413",
+  "seed": 2026102461,
+  "statistics": {
+    "bootstrap_resamples": 200000,
+    "confidence": 0.99,
+    "exact_two_sided_sign_test": "Report independently; eight wins yields p=0.0078125.",
+    "independent_pass_per_block": {
+      "all_pairs_improve": true,
+      "minimum_reduction_lower_bound_exclusive": 0.001
+    },
+    "point": "1 - exp(mean(log(candidate/base)))",
+    "pooling": "No pooled qualification gate.",
+    "scale": "paired log(candidate/base)"
+  },
+  "uv": "3d82a6ad5a7eab8c68236553b7846517767c4b61",
+  "wild": "5b2baebf62de0f8c185711b808c3f553da3b7166b1c289420df5276b027f5597"
+}

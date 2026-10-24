@@ -1,0 +1,11 @@
+commands::diagnostics::tests::collects_lock_hints_through_context: test
+commands::diagnostics::tests::collects_lock_hints_through_project_errors: test
+commands::diagnostics::tests::collects_source_hints_through_pyproject_errors: test
+commands::error_tests::project_requirements_use_operation_classification: test
+commands::error_tests::resolution_context_leaves_other_errors_unchanged: test
+commands::error_tests::resolution_context_missing_requirements: test
+commands::error_tests::resolution_context_unreadable_requirements: test
+install_source::tests::detects_homebrew_cellar: test
+install_source::tests::ignores_non_cellar_paths: test
+
+9 tests, 0 benchmarks

@@ -1,0 +1,33 @@
+{
+  "comparison_rule": "Only actual compiler-context directory substitution and dead CARGO_MAKEFLAGS omission; executed argv remains unchanged.",
+  "diagnostics": "Exact selected dep-info/link paths; no full dep-info content-hash assertion.",
+  "exact_elf": {
+    "instruction-1": {
+      "baseline": [
+        {
+          "bytes": 159675311,
+          "kind": "exact",
+          "mode": 448,
+          "path": "<FIXTURE>/target/debug/build/workspaces/199ced01ad51c6d2/v2-e20c64aefc58f7cf/uv/5adaa8a261cd73ea/out/uv-5adaa8a261cd73ea",
+          "sha256": [
+            "e9302d19cb3c7d0eaf8924c31c123734be6e760c40f2f9da4086e9d53e44492a"
+          ]
+        }
+      ],
+      "candidate": [
+        {
+          "bytes": 159675311,
+          "kind": "exact",
+          "mode": 448,
+          "path": "<FIXTURE>/target/debug/build/workspaces/199ced01ad51c6d2/v2-0a24582e389d76ff/uv/5adaa8a261cd73ea/out/uv-5adaa8a261cd73ea",
+          "sha256": [
+            "23c11979c3016b74c53a43edba77cd01d7b6f1c746489e9b5095eb6b61952091"
+          ]
+        }
+      ]
+    }
+  },
+  "native_and_no_counter_replays_exact_within_each_arm": true,
+  "no_section_masks": true,
+  "six_role_child_contexts_admitted": true
+}

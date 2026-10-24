@@ -1,0 +1,60 @@
+{
+  "collector_sha256": "f75c9c941dc4ffe937a72d4d1947cc40046bcb12503104654cc7bd33aa7bbc9a",
+  "independent_replay_sha256": "a0a2420c51625287afb61064eaae6f4977e10d909b7fc9356fa354681956b044",
+  "minimum_remaining_seconds": 120,
+  "placement": "Before entry and between complete restored pairs only; all within-pair guards unchanged.",
+  "poll_seconds": 5,
+  "services_count": 3,
+  "timer_helper_sha256": "ae6460d1851f99170211466e5908f8f9c5b67191f91d76bded2cd4db89661e57",
+  "typed_unavailable_deadlines": "Wait outside pairs; never admit 0/UINT64_MAX without another concrete deadline.",
+  "windows": {
+    "entry.pair-window.jsonl": {
+      "final_ready": true,
+      "minimum_remaining_seconds": 121.299665173,
+      "observations": 1,
+      "sha256": "74a1b8e95869398eee3d33042d889ea3c6374ce1a2378987a5f66e4d75d853f6"
+    },
+    "pair-1.pair-window.jsonl": {
+      "final_ready": true,
+      "minimum_remaining_seconds": 322.275492326,
+      "observations": 14,
+      "sha256": "04c49ed062060284b6c3ab85da69a1e46ffe7aa560101690c6378b7ebbf4023d"
+    },
+    "pair-2.pair-window.jsonl": {
+      "final_ready": true,
+      "minimum_remaining_seconds": 254.982460894,
+      "observations": 1,
+      "sha256": "ac7278a820cee6e821f882b96ebded4b4509a311ba4e70a7047d380438080477"
+    },
+    "pair-3.pair-window.jsonl": {
+      "final_ready": true,
+      "minimum_remaining_seconds": 180.639496708,
+      "observations": 1,
+      "sha256": "0e5e06fd6969f46398782234dc9b26b323c674733bdf94770d585c90d3db0318"
+    },
+    "pair-4.pair-window.jsonl": {
+      "final_ready": true,
+      "minimum_remaining_seconds": 314.299388186,
+      "observations": 27,
+      "sha256": "a329a90f2a9d4c97f13bcd1de02212ba9a25a4f83560f6ef57b534cee6ddc1ec"
+    },
+    "pair-5.pair-window.jsonl": {
+      "final_ready": true,
+      "minimum_remaining_seconds": 242.593363547,
+      "observations": 1,
+      "sha256": "0981be01baf73e94c00a469aeac916d962e654738781dbee84319ac6d50e1682"
+    },
+    "pair-6.pair-window.jsonl": {
+      "final_ready": true,
+      "minimum_remaining_seconds": 171.927457005,
+      "observations": 1,
+      "sha256": "4952ee07a9d3ca1d9f4bd55eb72a7268a4ddfba21fd2033de884c31bd0605994"
+    },
+    "pair-7.pair-window.jsonl": {
+      "final_ready": true,
+      "minimum_remaining_seconds": 311.625668175,
+      "observations": 25,
+      "sha256": "a95dfd04fee77a9ab772e36bcffd0d38df76abc1d39a5b542fab551af3e588f6"
+    }
+  }
+}

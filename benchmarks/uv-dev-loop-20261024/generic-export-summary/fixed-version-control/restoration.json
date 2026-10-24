@@ -1,0 +1,25 @@
+{
+  "arm_convergence": {
+    "baseline": true,
+    "candidate": true
+  },
+  "builder_restoration_sha256": "823947d1999c639e27643093224849b12dd95c30f10d5fd5a61cc4466069396b",
+  "cargo_restored": true,
+  "command_records": 36,
+  "completion_sha256": "4f97ae1e415f3315d307a8b4991dc176d03f4bd89fd3c1c8d23c410ebedb70e2",
+  "failure": null,
+  "invalid_attempt": {
+    "all_excluded": true,
+    "both_arms_restored": true,
+    "effects_unread": true,
+    "saved_observations": 5,
+    "terminal_sha256": "8a31ebae3cb16b13989b6b783c3b0642b081b179b9585ef69362cb867cafdf00"
+  },
+  "samples": 16,
+  "source_mode_restored": true,
+  "source_restored": true,
+  "state": "complete",
+  "states_parked": true,
+  "terminal_sha256": "3809561252ce8c01672c0fd6be83278c038deb5867e306c5e974095bf1e696b0",
+  "tests_executed": false
+}

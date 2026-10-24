@@ -1,0 +1,27 @@
+{
+  "accepted_summary_sha256": "6895f1bbc1bd8435b897128907929346341f948af5e8dd89d7bbac66e9053291",
+  "completion_sha256": "4f97ae1e415f3315d307a8b4991dc176d03f4bd89fd3c1c8d23c410ebedb70e2",
+  "cross_arm_shared_regular_inodes": 0,
+  "excluded_interruption": {
+    "all_excluded": true,
+    "coordination": "Other local agent lanes paused new tools/transports; the identical replacement block completed. No guard relaxed.",
+    "effects_unread": true,
+    "prospective_replacement_decision_sha256": "9285bda9b94d8dd60df1f43794626da66624978a55b24f140e612972a34dd712",
+    "reason": "The unchanged competing-process guard rejected local tool/transport-side activity. Exact ownership of the exited process was not established.",
+    "saved_observations": 5
+  },
+  "fresh_private_arm_proof_sha256": "a8646214f75fe48137dc395cecde3fbf3be7d38bef6aa1c329b33ffdaed57303",
+  "independent_acceptance_sha256": "999e9c13dce2f7cfcaffc0da442c3dcdfc3bd326c1cf067bf89e254c23337720",
+  "inputs_sha256": "6fd8b16a9f66a5e99f430267bf2503d57537373f46feacd363bcab9c9cd5b4a9",
+  "metric_integrity_sha256": "c6ceb94f262bdfa48ab49d4b071336f9ad3e887a6f95981519894c55233f36e9",
+  "private_environment_host_transport_path_maps_and_invalid_effects_included": false,
+  "private_manifest": {
+    "bytes": 241421267,
+    "members": 298,
+    "sha256": "ba2758b87333ae1134d3e673ec6dfbe38bd4ad9b130b71c51177e7531f5dbfe3"
+  },
+  "raw_gates_sha256": "2f44b2f548b5653bc73a2ce02a8dc877e263b2b8c332c22d928faeb2f0bce113",
+  "raw_numeric_replay_sha256": "e3356b5b3c63e4e0a1c7b5ed580f4df005797a92ca6a7a4e0f4e24255b6a71ce",
+  "runtime_files_per_arm": 74,
+  "terminal_sha256": "3809561252ce8c01672c0fd6be83278c038deb5867e306c5e974095bf1e696b0"
+}

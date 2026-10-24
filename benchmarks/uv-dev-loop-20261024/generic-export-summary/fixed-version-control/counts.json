@@ -1,0 +1,198 @@
+{
+  "blocks": [
+    {
+      "name": "fixed-version-control",
+      "pairs": [
+        {
+          "baseline": 1997288024,
+          "candidate": 1196928642,
+          "order": "AB"
+        },
+        {
+          "baseline": 1995706790,
+          "candidate": 969421611,
+          "order": "BA"
+        },
+        {
+          "baseline": 2228795771,
+          "candidate": 967781264,
+          "order": "BA"
+        },
+        {
+          "baseline": 1997110670,
+          "candidate": 1206843999,
+          "order": "AB"
+        },
+        {
+          "baseline": 1995543742,
+          "candidate": 969920470,
+          "order": "BA"
+        },
+        {
+          "baseline": 2232954747,
+          "candidate": 967850396,
+          "order": "AB"
+        },
+        {
+          "baseline": 1997611020,
+          "candidate": 1198957311,
+          "order": "AB"
+        },
+        {
+          "baseline": 1995854242,
+          "candidate": 971962890,
+          "order": "BA"
+        }
+      ],
+      "profiles": [
+        {
+          "brk_overflow_warning": false,
+          "final_ir": 1997288024,
+          "final_minus_header": 1,
+          "header_summary_ir": 1997288023,
+          "label": "pair-0-0-baseline",
+          "self_cost_sum": 1997288024,
+          "stderr_collected": 1997288024
+        },
+        {
+          "brk_overflow_warning": false,
+          "final_ir": 1196928642,
+          "final_minus_header": 1,
+          "header_summary_ir": 1196928641,
+          "label": "pair-0-1-candidate",
+          "self_cost_sum": 1196928642,
+          "stderr_collected": 1196928642
+        },
+        {
+          "brk_overflow_warning": false,
+          "final_ir": 969421611,
+          "final_minus_header": 1,
+          "header_summary_ir": 969421610,
+          "label": "pair-1-0-candidate",
+          "self_cost_sum": 969421611,
+          "stderr_collected": 969421611
+        },
+        {
+          "brk_overflow_warning": false,
+          "final_ir": 1995706790,
+          "final_minus_header": 1,
+          "header_summary_ir": 1995706789,
+          "label": "pair-1-1-baseline",
+          "self_cost_sum": 1995706790,
+          "stderr_collected": 1995706790
+        },
+        {
+          "brk_overflow_warning": false,
+          "final_ir": 967781264,
+          "final_minus_header": 1,
+          "header_summary_ir": 967781263,
+          "label": "pair-2-0-candidate",
+          "self_cost_sum": 967781264,
+          "stderr_collected": 967781264
+        },
+        {
+          "brk_overflow_warning": false,
+          "final_ir": 2228795771,
+          "final_minus_header": 1,
+          "header_summary_ir": 2228795770,
+          "label": "pair-2-1-baseline",
+          "self_cost_sum": 2228795771,
+          "stderr_collected": 2228795771
+        },
+        {
+          "brk_overflow_warning": false,
+          "final_ir": 1997110670,
+          "final_minus_header": 1,
+          "header_summary_ir": 1997110669,
+          "label": "pair-3-0-baseline",
+          "self_cost_sum": 1997110670,
+          "stderr_collected": 1997110670
+        },
+        {
+          "brk_overflow_warning": false,
+          "final_ir": 1206843999,
+          "final_minus_header": 0,
+          "header_summary_ir": 1206843999,
+          "label": "pair-3-1-candidate",
+          "self_cost_sum": 1206843999,
+          "stderr_collected": 1206843999
+        },
+        {
+          "brk_overflow_warning": false,
+          "final_ir": 969920470,
+          "final_minus_header": 1,
+          "header_summary_ir": 969920469,
+          "label": "pair-4-0-candidate",
+          "self_cost_sum": 969920470,
+          "stderr_collected": 969920470
+        },
+        {
+          "brk_overflow_warning": false,
+          "final_ir": 1995543742,
+          "final_minus_header": 1,
+          "header_summary_ir": 1995543741,
+          "label": "pair-4-1-baseline",
+          "self_cost_sum": 1995543742,
+          "stderr_collected": 1995543742
+        },
+        {
+          "brk_overflow_warning": false,
+          "final_ir": 2232954747,
+          "final_minus_header": 1,
+          "header_summary_ir": 2232954746,
+          "label": "pair-5-0-baseline",
+          "self_cost_sum": 2232954747,
+          "stderr_collected": 2232954747
+        },
+        {
+          "brk_overflow_warning": false,
+          "final_ir": 967850396,
+          "final_minus_header": 1,
+          "header_summary_ir": 967850395,
+          "label": "pair-5-1-candidate",
+          "self_cost_sum": 967850396,
+          "stderr_collected": 967850396
+        },
+        {
+          "brk_overflow_warning": false,
+          "final_ir": 1997611020,
+          "final_minus_header": 1,
+          "header_summary_ir": 1997611019,
+          "label": "pair-6-0-baseline",
+          "self_cost_sum": 1997611020,
+          "stderr_collected": 1997611020
+        },
+        {
+          "brk_overflow_warning": false,
+          "final_ir": 1198957311,
+          "final_minus_header": 1,
+          "header_summary_ir": 1198957310,
+          "label": "pair-6-1-candidate",
+          "self_cost_sum": 1198957311,
+          "stderr_collected": 1198957311
+        },
+        {
+          "brk_overflow_warning": false,
+          "final_ir": 971962890,
+          "final_minus_header": 1,
+          "header_summary_ir": 971962889,
+          "label": "pair-7-0-candidate",
+          "self_cost_sum": 971962890,
+          "stderr_collected": 971962890
+        },
+        {
+          "brk_overflow_warning": false,
+          "final_ir": 1995854242,
+          "final_minus_header": 1,
+          "header_summary_ir": 1995854241,
+          "label": "pair-7-1-baseline",
+          "self_cost_sum": 1995854242,
+          "stderr_collected": 1995854242
+        }
+      ],
+      "seed": 2026102461
+    }
+  ],
+  "metric": "whole isolated uv library test-harness rustc final Ir; child linker counters excluded",
+  "schema": 1
+}

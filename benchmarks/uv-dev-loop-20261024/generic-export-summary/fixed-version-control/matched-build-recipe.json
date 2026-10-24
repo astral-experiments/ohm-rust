@@ -1,0 +1,47 @@
+{
+  "argv": [
+    "taskset",
+    "-c",
+    "0-23",
+    "./x",
+    "build",
+    "--config",
+    "<BUILD_ROOT>/bootstrap.matched.toml",
+    "--build-dir",
+    "<BUILD_ROOT>/build",
+    "--stage",
+    "1",
+    "-j",
+    "24",
+    "library"
+  ],
+  "baseline_embedded_commit": "0a72d98143f01fc7db249147df140d2797d7cf73",
+  "candidate_embedded_commit": "0a72d98143f01fc7db249147df140d2797d7cf73",
+  "candidate_original_recipe_sha256": "bf1f3ad66cd48b449e63d174d2c6aa4b8e38d45d23a01cd91e44eda9007969cd",
+  "config": "<BUILD_ROOT>/bootstrap.matched.toml",
+  "config_sha256": "5a67c1afe456704b68a4af8eaad561d42bb741b4c5c8e2f3822435e913684771",
+  "control_only": true,
+  "cwd": "<BUILD_ROOT>/source",
+  "environment_handling": "Small explicit child environment, retaining existing HOME without changing it. No inherited Rust flags/wrappers, global configuration writes, or credential environment dump.",
+  "environment_overrides": {
+    "CARGO_BUILD_JOBS": "24",
+    "CARGO_HOME": "<BUILD_ROOT>/cargo-home",
+    "CARGO_INCREMENTAL": "0",
+    "CARGO_TERM_COLOR": "never",
+    "LANG": "C.UTF-8",
+    "LC_ALL": "C.UTF-8",
+    "LD_LIBRARY_PATH": "<LLVM_ROOT>/lib",
+    "PATH": "/usr/bin:/bin",
+    "TMPDIR": "<BUILD_ROOT>/tmp"
+  },
+  "logical_source_commit": "83dd78b94b407779b669d2f4e6b95f2efea726d3",
+  "matching_std_rebuilt_for_control_baseline": true,
+  "optional_runtime_source_trees_excluded": [
+    "lib/rustlib/src",
+    "lib/rustlib/rustc-src"
+  ],
+  "original_private_recipe_sha256": "0fd20bc6e487432256626c771f6890a434cf5610c13b2a08b879345cd19aac9e",
+  "same_physical_source_and_build_paths": true,
+  "source_commit": "0a72d98143f01fc7db249147df140d2797d7cf73",
+  "source_tree": "5628904b977dee390dd085b34bc911c8e9ecb4eb"
+}

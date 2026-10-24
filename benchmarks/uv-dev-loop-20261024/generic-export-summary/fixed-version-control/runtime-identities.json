@@ -1,0 +1,924 @@
+{
+  "baseline": {
+    "bytes": 456621667,
+    "config_sha256": "5a67c1afe456704b68a4af8eaad561d42bb741b4c5c8e2f3822435e913684771",
+    "excluded_paths": [
+      "lib/rustlib/src",
+      "lib/rustlib/rustc-src"
+    ],
+    "file_count": 74,
+    "files": [
+      {
+        "mode": 509,
+        "path": "bin/rustc",
+        "sha256": "0d544e1a71f5180a6791c3bc288aed7869f3715f60a6b2157284838d4a32f12f",
+        "size": 175744
+      },
+      {
+        "mode": 436,
+        "path": "lib/libLLVM-23-rust-dev.so",
+        "sha256": "4f39a65cff48a3eab369dc9ae41158b92022f5af0b0cf9c86cd12f1332abeec4",
+        "size": 32
+      },
+      {
+        "mode": 420,
+        "path": "lib/libLLVM.so.23.1-rust-dev",
+        "sha256": "e79195cf3d08c82bf0c0edaf8f40aa766bb00c1978a4278c2b753539f5a3a904",
+        "size": 94492544
+      },
+      {
+        "mode": 509,
+        "path": "lib/librustc_driver-6f9d0d9f466ed619.so",
+        "sha256": "81d444cbae2b98f082a7098542e6bcaca36b8045bcaef026462bd608a31ecc8f",
+        "size": 215383192
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llc",
+        "sha256": "a0d150c36bf0cfb6f8d6f050ebbf0c582dee5e600bf0069fdabf26da638c9ed6",
+        "size": 226296
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-ar",
+        "sha256": "52c9af16973c3bacb87257d0ef7f205bed17ee26bdca6452898a0da928d84763",
+        "size": 110704
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-as",
+        "sha256": "17948023665f1f77b1c4fba9fe2595dd6fcf17f19865fa01b60ad94c0c8b8566",
+        "size": 36072
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov",
+        "sha256": "e034d3fc7e26c2fe97152ac6d1d6c784fce4073a0b64fef0fdaf35b1f167dea1",
+        "size": 656072
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-dis",
+        "sha256": "f96f83883d6b6b9425c1e8261c99c19bf729f7f16f94093505e74dbcfe86f04b",
+        "size": 61672
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-link",
+        "sha256": "39c271d8e5376d29d03b2371566b041f3be598cfe15898c0158ac37f856feed7",
+        "size": 83768
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-nm",
+        "sha256": "dd0acba12ce3ffffc7bbbb947ca251878e00be3f21cdde38320e583aadcd37bf",
+        "size": 197192
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-objcopy",
+        "sha256": "69c9081f935add7a604372785e27cf24dcbc4565427d53f87685a1e42e433a9a",
+        "size": 263272
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-objdump",
+        "sha256": "8164515b9d56136f4d2ba0125b4275f894dbd604b21a8cee0fe851a345778da3",
+        "size": 1200688
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-profdata",
+        "sha256": "09a2f43d3f61ec0ab4aabef7990734f6a873b409dfdbccfa01011ab863d689a4",
+        "size": 533208
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-readobj",
+        "sha256": "529e13aff917fa562732a44f4a370d4817cce38fcf3b56f6b7922ade6a1d5330",
+        "size": 2374056
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-size",
+        "sha256": "d293c6793bf44c75d4a6615b0a684ce5eadd6f97ef27bb76bf1662404f5a7175",
+        "size": 93080
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-strip",
+        "sha256": "69c9081f935add7a604372785e27cf24dcbc4565427d53f87685a1e42e433a9a",
+        "size": 263272
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/opt",
+        "sha256": "a78f36fd905c8342afcfa22837474eace946826fb4829c87b6e1f2f6e47e51db",
+        "size": 314032
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/rust-objcopy",
+        "sha256": "69c9081f935add7a604372785e27cf24dcbc4565427d53f87685a1e42e433a9a",
+        "size": 263272
+      },
+      {
+        "mode": 509,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/self-contained/llvm-bitcode-linker",
+        "sha256": "dc2c00f579f28d337f3e4c53054ef12e9171a0d67ffface2c5b6286f76f8e93f",
+        "size": 4016288
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/wild-ld/ld.bfd",
+        "sha256": "5b2baebf62de0f8c185711b808c3f553da3b7166b1c289420df5276b027f5597",
+        "size": 7931512
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libaddr2line-84c84c7e3cb0191a.rlib",
+        "sha256": "8fe5afa670fc9c91e1c5de5424201b2de15a5a14b2e0b0a6bda2eb59fa0d44f3",
+        "size": 27330
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libaddr2line-84c84c7e3cb0191a.rmeta",
+        "sha256": "9e35de8961939eab537d88e0410e24d2408f88d8f41f1b04eb33f5e6663b9895",
+        "size": 423968
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libadler2-779573bcc82ea365.rlib",
+        "sha256": "c979988ea9f7174298492dca2481c38a6ffbac1fef78a9ab2fb2050ff2636478",
+        "size": 10612
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libadler2-779573bcc82ea365.rmeta",
+        "sha256": "0429d71224cde95fc52bbd66390eded27d57f7e6771e2a66faea089d6db6766c",
+        "size": 18618
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/liballoc-7e02b7f18d3fd5c4.rlib",
+        "sha256": "a9df8cb351ab2593ec4c27a8d7b557c6b40d1f7087046f772d3959b15a6a0f5d",
+        "size": 1004664
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/liballoc-7e02b7f18d3fd5c4.rmeta",
+        "sha256": "0c3a609b8d00979243346671240e6fec4109614700b537f2f14a77b315a1eb85",
+        "size": 7234091
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libcfg_if-43e481b8bc354769.rlib",
+        "sha256": "d3f45f73423b2c98830e8637fc9831996465e90c002da58a9733a1e655fe8106",
+        "size": 5298
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libcfg_if-43e481b8bc354769.rmeta",
+        "sha256": "d49ca5616ab1c6f9dd550b6ade73ba8b8939e9a7307cdb2ed08c065738927dae",
+        "size": 5573
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libcompiler_builtins-3923e3d6be04ba3d.rlib",
+        "sha256": "3e727c308e6769c5172d4484764268a6de6b71812f3a4dec51a8ff8d4f62ae3b",
+        "size": 4417452
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libcompiler_builtins-3923e3d6be04ba3d.rmeta",
+        "sha256": "f146c53a5169f0e1aa26f74cc233244c6b1c6ba5c6ac9c230f3a9efaebcb1560",
+        "size": 1567466
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libcore-16cfb0e267930eea.rlib",
+        "sha256": "a298b96bc8d4d1a6eeed4a5a7392459e056b2e70b392b428dcab1b0cbf52ab03",
+        "size": 3048876
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libcore-16cfb0e267930eea.rmeta",
+        "sha256": "e51919cdcc6f4901b52c8adb1db06c6d32b92145c689affeae65752d7ab3a63e",
+        "size": 54266898
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libgetopts-4e8c45ca8963858a.rlib",
+        "sha256": "83ed96c787578eac47664777a9888ce04b836f54bffd9dde17bea8d536592050",
+        "size": 750116
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libgetopts-4e8c45ca8963858a.rmeta",
+        "sha256": "c8b4d1e6a227ef73b27d8b162aa702711cac34159af696e21f3f885552c92523",
+        "size": 203420
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libgimli-25298e958f4e7e15.rlib",
+        "sha256": "bdbc10f4602211ec7d95415a247f53d331492fb5cb830b1708b3addb17b7b342",
+        "size": 1057022
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libgimli-25298e958f4e7e15.rmeta",
+        "sha256": "dce01d7f23b52668725895f163d4d8e3acc26fb360d88bd0c1844f6478cc6fa5",
+        "size": 5014282
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libhashbrown-d20a1217d74589ba.rlib",
+        "sha256": "93dabd692c45732f760eade34132e24e39e59fac7233e9b03ca731612c215348",
+        "size": 42408
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libhashbrown-d20a1217d74589ba.rmeta",
+        "sha256": "c452bf1c3c73b249822c03096dccc19f94dc74ea1d564c921e18d72073f84c38",
+        "size": 1404411
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/liblibc-6e6e31e79590683f.rlib",
+        "sha256": "04eaae9ded578c48c28859ae01322e529d3fa164f8c22681216c0414940a08e3",
+        "size": 32618
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/liblibc-6e6e31e79590683f.rmeta",
+        "sha256": "50650eb02023a817422f2f7d7c651917fc5df71c47c7c5547d4a475bb0bbfb36",
+        "size": 3442547
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libmemchr-507ad7d146b23e0a.rlib",
+        "sha256": "39dc0b8a77dbe4566776e7646b442f2b527ab121cbf12922618ad792fa943d51",
+        "size": 423250
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libmemchr-507ad7d146b23e0a.rmeta",
+        "sha256": "c10cc1b82f97b7a0de1ea5815d31f87e3e6d0720cb94ff90388129cd0fab1cd3",
+        "size": 1261214
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libminiz_oxide-0351735439899218.rlib",
+        "sha256": "398487f9d73438a360900615b17c2f9a2218884c0678037284353e93b08acf8e",
+        "size": 108510
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libminiz_oxide-0351735439899218.rmeta",
+        "sha256": "fce1ec87e5bb226eab489da863d5e7c211bd959b2bafb069579bc2d60860f805",
+        "size": 114368
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libobject-2d73d6c7ca70100d.rlib",
+        "sha256": "ebc90d2946028b5755f751e413c1e1d5b15da37e38a2743a1b81aad0ea439927",
+        "size": 276144
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libobject-2d73d6c7ca70100d.rmeta",
+        "sha256": "dbe3a7fce1f8d768028783883eba07965389155a20603558dc18666d24de56b9",
+        "size": 7055534
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libpanic_abort-4289399db37c311c.rlib",
+        "sha256": "fbb62aa8a5d28c31b153e45b1757292bf89d7b9fd34aacd93814aebdcc975432",
+        "size": 11484
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libpanic_abort-4289399db37c311c.rmeta",
+        "sha256": "f7e2fcacab02748a7b93cf37e5c93e19a9fa788d4210c4a38995b528709a7d10",
+        "size": 2772
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libpanic_unwind-ae314287f73fa84e.rlib",
+        "sha256": "a089baa20fd30f9f19ba87dc86836fa504508c1172e9ebc80cd1ddb90da0307e",
+        "size": 36814
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libpanic_unwind-ae314287f73fa84e.rmeta",
+        "sha256": "fad81595da030cc3807c7db0794c319aa07fdfa329a916c29749cd1d9b65f874",
+        "size": 6581
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libproc_macro-6a3f230390f2e703.rlib",
+        "sha256": "2b823b88d444f10dfba14d1b8975ff730db3d6746dfcb819f16440c0eaef99eb",
+        "size": 4460408
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libproc_macro-6a3f230390f2e703.rmeta",
+        "sha256": "61eca315322affcb1f8434bad8ca68da2ad1c2774d318221998703d9a1186738",
+        "size": 919583
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_demangle-31816f105e6f21b3.rlib",
+        "sha256": "e70a0beca82d3665147a2499849fd76e9a9ee385385edab3814faba781489750",
+        "size": 238366
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_demangle-31816f105e6f21b3.rmeta",
+        "sha256": "8a9259dc31fcc178dfbae78e486305426e9a8f1ffb591bfb6f152c157a7552e0",
+        "size": 77753
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_literal_escaper-eaf2a68c0febe42c.rlib",
+        "sha256": "13483e6a7efd2d903fce8ded9ee9d651a273a086fd404dc7129086aa9761fdf6",
+        "size": 5456
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_literal_escaper-eaf2a68c0febe42c.rmeta",
+        "sha256": "c6f33890471ee578de9fd933fb04268733126e80a0b84619956f22f07906a904",
+        "size": 110954
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_alloc-bc5009e2b492696f.rlib",
+        "sha256": "d240ccc57ec8d64a6062149cf0c02ed6bd1c17a90818df8a9e68d8dd05a0c59d",
+        "size": 5544
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_alloc-bc5009e2b492696f.rmeta",
+        "sha256": "85e0b17a53248f6013f0b1d6cd6908c93c10df8f21dfd6145d61dd9c7f6c9097",
+        "size": 2252
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_core-aac427b611c458c8.rlib",
+        "sha256": "ab909ea122f89521f9246e81c53b26b4718f41fce0051e4bfb3337e64c245242",
+        "size": 5542
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_core-aac427b611c458c8.rmeta",
+        "sha256": "fa9caf1f4c68aaba959e23c053c046e920d14dd1b561e8c47af94aa5fd9a097a",
+        "size": 6152
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_std-53b272d8d60f6d63.rlib",
+        "sha256": "84171accfc9dff5d46775c7dc4bf6ad5be0a41c41d8c2c4b43f415e32223bb1b",
+        "size": 5516
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_std-53b272d8d60f6d63.rmeta",
+        "sha256": "3cf6948cef5702b1a98d3519991e04ed7825f3d0f12c9458694c63c898706104",
+        "size": 7225
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-db37a88b3a6928a4.rlib",
+        "sha256": "8ae3c36bcfeaa452f891c8b712b24872705120113fc3d3631686e5f94318cc46",
+        "size": 11733342
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-db37a88b3a6928a4.rmeta",
+        "sha256": "6a231f316c03e71893642bd9f7d29132f921bc7db8aa697d44041b4ba77b8d6b",
+        "size": 5841812
+      },
+      {
+        "mode": 509,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-db37a88b3a6928a4.so",
+        "sha256": "cb814029867657b0b5a49054961727a78e1aa5188bb3f916ad0bf6d3c76c41fe",
+        "size": 2473928
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-82d4293c74d72603.rlib",
+        "sha256": "6120c592f3c8511b00659c22c828eab3f77a7b9dbe6cd3ba8d9d40fed6f39c9f",
+        "size": 69426
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-82d4293c74d72603.rmeta",
+        "sha256": "418c673d5f115ff6fbc469b15ac329585c1b8441f1cb4861a858cfd920c41026",
+        "size": 557988
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libsysroot-deafb60cb8c78435.rlib",
+        "sha256": "27990d97d47d018e566805a054b3549e06a69f2fce94a15245e68a24cf3c1576",
+        "size": 5364
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libsysroot-deafb60cb8c78435.rmeta",
+        "sha256": "658ac0eaead13fd358aa8840510bb70a7c76198f6b47257143b6d3052b3d7277",
+        "size": 2289
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libtest-fcdf64059d0ff0fd.rlib",
+        "sha256": "2c9f8e9b97dee6dc40706d61f0965e3cf046fcb2f28ee9d1c3327f13db70c80a",
+        "size": 7218660
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libtest-fcdf64059d0ff0fd.rmeta",
+        "sha256": "169e7f9ed398258cf405b3418a9a12381b087276a2ca01c85daa4433be2152df",
+        "size": 901228
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libunwind-595de136ebcba223.rlib",
+        "sha256": "eb0e7a18ad9e9f97e25e2373097044e2263244f6e04f723710cd20943c2101af",
+        "size": 5354
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libunwind-595de136ebcba223.rmeta",
+        "sha256": "317148629ec050022d0bca032fb27c315d6bbd3f5d844b3e2039421e89147fe7",
+        "size": 17216
+      }
+    ],
+    "files_sha256": "201250962938d8c6e5a3897e5cf9d3048bf110997e45552efd4c5842d851215c",
+    "identity_sha256": "8036dd71c0309dca717b8cfc1223051723ab8de79ad43e0b01ca9f58c30e5a13",
+    "logical_source_commit": "83dd78b94b407779b669d2f4e6b95f2efea726d3",
+    "rustc_version_verbose": "rustc 1.99.0-dev (0a72d9814 2026-10-24)\nbinary: rustc\ncommit-hash: 0a72d98143f01fc7db249147df140d2797d7cf73\ncommit-date: 2026-10-24\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0-dev\nLLVM version: 23.1.1\n",
+    "source_commit": "0a72d98143f01fc7db249147df140d2797d7cf73",
+    "source_tree": "5628904b977dee390dd085b34bc911c8e9ecb4eb"
+  },
+  "candidate": {
+    "bytes": 456633789,
+    "config_sha256": "5a67c1afe456704b68a4af8eaad561d42bb741b4c5c8e2f3822435e913684771",
+    "excluded_paths": [
+      "lib/rustlib/src",
+      "lib/rustlib/rustc-src"
+    ],
+    "file_count": 74,
+    "files": [
+      {
+        "mode": 509,
+        "path": "bin/rustc",
+        "sha256": "0d544e1a71f5180a6791c3bc288aed7869f3715f60a6b2157284838d4a32f12f",
+        "size": 175744
+      },
+      {
+        "mode": 436,
+        "path": "lib/libLLVM-23-rust-dev.so",
+        "sha256": "4f39a65cff48a3eab369dc9ae41158b92022f5af0b0cf9c86cd12f1332abeec4",
+        "size": 32
+      },
+      {
+        "mode": 420,
+        "path": "lib/libLLVM.so.23.1-rust-dev",
+        "sha256": "e79195cf3d08c82bf0c0edaf8f40aa766bb00c1978a4278c2b753539f5a3a904",
+        "size": 94492544
+      },
+      {
+        "mode": 509,
+        "path": "lib/librustc_driver-6f9d0d9f466ed619.so",
+        "sha256": "20605b2fdead913480a6175c27858f4fd03dfead644a2f14cdab6a1a87495609",
+        "size": 215395288
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llc",
+        "sha256": "a0d150c36bf0cfb6f8d6f050ebbf0c582dee5e600bf0069fdabf26da638c9ed6",
+        "size": 226296
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-ar",
+        "sha256": "52c9af16973c3bacb87257d0ef7f205bed17ee26bdca6452898a0da928d84763",
+        "size": 110704
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-as",
+        "sha256": "17948023665f1f77b1c4fba9fe2595dd6fcf17f19865fa01b60ad94c0c8b8566",
+        "size": 36072
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov",
+        "sha256": "e034d3fc7e26c2fe97152ac6d1d6c784fce4073a0b64fef0fdaf35b1f167dea1",
+        "size": 656072
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-dis",
+        "sha256": "f96f83883d6b6b9425c1e8261c99c19bf729f7f16f94093505e74dbcfe86f04b",
+        "size": 61672
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-link",
+        "sha256": "39c271d8e5376d29d03b2371566b041f3be598cfe15898c0158ac37f856feed7",
+        "size": 83768
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-nm",
+        "sha256": "dd0acba12ce3ffffc7bbbb947ca251878e00be3f21cdde38320e583aadcd37bf",
+        "size": 197192
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-objcopy",
+        "sha256": "69c9081f935add7a604372785e27cf24dcbc4565427d53f87685a1e42e433a9a",
+        "size": 263272
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-objdump",
+        "sha256": "8164515b9d56136f4d2ba0125b4275f894dbd604b21a8cee0fe851a345778da3",
+        "size": 1200688
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-profdata",
+        "sha256": "09a2f43d3f61ec0ab4aabef7990734f6a873b409dfdbccfa01011ab863d689a4",
+        "size": 533208
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-readobj",
+        "sha256": "529e13aff917fa562732a44f4a370d4817cce38fcf3b56f6b7922ade6a1d5330",
+        "size": 2374056
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-size",
+        "sha256": "d293c6793bf44c75d4a6615b0a684ce5eadd6f97ef27bb76bf1662404f5a7175",
+        "size": 93080
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-strip",
+        "sha256": "69c9081f935add7a604372785e27cf24dcbc4565427d53f87685a1e42e433a9a",
+        "size": 263272
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/opt",
+        "sha256": "a78f36fd905c8342afcfa22837474eace946826fb4829c87b6e1f2f6e47e51db",
+        "size": 314032
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/rust-objcopy",
+        "sha256": "69c9081f935add7a604372785e27cf24dcbc4565427d53f87685a1e42e433a9a",
+        "size": 263272
+      },
+      {
+        "mode": 509,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/self-contained/llvm-bitcode-linker",
+        "sha256": "dc2c00f579f28d337f3e4c53054ef12e9171a0d67ffface2c5b6286f76f8e93f",
+        "size": 4016288
+      },
+      {
+        "mode": 493,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/bin/wild-ld/ld.bfd",
+        "sha256": "5b2baebf62de0f8c185711b808c3f553da3b7166b1c289420df5276b027f5597",
+        "size": 7931512
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libaddr2line-84c84c7e3cb0191a.rlib",
+        "sha256": "8fe5afa670fc9c91e1c5de5424201b2de15a5a14b2e0b0a6bda2eb59fa0d44f3",
+        "size": 27330
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libaddr2line-84c84c7e3cb0191a.rmeta",
+        "sha256": "88638c0b86b75184cc82aea34d05efe95ef7662d6803074a19641efa80f4f186",
+        "size": 423969
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libadler2-779573bcc82ea365.rlib",
+        "sha256": "c979988ea9f7174298492dca2481c38a6ffbac1fef78a9ab2fb2050ff2636478",
+        "size": 10612
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libadler2-779573bcc82ea365.rmeta",
+        "sha256": "7a23014d09ce40c331e9f454275a1ce83e09110a5034d8683774ad2c0612cfa6",
+        "size": 18619
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/liballoc-7e02b7f18d3fd5c4.rlib",
+        "sha256": "a9df8cb351ab2593ec4c27a8d7b557c6b40d1f7087046f772d3959b15a6a0f5d",
+        "size": 1004664
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/liballoc-7e02b7f18d3fd5c4.rmeta",
+        "sha256": "ec6b18af4685842ef46c93a99c8828217997f5dd0e8f7a92a4e1f72c3db6b090",
+        "size": 7234092
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libcfg_if-43e481b8bc354769.rlib",
+        "sha256": "d3f45f73423b2c98830e8637fc9831996465e90c002da58a9733a1e655fe8106",
+        "size": 5298
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libcfg_if-43e481b8bc354769.rmeta",
+        "sha256": "e16ce12e3e71ce4134307a1afe9ca3fb3be39e8e99584682d96696b12b54a3af",
+        "size": 5574
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libcompiler_builtins-3923e3d6be04ba3d.rlib",
+        "sha256": "3e727c308e6769c5172d4484764268a6de6b71812f3a4dec51a8ff8d4f62ae3b",
+        "size": 4417452
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libcompiler_builtins-3923e3d6be04ba3d.rmeta",
+        "sha256": "4e752413fef7d09dfcc44c001b56368de7dc633aafc779879e58b0baa60c7bb5",
+        "size": 1567467
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libcore-16cfb0e267930eea.rlib",
+        "sha256": "a298b96bc8d4d1a6eeed4a5a7392459e056b2e70b392b428dcab1b0cbf52ab03",
+        "size": 3048876
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libcore-16cfb0e267930eea.rmeta",
+        "sha256": "61279655c9ce69a3e6fdb6e2e2c47ef927220bf1c9c5de103b60f092e807539e",
+        "size": 54266899
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libgetopts-4e8c45ca8963858a.rlib",
+        "sha256": "83ed96c787578eac47664777a9888ce04b836f54bffd9dde17bea8d536592050",
+        "size": 750116
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libgetopts-4e8c45ca8963858a.rmeta",
+        "sha256": "b13224129573199b604c8888020868a4adc58f3f290622ef4198fe148bcafe55",
+        "size": 203421
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libgimli-25298e958f4e7e15.rlib",
+        "sha256": "bdbc10f4602211ec7d95415a247f53d331492fb5cb830b1708b3addb17b7b342",
+        "size": 1057022
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libgimli-25298e958f4e7e15.rmeta",
+        "sha256": "7b8e1dfc84e9f8a6156bcd2c2e2c035ed6feab381b25221f4cb755f782e132c9",
+        "size": 5014283
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libhashbrown-d20a1217d74589ba.rlib",
+        "sha256": "93dabd692c45732f760eade34132e24e39e59fac7233e9b03ca731612c215348",
+        "size": 42408
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libhashbrown-d20a1217d74589ba.rmeta",
+        "sha256": "062816e8a807bf9698959acf4dceee8db32ab99f586fdec1cc4e6b57bc456a2c",
+        "size": 1404412
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/liblibc-6e6e31e79590683f.rlib",
+        "sha256": "04eaae9ded578c48c28859ae01322e529d3fa164f8c22681216c0414940a08e3",
+        "size": 32618
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/liblibc-6e6e31e79590683f.rmeta",
+        "sha256": "4083134a095fcdb99a2887e4d49e55f715afa66365d4d6802117a15f4f8245f5",
+        "size": 3442548
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libmemchr-507ad7d146b23e0a.rlib",
+        "sha256": "39dc0b8a77dbe4566776e7646b442f2b527ab121cbf12922618ad792fa943d51",
+        "size": 423250
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libmemchr-507ad7d146b23e0a.rmeta",
+        "sha256": "f933749eb078d8f33acc6e4c9a1e0f5440f1f7ce51144c22b01ab27796c891e2",
+        "size": 1261215
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libminiz_oxide-0351735439899218.rlib",
+        "sha256": "398487f9d73438a360900615b17c2f9a2218884c0678037284353e93b08acf8e",
+        "size": 108510
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libminiz_oxide-0351735439899218.rmeta",
+        "sha256": "256882b4a024e6ef969d97f47d44cf11ed720e936bf2bbb0bcd4479805077d50",
+        "size": 114369
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libobject-2d73d6c7ca70100d.rlib",
+        "sha256": "ebc90d2946028b5755f751e413c1e1d5b15da37e38a2743a1b81aad0ea439927",
+        "size": 276144
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libobject-2d73d6c7ca70100d.rmeta",
+        "sha256": "e08184e828a899d9de7a9beb257a926232c8ed1e01e1ca064bc0f3a072c7777a",
+        "size": 7055535
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libpanic_abort-4289399db37c311c.rlib",
+        "sha256": "fbb62aa8a5d28c31b153e45b1757292bf89d7b9fd34aacd93814aebdcc975432",
+        "size": 11484
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libpanic_abort-4289399db37c311c.rmeta",
+        "sha256": "5a0147bdeb90faff03e516edb19802777848e3bac93421014e1265919aad1bac",
+        "size": 2773
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libpanic_unwind-ae314287f73fa84e.rlib",
+        "sha256": "a089baa20fd30f9f19ba87dc86836fa504508c1172e9ebc80cd1ddb90da0307e",
+        "size": 36814
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libpanic_unwind-ae314287f73fa84e.rmeta",
+        "sha256": "31dd697d5ff6758890609f51ae944a4f0c8d6f08381d34a48641d7984191f696",
+        "size": 6582
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libproc_macro-6a3f230390f2e703.rlib",
+        "sha256": "2b823b88d444f10dfba14d1b8975ff730db3d6746dfcb819f16440c0eaef99eb",
+        "size": 4460408
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libproc_macro-6a3f230390f2e703.rmeta",
+        "sha256": "eadf4deb500740b5bbc3e70cc8f51769655d70134e98040990237e85cfea78b4",
+        "size": 919584
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_demangle-31816f105e6f21b3.rlib",
+        "sha256": "e70a0beca82d3665147a2499849fd76e9a9ee385385edab3814faba781489750",
+        "size": 238366
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_demangle-31816f105e6f21b3.rmeta",
+        "sha256": "8ab7cac24ee5a499c1f1bf6f493daaf5a3d0dda07d051262c9cea5ddbe7418ca",
+        "size": 77754
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_literal_escaper-eaf2a68c0febe42c.rlib",
+        "sha256": "13483e6a7efd2d903fce8ded9ee9d651a273a086fd404dc7129086aa9761fdf6",
+        "size": 5456
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_literal_escaper-eaf2a68c0febe42c.rmeta",
+        "sha256": "a389753d732c769cc050ea9b201a4616b87fe0c340291a952f3229600450cc52",
+        "size": 110955
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_alloc-bc5009e2b492696f.rlib",
+        "sha256": "d240ccc57ec8d64a6062149cf0c02ed6bd1c17a90818df8a9e68d8dd05a0c59d",
+        "size": 5544
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_alloc-bc5009e2b492696f.rmeta",
+        "sha256": "52d2bb267dda477872c01870bce68b53fa1330592c721d8fb7f8f4a5b8bcfb5a",
+        "size": 2253
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_core-aac427b611c458c8.rlib",
+        "sha256": "ab909ea122f89521f9246e81c53b26b4718f41fce0051e4bfb3337e64c245242",
+        "size": 5542
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_core-aac427b611c458c8.rmeta",
+        "sha256": "2da71476612d70d1f56ef0150e830669dbc2d251b26324a22811a0d466b5b4f7",
+        "size": 6153
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_std-53b272d8d60f6d63.rlib",
+        "sha256": "84171accfc9dff5d46775c7dc4bf6ad5be0a41c41d8c2c4b43f415e32223bb1b",
+        "size": 5516
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/librustc_std_workspace_std-53b272d8d60f6d63.rmeta",
+        "sha256": "4804c63a9d1f807abd56e20615d0b17424c752296dc1830cec5dd846d55d73cf",
+        "size": 7226
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-db37a88b3a6928a4.rlib",
+        "sha256": "8ae3c36bcfeaa452f891c8b712b24872705120113fc3d3631686e5f94318cc46",
+        "size": 11733342
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-db37a88b3a6928a4.rmeta",
+        "sha256": "13bf45efbeaaee1421447158264664b37f048f170fb7eac706f84b3a8177ab52",
+        "size": 5841813
+      },
+      {
+        "mode": 509,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-db37a88b3a6928a4.so",
+        "sha256": "cb814029867657b0b5a49054961727a78e1aa5188bb3f916ad0bf6d3c76c41fe",
+        "size": 2473928
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-82d4293c74d72603.rlib",
+        "sha256": "6120c592f3c8511b00659c22c828eab3f77a7b9dbe6cd3ba8d9d40fed6f39c9f",
+        "size": 69426
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd_detect-82d4293c74d72603.rmeta",
+        "sha256": "93ae74f48cc218f362c36c35ee425b6a3c1e1a4e1ed83ced59e4213c6198e6d6",
+        "size": 557989
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libsysroot-deafb60cb8c78435.rlib",
+        "sha256": "27990d97d47d018e566805a054b3549e06a69f2fce94a15245e68a24cf3c1576",
+        "size": 5364
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libsysroot-deafb60cb8c78435.rmeta",
+        "sha256": "74badddc298b2868c21bd93c3d74320a6c2673b667ff8cf0fe215dbe1a9e9456",
+        "size": 2290
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libtest-fcdf64059d0ff0fd.rlib",
+        "sha256": "2c9f8e9b97dee6dc40706d61f0965e3cf046fcb2f28ee9d1c3327f13db70c80a",
+        "size": 7218660
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libtest-fcdf64059d0ff0fd.rmeta",
+        "sha256": "e6e28f304b8ca125771a0d67fe6146a2eeb3d2662d8a7f8efad44f1ec300ad2b",
+        "size": 901229
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libunwind-595de136ebcba223.rlib",
+        "sha256": "eb0e7a18ad9e9f97e25e2373097044e2263244f6e04f723710cd20943c2101af",
+        "size": 5354
+      },
+      {
+        "mode": 436,
+        "path": "lib/rustlib/x86_64-unknown-linux-gnu/lib/libunwind-595de136ebcba223.rmeta",
+        "sha256": "fb2dcf4d036185d989168103cf3795dd366533aece858b3a1ccf6cf0f4dd8776",
+        "size": 17217
+      }
+    ],
+    "files_sha256": "7bc07461865f8fdb9c94e96fda56cff756cfa878f9e092ae9d0b5020421272e4",
+    "identity_sha256": "6a39f86f1c37b1e8f8d3fdc0ee26b7b8835430ae1228e11e694eccb75bdde49e",
+    "rustc_version_verbose": "rustc 1.99.0-dev (0a72d9814 2026-10-24)\nbinary: rustc\ncommit-hash: 0a72d98143f01fc7db249147df140d2797d7cf73\ncommit-date: 2026-10-24\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0-dev\nLLVM version: 23.1.1\n",
+    "source_commit": "0a72d98143f01fc7db249147df140d2797d7cf73",
+    "source_tree": "3e01c5f6eb6c6cc05f43320d015b6297440d2da5"
+  },
+  "scope": "Same full embedded version with distinct source trees and metadata layouts; each arm requires independent matching std and private artifact state."
+}

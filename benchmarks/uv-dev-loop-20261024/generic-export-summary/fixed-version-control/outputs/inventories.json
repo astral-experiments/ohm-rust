@@ -1,0 +1,184 @@
+{
+  "demangled_comparison": {
+    "all_defined_functions": {
+      "baseline_count": 33451,
+      "baseline_only": [],
+      "candidate_count": 33451,
+      "candidate_only": [],
+      "equal_multisets": true
+    },
+    "argv": [
+      "/usr/bin/c++filt",
+      "--format=rust",
+      "--no-verbose"
+    ],
+    "cross_arm_binary_equivalence_claimed": false,
+    "defined_exports": {
+      "baseline_count": 24845,
+      "baseline_only": [],
+      "candidate_count": 24845,
+      "candidate_only": [],
+      "equal_multisets": true
+    },
+    "dynamic_exports": {
+      "baseline_count": 0,
+      "baseline_only": [],
+      "candidate_count": 0,
+      "candidate_only": [],
+      "equal_multisets": true
+    },
+    "entrypoint_symbols": {
+      "baseline_count": 1,
+      "baseline_only": [],
+      "candidate_count": 1,
+      "candidate_only": [],
+      "equal_multisets": true
+    },
+    "name_matched_test_symbols": {
+      "baseline_count": 82,
+      "baseline_only": [],
+      "candidate_count": 82,
+      "candidate_only": [],
+      "equal_multisets": true
+    },
+    "only_demangler_transformation": true,
+    "tool": {
+      "bytes": 22800,
+      "path": "/usr/bin/c++filt",
+      "sha256": "2c11b66c0fad24afc649517f890eaa8a6a4d4dceb1d613c5631bb96ff09352b4"
+    },
+    "undemangled_rust": {
+      "baseline": [],
+      "candidate": []
+    }
+  },
+  "demangled_names": {
+    "bytes": 1018401,
+    "file": "outputs/demangled-names.json.gz",
+    "raw_bytes": 10289603,
+    "raw_sha256": "c2ae32d355eebac9fe73af4c9281e4ba63286195a2350c7c1a1e3e40ee5615e9",
+    "sha256": "d8c809390167b1ee43f403b35fce6604c7dd23ed32f9a02375812b309e7b08ef"
+  },
+  "listed_tests": 9,
+  "name_matched_test_symbols": 82,
+  "raw_environment_and_listing_argv_omitted": true,
+  "symbol_comparison": {
+    "all_defined_functions": {
+      "baseline_count": 33451,
+      "baseline_only": [],
+      "candidate_count": 33451,
+      "candidate_only": [],
+      "equal_name_attributes_multisets": true
+    },
+    "cross_arm_binary_equivalence_claimed": false,
+    "defined_exports": {
+      "baseline_count": 24845,
+      "baseline_only": [],
+      "candidate_count": 24845,
+      "candidate_only": [],
+      "equal_name_attributes_multisets": true
+    },
+    "dynamic_dependencies": {
+      "baseline": [
+        [
+          1,
+          "libgcc_s.so.1"
+        ],
+        [
+          1,
+          "libm.so.6"
+        ],
+        [
+          1,
+          "libc.so.6"
+        ],
+        [
+          1,
+          "ld-linux-x86-64.so.2"
+        ]
+      ],
+      "candidate": [
+        [
+          1,
+          "libgcc_s.so.1"
+        ],
+        [
+          1,
+          "libm.so.6"
+        ],
+        [
+          1,
+          "libc.so.6"
+        ],
+        [
+          1,
+          "ld-linux-x86-64.so.2"
+        ]
+      ]
+    },
+    "dynamic_dependencies_equal": true,
+    "dynamic_exports": {
+      "baseline_count": 0,
+      "baseline_only": [],
+      "candidate_count": 0,
+      "candidate_only": [],
+      "equal_name_attributes_multisets": true
+    },
+    "entrypoint_symbols": {
+      "baseline_count": 1,
+      "baseline_only": [],
+      "candidate_count": 1,
+      "candidate_only": [],
+      "equal_name_attributes_multisets": true
+    },
+    "name_matched_test_symbols": {
+      "baseline_count": 82,
+      "baseline_only": [],
+      "candidate_count": 82,
+      "candidate_only": [],
+      "equal_name_attributes_multisets": true
+    },
+    "test_listing_equal": true,
+    "test_listing_sha256": {
+      "baseline": "9dbff7a55b0abeaeefc7a36d435ef36782a54ac6ecf4ff5cae4d2bec8a92218c",
+      "candidate": "9dbff7a55b0abeaeefc7a36d435ef36782a54ac6ecf4ff5cae4d2bec8a92218c"
+    },
+    "tests_executed": false
+  },
+  "symbol_name_attributes": [
+    "name",
+    "binding",
+    "type",
+    "other",
+    "section"
+  ],
+  "symbols": {
+    "baseline": {
+      "bytes": 1406492,
+      "file": "outputs/baseline-symbols.json.gz",
+      "original_inventory_sha256": "642d59094372f7dabf6ea15d5d575ea9ed6349728b1047413fef93b797b85d60",
+      "raw_bytes": 16177711,
+      "raw_sha256": "197eb02959f5bf1e95ba17eb2e47bbabf744cdf4468089c78a911be01268fb2f",
+      "sha256": "62e196d2ffe1943de62f575394bbd64eec6c35108af5813deac6bed9c52d69cf"
+    },
+    "candidate": {
+      "bytes": 1406492,
+      "file": "outputs/candidate-symbols.json.gz",
+      "original_inventory_sha256": "8cc64c1e0982a3872556664750292149b288edb33859c66867e9d882d42a6dc9",
+      "raw_bytes": 16177711,
+      "raw_sha256": "13931ffc4419e49c0aa4949b6dd4a8820ad207115a0e86b8223f42d5a30fc2cc",
+      "sha256": "8ebe5b06942d35852e0e0ed303905444c1a7d8db67186114437ca163a86d6814"
+    }
+  },
+  "test_list_sha256": "9dbff7a55b0abeaeefc7a36d435ef36782a54ac6ecf4ff5cae4d2bec8a92218c",
+  "whole_elf": {
+    "baseline": {
+      "bytes": 159675311,
+      "sha256": "e9302d19cb3c7d0eaf8924c31c123734be6e760c40f2f9da4086e9d53e44492a"
+    },
+    "candidate": {
+      "bytes": 159675311,
+      "sha256": "23c11979c3016b74c53a43edba77cd01d7b6f1c746489e9b5095eb6b61952091"
+    }
+  }
+}

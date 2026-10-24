@@ -1,0 +1,48 @@
+{
+  "state": "accepted-single-fixed-version-control",
+  "result_handoff": "080bafdf521a3be28d9305e64f9e26ca8d771cba1d37c100cb3b8e62d6b3305a",
+  "raw_terminal": "3809561252ce8c01672c0fd6be83278c038deb5867e306c5e974095bf1e696b0",
+  "completion": "4f97ae1e415f3315d307a8b4991dc176d03f4bd89fd3c1c8d23c410ebedb70e2",
+  "manifest": {
+    "sha256": "ba2758b87333ae1134d3e673ec6dfbe38bd4ad9b130b71c51177e7531f5dbfe3",
+    "members": 298,
+    "bytes": 241421267
+  },
+  "replacement_decision": "9285bda9b94d8dd60df1f43794626da66624978a55b24f140e612972a34dd712",
+  "timer_replay": "a0a2420c51625287afb61064eaae6f4977e10d909b7fc9356fa354681956b044",
+  "raw_count_and_statistics_replay": "e3356b5b3c63e4e0a1c7b5ed580f4df005797a92ca6a7a4e0f4e24255b6a71ce",
+  "elf_replay": "fee0dc54a305422839828487069a34f5adfe2323a29e416f4fed06950f5fbccd",
+  "excluded_observations_unread": 5,
+  "result": {
+    "block": 1,
+    "pairs": 8,
+    "wins": 8,
+    "losses": 0,
+    "reduction": 0.4882568502320915,
+    "ci99": [
+      0.42297453694109033,
+      0.5416743745871779
+    ],
+    "exact_sign_p": 0.0078125,
+    "seed": 2026102461,
+    "profiles": 16,
+    "passed": true,
+    "summary_sha256": "6895f1bbc1bd8435b897128907929346341f948af5e8dd89d7bbac66e9053291",
+    "inputs_sha256": "6fd8b16a9f66a5e99f430267bf2503d57537373f46feacd363bcab9c9cd5b4a9",
+    "protocol_sha256": "cc70ea3928f808f443c8c54692138658de110a58087d2c08befc62cbfbfba7ba"
+  },
+  "elf": {
+    "allocated_sections": 31,
+    "difference": [
+      ".note.gnu.build-id"
+    ],
+    "text_bytes": 6080809,
+    "text_sha256": "7045a9db87dc261967479cf973ad0f2dcb58c6f1f91e1c3e787320074a015f40",
+    "test_list_sha256": "9dbff7a55b0abeaeefc7a36d435ef36782a54ac6ecf4ff5cae4d2bec8a92218c",
+    "test_list_tail": [
+      "",
+      "9 tests, 0 benchmarks"
+    ],
+    "listed_tests": 9
+  }
+}
