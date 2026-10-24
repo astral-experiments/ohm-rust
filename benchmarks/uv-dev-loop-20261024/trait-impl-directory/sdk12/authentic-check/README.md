@@ -1,0 +1,32 @@
+# Trait implementation directory: authentic dependency-change check
+
+The original same-host design is incomplete: its inverse stopped on the strict activity guard after 12 observations, all excluded and unread. Before any fresh-host samples, the inverse was moved prospectively to a new dedicated machine of the same AMD EPYC-Milan CPU class and workload placement. Both parent states were independently warmed and all 39 transition contexts, ordered environments, and exact per-arm outputs revalidated. The original inverse order, seed, sample count, and statistical gate remain unchanged. The two accepted blocks are reported separately; this is a prospective cross-host replication, not a completed same-host replication. `cross-host-replication.json` pins the decisions and distinct input records.
+
+This packet measures the ordinary `uv` library compiler during the first `cargo check` transition for the real uv change [#22049](https://github.com/astral-sh/uv/pull/22049). The baseline is Ohm Rust #219; the candidate adds a tracked membership probe of the existing crate trait-implementation directory. The measured source, published source, common embedded compiler version, runtime identities, and any CI-only publication overlay are distinguished in `source-identities.json`.
+
+The optimization avoids constructing an incremental query for a crate/trait pair whose already-decoded metadata directory has no matching entry. Present entries retain the existing implementation-list query and decoder. Crate and implementation order stay unchanged. A tracked crate-level key fingerprint makes adding or removing a directory key invalidate earlier misses; changes within an existing key retain the original positive query. Legacy and DefPathHash metadata use the same extracted lookup as positive decoding; legacy metadata conservatively depends on the private crate hash. Nonincremental compilation does not compute the incremental-only fingerprint.
+
+The source scout conservatively bounded at least 110,329 of 128,464 pair-provider calls as empty. That was an eligibility bound, not a prediction of an equal instruction or wall-time saving. `eligibility.json` retains the count assumptions and source profile scope. `correctness.json` records the focused add/remove/list-change/private-churn checks and their exact source/runtime joins.
+
+`first-pair-mechanism.json` is a separate bounded call-edge read of the first admitted pair, joined to the original profile hashes. It records fewer positive-query executions and the new metadata-hook edge. Its inclusive edge costs are descriptive and are not added together or substituted for the whole-invocation endpoint.
+
+Each of two fixed blocks contains eight balanced pairs. Each block must independently have eight wins, a 99% paired-bootstrap lower reduction bound above 0.1%, and a two-sided sign probability below 0.01. The blocks use 200,000 log-ratio resamples with seeds 2026102471 and 2026102472. `counts.json` contains all 32 final instruction counts and the prescribed orders. `results/` contains the separately reproduced statistics; the two blocks are not pooled to replace either gate.
+
+The endpoint is the whole selected ordinary library rustc process, including its eight frontend threads and in-process macros. Cargo and its other children run normally; only that rustc process is instrumented. This is not a whole-command instruction result, a wall-time result, or a test-build result. No uv tests run.
+
+The input is a first dependency transition, not a repeat after the child has already entered the incremental cache. Each arm independently warms the parent. Before every complete pair, both full writable parent banks are freshly materialized, authenticated, and parked. Each scheduled arm activates its own bank, proves the parent command invokes zero compilers, applies the authentic child, and executes Cargo once. All 39 actual compiler contexts and their ordered environments must match the arm's excluded preflight; only the ordinary `uv` library contributes profile counts. Cleanup restores the parent and proves both arms fresh and parked.
+
+The runtime identities legitimately produce separate Cargo namespaces. Actual arguments and environments are never rewritten. The cross-arm context review permits only the two enumerated namespace components at observed path-bearing positions. Outputs remain exact against each arm's own preflight. `output-limitations.json` records the cross-arm metadata differences: full serialized metadata equivalence is not claimed. A separate real `serde_core` 2×2 control established that changing only its generated `OUT_DIR` path changes full and public hashes, while holding that path fixed gives identical complete metadata across the two compilers. This establishes one path mechanism, not equivalence for the other 35 libraries.
+
+Strict activity checks apply at entry and immediately before and after every profiled Cargo call. The prospective amendment allows a fixed maintenance-aware wait only between complete pairs, after both pristine banks have been prepared. Unavailable or transitioning heavy timers are wait states. The fixed order, seeds, sample counts, per-call guards, and whole-block failure policy remain unchanged. Activity after completed cleanup is recorded observationally. Excluded setup stops are retained separately; they contribute no counts.
+
+Run the numerical replay with Python's standard library:
+
+```sh
+python3 -I -B reproduce.py
+python3 -I -B reproduce.py --profiles profiles
+```
+
+The second command authenticates all sanitized profile gzip files, recomputes final Ir from the raw self-cost records, and joins it to the retained original `Collected` counter before reproducing both fixed gates. It keeps the old header summary separately. Only the command header and file/object pathname definitions were sanitized; every non-path profile record is byte-identical. The original path map, environments, host identity, transport logs, and complete diagnostic streams are private. The portable replay therefore verifies the published counts and arithmetic; it does not recreate the private collection admission.
+
+See `BUILD-AND-SAMPLE.md` for the matched build and first-transition lifecycle. `candidate.patch` is the exact measured source change; `measured-to-published-ci.patch` is the separate publication overlay. `uv-upstream.patch` is the authentic workload edit. All portable files are covered by `CORE-MANIFEST.json`, `profiles/PROFILE-MANIFEST.json`, and `CHECKSUMS.sha256`.

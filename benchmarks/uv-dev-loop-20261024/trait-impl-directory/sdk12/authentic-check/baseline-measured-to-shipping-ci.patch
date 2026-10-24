@@ -1,0 +1,12 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 12f2a2438cb744425908016d88221eb0660796ee..780d3b99f006ac240bb83244a680c7c9600527c7 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -120,6 +120,7 @@ jobs:
+         run: >-
+           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+           --set rust.lto=off test --stage 1 tests/ui/rmeta
++          tests/ui/privacy/pub-priv-dep/shared_direct_private.rs
+ 
+       - name: Run LLVM prelink function-merging regression
+         run: >-

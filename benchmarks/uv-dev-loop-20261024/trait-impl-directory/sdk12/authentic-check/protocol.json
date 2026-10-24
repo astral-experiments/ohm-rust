@@ -1,0 +1,152 @@
+{
+  "activity": {
+    "entry_and_each_profile": "Use the existing strict quiet observation at entry and immediately before/after the profiled Cargo call. No other agent workload on the dedicated host; retain all observations.",
+    "policy_changes": "No service, scheduler, affinity, CPU governor, kernel or global auth changes.",
+    "terminal_after_cleanup": "Record activity observationally after restoration, preserving the already accepted terminal boundary distinction."
+  },
+  "design": {
+    "A": "Matched #219 baseline",
+    "B": "Only tracked crate trait-directory membership, preserving positive impl queries",
+    "blocks": 2,
+    "bootstrap_resamples": 200000,
+    "confidence": 0.99,
+    "discovery_or_extension": false,
+    "each_block_gate": {
+      "lower_count_reduction_strictly_above": 0.001,
+      "two_sided_sign_p_strictly_below": 0.01,
+      "wins": 8
+    },
+    "method": "Existing paired_count_statistics geometric baseline/candidate ratios and exact two-sided sign probability. No pooled substitute for either block.",
+    "metric": "Whole selected rustc final Callgrind Ir, including all its threads and in-process macros; not the query-only region and not whole Cargo/child instructions.",
+    "order_effects_reported": true,
+    "orders": [
+      [
+        "AB",
+        "BA",
+        "BA",
+        "AB",
+        "BA",
+        "AB",
+        "AB",
+        "BA"
+      ],
+      [
+        "BA",
+        "AB",
+        "AB",
+        "BA",
+        "AB",
+        "BA",
+        "BA",
+        "AB"
+      ]
+    ],
+    "pairs_per_block": 8,
+    "seeds": [
+      2026102471,
+      2026102472
+    ],
+    "stopping": "First operationally valid block failure stops the candidate. No additional samples or retry of a valid failure. A technical failure stops the whole attempt before effects; preserve it and require a separate prospective correction/replacement authority. Block 2 follows only a valid passing block 1."
+  },
+  "eligibility_evidence": {
+    "bytes": 1195,
+    "sha256": "e8d15c79aab0f6e224e1b7b837df3623ce3f01bba09fb08d3daa7a6dd866b7a8"
+  },
+  "frozen_at": "2026-10-24T03:17:56.490190+00:00",
+  "host": {
+    "controller_cpus": [
+      8
+    ],
+    "exclusive_during_collection": true,
+    "name": "<dedicated-host>",
+    "workload_cpus": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ]
+  },
+  "original_protocol_sha256": "d3121e8988dde0d86bd547ba8f06e49ea056e476dd2e06f999f5c5d332af3a02",
+  "public_derivative": "Private paths, host identity, and unused authorization slots omitted; original workload, orders, counts, seeds, thresholds, and boundaries retained.",
+  "raw_gates": [
+    "complete prescribed schedule and successful compiler/Cargo exit",
+    "exact source/runtime/context and selected role; expected upstream transition artifacts retained",
+    "exact parent-only snapshot and first-child lineage for every sample",
+    "final Callgrind Ir equals self-cost sum and matching stderr; preserve old header separately",
+    "successful source/Cargo restoration and parent convergence; both banks parked",
+    "all operational/raw validity established before paired effects"
+  ],
+  "schema": 1,
+  "scope": "Only the ordinary uv-library compiler in the first authentic uv #22049 parent-to-child cargo check transition, on matched #219 plus the trait-directory probe. No native whole-command or test-build performance claim.",
+  "source": {
+    "baseline_runtime": {
+      "bytes": 17012,
+      "sha256": "b83e444c26f0ab3994a8eddcaa879a4757d69ff45d7b63551ece54521a2adc3c"
+    },
+    "candidate": {
+      "bytes": 3545,
+      "sha256": "8503ff7ca00b45b4af67bface7d632ef3c6bbbd2b87b31f647693e9764bb48ea"
+    },
+    "candidate_runtime": {
+      "bytes": 17042,
+      "sha256": "d3050f061e014f0474c8c286b60006930c4770371f2663a72819a9076dd465bd"
+    },
+    "common_embedded_commit": "f93a752e3de7404107ea5908d65c8832aee5625a",
+    "incremental_dep_kind_layout_changed": true,
+    "matched_comparison": {
+      "bytes": 807,
+      "sha256": "c5dfffc682ceddac0b581c42f1dafbd756a55c905f6fe8257ae90de589e99565"
+    },
+    "metadata_wire_format_unchanged": true,
+    "parent_commit": "83dd78b94b407779b669d2f4e6b95f2efea726d3",
+    "parent_tree": "5628904b977dee390dd085b34bc911c8e9ecb4eb"
+  },
+  "state": {
+    "capture": "Keep the selective wrapper installed from the first parent warm. Retain every compiler argv and ordered environment. Execute original live Cargo jobserver arguments and descriptors unchanged; no isolated stale-jobserver substitution. Child compiler profiling only, including its threads/in-process macros; all other children uninstrumented.",
+    "contexts": "Before qualification, bind native selected context and exact per-arm path/namespace mapping. Preserve every actual argv/environment byte. Any additional unexplained input difference stops preparation.",
+    "initial_warming": "Independently compile the authentic parent from source plus locked archive/index inputs for each compiler arm. No imported target/shared/incremental state. Keep the fixed Cargo and matching complete runtime manifest.",
+    "outputs": "Bind preflight expected roles, diagnostics and exact per-arm metadata identities before comparative sampling. No inherited hash exception or general metadata normalization.",
+    "pristine_parent": "Before any child transition, preserve and authenticate a parent-only state snapshot for each arm, including source metadata, Cargo target/shared/package state and rustc-info. Never copy one arm incremental files into the other.",
+    "restoration": "Restore authentic parent source and original fixed Cargo, converge/freshness-check each touched arm and park both banks after every completed/failed block. Keep pristine snapshots unchanged.",
+    "runtime_identity": "Validate full runtime manifests, explicitly the driver; rustc executable/version alone cannot distinguish arms.",
+    "sample": "Restore that arm pristine parent snapshot at the same physical paths, retaining its actual runtime identity. Require original parent check to be fresh with zero compilation. Apply the exact authentic child edit and run Cargo once, profiling exactly its selected ordinary uv library compiler. That compiler has never seen the child in this state."
+  },
+  "workload": {
+    "cargo_args": [
+      "-Zohm-defaults=yes",
+      "check",
+      "--locked",
+      "--offline",
+      "-j",
+      "8",
+      "--timings",
+      "--message-format=json-render-diagnostics"
+    ],
+    "cargo_commit": "fdd26156be98618e2e01a9e02703edac71b79a35",
+    "cargo_sha256": "75eff38f65a16abae0a7b9603fc4fa02c846a0b6cb60a72d08b68393849b914b",
+    "compiler_threads": 8,
+    "lock_sha256": "74b8ae645079c1be4797acce1fd2361ecb15dddf0ba13b2f78d52bee919bd57f",
+    "patch": {
+      "bytes": 12598,
+      "sha256": "90e638f2dba28a6e626d7eb83a59d3efe8c536a8941fb0584a00a942d7f1e037"
+    },
+    "selection": {
+      "crate": "uv",
+      "crate_type": "lib",
+      "emit": "dep-info,metadata",
+      "input": "crates/uv/src/lib.rs",
+      "test": false
+    },
+    "source_selection": {
+      "bytes": 13002,
+      "sha256": "cf5e721649e2e0061f32d8504bcbb4a5d4942856fcdfefe39dbb9d797b621496"
+    },
+    "tests_execute": false,
+    "uv_child": "73337b788c9057f6f3db1035d64be02b61b6ce7b",
+    "uv_parent": "cd050e4b18dfc4c5354ead52fa2b54756121b091"
+  }
+}

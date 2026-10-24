@@ -1,0 +1,12 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 780d3b99f006ac240bb83244a680c7c9600527c7..d78388abe8ef3372ad9335635fbb9cb83fbd7099 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -253,6 +253,7 @@
+             tests/run-make/rdr-public-hash*
+             tests/run-make/ohm-early-metadata
+             tests/run-make/metadata-export-prefetch
++            tests/run-make/trait-impl-directory
+             tests/run-make/ohm-shared-stages
+             tests/run-make/ohm-thinlto-cache
+             tests/run-make/caller-local-codegen

@@ -1,0 +1,127 @@
+{
+  "baseline": {
+    "actual_measured_tree": "5fb5081a44fa86a406ce696a94b03dce7a9b9f74",
+    "only_difference_to_published_parent": ".github/workflows/ci.yml",
+    "published_commit": "83dd78b94b407779b669d2f4e6b95f2efea726d3",
+    "published_tree": "5628904b977dee390dd085b34bc911c8e9ecb4eb"
+  },
+  "candidate": {
+    "branch": "codex/skip-empty-trait-implementation-queries-sdk12-20261024",
+    "local_measured_commit": "5ad468b19b3cd377c00519fb0bc7e020d117d338",
+    "measured_files": {
+      "compiler/rustc_metadata/src/rmeta/decoder.rs": {
+        "bytes": 85054,
+        "git_blob": "c6e0049a05733dcbcd5c6c2bd383b4eed8e0786e",
+        "mode": "100644",
+        "sha256": "aa6ef16931b9cffc6e8c620f660e2798b563c8859a243fd0aca393c9d22cdaa5"
+      },
+      "compiler/rustc_metadata/src/rmeta/decoder/cstore_impl.rs": {
+        "bytes": 37336,
+        "git_blob": "d38d4720e8bbe41ed50c634baa79831ac050d282",
+        "mode": "100644",
+        "sha256": "3ad8a5bbe41dd6a74644944f3e8f6e3a089822f632b2d362063ccb5cdc163b09"
+      },
+      "compiler/rustc_middle/src/hooks/mod.rs": {
+        "bytes": 5094,
+        "git_blob": "be36a2ebda53a3368a600b74c699442c24af0490",
+        "mode": "100644",
+        "sha256": "c0b4e667d76320759fb885d3291f0a7a65efc135fe3977f6282ac8bd89a3673d"
+      },
+      "compiler/rustc_middle/src/queries.rs": {
+        "bytes": 128953,
+        "git_blob": "b06318e432baafce5115bee5d807fea1115c89b4",
+        "mode": "100644",
+        "sha256": "ca30d33f286191c052221da9c1d402c9897dbdc550ae47eebad9b11562103865"
+      },
+      "compiler/rustc_middle/src/ty/trait_def.rs": {
+        "bytes": 18996,
+        "git_blob": "0afc785c558f917b969e0511efcc01650bf97ce5",
+        "mode": "100644",
+        "sha256": "c968497a0b2b6de7535b73f0196684847df96dd4d597bc7c2fbf4f065841dbf4"
+      },
+      "tests/run-make/trait-impl-directory/consumer.rs": {
+        "bytes": 521,
+        "git_blob": "b86a055fe7b87aecf33dccec05ed801348bcbd73",
+        "mode": "100644",
+        "sha256": "707e3f82db8d26c0f001bd24219b3c0531ff3a55a56081337292a745c1c94fa0"
+      },
+      "tests/run-make/trait-impl-directory/contracts.rs": {
+        "bytes": 47,
+        "git_blob": "34a27ea2c331626b11df2bf45a5023783fbcc7e0",
+        "mode": "100644",
+        "sha256": "ec096923a1791d110d1e1774845775069497c23953bf875e0bc4df55b8d74ae1"
+      },
+      "tests/run-make/trait-impl-directory/hidden.rs": {
+        "bytes": 1,
+        "git_blob": "8b137891791fe96927ad78e64b0aad7bded08bdc",
+        "mode": "100644",
+        "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+      },
+      "tests/run-make/trait-impl-directory/impls.rs": {
+        "bytes": 283,
+        "git_blob": "702b8b2a54964b9da0d2880ba410dde6571a7033",
+        "mode": "100644",
+        "sha256": "a0c04fd622d1d4bd0094748b0eae4b604e118327f41752cdaf1cfdb96b4ab7b0"
+      },
+      "tests/run-make/trait-impl-directory/requires.rs": {
+        "bytes": 134,
+        "git_blob": "27ac3168a0a91f67d004b19064f5a8de58b1d40a",
+        "mode": "100644",
+        "sha256": "d0c795db485a573c86f46d823ec9da34756321000e53eac4a5a225d94cc34af6"
+      },
+      "tests/run-make/trait-impl-directory/rmake.rs": {
+        "bytes": 4047,
+        "git_blob": "7bc377dc946076fcc60f7a0c268640df8c716c14",
+        "mode": "100644",
+        "sha256": "1a04ce341f729fe77c271b59a5de50efbd293109910e75fa97afe808e6a62567"
+      }
+    },
+    "measured_patch_sha256": "a15b1d4745b846b74db3d75a0843f8c51b0dee204726bdfbe309e83490d85926",
+    "measured_tree": "792811f296f5c16ba12c942ea916a79cfe83bf26",
+    "only_publication_change": "One CI selector for tests/run-make/trait-impl-directory.",
+    "published_head": "588a9668575e1de5bfde3bba044ff005e8b0c1f6",
+    "published_tree": "0be160a5471872fb8467c47c3dc4f19ba72f226e",
+    "remote_production_commit": "05d147fd646c922d4a2f861fa38c5a39f385d0bd"
+  },
+  "common_embedded_commit": "f93a752e3de7404107ea5908d65c8832aee5625a",
+  "incremental_banks_must_remain_disjoint": true,
+  "matched_runtime_comparison_sha256": "c5dfffc682ceddac0b581c42f1dafbd756a55c905f6fe8257ae90de589e99565",
+  "metadata_wire_format_changed": false,
+  "repository": "astral-sh/ohm-rust",
+  "runtimes": {
+    "baseline": {
+      "build_receipt_sha256": "2a624378ac72e0b089715d908a999246825271d3658319ab8dd950df51869c63",
+      "bytes": 456616957,
+      "config_sha256": "5a67c1afe456704b68a4af8eaad561d42bb741b4c5c8e2f3822435e913684771",
+      "driver": {
+        "mode": 509,
+        "path": "lib/librustc_driver-6f9d0d9f466ed619.so",
+        "sha256": "1e62bd44053ea24d437546aa147fd11fa83cedf9e8168cca45b795ac8d185250",
+        "size": 215378272
+      },
+      "file_count": 74,
+      "files_sha256": "a9011e801e3e9164b781a13548a5e495b09f09c9df00e193fd199415cd14de9f",
+      "identity_sha256": "b83e444c26f0ab3994a8eddcaa879a4757d69ff45d7b63551ece54521a2adc3c",
+      "rustc_version_verbose": "rustc 1.99.0-dev (f93a752e3 2026-10-23)\nbinary: rustc\ncommit-hash: f93a752e3de7404107ea5908d65c8832aee5625a\ncommit-date: 2026-10-23\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0-dev\nLLVM version: 23.1.1\n",
+      "source_tree": "5fb5081a44fa86a406ce696a94b03dce7a9b9f74"
+    },
+    "candidate": {
+      "build_receipt_sha256": "dbb490e251e1a15d518c5b2a9c87ba2d088378d35fd00d559c7fec57b9667715",
+      "bytes": 456632845,
+      "config_sha256": "5a67c1afe456704b68a4af8eaad561d42bb741b4c5c8e2f3822435e913684771",
+      "driver": {
+        "mode": 509,
+        "path": "lib/librustc_driver-6f9d0d9f466ed619.so",
+        "sha256": "6f10e36b07b6e26772ca1c54fc03bd6b7a92a65a95174c538e29a2ec019694d0",
+        "size": 215394160
+      },
+      "file_count": 74,
+      "files_sha256": "86d6168cf3282edddece7e9fbb72ed27997d42fc0b48cac88c4e6ab77195c3cd",
+      "identity_sha256": "d3050f061e014f0474c8c286b60006930c4770371f2663a72819a9076dd465bd",
+      "rustc_version_verbose": "rustc 1.99.0-dev (f93a752e3 2026-10-23)\nbinary: rustc\ncommit-hash: f93a752e3de7404107ea5908d65c8832aee5625a\ncommit-date: 2026-10-23\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0-dev\nLLVM version: 23.1.1\n",
+      "source_tree": "792811f296f5c16ba12c942ea916a79cfe83bf26"
+    }
+  },
+  "schema": 1,
+  "source_publication_receipt_sha256": "417d4d9e07328f852b329d4e14b898f4cb5da7184a30134eaec42786b9ac2dc6"
+}

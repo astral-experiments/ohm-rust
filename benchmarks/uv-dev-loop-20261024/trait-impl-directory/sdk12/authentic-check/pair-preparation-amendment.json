@@ -1,0 +1,37 @@
+{
+  "duration_basis": {
+    "full_snapshot_copy_excluded_from_pair_window": true,
+    "margin_beyond_profiled_calls_seconds": 54.356774046,
+    "prior_profiled_transition_seconds": 107.821612977,
+    "two_profiled_transitions_seconds": 215.643225954
+  },
+  "heavy_services": [
+    "applied-devbox-kube-proxy-reconcile",
+    "applied-devbox-azure-session"
+  ],
+  "maximum_between_pair_wait_seconds": 1200,
+  "observation_interval_seconds": 5,
+  "only_changes": [
+    "Between complete pairs, independently materialize and authenticate both full pristine parent writable banks and park them.",
+    "Before each scheduled arm runs, activate its own bank, restore its exact parent source, authenticate the bank metadata, and require the unchanged parent check to invoke zero compilers before applying the child.",
+    "Wait only between complete pairs for the two declared heavy services to be inactive with at least the fixed margin before their next scheduled trigger."
+  ],
+  "ordinary_short_services": "No special admission. The original occupancy criterion remains decisive.",
+  "original_amendment_sha256": "939f1ee3488a5a0d58dbd540dc45100ac3f35cadfc59607ad7f1f15932159233",
+  "original_protocol": {
+    "sha256": "d3121e8988dde0d86bd547ba8f06e49ea056e476dd2e06f999f5c5d332af3a02"
+  },
+  "pair_margin_seconds": 270,
+  "schema": 1,
+  "status": "prospective_source_preparation",
+  "unchanged": [
+    "arm order and fixed schedules",
+    "two eight-pair blocks and seeds",
+    "compiler/Cargo argv and ordered environments",
+    "freshness and pristine first-transition semantics",
+    "strict entry and before/after occupancy checks",
+    "whole-block operational invalidation",
+    "no intermediate effect inspection",
+    "statistics and stopping rules"
+  ]
+}

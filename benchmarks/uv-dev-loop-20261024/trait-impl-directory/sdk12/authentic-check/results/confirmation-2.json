@@ -1,0 +1,49 @@
+{
+  "block_gate_passed": true,
+  "collection_summary_geometric_reduction": 0.008060680902162387,
+  "statistics": {
+    "baseline_mean_count": 8763014827.125,
+    "baseline_median_count": 8762398318.5,
+    "bootstrap_count_reduction_interval": [
+      0.003578496242423679,
+      0.020032601142055184
+    ],
+    "bootstrap_ratio_interval": [
+      1.003591347867272,
+      1.020442109773653
+    ],
+    "bootstrap_resamples": 200000,
+    "bootstrap_seed": 2026102472,
+    "candidate_mean_count": 8692835028.875,
+    "candidate_median_count": 8723557607.5,
+    "confidence": 0.99,
+    "exact_two_sided_sign_p": 0.0078125,
+    "log_ratios": [
+      0.00396263392991474,
+      0.0035488093130783926,
+      0.004066460731156077,
+      0.0047231624679369005,
+      0.03627058709834134,
+      0.004570840634470395,
+      0.0029741726185188383,
+      0.004630083866725252
+    ],
+    "losses": 0,
+    "order": {
+      "AB": {
+        "geometric_mean_ratio": 1.0122028396850127,
+        "pairs": 4
+      },
+      "BA": {
+        "geometric_mean_ratio": 1.0040659460334271,
+        "pairs": 4
+      }
+    },
+    "paired_geometric_mean_count_reduction": 0.008060680902162387,
+    "paired_geometric_mean_ratio": 1.0081261834740995,
+    "paired_median_ratio": 1.0043280214310364,
+    "pairs": 8,
+    "ties": 0,
+    "wins": 8
+  }
+}

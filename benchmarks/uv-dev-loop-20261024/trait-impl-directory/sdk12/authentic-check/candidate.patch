@@ -1,0 +1,392 @@
+diff --git a/compiler/rustc_metadata/src/rmeta/decoder.rs b/compiler/rustc_metadata/src/rmeta/decoder.rs
+index 52a6ac38dc0f17be27829a9e56017153bc42bdb2..c6e0049a05733dcbcd5c6c2bd383b4eed8e0786e 100644
+--- a/compiler/rustc_metadata/src/rmeta/decoder.rs
++++ b/compiler/rustc_metadata/src/rmeta/decoder.rs
+@@ -1,5 +1,6 @@
+ // Decoding metadata from a single crate's metadata
+ 
++use std::hash::Hash;
+ use std::iter::TrustedLen;
+ use std::ops::{Deref, DerefMut};
+ use std::path::{Path, PathBuf};
+@@ -12,6 +13,7 @@
+ use rustc_data_structures::fingerprint::Fingerprint;
+ use rustc_data_structures::fx::FxIndexMap;
+ use rustc_data_structures::owned_slice::OwnedSlice;
++use rustc_data_structures::stable_hash::StableHasher;
+ use rustc_data_structures::sync::Lock;
+ use rustc_data_structures::unhash::UnhashMap;
+ use rustc_expand::base::{SyntaxExtension, SyntaxExtensionKind};
+@@ -1553,27 +1555,59 @@ fn get_incoherent_impls<'tcx>(&self, tcx: TyCtxt<'tcx>, simp: SimplifiedType) ->
+         }
+     }
+ 
+-    fn get_implementations_of_trait<'tcx>(
++    fn trait_impls_key_hash(&self, cstore: &CStore) -> Fingerprint {
++        let mut hasher = StableHasher::new();
++        match &self.trait_impls {
++            TraitImplsMap::DefIndex(_) => {
++                0u8.hash(&mut hasher);
++                // DefIndex keys can move when private items change.
++                self.private_hash().as_u128().hash(&mut hasher);
++            }
++            TraitImplsMap::DefPathHash(impls) => {
++                1u8.hash(&mut hasher);
++                impls.len().hash(&mut hasher);
++                for &(cnum, local_hash) in impls.keys() {
++                    let cnum = self.cnum_map[CrateNum::from_u32(cnum)];
++                    cstore.get_crate_data(cnum).root.stable_crate_id.hash(&mut hasher);
++                    local_hash.hash(&mut hasher);
++                }
++            }
++        }
++        // Private directory keys can change without changing the public API hash,
++        // so the query recomputes this fingerprint in every compilation session.
++        hasher.finish()
++    }
++
++    fn trait_impls_for(
+         &self,
+-        tcx: TyCtxt<'tcx>,
+         trait_def_id: DefId,
+-    ) -> &'tcx [(DefId, Option<SimplifiedType>)] {
++        trait_hash: impl FnOnce() -> DefPathHash,
++    ) -> Option<&LazyArray<(DefIndex, Option<SimplifiedType>)>> {
+         if self.trait_impls.is_empty() {
+-            return &[];
++            return None;
+         }
+ 
+         // Do a reverse lookup beforehand to avoid touching the crate_num
+         // hash map in the loop below.
+         let key = match self.reverse_translate_def_id(trait_def_id) {
+             Some(def_id) => (def_id.krate.as_u32(), def_id.index),
+-            None => return &[],
++            None => return None,
+         };
+-        if let Some(impls) = match &self.trait_impls {
++        match &self.trait_impls {
+             TraitImplsMap::DefIndex(trait_impls) => trait_impls.get(&key),
+             TraitImplsMap::DefPathHash(trait_impls) => {
+-                trait_impls.get(&(key.0, tcx.def_path_hash(trait_def_id).local_hash()))
++                trait_impls.get(&(key.0, trait_hash().local_hash()))
+             }
+-        } {
++        }
++    }
++
++    fn get_implementations_of_trait<'tcx>(
++        &self,
++        tcx: TyCtxt<'tcx>,
++        trait_def_id: DefId,
++    ) -> &'tcx [(DefId, Option<SimplifiedType>)] {
++        if let Some(impls) = self.trait_impls_for(trait_def_id, || tcx.def_path_hash(trait_def_id))
++        {
+             tcx.arena.alloc_from_iter(
+                 impls
+                     .decode((self, tcx))
+diff --git a/compiler/rustc_metadata/src/rmeta/decoder/cstore_impl.rs b/compiler/rustc_metadata/src/rmeta/decoder/cstore_impl.rs
+index 76c158098c2ce185b6e1d865d7ce9b4f1bef5ab5..d38d4720e8bbe41ed50c634baa79831ac050d282 100644
+--- a/compiler/rustc_metadata/src/rmeta/decoder/cstore_impl.rs
++++ b/compiler/rustc_metadata/src/rmeta/decoder/cstore_impl.rs
+@@ -736,6 +736,10 @@ pub(in crate::rmeta) fn provide(providers: &mut Providers) {
+         ..providers.queries
+     };
+     provide_extern(&mut providers.extern_queries);
++    providers.extern_queries.trait_impls_key_hash = |tcx, cnum| {
++        let cstore = CStore::from_tcx(tcx);
++        cstore.get_crate_data(cnum).trait_impls_key_hash(&cstore)
++    };
+ }
+ 
+ impl CStore {
+@@ -880,6 +884,15 @@ fn def_path_hash(&self, def: DefId) -> DefPathHash {
+ }
+ 
+ fn provide_cstore_hooks(providers: &mut Providers) {
++    providers.hooks.has_implementations_of_trait = |tcx, cnum, trait_id, trait_hash| {
++        if tcx.dep_graph.is_fully_enabled() {
++            tcx.ensure_ok().trait_impls_key_hash(cnum);
++        }
++        CStore::from_tcx(tcx)
++            .get_crate_data(cnum)
++            .trait_impls_for(trait_id, || trait_hash)
++            .is_some()
++    };
+     providers.hooks.def_path_hash_to_def_id_extern = |tcx, hash, stable_crate_id| {
+         // If this is a DefPathHash from an upstream crate, let the CrateStore map
+         // it to a DefId.
+diff --git a/compiler/rustc_middle/src/hooks/mod.rs b/compiler/rustc_middle/src/hooks/mod.rs
+index c70ceef1d47e94735541b83a5faa15cee2f09531..be36a2ebda53a3368a600b74c699442c24af0490 100644
+--- a/compiler/rustc_middle/src/hooks/mod.rs
++++ b/compiler/rustc_middle/src/hooks/mod.rs
+@@ -70,6 +70,9 @@ fn clone(&self) -> Self { *self }
+     /// to trigger this manually when decoding a foreign `Span`
+     hook import_source_files(key: CrateNum) -> ();
+ 
++    /// Records a dependency on the directory before checking for an external trait's impls.
++    hook has_implementations_of_trait(cnum: CrateNum, trait_id: DefId, trait_hash: DefPathHash) -> bool;
++
+     hook expn_hash_to_expn_id(
+         cnum: CrateNum,
+         index_guess: u32,
+diff --git a/compiler/rustc_middle/src/queries.rs b/compiler/rustc_middle/src/queries.rs
+index 68896a30dea2511d28b3dea4cdf32d04f91ab28f..b06318e432baafce5115bee5d807fea1115c89b4 100644
+--- a/compiler/rustc_middle/src/queries.rs
++++ b/compiler/rustc_middle/src/queries.rs
+@@ -2182,6 +2182,13 @@
+         separate_provide_extern
+     }
+ 
++    /// Tracks the keys of a crate's trait-impl directory without decoding its impl lists.
++    query trait_impls_key_hash(_: CrateNum) -> Fingerprint {
++        eval_always
++        desc { "fingerprinting the trait-impl directory of a crate" }
++        separate_provide_extern
++    }
++
+     /// Given a crate and a trait, look up all impls of that trait in the crate.
+     /// Return `(impl_id, self_ty)`.
+     query implementations_of_trait(_: (CrateNum, DefId)) -> &'tcx [(DefId, Option<SimplifiedType>)] {
+diff --git a/compiler/rustc_middle/src/ty/trait_def.rs b/compiler/rustc_middle/src/ty/trait_def.rs
+index 5e56d7787cb36946aa0590ecc018a3b9a3186321..0afc785c558f917b969e0511efcc01650bf97ce5 100644
+--- a/compiler/rustc_middle/src/ty/trait_def.rs
++++ b/compiler/rustc_middle/src/ty/trait_def.rs
+@@ -383,7 +383,11 @@ pub(super) fn trait_impls_of_provider(tcx: TyCtxt<'_>, trait_id: DefId) -> Trait
+     // Traits defined in the current crate can't have impls in upstream
+     // crates, so we don't bother querying the cstore.
+     if !trait_id.is_local() {
++        let trait_hash = tcx.def_path_hash(trait_id);
+         for &cnum in tcx.crates(()).iter() {
++            if !tcx.has_implementations_of_trait(cnum, trait_id, trait_hash) {
++                continue;
++            }
+             for &(impl_def_id, simplified_self_ty) in
+                 tcx.implementations_of_trait((cnum, trait_id)).iter()
+             {
+diff --git a/tests/run-make/trait-impl-directory/consumer.rs b/tests/run-make/trait-impl-directory/consumer.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..b86a055fe7b87aecf33dccec05ed801348bcbd73
+--- /dev/null
++++ b/tests/run-make/trait-impl-directory/consumer.rs
+@@ -0,0 +1,31 @@
++#![allow(dead_code)]
++
++extern crate contracts;
++extern crate impls;
++
++struct Probe<T>(T);
++
++trait ProbeValue {
++    fn probe(self) -> u8;
++}
++
++impl<T> ProbeValue for &Probe<T> {
++    fn probe(self) -> u8 {
++        0
++    }
++}
++
++impl<T: contracts::Value> ProbeValue for Probe<T> {
++    fn probe(self) -> u8 {
++        contracts::Value::value(&self.0)
++    }
++}
++
++pub fn values() -> (u8, u8) {
++    (Probe(impls::Item).probe(), Probe(impls::Extra).probe())
++}
++
++fn main() {
++    let (item, extra) = values();
++    println!("{item} {extra}");
++}
+diff --git a/tests/run-make/trait-impl-directory/contracts.rs b/tests/run-make/trait-impl-directory/contracts.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..34a27ea2c331626b11df2bf45a5023783fbcc7e0
+--- /dev/null
++++ b/tests/run-make/trait-impl-directory/contracts.rs
+@@ -0,0 +1,3 @@
++pub trait Value {
++    fn value(&self) -> u8;
++}
+diff --git a/tests/run-make/trait-impl-directory/hidden.rs b/tests/run-make/trait-impl-directory/hidden.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..8b137891791fe96927ad78e64b0aad7bded08bdc
+--- /dev/null
++++ b/tests/run-make/trait-impl-directory/hidden.rs
+@@ -0,0 +1 @@
++
+diff --git a/tests/run-make/trait-impl-directory/impls.rs b/tests/run-make/trait-impl-directory/impls.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..702b8b2a54964b9da0d2880ba410dde6571a7033
+--- /dev/null
++++ b/tests/run-make/trait-impl-directory/impls.rs
+@@ -0,0 +1,22 @@
++#![allow(dead_code)]
++
++extern crate contracts;
++
++pub struct Item;
++pub struct Extra;
++
++#[cfg(item)]
++impl contracts::Value for Item {
++    fn value(&self) -> u8 {
++        1
++    }
++}
++
++#[cfg(extra)]
++impl contracts::Value for Extra {
++    fn value(&self) -> u8 {
++        2
++    }
++}
++
++mod hidden;
+diff --git a/tests/run-make/trait-impl-directory/requires.rs b/tests/run-make/trait-impl-directory/requires.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..27ac3168a0a91f67d004b19064f5a8de58b1d40a
+--- /dev/null
++++ b/tests/run-make/trait-impl-directory/requires.rs
+@@ -0,0 +1,7 @@
++extern crate contracts;
++extern crate impls;
++
++pub fn requires() {
++    fn bound<T: contracts::Value>() {}
++    bound::<impls::Item>();
++}
+diff --git a/tests/run-make/trait-impl-directory/rmake.rs b/tests/run-make/trait-impl-directory/rmake.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..7bc377dc946076fcc60f7a0c268640df8c716c14
+--- /dev/null
++++ b/tests/run-make/trait-impl-directory/rmake.rs
+@@ -0,0 +1,126 @@
++//@ ignore-cross-compile
++//@ needs-target-std
++
++use run_make_support::{Rustc, rfs, run, rust_lib_name, rustc};
++
++fn compiler(input: &str, public_hash: bool) -> Rustc {
++    let mut command = rustc();
++    command
++        .input(input)
++        .arg(if public_hash { "-Zpublic-api-hash=yes" } else { "-Zpublic-api-hash=no" })
++        .arg("-Zincremental-verify-ich")
++        .arg("-Ccodegen-units=1");
++    command
++}
++
++fn build_impls(public_hash: bool, item: bool, extra: bool) {
++    let mut command = compiler("impls.rs", public_hash);
++    command.crate_type("rlib").emit("metadata,link").extern_("contracts", "libcontracts.rmeta");
++    if item {
++        command.cfg("item");
++    }
++    if extra {
++        command.cfg("extra");
++    }
++    command.run();
++}
++
++fn public_hash() -> String {
++    rustc()
++        .arg("-Zls=public_hash")
++        .input("libimpls.rmeta")
++        .run()
++        .stdout_utf8()
++        .lines()
++        .find_map(|line| line.strip_prefix("Public hash:"))
++        .unwrap()
++        .trim()
++        .to_owned()
++}
++
++fn check(public_hash: bool, mode: &str, item: bool, expected: &str) {
++    compiler("consumer.rs", public_hash)
++        .crate_type("lib")
++        .emit("metadata")
++        .extern_("contracts", "libcontracts.rmeta")
++        .extern_("impls", "libimpls.rmeta")
++        .incremental(format!("check-{mode}"))
++        .run();
++    let metadata = rfs::read("libconsumer.rmeta");
++
++    let fresh = format!("fresh-{mode}");
++    if std::path::Path::new(&fresh).exists() {
++        rfs::remove_dir_all(&fresh);
++    }
++    compiler("consumer.rs", public_hash)
++        .crate_type("lib")
++        .emit("metadata")
++        .extern_("contracts", "libcontracts.rmeta")
++        .extern_("impls", "libimpls.rmeta")
++        .incremental(fresh)
++        .run();
++    assert_eq!(metadata, rfs::read("libconsumer.rmeta"));
++
++    compiler("consumer.rs", public_hash)
++        .extern_("contracts", rust_lib_name("contracts"))
++        .extern_("impls", rust_lib_name("impls"))
++        .incremental(format!("link-{mode}"))
++        .run();
++    run("consumer").assert_stdout_equals(expected);
++
++    let mut diagnostics = Vec::new();
++    for incremental in [true, false] {
++        let mut command = compiler("requires.rs", public_hash);
++        command
++            .crate_type("lib")
++            .emit("metadata")
++            .extern_("contracts", "libcontracts.rmeta")
++            .extern_("impls", "libimpls.rmeta");
++        if incremental {
++            command.incremental(format!("requires-{mode}"));
++        }
++        let result = if item { command.run() } else { command.run_fail() };
++        if !item {
++            result.assert_stderr_contains("E0277");
++        }
++        diagnostics.push(result.stderr_utf8());
++    }
++    assert_eq!(diagnostics[0], diagnostics[1]);
++}
++
++fn main() {
++    for (public, mode) in [(false, "legacy"), (true, "public")] {
++        rfs::write("hidden.rs", "");
++        compiler("contracts.rs", public).crate_type("rlib").emit("metadata,link").run();
++
++        // Add a key, change its existing list, and remove the key again.
++        for (item, extra, expected) in [
++            (false, false, "0 0"),
++            (true, false, "1 0"),
++            (true, true, "1 2"),
++            (true, false, "1 0"),
++            (false, false, "0 0"),
++        ] {
++            build_impls(public, item, extra);
++            check(public, mode, item, expected);
++        }
++
++        build_impls(public, true, false);
++        let hash = public_hash();
++        let metadata = rfs::read("libimpls.rmeta");
++        check(public, mode, true, "1 0");
++        rfs::write("hidden.rs", "trait Hidden {}\nimpl Hidden for () {}\n");
++        build_impls(public, true, false);
++        assert_ne!(metadata, rfs::read("libimpls.rmeta"));
++        if public {
++            assert_eq!(hash, public_hash());
++        }
++        check(public, mode, true, "1 0");
++        rfs::write("hidden.rs", "");
++        build_impls(public, true, false);
++        if public {
++            assert_eq!(hash, public_hash());
++        }
++        check(public, mode, true, "1 0");
++    }
++}

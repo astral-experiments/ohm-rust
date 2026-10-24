@@ -1,0 +1,31 @@
+{
+  "failed_effects_read": false,
+  "fresh_host_admission_sha256": "e441eecc6763af5c88266ab940616510286126a11180fffaa410feec10ed3971",
+  "fresh_host_inputs_sha256": "ef80d622b66915dc84db71be1094fc488d499d4d3fd803565b0ab5003e3b7314",
+  "host_equivalence": "Same AMD EPYC-Milan class; workload CPUs 0-7 and controller CPU 8.",
+  "no_native_or_whole_cargo_claim": true,
+  "original_fixed_host_protocol_complete": false,
+  "original_host_failed_inverse_observations": 12,
+  "original_inputs_sha256": "497bc57ea6d3f9acd8d578ace8d8ea6069051292ea99848b819a1af272559c55",
+  "preceding_summary_sha256": "3a0fac72ae7c9a92594cfe554d1276c9329ae517b7a243a37b5baae2d7cad6cd",
+  "predecessor_join_amendment_sha256": "770d742cb684f9b9b9668ad0a677c374b5ea4595f852860525605b418e5d0ab0",
+  "preflight": {
+    "compiler_contexts_per_arm": 39,
+    "nonempty_library_metadata_pairs": 36,
+    "parent_artifacts_per_arm": 711,
+    "pristine_entries_per_arm": 41881
+  },
+  "prospective_decision_sha256": "0f4e4d60e6795d68238201ec9187be86391ec3f54f2113f86693a9752b067fd8",
+  "schema": 1,
+  "source_delta": "One predecessor assertion in each collector/analyzer pins the accepted original inputs and summary; current inputs remain independently required.",
+  "unchanged": [
+    "sample order and count",
+    "seed 2026102472",
+    "per-sample validity",
+    "exact per-arm outputs",
+    "maintenance policy",
+    "restoration",
+    "raw metrics",
+    "paired statistics"
+  ]
+}

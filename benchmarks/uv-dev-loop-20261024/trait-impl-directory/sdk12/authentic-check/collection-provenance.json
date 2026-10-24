@@ -1,0 +1,27 @@
+{
+  "blocks": {
+    "confirmation-1": {
+      "completion_sha256": "6e8918580d13218d3645f3a9e5380c0dea8b56e1b2815dc7d582fca18a671ca5",
+      "profile_integrity_sha256": "83e0b9dada56c6e287a3505e827e7b9f6afcb8cc4eb3485af9d1e0038e018f61",
+      "raw_gates_sha256": "2b17dd0ecce01398154d58503ef46ac8722921cfab9dff7c414abe145ca64883",
+      "summary_sha256": "3a0fac72ae7c9a92594cfe554d1276c9329ae517b7a243a37b5baae2d7cad6cd"
+    },
+    "confirmation-2": {
+      "completion_sha256": "b0d7c3c265b7e2fb744350714a60728066855fb7035e313d0dd2de95bca60e4e",
+      "profile_integrity_sha256": "cdf70ea5aa9a7165fecc032a8568b3c7c5efef9caee58bd41e4919201489faf3",
+      "raw_gates_sha256": "f8ceec47bb2253302b882073c7258c06a5922a9657416cb49c17972133a6fc76",
+      "summary_sha256": "550f2e5dee8ad031c8548d1311168a8da74b848a99b45505634f13236d0aa1f4"
+    }
+  },
+  "excluded_preparation_stops_preserved": true,
+  "failed_effects_read": false,
+  "failed_original_inverse_observations": 12,
+  "inputs_sha256": {
+    "confirmation-1": "497bc57ea6d3f9acd8d578ace8d8ea6069051292ea99848b819a1af272559c55",
+    "confirmation-2": "ef80d622b66915dc84db71be1094fc488d499d4d3fd803565b0ab5003e3b7314"
+  },
+  "no_comparative_workload_rerun_or_sample_extension": true,
+  "original_fixed_host_protocol_complete": false,
+  "private_environment_host_transport_and_path_maps_included": false,
+  "prospective_cross_host_replication_complete": true
+}

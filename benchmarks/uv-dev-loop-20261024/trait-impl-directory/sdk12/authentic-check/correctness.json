@@ -1,0 +1,39 @@
+{
+  "archive_reverification": [
+    {
+      "files": 74,
+      "identity_sha256": "b83e444c26f0ab3994a8eddcaa879a4757d69ff45d7b63551ece54521a2adc3c"
+    },
+    {
+      "files": 74,
+      "identity_sha256": "d3050f061e014f0474c8c286b60006930c4770371f2663a72819a9076dd465bd"
+    }
+  ],
+  "baseline_direct_receipt_sha256": "1d5e7f4b740598c29bc10fe008ca81797bb26b07e3a4bc55e9b7aee5646a99d3",
+  "baseline_direct_run_make_passed": true,
+  "candidate_canonical_tests": {
+    "failures": 0,
+    "ignored": 0,
+    "incremental_files": 2,
+    "rmeta_ui": 12,
+    "run_make": 4,
+    "total": 18
+  },
+  "canonical_receipt_sha256": "0635a2f193140fd476cb2444350f3db62606e324b649c51437fe3dd7e9f48288",
+  "checks": [
+    "missing/add/list-change/remove impl",
+    "private key churn with unchanged public hash in public mode",
+    "incremental metadata byte equality to a fresh incremental compilation",
+    "exact incremental vs nonincremental missing-impl diagnostics",
+    "runtime selection of fallback and implemented trait methods"
+  ],
+  "new_fixture_internal_cases": 16,
+  "new_fixture_modes": [
+    "legacy DefIndex",
+    "public-api-hash DefPathHash"
+  ],
+  "original_receipt_sha256": "4d75909cf7e34c4f1ac941e3a47898cc91ce9c273bae844340a290e8d4529a8c",
+  "preserved_stop": "baseline-correctness-01 (canonical bootstrap unexpectedly began compiler rebuilding; stopped before tests; direct archived-baseline route succeeded)",
+  "source_tree": "792811f296f5c16ba12c942ea916a79cfe83bf26",
+  "state": "passed"
+}

@@ -1,0 +1,35 @@
+{
+  "baseline": {
+    "profile_sha256": "72025ba4d4cb36f01e7a797986e627507734a69acbadbdf3c96042181bc0b1a4",
+    "final_ir": 8781294243,
+    "direct_edges": [
+      {
+        "query": "implementations_of_trait",
+        "caller": "rustc_middle[1cf0b0aadb0372f2]::ty::trait_def::trait_impls_of_provider",
+        "callee": "rustc_query_impl[5bb0a9012415ba12]::query_vtables::implementations_of_trait::execute_query_incr::__rust_end_short_backtrace",
+        "calls": 128464,
+        "inclusive_ir": 351180298
+      }
+    ]
+  },
+  "candidate": {
+    "profile_sha256": "a2161596924f9719685a58416a03e9889ef28a1fcebdee0f7ccbc7e69bf61434",
+    "final_ir": 8675656783,
+    "direct_edges": [
+      {
+        "query": "metadata_hook",
+        "caller": "rustc_middle[1cf0b0aadb0372f2]::ty::trait_def::trait_impls_of_provider",
+        "callee": "<rustc_metadata[27ec42b69dc98ba0]::rmeta::decoder::cstore_impl::provide_cstore_hooks::{closure#0} as core[8c5ac2f034688f9a]::ops::function::FnOnce<(rustc_middle[1cf0b0aadb0372f2]::ty::context::TyCtxt, rustc_span[b1b62a1249d02d4f]::def_id::CrateNum, rustc_span[b1b62a1249d02d4f]::def_id::DefId, rustc_span[b1b62a1249d02d4f]::def_id::DefPathHash)>>::call_once",
+        "calls": 104160,
+        "inclusive_ir": 30574712
+      },
+      {
+        "query": "implementations_of_trait",
+        "caller": "rustc_middle[1cf0b0aadb0372f2]::ty::trait_def::trait_impls_of_provider",
+        "callee": "rustc_query_impl[5bb0a9012415ba12]::query_vtables::implementations_of_trait::execute_query_incr::__rust_end_short_backtrace",
+        "calls": 6150,
+        "inclusive_ir": 55700925
+      }
+    ]
+  }
+}
