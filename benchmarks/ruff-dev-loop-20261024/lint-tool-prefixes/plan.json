@@ -1,0 +1,83 @@
+{
+  "alpha": 9.765625e-06,
+  "alpha_ledger": {
+    "allocated": 9.765625e-06,
+    "cumulative": 0.009990234375,
+    "next_unused": 4.8828125e-06,
+    "ordinal": 10,
+    "prior_cumulative": 0.00998046875
+  },
+  "analysis_seed": 874677819,
+  "bootstrap_samples": 50000,
+  "components": [
+    {
+      "block": "a",
+      "id": "a-check",
+      "mode": "check",
+      "pairs": 32,
+      "schedule_seed": 3668382171
+    },
+    {
+      "block": "a",
+      "id": "a-build",
+      "mode": "build",
+      "pairs": 12,
+      "schedule_seed": 1856806864
+    },
+    {
+      "block": "a",
+      "id": "a-test",
+      "mode": "test",
+      "pairs": 12,
+      "schedule_seed": 2804069632
+    },
+    {
+      "block": "b",
+      "id": "b-test",
+      "mode": "test",
+      "pairs": 12,
+      "schedule_seed": 1965443276
+    },
+    {
+      "block": "b",
+      "id": "b-build",
+      "mode": "build",
+      "pairs": 12,
+      "schedule_seed": 744587834
+    },
+    {
+      "block": "b",
+      "id": "b-check",
+      "mode": "check",
+      "pairs": 32,
+      "schedule_seed": 4069949651
+    }
+  ],
+  "exclusions": [],
+  "extension_allowed": false,
+  "lower99_strict": true,
+  "minimum_lower99_percent": 1.0,
+  "minimum_point_percent": 1.0,
+  "numeric_sha256": "cfb87993aab7d8b08b7059696db9f9859791c596734f657c64e3c624d007d2bc",
+  "numpy_version": "2.3.5",
+  "original_pilot_screen_passed": false,
+  "pairs_per_mode": {
+    "build": 24,
+    "check": 64,
+    "test": 24
+  },
+  "permutation_samples": 2000000,
+  "pilot_data_pooled": false,
+  "policy_amendment_sha256": "bf1e08d999c1290168e45543bc882b754860e3908eee5cc0443a2762874bf8ec",
+  "primary_mode": "check",
+  "python_version_used": "3.12.13",
+  "schema": "lint-tool-prefix-statistical-replay-v1",
+  "source_image_hashes": {
+    "edited": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+    "original": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de"
+  },
+  "timed_calls": 224,
+  "timed_pairs": 112,
+  "total_calls": 236,
+  "warm_calls": 12
+}
