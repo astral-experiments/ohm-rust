@@ -1,0 +1,269 @@
+{
+  "adaptive_extension": false,
+  "all_cargo_calls": 136,
+  "allocation_created_utc": "2026-10-24T18:05:09.437575+00:00",
+  "alpha": 1.220703125e-06,
+  "alpha_ordinal": 13,
+  "alpha_seed_record_sha256": "a57808c76e3b6de40d4d06379bc76c23e50e3ceb975f43182fb0e0fdd7256ff2",
+  "alpha_spend_sha256": "feb8e49771f6f5f696831292296e7e320784d0f4fbdf33d963eb0a71043bca5e",
+  "analysis_seed": 282139565327582089072857975991756123694,
+  "bootstrap_caveat": "Approximate interval; temporal correlation and cache-cycle effects can invalidate within-stratum exchangeability. Blocks are freshly warmed and separately scheduled, not claimed statistically independent.",
+  "bootstrap_samples": 50000,
+  "bootstrap_strata": "block x observed AB/BA order; six observations per stratum",
+  "both_block_geometric_reductions_positive": true,
+  "comparison": {
+    "A": "shipping-base1",
+    "A_descriptor_sha256": "f4ab7ed7f59e296690277dcdf7b7cd14bec744a08c583e4c7e9928983fc3bd50",
+    "B": "shipping-capacity223-1",
+    "B_descriptor_sha256": "10135f5cd779e168aac04022de745c4dd50fda05448a6135a52c4b40135b3189",
+    "fixture": "parser"
+  },
+  "cumulative_alpha": 0.009998779296875,
+  "cycle_observation": "Record edit ordinal and modulo-3 position; four complete groups of three edits per arm/block. No assumed cache-hit or compaction proof.",
+  "exact_randomization_assignments": 853776,
+  "exclusions": [],
+  "gain_hypotheses": 1,
+  "holm": "identity for one Ir gain hypothesis",
+  "lower_99_percent_strictly_above": 0.2,
+  "native_guard_components": [
+    {
+      "block": "a",
+      "id": "a-check",
+      "mode": "check",
+      "orders": [
+        "BA",
+        "AB",
+        "AB",
+        "BA",
+        "AB",
+        "BA"
+      ],
+      "pairs": 6,
+      "schedule_seed": 255103925421539022800256089954709481091
+    },
+    {
+      "block": "a",
+      "id": "a-build",
+      "mode": "build",
+      "orders": [
+        "BA",
+        "AB",
+        "AB",
+        "BA",
+        "BA",
+        "AB"
+      ],
+      "pairs": 6,
+      "schedule_seed": 178591668174248603095856580140570213172
+    },
+    {
+      "block": "a",
+      "id": "a-test",
+      "mode": "test",
+      "orders": [
+        "AB",
+        "BA",
+        "BA",
+        "AB",
+        "AB",
+        "BA"
+      ],
+      "pairs": 6,
+      "schedule_seed": 310677218693574336417076766539311704322
+    },
+    {
+      "block": "b",
+      "id": "b-test",
+      "mode": "test",
+      "orders": [
+        "BA",
+        "AB",
+        "BA",
+        "AB",
+        "BA",
+        "AB"
+      ],
+      "pairs": 6,
+      "schedule_seed": 326287310475905327298174688116708987483
+    },
+    {
+      "block": "b",
+      "id": "b-build",
+      "mode": "build",
+      "orders": [
+        "BA",
+        "AB",
+        "AB",
+        "BA",
+        "AB",
+        "BA"
+      ],
+      "pairs": 6,
+      "schedule_seed": 267108713325014267989263485471347152653
+    },
+    {
+      "block": "b",
+      "id": "b-check",
+      "mode": "check",
+      "orders": [
+        "BA",
+        "AB",
+        "AB",
+        "BA",
+        "AB",
+        "BA"
+      ],
+      "pairs": 6,
+      "schedule_seed": 273167521425237232397334171069069898412
+    }
+  ],
+  "native_guard_pairs": 36,
+  "native_guard_timed_calls": 72,
+  "native_pair_orders": {
+    "a-build": [
+      "BA",
+      "AB",
+      "AB",
+      "BA",
+      "BA",
+      "AB"
+    ],
+    "a-check": [
+      "BA",
+      "AB",
+      "AB",
+      "BA",
+      "AB",
+      "BA"
+    ],
+    "a-test": [
+      "AB",
+      "BA",
+      "BA",
+      "AB",
+      "AB",
+      "BA"
+    ],
+    "b-build": [
+      "BA",
+      "AB",
+      "AB",
+      "BA",
+      "AB",
+      "BA"
+    ],
+    "b-check": [
+      "BA",
+      "AB",
+      "AB",
+      "BA",
+      "AB",
+      "BA"
+    ],
+    "b-test": [
+      "BA",
+      "AB",
+      "BA",
+      "AB",
+      "BA",
+      "AB"
+    ]
+  },
+  "native_regression_guard": {
+    "all_36_pairs_required_before_final_decision": true,
+    "alpha_gain_hypotheses": 0,
+    "component_order": [
+      "a-check",
+      "a-build",
+      "a-test",
+      "b-test",
+      "b-build",
+      "b-check"
+    ],
+    "effect_statistic": "100 * (1 - exp(mean(log(B/A)))) over paired observations, overall and separately within each block",
+    "either_block_reduction_percent_lte_veto": -5.0,
+    "endpoint": "command_wall_seconds",
+    "fixture": "linter",
+    "fresh_stores_once": true,
+    "implementation_readiness_is_separate_from_mandatory_policy": true,
+    "needle": "suppression",
+    "noninferiority_claim": false,
+    "order_rule": "Uniform shuffle of exactly 3 AB and 3 BA within each six-pair component; no cycle-position balancing",
+    "overall_reduction_percent_lte_veto": -2.0,
+    "pairs_per_block_mode": 6,
+    "pairs_per_mode": 12,
+    "positive_native_gain_claim": false,
+    "replacement": "suppr3ssion",
+    "selected_crate": "ruff_linter",
+    "selected_crate_and_api_validation": "Unchanged exercised native-wall carrier validators",
+    "separate_from_Ir_stores": true,
+    "source_suffix": "crates/ruff_linter/src/rules/ruff/rules/unused_noqa.rs",
+    "stores_reused_across_components": true,
+    "timed_calls": 72,
+    "warm_calls": 12,
+    "warms_excluded_from_effects": true,
+    "warms_per_component": 2
+  },
+  "next_unused_alpha": 6.103515625e-07,
+  "numeric_sha256": "cfb87993aab7d8b08b7059696db9f9859791c596734f657c64e3c624d007d2bc",
+  "pair_orders": {
+    "1": [
+      "AB",
+      "AB",
+      "BA",
+      "AB",
+      "AB",
+      "BA",
+      "AB",
+      "BA",
+      "BA",
+      "BA",
+      "BA",
+      "AB"
+    ],
+    "2": [
+      "BA",
+      "BA",
+      "AB",
+      "AB",
+      "BA",
+      "AB",
+      "BA",
+      "AB",
+      "AB",
+      "BA",
+      "BA",
+      "AB"
+    ]
+  },
+  "permutation_samples": 2000000,
+  "planned_alpha": 1.220703125e-06,
+  "primary_endpoint": "selected original compiler PID Ir",
+  "primary_pairs": 24,
+  "primary_profiled_calls": 48,
+  "prior_exploratory_observations_in_inference": 0,
+  "raw_profile_policy": "Retain every call raw profile/tool log/argv/owner ledger; select original compiler PID only; never sum other PIDs.",
+  "schedule_seeds": {
+    "1": 338236258182935101909220925402512928541,
+    "2": 297353882570395120721002218480902076371
+  },
+  "schema": "parser-compiler-instruction-confirmation-proposal-v1",
+  "separate_point_floor_applied": false,
+  "source_image_hashes": {
+    "linter": {
+      "after": "f81053d3adb7a7739cb2b31502870cbed2c28878b4b9ebe0f111ef46cc868e41",
+      "before": "5329b587f26bd8801e90f26617c4f7e0b09b7cbdf7b2f26a125e6a8ba24ef1de"
+    },
+    "parser": {
+      "after": "6e8d93d333bece527c3bd3d880e1fb0b93b57ee7ca2ac4621231ff97a4c4bdfd",
+      "before": "022f3cf7a1c2cfe546fa0361cd7ba10adfd95e8764b9ce79bd8423735c1b35ba"
+    }
+  },
+  "source_plan_sha256": "ef874412df58c3d9a1e06e6c50d2b97d942614eb2972688bc373db287df24a6b",
+  "source_sequence": "Native original warm; after on odd edit ordinals, before on even ordinals; each arm previous content must differ.",
+  "warm_orders": {
+    "1": "AB",
+    "2": "BA"
+  },
+  "warms": 16
+}
