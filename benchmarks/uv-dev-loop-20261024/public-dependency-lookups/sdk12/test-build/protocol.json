@@ -1,0 +1,92 @@
+{
+  "collection": {
+    "compiler_build": "Common source/build paths and verified stage0/LLVM/optimized developer recipe for baseline and candidates. Keep exact compiler driver identities and all shared runtime file checks. Verify focused correctness tests.",
+    "contexts": "Compare executed argv and ordered environments using only verified compiler-specific namespace substitutions and the stale jobserver exclusion. Retain the actual SDK12 unit counts and output classes.",
+    "cpus": "Controller CPU8 and measured process CPUs0-7 with eight compiler threads; other heavy builders excluded on this single local host.",
+    "edit": "Use the known equal-length comment fixture. Before every sample, warm on BEFORE with native Cargo and capture the exact ordinary library compiler invocation. Measure once on AFTER and restore original source/mode. Restore/converge each arm at block end.",
+    "state": "Fresh independent per-arm target/shared/package/runtime banks at one new common physical path. Import immutable source/locked archives only. Warm and trace both check and test --no-run as fresh in each arm before either endpoint, and converge both at restoration.",
+    "validity": "Require exit success, expected source/target/output kinds, complete raw final Ir matching self-cost sum and stderr, input/output context integrity, restoration and parked state. Record host observations without filtering count results. Preserve technical failures and correct the cause before fresh collection. Any technical failure ends the complete attempt before effects; replacements require a separate prospective decision. No automatic retry."
+  },
+  "comparisons": {
+    "privacy_short_circuit_test_build": {
+      "block_seeds": [
+        2026102403,
+        2026102404
+      ],
+      "candidate_tree": "5fb5081a44fa86a406ce696a94b03dce7a9b9f74",
+      "endpoint": "ordinary uv library rustc invocation captured from cargo -Zohm-defaults=yes test --no-run --locked --offline -j8",
+      "purpose": "Independently validate the same pure privacy-map short circuit on test-build; no uv tests execute."
+    }
+  },
+  "condition": {
+    "no_automatic_run_on_primary_failure": true,
+    "primary_protocol_sha256": "e9fc6675455c670bb9454166f820e4d7cd1a9a391928e06a4171aab7fe4238c4",
+    "requires": "Both primary check blocks valid and passing their original gates"
+  },
+  "design": {
+    "A": "Matched SDK12 plus shipping #218 runtime (CI-only parent difference authenticated)",
+    "B": "Only the private-dependency Some(false) short circuit",
+    "block_orders": [
+      [
+        "AB",
+        "BA",
+        "BA",
+        "AB",
+        "BA",
+        "AB",
+        "AB",
+        "BA"
+      ],
+      [
+        "BA",
+        "AB",
+        "AB",
+        "BA",
+        "AB",
+        "BA",
+        "BA",
+        "AB"
+      ]
+    ],
+    "blocks": 2,
+    "bootstrap_resamples": 200000,
+    "confidence": 0.99,
+    "each_block_must_have": {
+      "99_percent_lower_bound_reduction_strictly_above": 0.001,
+      "wins": 8
+    },
+    "method": "Paired geometric baseline/candidate ratios with the existing paired_count_statistics reader. Report reduction as 1 minus reciprocal ratio. Exact two-sided sign p reported per block.",
+    "metric": "whole isolated ordinary rustc final Callgrind Ir, inclusive of its own worker threads and procedural macros",
+    "new_discovery_stage": false,
+    "pairs_per_block": 8,
+    "statistical_scope": "Nominal per-block intervals and sign tests. Pair scheduling and exchangeability assumptions apply. Each endpoint has its own claim.",
+    "stopping": "Stop on the first valid block failing either gate. No extra pairs, retries of valid failures, or pooling with SDK6. Report per-block results and order effects."
+  },
+  "fixed_utc": "2026-10-24T00:03:39.754714+00:00",
+  "original_protocol_sha256": "5467ccef27264b62a0c7874bd4a75de6339061cc42373ff3a65f0d4256b5a312",
+  "public_derivative": "Only private source-reference paths, host names and unbound authorization slots are omitted; all counts, schedules, seeds, gates and collection boundaries are unchanged.",
+  "publication": "Root owns publication. A check claim requires both primary blocks. A test-build claim requires both separate test-build blocks. No wall-time or whole-Cargo claim follows.",
+  "schema": 1,
+  "scope": "Separate ordinary test-build compiler replication, conditional on both primary dirty-check blocks qualifying; no cross-endpoint pooling.",
+  "source": {
+    "baseline_runtime_identity": {
+      "bytes": 17022,
+      "sha256": "36717b19f659b46b9160ccc5bf8caa05e7ad28a2bb4f1dcbe1176c51fa905ccf"
+    },
+    "candidate_source": {
+      "bytes": 3482,
+      "sha256": "11a28695eba2b72c4defe9432ec259f9605851eb0be0b08174e5fc6928bdaa72"
+    },
+    "cargo": "fdd26156be98618e2e01a9e02703edac71b79a35",
+    "common_embedded_rust": "f93a752e3de7404107ea5908d65c8832aee5625a",
+    "dirty_fixture_sha256": "a89570fa6080462a772ebdbc73ab4471e0b968f7c357c23b197409fb12f282ad",
+    "eligibility_decision": {
+      "bytes": 3383,
+      "sha256": "3e55ca89a52992f7d92142897bf687b3d9aa5f3147ee6c0c600f204fe1f15e57"
+    },
+    "published_linux_bundle_sha256": "177751bcef731909e9fa2c89983804ec6fe663101711dc46003a743914d37203",
+    "rust": "5323471223339b74413f2d13e300dd191abb73a1",
+    "uv": "3d82a6ad5a7eab8c68236553b7846517767c4b61",
+    "uv_file": "crates/uv/src/lib.rs"
+  }
+}

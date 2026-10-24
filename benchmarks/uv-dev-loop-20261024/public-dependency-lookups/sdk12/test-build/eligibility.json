@@ -1,0 +1,25 @@
+{
+  "exception": "One small pure short circuit was prospectively admitted because the actual bypass fraction exceeded 75%; the original 2% screen was not reclassified.",
+  "excluded_usage_diagnostic": {
+    "gate_fraction": 0.75,
+    "gate_passed": true,
+    "privacy_decisions": 30593,
+    "record_sha256": "1fafc7f66719abc0d18fffd5d14d953b21dfeda7bba5d9406249a8f8c776411e",
+    "separate_locator_lookups": 135,
+    "some_false": 26362,
+    "some_false_fraction": 0.8617003889778707
+  },
+  "existing_check_profile": {
+    "calls": 30728,
+    "entry_inclusive_percent": 1.6865802865159227,
+    "externs_get_entry_inclusive_ir": 11933427,
+    "externs_get_self_ir": 6762099,
+    "interpretation": "Attribution ceiling, not a predicted saving or wall-time estimate.",
+    "total_ir": 707551671
+  },
+  "initial_screen": {
+    "decision": "No qualifying source opportunity; preserved before the one-candidate exception.",
+    "record_sha256": "b8b2800470cfdae3378e865621f907d24fea0b7810624ddd764a104274a36c42",
+    "threshold_percent": 2
+  }
+}

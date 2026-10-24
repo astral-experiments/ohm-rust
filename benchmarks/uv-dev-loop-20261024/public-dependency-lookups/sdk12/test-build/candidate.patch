@@ -1,0 +1,36 @@
+diff --git a/compiler/rustc_metadata/src/creader.rs b/compiler/rustc_metadata/src/creader.rs
+index 4d081f55b9f1ee784f8ab81155e2dcda05ac9d16..97e902cd9aa77cc4c10b46f91179a1fea7b6b512 100644
+--- a/compiler/rustc_metadata/src/creader.rs
++++ b/compiler/rustc_metadata/src/creader.rs
+@@ -580,6 +580,10 @@ fn existing_match(&self, name: Symbol, public_hash: Option<Svh>) -> Option<Crate
+     /// `private-dep` is none during loading. This is equivalent to the scenario where the
+     /// command parameter is set to `public-dependency`
+     fn is_private_dep(&self, externs: &Externs, name: Symbol, private_dep: Option<bool>) -> bool {
++        if private_dep == Some(false) {
++            return false;
++        }
++
+         let extern_private = externs.get(name.as_str()).map(|e| e.is_private_dep);
+         match (extern_private, private_dep) {
+             // Explicit non-private via `--extern`, explicit non-private from metadata, or
+diff --git a/tests/ui/privacy/pub-priv-dep/shared_direct_private.rs b/tests/ui/privacy/pub-priv-dep/shared_direct_private.rs
+index b329a7acb583413635cc239c8f12f1228f4c5d8f..99097d589f9e56c23264b6f684bf716b36aa1156 100644
+--- a/tests/ui/privacy/pub-priv-dep/shared_direct_private.rs
++++ b/tests/ui/privacy/pub-priv-dep/shared_direct_private.rs
+@@ -1,3 +1,4 @@
++//@ revisions: direct_first transitive_first
+ //@ aux-crate:priv:shared=shared.rs
+ //@ aux-crate:reexport=reexport.rs
+ //@ compile-flags: -Zunstable-options
+@@ -20,8 +21,11 @@
+ #![crate_type = "lib"]
+ #![deny(exported_private_dependencies)]
+ 
++#[cfg(direct_first)]
+ extern crate shared;
+ extern crate reexport;
++#[cfg(transitive_first)]
++extern crate shared;
+ 
+ // FIXME: Should this trigger?
+ //

@@ -1,0 +1,20 @@
+{
+  "blocks": {
+    "confirmation-1": {
+      "completion_sha256": "5c7e0d655f8610d4f6a895c882ad9b02d5c8ee94629d7248412e6898b0dd391a",
+      "metric_integrity_sha256": "aa286b3a3c2b9b339cd332df868ecd859a80c68445063e90cf8933f5fbd24615",
+      "raw_gates_sha256": "a56b81942c176cf62e822c8aca3bc085ac34a56c3a239e75f2374f545b9bb171",
+      "summary_sha256": "db0f7974822e16685afb746f207153a67138aa9b67bc5d930aa29c884bda681c"
+    },
+    "confirmation-2": {
+      "completion_sha256": "0ef7777c1c1636b6e85b8a1e62485bde5bf3b4ea6adb549bec00d4a17f70f1c3",
+      "metric_integrity_sha256": "09479d0c5e2186f6bf8c29181f33728f161bc23a3693d1da4e5021fd97e2c9b2",
+      "raw_gates_sha256": "1c7179fb5d3b538e10a3e0bcfc407511eafa127a2b5c05b029e44b9ed343a807",
+      "summary_sha256": "4f50735dd2b802cea652ea264c63d9a8f564ea36f551eb9302c4cbfaf898c22e"
+    }
+  },
+  "correction": "A copied excluded-validator analyzer pin stopped before state activation; a versioned successor changed only that pin and its fresh output path. Ad-hoc authority preparation then refused a wrong primary-summary field before writing launch files; the actual frozen field was used. Both stops preceded every secondary sample. The unchanged full admission smoke passed before collection.",
+  "excluded_preparation_stops_preserved": true,
+  "inputs_sha256": "0698c064450cc8243e1c5d475b0a75d84d8adcdf070cdf4b949123659bdb048c",
+  "private_environment_host_transport_and_path_maps_included": false
+}
