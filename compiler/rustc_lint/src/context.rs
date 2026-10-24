@@ -10,7 +10,7 @@ use rustc_ast::BindingMode;
 use rustc_ast::util::parser::ExprPrecedence;
 use rustc_data_structures::fx::FxIndexMap;
 use rustc_data_structures::sync;
-use rustc_data_structures::unord::UnordMap;
+use rustc_data_structures::unord::{UnordMap, UnordSet};
 use rustc_errors::{Diagnostic, LintBuffer, MultiSpan};
 use rustc_feature::Features;
 use rustc_hir as hir;
@@ -83,6 +83,9 @@ pub struct LintStore {
 
     /// Lints indexed by name.
     by_name: UnordMap<String, TargetLint>,
+
+    /// Exact scoped prefixes of `by_name` keys, including aliases and removed/ignored lints.
+    tool_lint_prefixes: UnordSet<String>,
 
     /// Map of registered lint groups to what lints they expand to.
     lint_groups: FxIndexMap<&'static str, LintGroup>,
@@ -160,6 +163,7 @@ impl LintStore {
             late_lint_passes: vec![],
             late_lint_mod_passes: vec![],
             by_name: Default::default(),
+            tool_lint_prefixes: Default::default(),
             lint_groups: Default::default(),
         }
     }
@@ -211,7 +215,7 @@ impl LintStore {
             self.lints.push(lint);
 
             let id = LintId::of(lint);
-            if self.by_name.insert(lint.name_lower(), Id(id)).is_some() {
+            if self.insert_lint_name(lint.name_lower(), Id(id)).is_some() {
                 bug!("duplicate specification of lint {}", lint.name_lower())
             }
 
@@ -242,6 +246,18 @@ impl LintStore {
                 }
             }
         }
+    }
+
+    /// Keep the scoped-prefix index in sync with every lint-name insertion or replacement.
+    fn insert_lint_name(&mut self, name: String, target: TargetLint) -> Option<TargetLint> {
+        // Include every separator, even overlapping ones in programmatically registered names,
+        // to preserve the previous `starts_with(tool_prefix)` lookup exactly.
+        for (index, pair) in name.as_bytes().windows(2).enumerate() {
+            if pair == b"::" {
+                self.tool_lint_prefixes.insert(name[..index + 2].to_owned());
+            }
+        }
+        self.by_name.insert(name, target)
     }
 
     fn insert_group(&mut self, name: &'static str, group: LintGroup) {
@@ -291,7 +307,7 @@ impl LintStore {
     /// This is used by rustc to avoid warning about old rustdoc lints before rustdoc registers them as tool lints.
     #[track_caller]
     pub fn register_ignored(&mut self, name: &str) {
-        if self.by_name.insert(name.to_string(), Ignored).is_some() {
+        if self.insert_lint_name(name.to_string(), Ignored).is_some() {
             bug!("duplicate specification of lint {}", name);
         }
     }
@@ -302,11 +318,11 @@ impl LintStore {
         let Some(&Id(target)) = self.by_name.get(new_name) else {
             bug!("invalid lint renaming of {} to {}", old_name, new_name);
         };
-        self.by_name.insert(old_name.to_string(), Renamed(new_name.to_string(), target));
+        self.insert_lint_name(old_name.to_string(), Renamed(new_name.to_string(), target));
     }
 
     pub fn register_removed(&mut self, name: &str, reason: &str) {
-        self.by_name.insert(name.into(), Removed(reason.into()));
+        self.insert_lint_name(name.into(), Removed(reason.into()));
     }
 
     pub fn find_lints(&self, lint_name: &str) -> Option<&[LintId]> {
@@ -375,7 +391,7 @@ impl LintStore {
                         debug!("lints={:?}", self.by_name);
                         let tool_prefix = format!("{tool_name}::");
 
-                        return if self.by_name.keys().any(|lint| lint.starts_with(&tool_prefix)) {
+                        return if self.tool_lint_prefixes.contains(&tool_prefix) {
                             self.no_lint_suggestion(&complete_name, tool_name.as_str())
                         } else {
                             // 2. The tool isn't currently running, so no lints will be registered.
