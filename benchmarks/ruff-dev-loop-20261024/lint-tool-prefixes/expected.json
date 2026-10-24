@@ -1,0 +1,376 @@
+{
+  "decision": {
+    "alpha_ledger_actions": 0,
+    "gain_gates": {
+      "build": {
+        "gates": {
+          "both_blocks_positive": false,
+          "holm_within_allocation": false,
+          "lower99_strictly_above_1_percent": false,
+          "point_at_least_1_percent": false
+        },
+        "passed": false
+      },
+      "check": {
+        "gates": {
+          "both_blocks_positive": true,
+          "holm_within_allocation": true,
+          "lower99_strictly_above_1_percent": true,
+          "point_at_least_1_percent": true
+        },
+        "passed": true
+      },
+      "test": {
+        "gates": {
+          "both_blocks_positive": false,
+          "holm_within_allocation": false,
+          "lower99_strictly_above_1_percent": false,
+          "point_at_least_1_percent": false
+        },
+        "passed": false
+      }
+    },
+    "mode_conclusions": {
+      "build": "inconclusive; no_gain_or_non_inferiority_claim",
+      "check": "gain_meets_frozen_criteria",
+      "test": "inconclusive; no_gain_or_non_inferiority_claim"
+    },
+    "no_adaptive_extension": true,
+    "permitted_gain_claims": [
+      "check"
+    ],
+    "primary_mode": "check",
+    "primary_passed": true,
+    "publication_qualified": true,
+    "regression_vetoes": []
+  },
+  "groups": {
+    "build": {
+      "all": {
+        "base_median_cpu_seconds": 8.592759,
+        "baseline_median": 6.8445726780000005,
+        "baseline_median_seconds": 6.8445726780000005,
+        "binomial_sign_diagnostic": {
+          "caveat": "Not a design-exact p-value: session-balanced assignments make pair signs dependent.",
+          "method": "binomial_ties_excluded",
+          "non_tied_pairs": 24,
+          "p_one_sided": 0.15372812747955322
+        },
+        "bootstrap_caveat": "Approximate interval assuming independent observations within session/order strata; temporal correlation or singleton strata can understate uncertainty.",
+        "bootstrap_stratum_sizes": [
+          6,
+          6,
+          6,
+          6
+        ],
+        "candidate_median": 6.8291229605,
+        "candidate_median_cpu_seconds": 8.516423999999999,
+        "candidate_median_seconds": 6.8291229605,
+        "favorable_pairs": 15,
+        "flagged_pairs": 0,
+        "geometric_candidate_over_base": 0.9922608833887335,
+        "geometric_reduction_percent": 0.7739116611266472,
+        "geometric_reduction_percent_ci99": [
+          -0.8590509105003807,
+          2.3726117830079496
+        ],
+        "holm_adjusted_p": 0.284646089840895,
+        "mean_log_candidate_over_base": -0.007769218985329337,
+        "mean_paired_saving": 0.05845856845833334,
+        "mean_paired_saving_seconds": 0.05845856845833334,
+        "median_paired_saving": 0.06833578650000005,
+        "median_paired_saving_seconds": 0.06833578650000005,
+        "metric": "wall_seconds",
+        "numeric_pairs": 24,
+        "pairs": 24,
+        "randomization_test": {
+          "assignments": 853776,
+          "correction": "none (exact enumeration)",
+          "extreme_assignments": 121512,
+          "method": "exact_balanced_order_randomization",
+          "p_one_sided": 0.1423230449204475,
+          "possible_assignments": 853776,
+          "session_constraints": [
+            {
+              "base_first": 6,
+              "candidate_first": 6,
+              "pairs": 12,
+              "possible_assignments": 924,
+              "session": "a"
+            },
+            {
+              "base_first": 6,
+              "candidate_first": 6,
+              "pairs": 12,
+              "possible_assignments": 924,
+              "session": "b"
+            }
+          ],
+          "statistic": "sum_log_candidate_over_base"
+        },
+        "selection_caveat": null,
+        "sign_test": {
+          "assignments": 853776,
+          "correction": "none (exact enumeration)",
+          "extreme_assignments": 154938,
+          "method": "exact_balanced_order_randomization",
+          "p_one_sided": 0.18147382920110192,
+          "possible_assignments": 853776,
+          "session_constraints": [
+            {
+              "base_first": 6,
+              "candidate_first": 6,
+              "pairs": 12,
+              "possible_assignments": 924,
+              "session": "a"
+            },
+            {
+              "base_first": 6,
+              "candidate_first": 6,
+              "pairs": 12,
+              "possible_assignments": 924,
+              "session": "b"
+            }
+          ],
+          "statistic": "favorable_pair_count"
+        },
+        "tied_pairs": 0,
+        "unfavorable_pairs": 9
+      },
+      "blocks": {
+        "a": {
+          "geometric_reduction_percent": 1.572667759255586,
+          "paired_log_ratio_sample_sd": 0.026764264579000278,
+          "pairs": 12
+        },
+        "b": {
+          "geometric_reduction_percent": -0.03132649122212783,
+          "paired_log_ratio_sample_sd": 0.04208998388595566,
+          "pairs": 12
+        }
+      },
+      "family_cpu_diagnostic": {
+        "geometric_reduction_percent": 1.0084175921438288,
+        "inferential_gate": false
+      }
+    },
+    "check": {
+      "all": {
+        "base_median_cpu_seconds": 5.938718000000001,
+        "baseline_median": 5.6216142755,
+        "baseline_median_seconds": 5.6216142755,
+        "binomial_sign_diagnostic": {
+          "caveat": "Not a design-exact p-value: session-balanced assignments make pair signs dependent.",
+          "method": "binomial_ties_excluded",
+          "non_tied_pairs": 64,
+          "p_one_sided": 3.819070672770111e-11
+        },
+        "bootstrap_caveat": "Approximate interval assuming independent observations within session/order strata; temporal correlation or singleton strata can understate uncertainty.",
+        "bootstrap_stratum_sizes": [
+          16,
+          16,
+          16,
+          16
+        ],
+        "candidate_median": 5.489920102,
+        "candidate_median_cpu_seconds": 5.8266765,
+        "candidate_median_seconds": 5.489920102,
+        "favorable_pairs": 57,
+        "flagged_pairs": 0,
+        "geometric_candidate_over_base": 0.9783846549910519,
+        "geometric_reduction_percent": 2.161534500894813,
+        "geometric_reduction_percent_ci99": [
+          1.2839507256219185,
+          3.0838577752976826
+        ],
+        "holm_adjusted_p": 1.4999992500003749e-06,
+        "mean_log_candidate_over_base": -0.02185237851073133,
+        "mean_paired_saving": 0.12081467534374997,
+        "mean_paired_saving_seconds": 0.12081467534374997,
+        "median_paired_saving": 0.11114441500000005,
+        "median_paired_saving_seconds": 0.11114441500000005,
+        "metric": "wall_seconds",
+        "numeric_pairs": 64,
+        "pairs": 64,
+        "randomization_test": {
+          "assignments": 2000000,
+          "correction": "plus-one including observed assignment",
+          "extreme_assignments": 0,
+          "method": "monte_carlo_balanced_order_randomization",
+          "p_one_sided": 4.99999750000125e-07,
+          "possible_assignments": 361297635242552100,
+          "session_constraints": [
+            {
+              "base_first": 16,
+              "candidate_first": 16,
+              "pairs": 32,
+              "possible_assignments": 601080390,
+              "session": "a"
+            },
+            {
+              "base_first": 16,
+              "candidate_first": 16,
+              "pairs": 32,
+              "possible_assignments": 601080390,
+              "session": "b"
+            }
+          ],
+          "statistic": "sum_log_candidate_over_base"
+        },
+        "selection_caveat": null,
+        "sign_test": {
+          "assignments": 2000000,
+          "correction": "plus-one including observed assignment",
+          "extreme_assignments": 0,
+          "method": "monte_carlo_balanced_order_randomization",
+          "p_one_sided": 4.99999750000125e-07,
+          "possible_assignments": 361297635242552100,
+          "session_constraints": [
+            {
+              "base_first": 16,
+              "candidate_first": 16,
+              "pairs": 32,
+              "possible_assignments": 601080390,
+              "session": "a"
+            },
+            {
+              "base_first": 16,
+              "candidate_first": 16,
+              "pairs": 32,
+              "possible_assignments": 601080390,
+              "session": "b"
+            }
+          ],
+          "statistic": "favorable_pair_count"
+        },
+        "tied_pairs": 0,
+        "unfavorable_pairs": 7
+      },
+      "blocks": {
+        "a": {
+          "geometric_reduction_percent": 2.207752675743635,
+          "paired_log_ratio_sample_sd": 0.025495329570778685,
+          "pairs": 32
+        },
+        "b": {
+          "geometric_reduction_percent": 2.115294482599861,
+          "paired_log_ratio_sample_sd": 0.03462733467107455,
+          "pairs": 32
+        }
+      },
+      "family_cpu_diagnostic": {
+        "geometric_reduction_percent": 1.9296647461905958,
+        "inferential_gate": false
+      }
+    },
+    "test": {
+      "all": {
+        "base_median_cpu_seconds": 12.064905,
+        "baseline_median": 7.863390518,
+        "baseline_median_seconds": 7.863390518,
+        "binomial_sign_diagnostic": {
+          "caveat": "Not a design-exact p-value: session-balanced assignments make pair signs dependent.",
+          "method": "binomial_ties_excluded",
+          "non_tied_pairs": 24,
+          "p_one_sided": 0.03195732831954956
+        },
+        "bootstrap_caveat": "Approximate interval assuming independent observations within session/order strata; temporal correlation or singleton strata can understate uncertainty.",
+        "bootstrap_stratum_sizes": [
+          6,
+          6,
+          6,
+          6
+        ],
+        "candidate_median": 7.7217436535,
+        "candidate_median_cpu_seconds": 12.0645075,
+        "candidate_median_seconds": 7.7217436535,
+        "favorable_pairs": 17,
+        "flagged_pairs": 0,
+        "geometric_candidate_over_base": 0.99297196716606,
+        "geometric_reduction_percent": 0.7028032833940046,
+        "geometric_reduction_percent_ci99": [
+          -2.1998207095908606,
+          2.8601389997299886
+        ],
+        "holm_adjusted_p": 0.28624838365098104,
+        "mean_log_candidate_over_base": -0.00705284578252053,
+        "mean_paired_saving": 0.05466222937500013,
+        "mean_paired_saving_seconds": 0.05466222937500013,
+        "median_paired_saving": 0.09346305399999988,
+        "median_paired_saving_seconds": 0.09346305399999988,
+        "metric": "wall_seconds",
+        "numeric_pairs": 24,
+        "pairs": 24,
+        "randomization_test": {
+          "assignments": 853776,
+          "correction": "none (exact enumeration)",
+          "extreme_assignments": 244392,
+          "method": "exact_balanced_order_randomization",
+          "p_one_sided": 0.28624838365098104,
+          "possible_assignments": 853776,
+          "session_constraints": [
+            {
+              "base_first": 6,
+              "candidate_first": 6,
+              "pairs": 12,
+              "possible_assignments": 924,
+              "session": "a"
+            },
+            {
+              "base_first": 6,
+              "candidate_first": 6,
+              "pairs": 12,
+              "possible_assignments": 924,
+              "session": "b"
+            }
+          ],
+          "statistic": "sum_log_candidate_over_base"
+        },
+        "selection_caveat": null,
+        "sign_test": {
+          "assignments": 853776,
+          "correction": "none (exact enumeration)",
+          "extreme_assignments": 45444,
+          "method": "exact_balanced_order_randomization",
+          "p_one_sided": 0.05322707595434868,
+          "possible_assignments": 853776,
+          "session_constraints": [
+            {
+              "base_first": 6,
+              "candidate_first": 6,
+              "pairs": 12,
+              "possible_assignments": 924,
+              "session": "a"
+            },
+            {
+              "base_first": 6,
+              "candidate_first": 6,
+              "pairs": 12,
+              "possible_assignments": 924,
+              "session": "b"
+            }
+          ],
+          "statistic": "favorable_pair_count"
+        },
+        "tied_pairs": 0,
+        "unfavorable_pairs": 7
+      },
+      "blocks": {
+        "a": {
+          "geometric_reduction_percent": 1.9240507971607368,
+          "paired_log_ratio_sample_sd": 0.04604749569667674,
+          "pairs": 12
+        },
+        "b": {
+          "geometric_reduction_percent": -0.5336512765650392,
+          "paired_log_ratio_sample_sd": 0.061192183894254494,
+          "pairs": 12
+        }
+      },
+      "family_cpu_diagnostic": {
+        "geometric_reduction_percent": 0.8752271501777154,
+        "inferential_gate": false
+      }
+    }
+  }
+}

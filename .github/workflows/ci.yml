@@ -205,6 +205,22 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 compiler/rustc_span --test-args hygiene::tests
 
+      - name: Run lint tool prefix unit tests
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1 compiler/rustc_lint --test-args lint_tool_prefix_
+
+      - name: Run tool lint diagnostic tests
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1
+          tests/ui/lint/command-line-register-lint-tool.rs
+          tests/ui/lint/command-line-register-unknown-lint-tool.rs
+          tests/ui/lint/known-tool-in-submodule/root.rs
+          tests/ui/lint/register-tool-lint.rs
+          tests/ui/lint/lint-renamed-cmdline.rs
+          tests/ui/lint/lint-removed-cmdline.rs
+
       - name: Run cached expansion incremental tests
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true

@@ -1,0 +1,40 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 5239,
+      "sha256": "56c617fcb20eb8904d280a3a7fdaf7b79f5f1666c7411a6f5c29bc0635c67834"
+    },
+    "expected.json": {
+      "bytes": 12762,
+      "sha256": "5186ec1580bcf587ad94e52572de996c232ecfe3d4f4594fd31289459afcd0da"
+    },
+    "frozen_numeric.py": {
+      "bytes": 8653,
+      "sha256": "cfb87993aab7d8b08b7059696db9f9859791c596734f657c64e3c624d007d2bc"
+    },
+    "pairs.csv": {
+      "bytes": 26509,
+      "sha256": "78fe8b8ee4a00f06f07e17626e111df040aaef478f9c9278c838a15a8669f08d"
+    },
+    "pairs.json": {
+      "bytes": 96523,
+      "sha256": "b4b8401b56bc7f97bda40fcbad0154d06e6f11b0c2814da9b9fb98f50e406f3a"
+    },
+    "plan.json": {
+      "bytes": 2014,
+      "sha256": "21dacda13be7315a9a9f519c51f4b5afd1b354e9036455f9c59e02781b76ed4c"
+    },
+    "provenance.json": {
+      "bytes": 3055,
+      "sha256": "53a6f1116835fc05c6974747fc9e8afc0a996a5e4fcdfae419a1460e91ee4cd4"
+    },
+    "replay.py": {
+      "bytes": 9798,
+      "sha256": "9198acfa2d3af79798e9c7e88d3afd1ce99fd3dc4d04ce4254c9f6698bbdbe1f"
+    }
+  },
+  "schema": "lint-tool-prefix-public-evidence-v1",
+  "scope": "sanitized statistical replay only; not full raw capture or native runner",
+  "source_analysis_sha256": "d69778172a020c81a0e1a36fc51638544d239327b4ecf4807b44134d8d935318",
+  "source_independent_audit_sha256": "92574a7c5f480e62d006c75cb02f8e1ca1e192def0c9be69a0c6ac5e9608d056"
+}
