@@ -1,1 +1,2 @@
-interner-capacity/pairs.csv -text
+# Preserve the exact CSV record separators covered by the evidence hashes.
+interner-capacity/pairs.csv -text whitespace=cr-at-eol
