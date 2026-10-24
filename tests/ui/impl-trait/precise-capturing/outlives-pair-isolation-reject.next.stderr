@@ -1,0 +1,28 @@
+error: lifetime may not live long enough
+  --> $DIR/outlives-pair-isolation-reject.rs:27:5
+   |
+LL | fn reject_forward<'short, 'long>(
+   |                   ------  ----- lifetime `'long` defined here
+   |                   |
+   |                   lifetime `'short` defined here
+...
+LL |     forward(nested, value, &())
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ function was supposed to return data with lifetime `'long` but it is returning data with lifetime `'short`
+   |
+   = help: consider adding the following bound: `'short: 'long`
+
+error: lifetime may not live long enough
+  --> $DIR/outlives-pair-isolation-reject.rs:35:5
+   |
+LL | fn reject_reverse<'short, 'long>(
+   |                   ------  ----- lifetime `'long` defined here
+   |                   |
+   |                   lifetime `'short` defined here
+...
+LL |     reverse(nested, value, &())
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ function was supposed to return data with lifetime `'long` but it is returning data with lifetime `'short`
+   |
+   = help: consider adding the following bound: `'short: 'long`
+
+error: aborting due to 2 previous errors
+
