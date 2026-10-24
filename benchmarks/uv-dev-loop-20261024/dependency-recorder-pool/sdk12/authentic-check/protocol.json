@@ -1,0 +1,77 @@
+{
+  "comparative_results": "Separate counts/results files are created only after complete joint qualification and independent replay.",
+  "design": {
+    "A": "Archived #222 production-equivalent baseline, global recorder retention cap four",
+    "B": "Exactly the global recorder retention cap four to eight",
+    "blocks": 2,
+    "bootstrap_resamples": 200000,
+    "collection_mode": "concurrent-independent-machines",
+    "confidence": 0.99,
+    "discovery_or_extension": false,
+    "each_block_gate": {
+      "lower_count_reduction_strictly_above": 0.001,
+      "two_sided_sign_p_strictly_below": 0.01,
+      "wins": 8
+    },
+    "masking": "Only operational status and restoration/manifest identities may be reported during collection. No partial counts, pairs, confidence intervals, mechanism attribution or comparative native durations. The sole analyzer entry validates both full collections before computing either paired result.",
+    "method": "Existing paired_count_statistics geometric baseline/candidate ratios and exact two-sided sign probability. No pooled substitute for either block.",
+    "metric": "Whole ordinary uv_client-library rustc final Callgrind Ir, all its threads and in-process macros; children and other Cargo-launched compilers excluded.",
+    "order_effects_reported": true,
+    "orders": [
+      [
+        "AB",
+        "BA",
+        "BA",
+        "AB",
+        "BA",
+        "AB",
+        "AB",
+        "BA"
+      ],
+      [
+        "BA",
+        "AB",
+        "AB",
+        "BA",
+        "AB",
+        "BA",
+        "BA",
+        "AB"
+      ]
+    ],
+    "pairs_per_block": 8,
+    "seeds": [
+      20261024101,
+      20261024102
+    ],
+    "stopping": "One fixed concurrent cohort, eight pairs on each independent VM. Both effects remain masked until both full raw/restoration gates. A valid per-host threshold failure closes this candidate. No cap sweep, sample extension, automatic retry, replacement or pooling; an operational failure is retained opaque and returned to Root."
+  },
+  "excluded_profile_counts_read": false,
+  "hosts": [
+    "independent dedicated VM 1",
+    "independent dedicated VM 2"
+  ],
+  "maintenance_admission": {
+    "all_strict_activity_checks_unchanged": true,
+    "both_pristine_copies_prepared_before_window": true,
+    "entry_seconds": [
+      170,
+      180
+    ],
+    "excluded_aggregate_pair_nanoseconds": [
+      131892096056,
+      141961502199
+    ],
+    "formula": "10 * ceil((max(2 * 60.433624085 seconds, excluded complete pair seconds) + 30 seconds) / 10 seconds)",
+    "maximum_wait_seconds": 1200,
+    "services": [
+      "kube-proxy-reconcile",
+      "azure-session",
+      "teleport-reconcile"
+    ]
+  },
+  "precommitted_before_collection": true,
+  "private_protocol_sha256": "0112d0e98b2ba0ca6754afc789ac84bd9fb43b1024d8641a8cc0e0980b15c8f9",
+  "schema": 1,
+  "scope": "Dependency-read recorder allocation reuse in the ordinary uv_client rustc of the genuine first uv #22049 parent-to-child cargo check."
+}

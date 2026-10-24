@@ -1,0 +1,9 @@
+{
+  "comparative_sample_retries": 0,
+  "headroom_profile_counts_read": false,
+  "headroom_profiles_permanently_excluded": 4,
+  "opaque_study_profiles_included": false,
+  "prior_222_twelve_excluded_profiles_included": false,
+  "setup_corrections": "A pre-workload Cargo-mode check was rebound to the authenticated 0755 executable. Two read-only readiness schema stops were corrected. A provider connection outage affected staging/export only; the existing owner and source states were checked before resuming transport. No failed comparison or excluded profile was substituted into this cohort.",
+  "stopping_policy": "One fixed concurrent cohort, eight pairs on each independent VM. Both effects remain masked until both full raw/restoration gates. A valid per-host threshold failure closes this candidate. No cap sweep, sample extension, automatic retry, replacement or pooling; an operational failure is retained opaque and returned to Root."
+}

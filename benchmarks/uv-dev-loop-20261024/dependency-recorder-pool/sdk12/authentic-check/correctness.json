@@ -1,0 +1,74 @@
+{
+  "actual_production_runtime_reverified_after_tests": true,
+  "builder_restored": true,
+  "compiled_tree": "b3826635339bd4c9820935353d62d8203c7bd08a",
+  "format": {
+    "passed": true,
+    "private_receipt_sha256": "cdf4d13f045ad99d2c126bb15619fd50c15cc52c2f8d44f2fc81270e134945a6",
+    "toolchain": "nightly-2026-07-19"
+  },
+  "incremental_tests": {
+    "actual_revision_runs": 29,
+    "failed": 0,
+    "ignored": 0,
+    "passed_cases": 10,
+    "selectors": [
+      {
+        "selector": "tests/incremental/forward-cached-query-value.rs",
+        "sha256": "65410abe085a48dc7c3bcdff9d07ebb57fcea786c7522fb7669b8d0ea134b107"
+      },
+      {
+        "selector": "tests/incremental/promote-cached-query-value.rs",
+        "sha256": "60378903591f1f072bce399c4e2d12603759103be9fb874d1afeb0cc810a9f99"
+      },
+      {
+        "selector": "tests/incremental/mono_item_partition_test_reordered_edges.rs",
+        "sha256": "160e9951541cae8a636403877811671993b395db86f88969de243252ea33ab5e"
+      },
+      {
+        "selector": "tests/incremental/issue-82920-predicate-order-miscompile.rs",
+        "sha256": "9840374b12fa82598d9eaf8306fe062e8db37a35d9f8492486a85d05356b77df"
+      },
+      {
+        "selector": "tests/incremental/issue-108481-feed-eval-always.rs",
+        "sha256": "e7741f3043a60d8813301e41c9f01c58bfeffda7e7bede5dc7788439b9debf78"
+      },
+      {
+        "selector": "tests/incremental/warnings-reemitted.rs",
+        "sha256": "8c15d872a8682bad1d10967b2d10e603813158658e3cb41e8da5a64625781ab2"
+      },
+      {
+        "selector": "tests/incremental/ich_nested_items.rs",
+        "sha256": "da204e763fc7a8ad9d6e99e995c3c38220a0c81ab4333cb3db8896cecfc0d7e4"
+      },
+      {
+        "selector": "tests/incremental/clean.rs",
+        "sha256": "221232f71349f83a9be511e94d7484d53af60868f85a041512d12fac4e0f25b4"
+      },
+      {
+        "selector": "tests/incremental/unchecked_clean.rs",
+        "sha256": "443c5c76717a84e4dada17123730e4438704a0a858da25f4f704af220c627f7b"
+      },
+      {
+        "selector": "tests/incremental/rdr/private_module_file/main.rs",
+        "sha256": "ccaa1d266d39a964529f0bc91944747ef5a31b37056c1dcfaa03c9df01d20d72"
+      }
+    ]
+  },
+  "private_correctness_receipt_sha256": "4481946f1386686bce6493d06c12f87545d2591ff4bde2fa0c4ffe7a5714660b",
+  "private_incremental_receipt_sha256": "551084607cc7eb2553c6c0721341d972c07db4a50b72f1cf25d2e796c9b70612",
+  "private_unit_receipt_sha256": "66cbb47a5b20edc3f74a2e323ba4f2167e03dc6309bd9eaf873664fa9d52250c",
+  "release_contract_tests": {
+    "failed": 0,
+    "ignored": 0,
+    "passed": 3,
+    "selectors": [
+      "dep_graph::edges::tests::recorder_reuse_preserves_order_and_exact_membership",
+      "dep_graph::edges::tests::recorder_pool_bounds_nested_retention",
+      "dep_graph::edges::tests::recorder_epoch_wrap_clears_old_membership"
+    ]
+  },
+  "result_reader_note": "The successful unit run printed compact dots. The same executable was subsequently listed to join the three exact names; no correctness workload was rerun.",
+  "state": "passed",
+  "test_only_tree": "3e4399e87f5df582298bffee1c86cd00e94da46d"
+}

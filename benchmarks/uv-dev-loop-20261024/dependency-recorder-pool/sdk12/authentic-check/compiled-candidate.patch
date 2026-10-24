@@ -1,0 +1,13 @@
+diff --git a/compiler/rustc_middle/src/dep_graph/edges.rs b/compiler/rustc_middle/src/dep_graph/edges.rs
+index 4a0a9bd616bd7af48500832672c9f97b7b033463..4941c8c6d3f3f79144addd080414666dd7052550 100644
+--- a/compiler/rustc_middle/src/dep_graph/edges.rs
++++ b/compiler/rustc_middle/src/dep_graph/edges.rs
+@@ -147,7 +147,7 @@ fn clear(&mut self) {
+     /// from growing the pool without bound.
+     #[inline]
+     pub(crate) fn release(self, pool: &Lock<Vec<ReadsRecorder>>) {
+-        const MAX_POOLED_RECORDERS: usize = 4;
++        const MAX_POOLED_RECORDERS: usize = 8;
+         let mut pool = pool.lock();
+         if pool.len() < MAX_POOLED_RECORDERS {
+             pool.push(self);

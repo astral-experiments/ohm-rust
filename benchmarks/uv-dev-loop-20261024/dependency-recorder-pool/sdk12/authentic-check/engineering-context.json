@@ -1,0 +1,38 @@
+{
+  "actual_vector_capacities_observed": false,
+  "allocator_overhead_included": false,
+  "arms": {
+    "baseline": {
+      "edge_count": 1954425,
+      "graph_sha256": "a92235475996aadd05c1ebf8fb238b5e6ae7ee853d0b13d375b07c4d5014e447",
+      "node_count": 317220,
+      "node_max": 318063,
+      "sampled_native_rss": {
+        "maximum_observed_VmHWM": 532516,
+        "samples": 20,
+        "scope": "Sampled selected-native-compiler high-water field; an observed lower bound on peak, not whole-Cargo RSS or a statistical memory result.",
+        "units": "kB as reported by Linux /proc/PID/status"
+      }
+    },
+    "candidate": {
+      "edge_count": 1952235,
+      "graph_sha256": "f9a4d4e1473793c57d7a9e8d82a75225f9336b8723a916c9287c1e4fbba336ad",
+      "node_count": 317073,
+      "node_max": 317727,
+      "sampled_native_rss": {
+        "maximum_observed_VmHWM": 514704,
+        "samples": 21,
+        "scope": "Sampled selected-native-compiler high-water field; an observed lower bound on peak, not whole-Cargo RSS or a statistical memory result.",
+        "units": "kB as reported by Linux /proc/PID/status"
+      }
+    }
+  },
+  "bound_scope": "Four additional globally retained pool slots only, excluding allocator bookkeeping. Actual vector capacities are unobserved; this is not a bound on the difference in whole-process peak RSS. It applies to the observed uv_client node ranges, not every crate.",
+  "calculation": "Four extra slots * (524288 epoch bytes + 4 * 524288 read-index bytes + 56 record/header bytes).",
+  "capacity_bound_bytes": 10485984,
+  "capacity_bound_display": "10 MiB + 224 B",
+  "extra_retained_slots": 4,
+  "private_observation_sha256": "b28f766e6dfb04547de69c80ef9701ff7d2e316c7aaace759cfc54037e4d5eed",
+  "scope": "Excluded engineering observations, not a memory or native-performance comparison.",
+  "state": "passed"
+}

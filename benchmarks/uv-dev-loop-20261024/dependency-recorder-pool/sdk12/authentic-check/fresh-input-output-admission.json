@@ -1,0 +1,25 @@
+{
+  "compiler_contexts_per_child": 39,
+  "excluded_rehearsal_handoffs_sha256": [
+    "f72041837ab5bfe64e6fddac8422cb6b905dfca804c1794f427667f3026ce203",
+    "266291a0322e24b43db4225ace196e7bde9d195a8a512f8f6a4eb52fd90ece19"
+  ],
+  "frontend_threads": 8,
+  "independent_concurrent_unit_arrival_order_preserved_not_equalized": true,
+  "independent_source_only_parent_histories": 4,
+  "live_jobserver_preserved": true,
+  "native_parent_fresh_compiler_calls": 0,
+  "new_output_mask_or_exception": false,
+  "nonempty_workspace_library_metadata_outputs": 36,
+  "ordered_argv_environment_exact_within_each_unit": true,
+  "parent_artifact_files_per_arm": 711,
+  "per_arm_profile_native_output_bytes_exact": true,
+  "private_native_handoffs_sha256": [
+    "70f057427003db1f56cd1c77fc997de5a33463c289d440a2a6c351e93a2d0570",
+    "98e64c696bdd0f0b10eabe6674e234e10af243b05cf5486ead8a24895c393ff2"
+  ],
+  "rmeta_outputs_per_arm": 39,
+  "same_compiler_namespace_observation": "namespace-observation.json",
+  "scope": "Precollection native and blind instrumented parity only; comparative validation is separately required.",
+  "state": "passed"
+}

@@ -1,0 +1,37 @@
+{
+  "argv": [
+    "taskset",
+    "-c",
+    "24-31",
+    "./x",
+    "build",
+    "--config",
+    "<BUILD_ROOT>/bootstrap.matched.toml",
+    "--build-dir",
+    "<BUILD_ROOT>/build",
+    "--stage",
+    "1",
+    "-j",
+    "24",
+    "library"
+  ],
+  "config_sha256": "5a67c1afe456704b68a4af8eaad561d42bb741b4c5c8e2f3822435e913684771",
+  "cwd": "<BUILD_ROOT>/source",
+  "environment_handling": "Small explicit child environment, retaining existing HOME without changing it. No inherited Rust flags/wrappers, global configuration writes, or credential environment dump.",
+  "environment_overrides": {
+    "CARGO_BUILD_JOBS": "24",
+    "CARGO_HOME": "<BUILD_ROOT>/cargo-home",
+    "CARGO_INCREMENTAL": "0",
+    "CARGO_TERM_COLOR": "never",
+    "LANG": "C.UTF-8",
+    "LC_ALL": "C.UTF-8",
+    "LD_LIBRARY_PATH": "<LLVM_ROOT>/lib",
+    "PATH": "/usr/bin:/bin",
+    "TMPDIR": "<BUILD_ROOT>/tmp"
+  },
+  "predecessor_recipe_sha256": "b296cf5e872ebf02b3161ecf0fba44a7376ee256009062dda5596bac5ae6520b",
+  "private_actual_recipe_sha256": "4c5e48c02127fef3f695032beddc921978aff302d0d6c1795a624ce73ceb6721",
+  "producer_affinity_change_only": "0-23 to 24-31; jobs, flags, source/build paths and config unchanged",
+  "source_commit": "f93a752e3de7404107ea5908d65c8832aee5625a",
+  "source_tree": "b3826635339bd4c9820935353d62d8203c7bd08a"
+}

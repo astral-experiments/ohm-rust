@@ -1,0 +1,62 @@
+{
+  "all_other_text_bytes_exact": true,
+  "changed_bytes_by_section": {
+    ".note.gnu.build-id": 20,
+    ".rustc": 559,
+    ".text": 8
+  },
+  "changed_code_bytes": [
+    {
+      "baseline": 4,
+      "candidate": 8,
+      "offset": 22110151,
+      "virtual_address": "0x1516fc7"
+    },
+    {
+      "baseline": 4,
+      "candidate": 8,
+      "offset": 22110209,
+      "virtual_address": "0x1517001"
+    },
+    {
+      "baseline": 4,
+      "candidate": 8,
+      "offset": 42754354,
+      "virtual_address": "0x28c7132"
+    },
+    {
+      "baseline": 4,
+      "candidate": 8,
+      "offset": 42754411,
+      "virtual_address": "0x28c716b"
+    },
+    {
+      "baseline": 4,
+      "candidate": 8,
+      "offset": 54694882,
+      "virtual_address": "0x342a3e2"
+    },
+    {
+      "baseline": 4,
+      "candidate": 8,
+      "offset": 54694939,
+      "virtual_address": "0x342a41b"
+    },
+    {
+      "baseline": 4,
+      "candidate": 8,
+      "offset": 58927986,
+      "virtual_address": "0x3833b72"
+    },
+    {
+      "baseline": 4,
+      "candidate": 8,
+      "offset": 58928043,
+      "virtual_address": "0x3833bab"
+    }
+  ],
+  "driver_bytes": 215394160,
+  "release_routine_two_cap_comparisons_only": true,
+  "source_comparison_sha256": "6064ac9aa31e367b9393073c29d4196e7dc8165621e4bb82445277bf22be71c3",
+  "whole_file_changed_bytes": 587
+}

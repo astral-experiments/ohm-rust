@@ -1,0 +1,39 @@
+{
+  "baseline_compiled_tree": "792811f296f5c16ba12c942ea916a79cfe83bf26",
+  "baseline_published_commit": "9d583ffee18d3cb132ac9b2a0279f449447bf0af",
+  "baseline_published_delta": "Only CI and deletion of an empty test file; compiler source byte-identical.",
+  "baseline_published_tree": "9b175cca8256a0d6993f042251e3f38cdae12e49",
+  "candidate_compiled_tree": "b3826635339bd4c9820935353d62d8203c7bd08a",
+  "candidate_contract_test_tree": "3e4399e87f5df582298bffee1c86cd00e94da46d",
+  "candidate_published_commit": null,
+  "candidate_test_delta": "A separate cfg(test) module with three release contract tests; not the measured driver.",
+  "embedded_commit": "f93a752e3de7404107ea5908d65c8832aee5625a",
+  "patches": {
+    "baseline-measured-to-published.patch": "20c773a4731e5ab649114cc2cd660af4a3f240cb1a5c03d6891146b4cb032ac5",
+    "baseline-sdk12.patch": "93895abba159c5c197ae5ea6926d4810db11bb675ead22948513fce1ca3371a2",
+    "compiled-candidate.patch": "4d0f3bc374e89e72d032003af4132af17c84f77b4a37042ab3b439ca18b96972",
+    "contract-tests.patch": "5acb31413996c9ab8f10fd0a8ac2d1452b74eee9ce137db031453c8ea206fcc2",
+    "uv-upstream.patch": "90e638f2dba28a6e626d7eb83a59d3efe8c536a8941fb0584a00a942d7f1e037"
+  },
+  "private_build_handoff_sha256": "5329daa10995d5e7b120e27f5820fc82381a95a97893c74263e66aa09660655c",
+  "private_source_receipt_sha256": "64a90c5dc595dbdbb96651c9220d95b6b44810334f7dbada585ba5ffe86f72fa",
+  "production_changed_bytes": 1,
+  "production_changed_files": [
+    "compiler/rustc_middle/src/dep_graph/edges.rs"
+  ],
+  "runtime_files": 74,
+  "runtimes": {
+    "baseline": {
+      "driver_sha256": "6f10e36b07b6e26772ca1c54fc03bd6b7a92a65a95174c538e29a2ec019694d0",
+      "files_sha256": "86d6168cf3282edddece7e9fbb72ed27997d42fc0b48cac88c4e6ab77195c3cd",
+      "identity_sha256": "f29f576f51acc7e470c61eb42d293dea1f5b281ac8b3fef969b4371fdcb1b7f4"
+    },
+    "candidate": {
+      "driver_sha256": "b84a8a0e5798b259b29423f52616f83378be386db63bc5dd58e52f963fe5ce76",
+      "files_sha256": "ab413f7821266b97bf034ec61ff16526024ec20ab67bf8cec0f9535f595724e6",
+      "identity_sha256": "fb8c022cf1169591030ceeb0c726c0175eaebfc685ba038baebb33cc2303077e"
+    }
+  },
+  "schema": 1,
+  "shared_non_driver_files_exact": 73
+}

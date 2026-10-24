@@ -1,0 +1,44 @@
+{
+  "actual_relink_input_sha256": "76160a130440848e6aa389f538f500de599c040159cf230502be0a6e12ca70ab",
+  "actual_trait_input_sha256": "6f24d97c8a1e8ec5850eb75bc00dd956f046761f81c83052a122868c1c5a26ec",
+  "collection_validation_limit": "These components and the recipe document collection. Public replay independently validates counts/profiles; it does not recreate private VM admission or authenticate historical collection.",
+  "environment": {
+    "CARGO_BUILD_BUILD_DIR": "<FIXTURE_ROOT>/active/shared",
+    "CARGO_BUILD_JOBS": "8",
+    "CARGO_HOME": "<FIXTURE_ROOT>/active/package-home",
+    "CARGO_TARGET_DIR": "<FIXTURE_ROOT>/active/target",
+    "CARGO_TERM_COLOR": "never",
+    "HOME": "<EXISTING_HOME>",
+    "LANG": "C.UTF-8",
+    "LC_ALL": "C.UTF-8",
+    "OHM_BENCH_NORMALIZE_VALGRIND_ENV": "1",
+    "PATH": "<FIXTURE_ROOT>/active/bin:<FIXTURE_ROOT>/active/runtime/bin:/usr/bin:/bin",
+    "RUSTC": "<FIXTURE_ROOT>/active/runtime/bin/rustc",
+    "RUSTC_WRAPPER": "<FIXTURE_ROOT>/active/bin/rustc-wrapper",
+    "TMPDIR": "<FIXTURE_ROOT>/active/tmp",
+    "TZ": "UTC",
+    "VALGRIND_LIB": "<FIXTURE_ROOT>/tools/valgrind/usr/libexec/valgrind"
+  },
+  "environment_policy": "Keep the existing HOME. Set values only in the workload child environment. Preserve Cargo-created ordered compiler environment and live jobserver descriptors.",
+  "kind": "parameterized-static-collection-context",
+  "normalizer_scope": "The unchanged adapter removes Valgrind-injected loader variables inside the selected rustc process; its original source comment describes an earlier Cargo-parent use. Native and instrumented compiler contexts and outputs were checked within each arm.",
+  "normalizer_source_sha256": "503c8612d9972ed2ce4ef7b4431e569a8c98d0d5f0d1149dd0fff364513e691b",
+  "profile_options": [
+    "--tool=callgrind",
+    "--trace-children=no",
+    "--demangle=no",
+    "--extra-debuginfo-path=<TOOLS>/valgrind/usr/lib/debug",
+    "--callgrind-out-file=<RECORD>/check-rustc.%p.callgrind",
+    "--log-file=<RECORD>/check-rustc.%p.valgrind.stderr"
+  ],
+  "schema": 1,
+  "selected_role": {
+    "crate_name": "uv_client",
+    "crate_type": "lib",
+    "emit": "dep-info,metadata",
+    "frontend_threads": 8,
+    "source": "crates/uv-client/src/lib.rs",
+    "test": false
+  },
+  "wrapper_sha256": "06d2852d9f9397cd6ba3be4bd10bcd0313024fdaa3d058d292e247b5a29f13a9"
+}
