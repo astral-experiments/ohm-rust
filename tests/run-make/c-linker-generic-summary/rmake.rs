@@ -11,29 +11,42 @@ use run_make_support::symbols::exported_dynamic_symbol_names;
 use run_make_support::{dynamic_lib_name, object, rust_lib_name, rustc};
 
 fn main() {
+    for public_api_hash in [false, true] {
+        check_exports(public_api_hash);
+    }
+}
+
+fn check_exports(public_api_hash: bool) {
     for offload in [false, true, false] {
         let mut producer = rustc();
         producer
             .input("producer.rs")
             .crate_type("rlib")
-            .incremental("producer-incremental")
+            .incremental(format!("producer-{public_api_hash}-incremental"))
             .arg("-Zshare-generics=yes")
             .arg("-Csymbol-mangling-version=v0");
+        if public_api_hash {
+            producer.arg("-Zpublic-api-hash");
+        }
         if offload {
             producer.cfg("offload");
         }
         producer.run();
 
         for (name, crate_type) in [("consumer_c", "cdylib"), ("consumer_rust", "dylib")] {
-            rustc()
+            let mut consumer = rustc();
+            consumer
                 .input("consumer.rs")
                 .crate_name(name)
                 .crate_type(crate_type)
                 .extern_("producer", rust_lib_name("producer"))
-                .incremental(format!("{name}-incremental"))
+                .incremental(format!("{name}-{public_api_hash}-incremental"))
                 .arg("-Zshare-generics=yes")
-                .arg("-Csymbol-mangling-version=v0")
-                .run();
+                .arg("-Csymbol-mangling-version=v0");
+            if public_api_hash {
+                consumer.arg("-Zpublic-api-hash");
+            }
+            consumer.run();
 
             let bytes = std::fs::read(dynamic_lib_name(name)).unwrap();
             let file = object::File::parse(bytes.as_slice()).unwrap();
