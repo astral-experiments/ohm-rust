@@ -1341,6 +1341,7 @@ pub fn build_session(
         &target_tlib_path,
         &target,
         sopts.unstable_opts.implicit_sysroot_deps,
+        sopts.unstable_opts.link_only,
     ));
     let host_filesearch = if target == host {
         Arc::clone(&target_filesearch)
@@ -1350,6 +1351,7 @@ pub fn build_session(
             &host_tlib_path,
             &host,
             sopts.unstable_opts.implicit_sysroot_deps,
+            sopts.unstable_opts.link_only,
         ))
     };
 
