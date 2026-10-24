@@ -1,0 +1,64 @@
+{
+  "additional_builds_for_publication": false,
+  "baseline_source": {
+    "compiled_tree": "5fb5081a44fa86a406ce696a94b03dce7a9b9f74",
+    "embedded_commit": "f93a752e3de7404107ea5908d65c8832aee5625a",
+    "published_commit": "83dd78b94b407779b669d2f4e6b95f2efea726d3",
+    "published_tree": "5628904b977dee390dd085b34bc911c8e9ecb4eb",
+    "tree_difference": "One publication-only CI selector; compiled Rust/test sources identical. The measured archived runtime is reused, not relabeled as an 83dd build."
+  },
+  "candidate_measured_commit": "0a72d98143f01fc7db249147df140d2797d7cf73",
+  "candidate_measured_tree": "3e01c5f6eb6c6cc05f43320d015b6297440d2da5",
+  "candidate_measured_tree_public_commit": "9c32953b532ecac39765320122f6f9f88b3ab4e6",
+  "compiler_files": {
+    "baseline": [
+      {
+        "mode": 509,
+        "path": "bin/rustc",
+        "sha256": "4708f723b887e0fb9457304325c4c74d929a750a79b14e983b5dc0485f888281",
+        "size": 175744
+      },
+      {
+        "mode": 509,
+        "path": "lib/librustc_driver-6f9d0d9f466ed619.so",
+        "sha256": "1e62bd44053ea24d437546aa147fd11fa83cedf9e8168cca45b795ac8d185250",
+        "size": 215378272
+      }
+    ],
+    "candidate": [
+      {
+        "mode": 509,
+        "path": "bin/rustc",
+        "sha256": "0d544e1a71f5180a6791c3bc288aed7869f3715f60a6b2157284838d4a32f12f",
+        "size": 175744
+      },
+      {
+        "mode": 509,
+        "path": "lib/librustc_driver-6f9d0d9f466ed619.so",
+        "sha256": "20605b2fdead913480a6175c27858f4fd03dfead644a2f14cdab6a1a87495609",
+        "size": 215395288
+      }
+    ]
+  },
+  "final_source_mtime_ns": 1792800000000000000,
+  "original_native_timing_files_read": false,
+  "public_recipe_parameters": [
+    "sysroots",
+    "fresh work root",
+    "CPU affinity",
+    "inherited home"
+  ],
+  "raw_metadata_path_disclosure": "Unmodified metadata retains its synthetic /home/dev-user/ohm-generic-export-shared-scc-repro-20261024/source fixture path. No raw environment, transport/auth logs, hostnames or timing files are included.",
+  "retained_analysis_correction": "The initial local verifier replaced one of two official public-hash labels. Its failure is retained privately; the corrected verifier checks both. No experiment was rerun for this correction.",
+  "retained_hash_bindings": {
+    "allocation_and_hash_comparison": "16df841a664072121724b9a1cedc985e444fbffd18aa9c780891bf840ffe2592",
+    "confirmation_manifest": "76100e9c9f689c86034a0b19a5e9bcd5dd01dd12c8e6dc420b09e7f6d0c4290e",
+    "frozen_plan": "47ec99b914e0ac8edd29a43185018e83307082507581e3af3ec58d69b41e8eb3",
+    "handoff": "577dc885bb638f59b671a61fc97b83865dca3209b1cf1ef7e74be3b9c9c4918e",
+    "initial_manifest": "77c1ef5e4b56271678349d12131c6a02fdafe835a3bca0110776c7154c653f7e",
+    "official_comparison": "d9a3cb2d01e6b0e9357b6fe25b900c825d57aa28e8b85b196bcaae7be921c65c",
+    "seal": "30ba410a98ec5adc54d66bfa0afd11fb53a69f77f5e252abae6fe6db8df52749"
+  },
+  "same_logical_paths_within_each_comparison": true,
+  "source_and_flags_same_between_histories": true
+}

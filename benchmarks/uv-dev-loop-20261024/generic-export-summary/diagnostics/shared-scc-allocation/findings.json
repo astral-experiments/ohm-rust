@@ -1,0 +1,389 @@
+{
+  "all_four_confirmation_artifacts_byte_exact": true,
+  "cases": [
+    {
+      "allocation_index": {
+        "length": 1,
+        "position": 1548
+      },
+      "allocation_records": [
+        {
+          "decoded": {
+            "flags": 0,
+            "init_mask": {
+              "initialized": true,
+              "kind": "lazy",
+              "length": 19
+            },
+            "kind": 0,
+            "payload_hex": "677a69702c206465666c6174652c207a737464",
+            "provenance": [],
+            "size": 19
+          },
+          "index": 0,
+          "offset": 1522,
+          "sha256": "3474f9d2f140b41997371ca3e24996b7369a3d39f7e49c39e432d2475908634f",
+          "size": 26
+        }
+      ],
+      "case": "baseline-cold",
+      "compiler_version_string": "rustc 1.99.0-dev (f93a752e3 2026-10-23)",
+      "confirmation_rmeta_sha256": "aef5f78412547850ed238b3d100e0f3334c9ab760942c62d60aefaf23cf90e7a",
+      "consumer_sha256": "4f28b6f1e09d9a67e94589bcbd73585f252a8bba1d9e26b56d1c37d0c8328eae",
+      "encoded_optimized_mir_def_indices": [
+        3,
+        4
+      ],
+      "listing_path": "metadata/baseline-cold.listing.txt",
+      "metadata_path": "metadata/baseline-cold.rmeta",
+      "optimized_mir_table": {
+        "byte_width": 2,
+        "index_bytes": 0,
+        "length": 5,
+        "position": 1718,
+        "stored_entries": 5,
+        "width": 2
+      },
+      "private_hash": "e96a5e1e13e2dd8128c03988ce1131f4",
+      "public_fingerprints": {
+        "expn": [
+          "82de9c642de253d619eb0a8a53d6b133"
+        ],
+        "local": [
+          "10938d2ed57e072310e1dce3d0acd2f3",
+          null,
+          null,
+          "9ecb395533c132f51113101dff5e7da1",
+          "9ecb395533c132f51113101dff5e7da1"
+        ]
+      },
+      "public_global_hash": "76eeac2874452fbbeed533e96f3b2792",
+      "public_global_hash_offset": 2934,
+      "public_hash": "a2ef8420f84dd9aa472a84f3794cc7f7",
+      "public_tables": {
+        "expn": {
+          "byte_width": 17,
+          "index_bytes": 0,
+          "length": 1,
+          "position": 2500,
+          "stored_entries": 1,
+          "width": 17
+        },
+        "local": {
+          "byte_width": 17,
+          "index_bytes": 12,
+          "length": 5,
+          "position": 2437,
+          "stored_entries": 3,
+          "width": 145
+        }
+      },
+      "rmeta_bytes": 2963,
+      "rmeta_sha256": "aef5f78412547850ed238b3d100e0f3334c9ab760942c62d60aefaf23cf90e7a",
+      "root_position": 2517,
+      "stable_crate_id": 11952585921185997609,
+      "summary_bit": null,
+      "summary_bit_offset": null
+    },
+    {
+      "allocation_index": {
+        "length": 2,
+        "position": 1574
+      },
+      "allocation_records": [
+        {
+          "decoded": {
+            "flags": 0,
+            "init_mask": {
+              "initialized": true,
+              "kind": "lazy",
+              "length": 19
+            },
+            "kind": 0,
+            "payload_hex": "677a69702c206465666c6174652c207a737464",
+            "provenance": [],
+            "size": 19
+          },
+          "index": 0,
+          "offset": 1522,
+          "sha256": "3474f9d2f140b41997371ca3e24996b7369a3d39f7e49c39e432d2475908634f",
+          "size": 26
+        },
+        {
+          "decoded": {
+            "flags": 0,
+            "init_mask": {
+              "initialized": true,
+              "kind": "lazy",
+              "length": 19
+            },
+            "kind": 0,
+            "payload_hex": "677a69702c206465666c6174652c207a737464",
+            "provenance": [],
+            "size": 19
+          },
+          "index": 1,
+          "offset": 1548,
+          "sha256": "3474f9d2f140b41997371ca3e24996b7369a3d39f7e49c39e432d2475908634f",
+          "size": 26
+        }
+      ],
+      "case": "baseline-warmed",
+      "compiler_version_string": "rustc 1.99.0-dev (f93a752e3 2026-10-23)",
+      "confirmation_rmeta_sha256": "683341d377502140cbe77c83944b71e90a6568b199ec3ffbf5624671ea13d0ae",
+      "consumer_sha256": "4f28b6f1e09d9a67e94589bcbd73585f252a8bba1d9e26b56d1c37d0c8328eae",
+      "encoded_optimized_mir_def_indices": [
+        3,
+        4
+      ],
+      "listing_path": "metadata/baseline-warmed.listing.txt",
+      "metadata_path": "metadata/baseline-warmed.rmeta",
+      "optimized_mir_table": {
+        "byte_width": 2,
+        "index_bytes": 0,
+        "length": 5,
+        "position": 1746,
+        "stored_entries": 5,
+        "width": 2
+      },
+      "private_hash": "e96a5e1e13e2dd8128c03988ce1131f4",
+      "public_fingerprints": {
+        "expn": [
+          "82de9c642de253d619eb0a8a53d6b133"
+        ],
+        "local": [
+          "f6ffd56d93b95ea761e53e74c69439c4",
+          null,
+          null,
+          "85378193f1fc8a79621671aef545e472",
+          "85378193f1fc8a79621671aef545e472"
+        ]
+      },
+      "public_global_hash": "76eeac2874452fbbeed533e96f3b2792",
+      "public_global_hash_offset": 2962,
+      "public_hash": "dfc819fcb30aa43e5a4574422aab53f7",
+      "public_tables": {
+        "expn": {
+          "byte_width": 17,
+          "index_bytes": 0,
+          "length": 1,
+          "position": 2528,
+          "stored_entries": 1,
+          "width": 17
+        },
+        "local": {
+          "byte_width": 17,
+          "index_bytes": 12,
+          "length": 5,
+          "position": 2465,
+          "stored_entries": 3,
+          "width": 145
+        }
+      },
+      "rmeta_bytes": 2991,
+      "rmeta_sha256": "683341d377502140cbe77c83944b71e90a6568b199ec3ffbf5624671ea13d0ae",
+      "root_position": 2545,
+      "stable_crate_id": 11952585921185997609,
+      "summary_bit": null,
+      "summary_bit_offset": null
+    },
+    {
+      "allocation_index": {
+        "length": 1,
+        "position": 1548
+      },
+      "allocation_records": [
+        {
+          "decoded": {
+            "flags": 0,
+            "init_mask": {
+              "initialized": true,
+              "kind": "lazy",
+              "length": 19
+            },
+            "kind": 0,
+            "payload_hex": "677a69702c206465666c6174652c207a737464",
+            "provenance": [],
+            "size": 19
+          },
+          "index": 0,
+          "offset": 1522,
+          "sha256": "3474f9d2f140b41997371ca3e24996b7369a3d39f7e49c39e432d2475908634f",
+          "size": 26
+        }
+      ],
+      "case": "candidate-cold",
+      "compiler_version_string": "rustc 1.99.0-dev (0a72d9814 2026-10-24)",
+      "confirmation_rmeta_sha256": "96ef46964a6e93d3e8e1451baa37ac4ea4dfa18678bf883a0070a5e4fa6bea56",
+      "consumer_sha256": "1a13d67c9b12e131922e7c4b0ab169103d4616234449d8e9b1368dea95940448",
+      "encoded_optimized_mir_def_indices": [
+        3,
+        4
+      ],
+      "listing_path": "metadata/candidate-cold.listing.txt",
+      "metadata_path": "metadata/candidate-cold.rmeta",
+      "optimized_mir_table": {
+        "byte_width": 2,
+        "index_bytes": 0,
+        "length": 5,
+        "position": 1718,
+        "stored_entries": 5,
+        "width": 2
+      },
+      "private_hash": "01b1229b7fa124ddb0ea2dad12ccf4da",
+      "public_fingerprints": {
+        "expn": [
+          "82de9c642de253d619eb0a8a53d6b133"
+        ],
+        "local": [
+          "b1a45aa16ecbfbb169e67f35ce87bbda",
+          null,
+          null,
+          "5d5d7517b11da9d16e06679233bb31ca",
+          "5d5d7517b11da9d16e06679233bb31ca"
+        ]
+      },
+      "public_global_hash": "ec4ab739b2c001e4036f17b1def8f37f",
+      "public_global_hash_offset": 2935,
+      "public_hash": "28726e2b58cc91d43186003ec6ae8001",
+      "public_tables": {
+        "expn": {
+          "byte_width": 17,
+          "index_bytes": 0,
+          "length": 1,
+          "position": 2500,
+          "stored_entries": 1,
+          "width": 17
+        },
+        "local": {
+          "byte_width": 17,
+          "index_bytes": 12,
+          "length": 5,
+          "position": 2437,
+          "stored_entries": 3,
+          "width": 145
+        }
+      },
+      "rmeta_bytes": 2964,
+      "rmeta_sha256": "96ef46964a6e93d3e8e1451baa37ac4ea4dfa18678bf883a0070a5e4fa6bea56",
+      "root_position": 2517,
+      "stable_crate_id": 16224471979208988030,
+      "summary_bit": false,
+      "summary_bit_offset": 2636
+    },
+    {
+      "allocation_index": {
+        "length": 2,
+        "position": 1574
+      },
+      "allocation_records": [
+        {
+          "decoded": {
+            "flags": 0,
+            "init_mask": {
+              "initialized": true,
+              "kind": "lazy",
+              "length": 19
+            },
+            "kind": 0,
+            "payload_hex": "677a69702c206465666c6174652c207a737464",
+            "provenance": [],
+            "size": 19
+          },
+          "index": 0,
+          "offset": 1522,
+          "sha256": "3474f9d2f140b41997371ca3e24996b7369a3d39f7e49c39e432d2475908634f",
+          "size": 26
+        },
+        {
+          "decoded": {
+            "flags": 0,
+            "init_mask": {
+              "initialized": true,
+              "kind": "lazy",
+              "length": 19
+            },
+            "kind": 0,
+            "payload_hex": "677a69702c206465666c6174652c207a737464",
+            "provenance": [],
+            "size": 19
+          },
+          "index": 1,
+          "offset": 1548,
+          "sha256": "3474f9d2f140b41997371ca3e24996b7369a3d39f7e49c39e432d2475908634f",
+          "size": 26
+        }
+      ],
+      "case": "candidate-warmed",
+      "compiler_version_string": "rustc 1.99.0-dev (0a72d9814 2026-10-24)",
+      "confirmation_rmeta_sha256": "231eb12df9350d54cb8b310215420491c370a1d3818b159e6212a5f6fdf20261",
+      "consumer_sha256": "1a13d67c9b12e131922e7c4b0ab169103d4616234449d8e9b1368dea95940448",
+      "encoded_optimized_mir_def_indices": [
+        3,
+        4
+      ],
+      "listing_path": "metadata/candidate-warmed.listing.txt",
+      "metadata_path": "metadata/candidate-warmed.rmeta",
+      "optimized_mir_table": {
+        "byte_width": 2,
+        "index_bytes": 0,
+        "length": 5,
+        "position": 1746,
+        "stored_entries": 5,
+        "width": 2
+      },
+      "private_hash": "01b1229b7fa124ddb0ea2dad12ccf4da",
+      "public_fingerprints": {
+        "expn": [
+          "82de9c642de253d619eb0a8a53d6b133"
+        ],
+        "local": [
+          "9810a2e02d075335bae9e0c6c46f22ab",
+          null,
+          null,
+          "43c9bd566f590155bf09c92329a2989b",
+          "43c9bd566f590155bf09c92329a2989b"
+        ]
+      },
+      "public_global_hash": "ec4ab739b2c001e4036f17b1def8f37f",
+      "public_global_hash_offset": 2963,
+      "public_hash": "b989b72826e90ea5405817ea77058589",
+      "public_tables": {
+        "expn": {
+          "byte_width": 17,
+          "index_bytes": 0,
+          "length": 1,
+          "position": 2528,
+          "stored_entries": 1,
+          "width": 17
+        },
+        "local": {
+          "byte_width": 17,
+          "index_bytes": 12,
+          "length": 5,
+          "position": 2465,
+          "stored_entries": 3,
+          "width": 145
+        }
+      },
+      "rmeta_bytes": 2992,
+      "rmeta_sha256": "231eb12df9350d54cb8b310215420491c370a1d3818b159e6212a5f6fdf20261",
+      "root_position": 2545,
+      "stable_crate_id": 16224471979208988030,
+      "summary_bit": false,
+      "summary_bit_offset": 2664
+    }
+  ],
+  "consumer_stdout": "gzip, deflate, zstd\ngzip, deflate, zstd\n",
+  "direct_mir_call_edges_decoded": false,
+  "local_indices_with_delta": [
+    0,
+    3,
+    4
+  ],
+  "no_full_metadata_equivalence_claim": true,
+  "public_hash_contrast_reproduced_before_and_after_220": true,
+  "same_delta_as_separate_uv_client_diagnosis": true,
+  "scope": "One excluded tiny topology and one identical confirmation under each archived compiler; no performance measurement",
+  "warmed_minus_cold_delta_modulo_2_128": "e66c483ebe3b578451036190f5e766d1"
+}

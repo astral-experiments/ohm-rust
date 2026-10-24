@@ -1,0 +1,45 @@
+Crate info:
+name two_literal
+private hash 01b1229b7fa124ddb0ea2dad12ccf4da stable_crate_id StableCrateId(16224471979208988030)
+public_hash 28726e2b58cc91d43186003ec6ae8001
+proc_macro false
+triple x86_64-unknown-linux-gnu
+edition 2021
+symbol_mangling_version V0
+required_panic_strategy None panic_in_drop_strategy Unwind
+has_global_allocator false has_alloc_error_handler false has_panic_handler false has_default_lib_allocator false
+compiler_builtins false needs_allocator false needs_panic_runtime false no_builtins false panic_runtime false profiler_runtime false
+=External Dependencies=
+1 std-db37a88b3a6928a4 hash f345d19405c0b965092fb22fe442a404 host_hash None kind Unconditional public
+2 core-16cfb0e267930eea hash b1a9c4572364067430d93511cab214f5 host_hash None kind Unconditional public
+3 alloc-7e02b7f18d3fd5c4 hash 474134431560474da1af1669fa7daa4c host_hash None kind Unconditional public
+4 compiler_builtins-3923e3d6be04ba3d hash ccb2100ad9e612e765c4ddd04a22816d host_hash None kind Unconditional private
+5 libc-6e6e31e79590683f hash fb3589082c6f06eee800fffc08b412c5 host_hash None kind Unconditional public
+6 rustc_std_workspace_core-aac427b611c458c8 hash d198ed81eb88c01121ad6fb15ace067e host_hash None kind Unconditional public
+7 unwind-595de136ebcba223 hash 1a226998221078d5a283ff628babf373 host_hash None kind Unconditional private
+8 miniz_oxide-0351735439899218 hash 9cdb0f1b95ca1a30a380d3c1c10e0b27 host_hash None kind Unconditional private
+9 adler2-779573bcc82ea365 hash 650a58d6474f258f5175c86185737ff2 host_hash None kind Unconditional private
+10 hashbrown-d20a1217d74589ba hash 6328c735a5b24cf6e733c26e76fc545d host_hash None kind Unconditional private
+11 rustc_std_workspace_alloc-bc5009e2b492696f hash 44eb2dbc9a9b34c4e1f204d120139a82 host_hash None kind Unconditional public
+12 std_detect-82d4293c74d72603 hash d43141feddd80fff2ad1ebd933bffd08 host_hash None kind Unconditional public
+13 rustc_demangle-31816f105e6f21b3 hash 5851fef2c32a06f2a5ecf87e3062a19a host_hash None kind Unconditional private
+14 cfg_if-43e481b8bc354769 hash 9a5564d81f628aa8abe490541ac1d453 host_hash None kind Unconditional private
+15 addr2line-84c84c7e3cb0191a hash 5c05228efdca6866e1b804be74925858 host_hash None kind Unconditional private
+16 gimli-25298e958f4e7e15 hash c7143fc64ba4cb26d8e2743013524a1d host_hash None kind Unconditional private
+17 object-2d73d6c7ca70100d hash fcf2abdad9b159995f36a138161bc313 host_hash None kind Unconditional private
+18 memchr-507ad7d146b23e0a hash 6dcc92a396f753832e085267f1e41742 host_hash None kind Unconditional private
+19 panic_unwind-ae314287f73fa84e hash 58bc3bb172f9f21c124a3529bdbdf794 host_hash None kind Conditional private
+
+=Lang items=
+
+=Lib features=
+
+=Items=
+Public Mod crate {
+    Public Fn first {}
+    Public Fn second {}
+}
+
+=Target modifiers=
+Public hash: 28726e2b58cc91d43186003ec6ae8001
+
