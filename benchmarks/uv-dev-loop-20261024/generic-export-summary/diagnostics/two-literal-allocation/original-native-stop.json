@@ -1,0 +1,32 @@
+{
+  "all_22_new_summary_bits_false": true,
+  "all_22_public_global_hashes_unchanged": true,
+  "all_position_sensitive_native_library_vectors_exact": true,
+  "differing_rlibs": 22,
+  "differing_standalone_rmeta": 22,
+  "elapsed_files_unread_and_unpublished": 3,
+  "elf_outputs_passing_original_finite_rules": 51,
+  "library_producers": 35,
+  "native_object_payloads_exact_in_the_22_changed_rlibs": 3445,
+  "other_changed_producers_reaching_frontier": 21,
+  "retained_hash_bindings": {
+    "allocation_source_diagnosis_handoff": "030715256e48199d324a34c602a0c7c434eefdfcb4410e2e331c86317cbd77b7",
+    "allocation_source_diagnosis_seal": "1c8a08c5733d2bcbaa017de43e00197c98d12c494acb843f18f9d2172c5f950c",
+    "native_output_handoff": "b8a9e79eadb840bf14c59a7cb1478584f1ac938aee72757c2c764ea53dad58bc",
+    "native_output_seal": "539323bbb646f47160112032b1b374cdcaeb2b76a4bac70b7044136be8151e70"
+  },
+  "status": "permanently invalid; no native performance claim",
+  "tiny_reproduction_does_not_reproduce_this_public_hash_change": true,
+  "unchanged_direct_in_study_producers_of_frontier": 10,
+  "unique_changed_frontier": "uv_client",
+  "uv_client": {
+    "allocation_difference": "Two identical immutable provenance-free memory records in reference map to one in actual; no general identity-deduplication claim",
+    "allocations_actual": 907,
+    "allocations_reference": 908,
+    "private_hash_reference_and_actual": "4d9b4e0a3fc3b2187d1afc2168c09021",
+    "public_hash_actual": "8e2c687beb76d780cf04840f384db369",
+    "public_hash_reference": "99781d690adb2a865bbfa5dc7462c403",
+    "rmeta_bytes_actual": 2599959,
+    "rmeta_bytes_reference": 2599988
+  }
+}

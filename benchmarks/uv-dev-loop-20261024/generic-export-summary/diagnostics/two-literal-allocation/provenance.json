@@ -1,0 +1,71 @@
+{
+  "additional_builds_for_publication": false,
+  "baseline_source": {
+    "compiled_tree": "5fb5081a44fa86a406ce696a94b03dce7a9b9f74",
+    "embedded_commit": "f93a752e3de7404107ea5908d65c8832aee5625a",
+    "published_commit": "83dd78b94b407779b669d2f4e6b95f2efea726d3",
+    "published_tree": "5628904b977dee390dd085b34bc911c8e9ecb4eb",
+    "tree_difference": "One publication-only CI selector; compiled Rust/test sources identical. The measured archived runtime is reused, not relabeled as an 83dd build."
+  },
+  "candidate_measured_commit": "0a72d98143f01fc7db249147df140d2797d7cf73",
+  "candidate_measured_tree": "3e01c5f6eb6c6cc05f43320d015b6297440d2da5",
+  "candidate_measured_tree_public_commit": "9c32953b532ecac39765320122f6f9f88b3ab4e6",
+  "compiler_files": {
+    "baseline": [
+      {
+        "mode": 509,
+        "path": "bin/rustc",
+        "sha256": "4708f723b887e0fb9457304325c4c74d929a750a79b14e983b5dc0485f888281",
+        "size": 175744
+      },
+      {
+        "mode": 509,
+        "path": "lib/librustc_driver-6f9d0d9f466ed619.so",
+        "sha256": "1e62bd44053ea24d437546aa147fd11fa83cedf9e8168cca45b795ac8d185250",
+        "size": 215378272
+      }
+    ],
+    "candidate": [
+      {
+        "mode": 509,
+        "path": "bin/rustc",
+        "sha256": "0d544e1a71f5180a6791c3bc288aed7869f3715f60a6b2157284838d4a32f12f",
+        "size": 175744
+      },
+      {
+        "mode": 509,
+        "path": "lib/librustc_driver-6f9d0d9f466ed619.so",
+        "sha256": "20605b2fdead913480a6175c27858f4fd03dfead644a2f14cdab6a1a87495609",
+        "size": 215395288
+      }
+    ]
+  },
+  "final_source_mtime_ns": 1792800000000000000,
+  "original_native_timing_files_read": false,
+  "retained_hash_bindings": {
+    "combined_handoff": "f60eebf348818c01b192653c076592f25942c6283bedd6481d4862ff1d19e294",
+    "combined_seal": "31d043888473fc57d31bea3362ac729cd5fc586576d2d3f7251bc435ed5cddb4",
+    "confirmation_collection_manifest": "b753e6c786e0ac0d8511743bb5343cf0cc4b219cc5f58b760ab8327f53e8bc25",
+    "confirmation_source_freeze": "0dbd2f423a6f8faa89597baa86867b0628d65748926992656b550189f0ea1cd8",
+    "frozen_plan": "76bcb7fd423b2a27cfec856c97325bbf3dd6383aa833868762f27db7cc229de2",
+    "initial_collection_manifest": "5b32e2fe6affa7c3e4cbc9c02680bf12124c4904c1534801ccc6f794658f3367",
+    "initial_source_freeze": "c50b74c2446b875d844a60fda26856cf20f0ad20b22670e8b63c64fe0733ffa8",
+    "official_comparison": "a5b9e69940cf662a98933b09e5f67de724312cb3615a4b63c4e354b466a69abb"
+  },
+  "same_logical_path_within_every_comparison": true,
+  "shipping_source": {
+    "measured_sha": "0a72d98143f01fc7db249147df140d2797d7cf73",
+    "measured_tree": "3e01c5f6eb6c6cc05f43320d015b6297440d2da5",
+    "overlay_files": {
+      ".github/workflows/ci.yml": "99b9467816ce7c69cc386652ed40b803dcfa85ad",
+      "tests/run-make/c-linker-generic-summary/rmake.rs": "886ba458adf338641380f9628ce5c967294f4243"
+    },
+    "publication_parent_sha": "9c32953b532ecac39765320122f6f9f88b3ab4e6",
+    "published_commit": "fee3f3ea18653f68ebd7966ec4702ca2e19e99d8",
+    "runtime_files_identical_to_measured_tree": true,
+    "shipping_tree": "7633cc0119a1cd65a67ac00fc884d846f5aac09e",
+    "source_patch_base_sha": "83dd78b94b407779b669d2f4e6b95f2efea726d3",
+    "test_patch_sha256": "0455eb73be8bbcbd74468c1dce62358926f1e1db30fe4bdd525402eb07ffb875",
+    "test_validation_sha256": "61e90ada534a5720ee4d2c3b9bad7ffe9f5b0fbf0f7534f4697f666913633bc1"
+  }
+}

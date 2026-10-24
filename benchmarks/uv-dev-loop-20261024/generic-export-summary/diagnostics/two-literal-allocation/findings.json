@@ -1,0 +1,267 @@
+{
+  "allocation_split_reproduced_before_and_after_220": true,
+  "cases": [
+    {
+      "allocation_index": {
+        "length": 1,
+        "position": 1322
+      },
+      "allocation_records": [
+        {
+          "decoded": {
+            "flags": 0,
+            "init_mask": {
+              "initialized": true,
+              "kind": "lazy",
+              "length": 19
+            },
+            "kind": 0,
+            "payload_hex": "677a69702c206465666c6174652c207a737464",
+            "provenance": [],
+            "size": 19
+          },
+          "index": 0,
+          "offset": 1296,
+          "sha256": "3474f9d2f140b41997371ca3e24996b7369a3d39f7e49c39e432d2475908634f",
+          "size": 26
+        }
+      ],
+      "case": "baseline-cold",
+      "confirmation_rmeta_sha256": "f5ea670a74994705969ec59ac7f0288b47a8fbf7c0236dfa444248893d8008a0",
+      "consumer_sha256": "4f28b6f1e09d9a67e94589bcbd73585f252a8bba1d9e26b56d1c37d0c8328eae",
+      "encoded_optimized_mir_def_indices": [
+        3,
+        4
+      ],
+      "listing_path": "metadata/baseline-cold.listing.txt",
+      "metadata_path": "metadata/baseline-cold.rmeta",
+      "private_hash": "fb936438b7e4a3cee5ad1fed4b0ddc21",
+      "public_fingerprints": {
+        "expn": [
+          "82de9c642de253d619eb0a8a53d6b133"
+        ],
+        "local": [
+          "c736bcda13639ea4a9cb317fb475e190",
+          null,
+          null,
+          "faafbe1731e04080c41c0e4c062e0510",
+          "5abeaae93fc689f5e5e0566ddcf9872e"
+        ]
+      },
+      "public_global_hash": "76eeac2874452fbbeed533e96f3b2792",
+      "public_hash": "471dd3bc6dd99e1619c526a35e7d77bf",
+      "rmeta_bytes": 2740,
+      "rmeta_sha256": "f5ea670a74994705969ec59ac7f0288b47a8fbf7c0236dfa444248893d8008a0",
+      "stable_crate_id": 11952585921185997609,
+      "summary_bit": null
+    },
+    {
+      "allocation_index": {
+        "length": 2,
+        "position": 1348
+      },
+      "allocation_records": [
+        {
+          "decoded": {
+            "flags": 0,
+            "init_mask": {
+              "initialized": true,
+              "kind": "lazy",
+              "length": 19
+            },
+            "kind": 0,
+            "payload_hex": "677a69702c206465666c6174652c207a737464",
+            "provenance": [],
+            "size": 19
+          },
+          "index": 0,
+          "offset": 1296,
+          "sha256": "3474f9d2f140b41997371ca3e24996b7369a3d39f7e49c39e432d2475908634f",
+          "size": 26
+        },
+        {
+          "decoded": {
+            "flags": 0,
+            "init_mask": {
+              "initialized": true,
+              "kind": "lazy",
+              "length": 19
+            },
+            "kind": 0,
+            "payload_hex": "677a69702c206465666c6174652c207a737464",
+            "provenance": [],
+            "size": 19
+          },
+          "index": 1,
+          "offset": 1322,
+          "sha256": "3474f9d2f140b41997371ca3e24996b7369a3d39f7e49c39e432d2475908634f",
+          "size": 26
+        }
+      ],
+      "case": "baseline-warmed",
+      "confirmation_rmeta_sha256": "949e6ac780f1adb74da15463587bd7d8b7b56166740768470992515d99b23b22",
+      "consumer_sha256": "4f28b6f1e09d9a67e94589bcbd73585f252a8bba1d9e26b56d1c37d0c8328eae",
+      "encoded_optimized_mir_def_indices": [
+        3,
+        4
+      ],
+      "listing_path": "metadata/baseline-warmed.listing.txt",
+      "metadata_path": "metadata/baseline-warmed.rmeta",
+      "private_hash": "fb936438b7e4a3cee5ad1fed4b0ddc21",
+      "public_fingerprints": {
+        "expn": [
+          "82de9c642de253d619eb0a8a53d6b133"
+        ],
+        "local": [
+          "c736bcda13639ea4a9cb317fb475e190",
+          null,
+          null,
+          "faafbe1731e04080c41c0e4c062e0510",
+          "5abeaae93fc689f5e5e0566ddcf9872e"
+        ]
+      },
+      "public_global_hash": "76eeac2874452fbbeed533e96f3b2792",
+      "public_hash": "471dd3bc6dd99e1619c526a35e7d77bf",
+      "rmeta_bytes": 2768,
+      "rmeta_sha256": "949e6ac780f1adb74da15463587bd7d8b7b56166740768470992515d99b23b22",
+      "stable_crate_id": 11952585921185997609,
+      "summary_bit": null
+    },
+    {
+      "allocation_index": {
+        "length": 1,
+        "position": 1322
+      },
+      "allocation_records": [
+        {
+          "decoded": {
+            "flags": 0,
+            "init_mask": {
+              "initialized": true,
+              "kind": "lazy",
+              "length": 19
+            },
+            "kind": 0,
+            "payload_hex": "677a69702c206465666c6174652c207a737464",
+            "provenance": [],
+            "size": 19
+          },
+          "index": 0,
+          "offset": 1296,
+          "sha256": "3474f9d2f140b41997371ca3e24996b7369a3d39f7e49c39e432d2475908634f",
+          "size": 26
+        }
+      ],
+      "case": "candidate-cold",
+      "confirmation_rmeta_sha256": "d600751621d877531e531ac66892b745e067e51d7fccee58639530d722d430b9",
+      "consumer_sha256": "1a13d67c9b12e131922e7c4b0ab169103d4616234449d8e9b1368dea95940448",
+      "encoded_optimized_mir_def_indices": [
+        3,
+        4
+      ],
+      "listing_path": "metadata/candidate-cold.listing.txt",
+      "metadata_path": "metadata/candidate-cold.rmeta",
+      "private_hash": "95ff0e5dc208fe7181b3b3c515054d73",
+      "public_fingerprints": {
+        "expn": [
+          "82de9c642de253d619eb0a8a53d6b133"
+        ],
+        "local": [
+          "3bf2a8492d728dc59fba3643cb980a92",
+          null,
+          null,
+          "348b738d09468e3419a6edb96dfacaa5",
+          "b3204f32667dadb18a3330e6c2d0b5dd"
+        ]
+      },
+      "public_global_hash": "ec4ab739b2c001e4036f17b1def8f37f",
+      "public_hash": "f2a9b6b58c8b5832ced06430da275f44",
+      "rmeta_bytes": 2741,
+      "rmeta_sha256": "d600751621d877531e531ac66892b745e067e51d7fccee58639530d722d430b9",
+      "stable_crate_id": 16224471979208988030,
+      "summary_bit": false
+    },
+    {
+      "allocation_index": {
+        "length": 2,
+        "position": 1348
+      },
+      "allocation_records": [
+        {
+          "decoded": {
+            "flags": 0,
+            "init_mask": {
+              "initialized": true,
+              "kind": "lazy",
+              "length": 19
+            },
+            "kind": 0,
+            "payload_hex": "677a69702c206465666c6174652c207a737464",
+            "provenance": [],
+            "size": 19
+          },
+          "index": 0,
+          "offset": 1296,
+          "sha256": "3474f9d2f140b41997371ca3e24996b7369a3d39f7e49c39e432d2475908634f",
+          "size": 26
+        },
+        {
+          "decoded": {
+            "flags": 0,
+            "init_mask": {
+              "initialized": true,
+              "kind": "lazy",
+              "length": 19
+            },
+            "kind": 0,
+            "payload_hex": "677a69702c206465666c6174652c207a737464",
+            "provenance": [],
+            "size": 19
+          },
+          "index": 1,
+          "offset": 1322,
+          "sha256": "3474f9d2f140b41997371ca3e24996b7369a3d39f7e49c39e432d2475908634f",
+          "size": 26
+        }
+      ],
+      "case": "candidate-warmed",
+      "confirmation_rmeta_sha256": "8ae506a02e48ec37b6c27feeea6fcf430b26e8f72ef6bca86e3ce4ba30957482",
+      "consumer_sha256": "1a13d67c9b12e131922e7c4b0ab169103d4616234449d8e9b1368dea95940448",
+      "encoded_optimized_mir_def_indices": [
+        3,
+        4
+      ],
+      "listing_path": "metadata/candidate-warmed.listing.txt",
+      "metadata_path": "metadata/candidate-warmed.rmeta",
+      "private_hash": "95ff0e5dc208fe7181b3b3c515054d73",
+      "public_fingerprints": {
+        "expn": [
+          "82de9c642de253d619eb0a8a53d6b133"
+        ],
+        "local": [
+          "3bf2a8492d728dc59fba3643cb980a92",
+          null,
+          null,
+          "348b738d09468e3419a6edb96dfacaa5",
+          "b3204f32667dadb18a3330e6c2d0b5dd"
+        ]
+      },
+      "public_global_hash": "ec4ab739b2c001e4036f17b1def8f37f",
+      "public_hash": "f2a9b6b58c8b5832ced06430da275f44",
+      "rmeta_bytes": 2769,
+      "rmeta_sha256": "8ae506a02e48ec37b6c27feeea6fcf430b26e8f72ef6bca86e3ce4ba30957482",
+      "stable_crate_id": 16224471979208988030,
+      "summary_bit": false
+    }
+  ],
+  "consumer_stdout": "gzip, deflate, zstd\ngzip, deflate, zstd\n",
+  "no_full_metadata_equivalence_claim": true,
+  "retained_source_bound_decoder": {
+    "confirmation_handoff_sha256": "e13ff0f159a5fa9396c838a1903b2e3b4b8f6a9e4429a833c7b03be859f714ac",
+    "confirmation_summary_sha256": "617c7535569740c9a593dde468d6432b36df0364615d0a15691e7463b5b09c45",
+    "initial_handoff_sha256": "c7a631d27ceac2c26f64ac722f5fd96c100882596e67fe6fd8962f3845c73c84",
+    "initial_summary_sha256": "e25ec5a014d415875826eb5f40a026af5016dae00278372000f70f0141a4b7cd"
+  },
+  "scope": "Excluded non-timing correctness reproduction; one initial contrast and one identical confirmation per compiler",
+  "uv_client_public_hash_change_reproduced": false
+}

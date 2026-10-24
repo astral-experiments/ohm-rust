@@ -1,0 +1,7 @@
+rustc 1.99.0-dev (0a72d9814 2026-10-24)
+binary: rustc
+commit-hash: 0a72d98143f01fc7db249147df140d2797d7cf73
+commit-date: 2026-10-24
+host: x86_64-unknown-linux-gnu
+release: 1.99.0-dev
+LLVM version: 23.1.1
