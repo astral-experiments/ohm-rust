@@ -1,0 +1,554 @@
+[
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1067705391
+    },
+    "candidate": {
+      "Ir": 1061286807
+    },
+    "component": "ir-block-1",
+    "cycle": 1,
+    "cycle_position": 1,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 1,
+    "session": 1,
+    "source_sha256": "6e8d93d333bece527c3bd3d880e1fb0b93b57ee7ca2ac4621231ff97a4c4bdfd",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1075993744
+    },
+    "candidate": {
+      "Ir": 1067348144
+    },
+    "component": "ir-block-1",
+    "cycle": 1,
+    "cycle_position": 2,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 2,
+    "session": 1,
+    "source_sha256": "022f3cf7a1c2cfe546fa0361cd7ba10adfd95e8764b9ce79bd8423735c1b35ba",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1126152997
+    },
+    "candidate": {
+      "Ir": 1119158755
+    },
+    "component": "ir-block-1",
+    "cycle": 1,
+    "cycle_position": 3,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 3,
+    "session": 1,
+    "source_sha256": "6e8d93d333bece527c3bd3d880e1fb0b93b57ee7ca2ac4621231ff97a4c4bdfd",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1068527619
+    },
+    "candidate": {
+      "Ir": 1061286043
+    },
+    "component": "ir-block-1",
+    "cycle": 2,
+    "cycle_position": 1,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 4,
+    "session": 1,
+    "source_sha256": "022f3cf7a1c2cfe546fa0361cd7ba10adfd95e8764b9ce79bd8423735c1b35ba",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1074713537
+    },
+    "candidate": {
+      "Ir": 1065970091
+    },
+    "component": "ir-block-1",
+    "cycle": 2,
+    "cycle_position": 2,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 5,
+    "session": 1,
+    "source_sha256": "6e8d93d333bece527c3bd3d880e1fb0b93b57ee7ca2ac4621231ff97a4c4bdfd",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1127067412
+    },
+    "candidate": {
+      "Ir": 1119216593
+    },
+    "component": "ir-block-1",
+    "cycle": 2,
+    "cycle_position": 3,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 6,
+    "session": 1,
+    "source_sha256": "022f3cf7a1c2cfe546fa0361cd7ba10adfd95e8764b9ce79bd8423735c1b35ba",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1067878408
+    },
+    "candidate": {
+      "Ir": 1059792318
+    },
+    "component": "ir-block-1",
+    "cycle": 3,
+    "cycle_position": 1,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 7,
+    "session": 1,
+    "source_sha256": "6e8d93d333bece527c3bd3d880e1fb0b93b57ee7ca2ac4621231ff97a4c4bdfd",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1074355842
+    },
+    "candidate": {
+      "Ir": 1066749349
+    },
+    "component": "ir-block-1",
+    "cycle": 3,
+    "cycle_position": 2,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 8,
+    "session": 1,
+    "source_sha256": "022f3cf7a1c2cfe546fa0361cd7ba10adfd95e8764b9ce79bd8423735c1b35ba",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1126564680
+    },
+    "candidate": {
+      "Ir": 1118060106
+    },
+    "component": "ir-block-1",
+    "cycle": 3,
+    "cycle_position": 3,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 9,
+    "session": 1,
+    "source_sha256": "6e8d93d333bece527c3bd3d880e1fb0b93b57ee7ca2ac4621231ff97a4c4bdfd",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1070269477
+    },
+    "candidate": {
+      "Ir": 1060650225
+    },
+    "component": "ir-block-1",
+    "cycle": 4,
+    "cycle_position": 1,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 10,
+    "session": 1,
+    "source_sha256": "022f3cf7a1c2cfe546fa0361cd7ba10adfd95e8764b9ce79bd8423735c1b35ba",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1074040364
+    },
+    "candidate": {
+      "Ir": 1067587557
+    },
+    "component": "ir-block-1",
+    "cycle": 4,
+    "cycle_position": 2,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 11,
+    "session": 1,
+    "source_sha256": "6e8d93d333bece527c3bd3d880e1fb0b93b57ee7ca2ac4621231ff97a4c4bdfd",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1125955416
+    },
+    "candidate": {
+      "Ir": 1116792400
+    },
+    "component": "ir-block-1",
+    "cycle": 4,
+    "cycle_position": 3,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 12,
+    "session": 1,
+    "source_sha256": "022f3cf7a1c2cfe546fa0361cd7ba10adfd95e8764b9ce79bd8423735c1b35ba",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1067358233
+    },
+    "candidate": {
+      "Ir": 1060596154
+    },
+    "component": "ir-block-2",
+    "cycle": 1,
+    "cycle_position": 1,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 1,
+    "session": 2,
+    "source_sha256": "6e8d93d333bece527c3bd3d880e1fb0b93b57ee7ca2ac4621231ff97a4c4bdfd",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1076045911
+    },
+    "candidate": {
+      "Ir": 1068832661
+    },
+    "component": "ir-block-2",
+    "cycle": 1,
+    "cycle_position": 2,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 2,
+    "session": 2,
+    "source_sha256": "022f3cf7a1c2cfe546fa0361cd7ba10adfd95e8764b9ce79bd8423735c1b35ba",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1127011687
+    },
+    "candidate": {
+      "Ir": 1119171875
+    },
+    "component": "ir-block-2",
+    "cycle": 1,
+    "cycle_position": 3,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 3,
+    "session": 2,
+    "source_sha256": "6e8d93d333bece527c3bd3d880e1fb0b93b57ee7ca2ac4621231ff97a4c4bdfd",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1068209273
+    },
+    "candidate": {
+      "Ir": 1060949292
+    },
+    "component": "ir-block-2",
+    "cycle": 2,
+    "cycle_position": 1,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 4,
+    "session": 2,
+    "source_sha256": "022f3cf7a1c2cfe546fa0361cd7ba10adfd95e8764b9ce79bd8423735c1b35ba",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1074451932
+    },
+    "candidate": {
+      "Ir": 1067587498
+    },
+    "component": "ir-block-2",
+    "cycle": 2,
+    "cycle_position": 2,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 5,
+    "session": 2,
+    "source_sha256": "6e8d93d333bece527c3bd3d880e1fb0b93b57ee7ca2ac4621231ff97a4c4bdfd",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1126775955
+    },
+    "candidate": {
+      "Ir": 1118614641
+    },
+    "component": "ir-block-2",
+    "cycle": 2,
+    "cycle_position": 3,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 6,
+    "session": 2,
+    "source_sha256": "022f3cf7a1c2cfe546fa0361cd7ba10adfd95e8764b9ce79bd8423735c1b35ba",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1067556709
+    },
+    "candidate": {
+      "Ir": 1060118190
+    },
+    "component": "ir-block-2",
+    "cycle": 3,
+    "cycle_position": 1,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 7,
+    "session": 2,
+    "source_sha256": "6e8d93d333bece527c3bd3d880e1fb0b93b57ee7ca2ac4621231ff97a4c4bdfd",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1076119893
+    },
+    "candidate": {
+      "Ir": 1066823176
+    },
+    "component": "ir-block-2",
+    "cycle": 3,
+    "cycle_position": 2,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "candidate",
+      "base"
+    ],
+    "pair": 8,
+    "session": 2,
+    "source_sha256": "022f3cf7a1c2cfe546fa0361cd7ba10adfd95e8764b9ce79bd8423735c1b35ba",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1127151693
+    },
+    "candidate": {
+      "Ir": 1116871764
+    },
+    "component": "ir-block-2",
+    "cycle": 3,
+    "cycle_position": 3,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 9,
+    "session": 2,
+    "source_sha256": "6e8d93d333bece527c3bd3d880e1fb0b93b57ee7ca2ac4621231ff97a4c4bdfd",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1067606887
+    },
+    "candidate": {
+      "Ir": 1060361410
+    },
+    "component": "ir-block-2",
+    "cycle": 4,
+    "cycle_position": 1,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 10,
+    "session": 2,
+    "source_sha256": "022f3cf7a1c2cfe546fa0361cd7ba10adfd95e8764b9ce79bd8423735c1b35ba",
+    "source_variant": "before"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1074668514
+    },
+    "candidate": {
+      "Ir": 1067630517
+    },
+    "component": "ir-block-2",
+    "cycle": 4,
+    "cycle_position": 2,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 11,
+    "session": 2,
+    "source_sha256": "6e8d93d333bece527c3bd3d880e1fb0b93b57ee7ca2ac4621231ff97a4c4bdfd",
+    "source_variant": "after"
+  },
+  {
+    "all_rows_retained": true,
+    "base": {
+      "Ir": 1124892195
+    },
+    "candidate": {
+      "Ir": 1117527135
+    },
+    "component": "ir-block-2",
+    "cycle": 4,
+    "cycle_position": 3,
+    "flags": [],
+    "mode": "check",
+    "observed_compaction_claim": false,
+    "order": [
+      "base",
+      "candidate"
+    ],
+    "pair": 12,
+    "session": 2,
+    "source_sha256": "022f3cf7a1c2cfe546fa0361cd7ba10adfd95e8764b9ce79bd8423735c1b35ba",
+    "source_variant": "before"
+  }
+]

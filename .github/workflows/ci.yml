@@ -205,6 +205,21 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 compiler/rustc_span --test-args hygiene::tests
 
+      - name: Run sharded interner growth test
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1 compiler/rustc_data_structures
+          --test-args sharded::tests::interning_preserves_colliding_canonical_values
+
+      - name: Run interning order and static allocation tests
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1
+          --compiletest-rustc-args=-Zthreads=8
+          tests/ui/cross-crate/trait-object-projection-bounds-with-interning-order.rs
+          tests/ui/consts/static-raw-pointer-interning.rs
+          tests/ui/consts/static-raw-pointer-interning2.rs
+
       - name: Run lint tool prefix unit tests
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
