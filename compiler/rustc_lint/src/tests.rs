@@ -139,7 +139,6 @@ fn lint_tool_prefix_exact_boundaries() {
             "ov",
             "工",
             "工具",
-            "",
         ]);
         let mut store = LintStore::new();
         for name in ["toolbox::old", "nested::inner::old", "over:::old", "工具::old", "::old"] {
@@ -149,9 +148,14 @@ fn lint_tool_prefix_exact_boundaries() {
             assert!(matches!(scoped_lint(&store, &tools, tool, "missing"), MissingTool));
         }
         // Include nested and overlapping separators accepted by the registration API.
-        for tool in ["toolbox", "nested", "nested::inner", "over", "over:", "工具", ""] {
+        for tool in ["toolbox", "nested", "nested::inner", "over", "over:", "工具"] {
             assert!(matches!(scoped_lint(&store, &tools, tool, "missing"), NoLint(_)));
         }
+        // A leading separator is valid in a registered name, but an empty tool identifier is not.
+        assert!(matches!(
+            store.check_lint_name("::old", None, &tools),
+            Removed(reason) if reason == "removed"
+        ));
         assert!(matches!(
             scoped_lint(&store, &tools, "nested", "inner::old"),
             Removed(reason) if reason == "removed"
