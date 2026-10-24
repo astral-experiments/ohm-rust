@@ -1,0 +1,41 @@
+{
+  "baseline_measured_tree": "e8f15a7a03e3dffe2a62ff81daab727cd28162d5",
+  "baseline_to_shipping_difference": "Only the existing CI selector; compiled source blobs are identical.",
+  "build_scope": "Matched optimized SDK12-source developer builds with #218, not released distribution compiler binaries.",
+  "byte_identical_shared_runtime_files": 73,
+  "candidate_patch_sha256": "084a55b76832641e7d9905788e74ccf95e0510547bce876e4376fd3e37a77a4c",
+  "cargo_commit": "fdd26156be98618e2e01a9e02703edac71b79a35",
+  "cargo_sha256": "75eff38f65a16abae0a7b9603fc4fa02c846a0b6cb60a72d08b68393849b914b",
+  "common_embedded_rust_commit": "f93a752e3de7404107ea5908d65c8832aee5625a",
+  "correctness": {
+    "format_scope": "Canonical whole-repo format check reported only 51 pre-existing SDK12 files; neither changed file appeared.",
+    "full_focused_record_sha256": "6d20f0e7bb4e2684544d61abfece851fc8b0148388f801b842500ecb91b21ece",
+    "new_order_revisions": [
+      "direct_first",
+      "transitive_first"
+    ],
+    "per_arm": {
+      "extern_rename_run_make_executions": 1,
+      "failed": 0,
+      "ignored": 0,
+      "privacy_ui_executions": 9
+    }
+  },
+  "driver_sha256": {
+    "baseline": "783a4150d02602620f4eef14844de8df5b945f040515c374e798d75dba2439cc",
+    "candidate": "1e62bd44053ea24d437546aa147fd11fa83cedf9e8168cca45b795ac8d185250"
+  },
+  "measured_candidate_tree": "5fb5081a44fa86a406ce696a94b03dce7a9b9f74",
+  "measured_rust_blobs_sha256": {
+    "compiler/rustc_metadata/src/creader.rs": "294abe0c1a662705397078dbacbfdf0961b0b8bce0d44cffb6180ec7b9b52abf",
+    "tests/ui/privacy/pub-priv-dep/shared_direct_private.rs": "a3601f5d0c88f0f947df867ac5125fd2feb26d7ce92b97549cde01e04a446366"
+  },
+  "published_difference": "Only one CI selector for the two new load-order revisions; both measured Rust/test blobs remain exact.",
+  "published_source_commit": "83dd78b94b407779b669d2f4e6b95f2efea726d3",
+  "published_source_tree": "5628904b977dee390dd085b34bc911c8e9ecb4eb",
+  "recipe": "stage1 compiler plus freshly built matching std; opt3, ThinLTO, CGU1, debug1, no compiler-build incremental/PGO, debug assertions disabled; same physical source/build paths and pinned LLVM 23.1.1.",
+  "runtime_files_per_arm": 74,
+  "shipping_parent_commit": "5323471223339b74413f2d13e300dd191abb73a1",
+  "shipping_parent_tree": "ceb7e58026e94c7a9ece088856f5f4d322195dc8",
+  "uv_commit": "3d82a6ad5a7eab8c68236553b7846517767c4b61"
+}

@@ -1,0 +1,20 @@
+{
+  "blocks": {
+    "confirmation-1": {
+      "completion_sha256": "ee189f74be7f747a6931ff27c0b97c0d0f31ab51508af961eae4d45ab04c728e",
+      "metric_integrity_sha256": "71cca7e8d4144bf9b1c806b2f3822acb8889d592c37edbf3c34a958e00f36724",
+      "raw_gates_sha256": "5ece60d2e249233f28f8c0243c7d12ff6d9a54280e23ace9cde3ca097dcc165b",
+      "summary_sha256": "741c646a1b27b513893840b5b5921ac7fdf78fd82af1063427f5fecba5b2d522"
+    },
+    "confirmation-2": {
+      "completion_sha256": "a3fa142174f51abd29f9a9abe7582b8347ff389eabd60eed9185aac46c12cdbc",
+      "metric_integrity_sha256": "82b8bea8aa9d5a670dd1bb7fdfa537abb1d1dc42f8d9fd0b97d3d757d4544738",
+      "raw_gates_sha256": "d223ad81eab54435720d26ad02a1b8966d840e01026637b7179d06f61f214b46",
+      "summary_sha256": "14f05db7713f80f52e45aec101b6eb6f694d2b395a7eb8fb6e695ef3cd43a21a"
+    }
+  },
+  "correction": "The analyzer initially stopped while creating its output, before reading any evidence, because the private parent directory was absent. Creating that parent required no workload, input, analyzer, count or math change; the stop remains retained privately.",
+  "inputs_sha256": "cb2932c23ba4af604cd03fe4e576ded2ceabad3b4de5393873659f31c6f0a040",
+  "offline_entry_stop_preserved": true,
+  "private_environment_host_transport_and_path_maps_included": false
+}
