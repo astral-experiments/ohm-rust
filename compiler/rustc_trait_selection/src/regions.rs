@@ -120,6 +120,45 @@ pub fn region_known_to_outlive<'tcx>(
     })
 }
 
+pub(crate) struct RegionOutlivesTest<'tcx> {
+    infcx: InferCtxt<'tcx>,
+    outlives_env: OutlivesEnvironment<'tcx>,
+    id: LocalDefId,
+}
+
+impl<'tcx> RegionOutlivesTest<'tcx> {
+    pub(crate) fn new(
+        tcx: TyCtxt<'tcx>,
+        id: LocalDefId,
+        param_env: ty::ParamEnv<'tcx>,
+        wf_tys: &FxIndexSet<Ty<'tcx>>,
+    ) -> Self {
+        let infcx = tcx.infer_ctxt().build(TypingMode::non_body_analysis());
+        let outlives_env = OutlivesEnvironment::new(&infcx, id, param_env, wf_tys.iter().copied());
+        Self { infcx, outlives_env, id }
+    }
+
+    pub(crate) fn known_to_outlive(
+        &self,
+        region_a: ty::Region<'tcx>,
+        region_b: ty::Region<'tcx>,
+    ) -> bool {
+        // Keep any variables and constraints introduced by implied-bound normalization,
+        // but never solve or add a tested inequality to the shared preparation.
+        let infcx = self.infcx.fork();
+        infcx.sub_regions(
+            SubregionOrigin::RelateRegionParamBound(DUMMY_SP, None),
+            region_b,
+            region_a,
+            ty::VisibleForLeakCheck::Unreachable,
+        );
+        let errors = infcx
+            .resolve_regions_with_outlives_env(&self.outlives_env, infcx.tcx.def_span(self.id));
+        tracing::debug!(?errors, "errors");
+        errors.is_empty()
+    }
+}
+
 /// Given a known `param_env` and a set of well formed types, set up an
 /// `InferCtxt`, call the passed function (to e.g. set up region constraints
 /// to be tested), then resolve region and return errors
