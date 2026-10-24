@@ -1,0 +1,85 @@
+{
+  "all_eight_admissions_independently_recomputed_before_effects": true,
+  "all_original_sample_and_whole_block_gates_unchanged": true,
+  "fresh_host_incomplete_predecessor": {
+    "excluded": true,
+    "instruction_counts_unread": true,
+    "reason": "Unchanged competing-process guard during recurring host reconciliation; historical PID-to-unit membership was not proven. A later invocation directly exhibited the same process roles.",
+    "saved_observations": 1
+  },
+  "minimum_remaining_seconds": 120,
+  "original_collector_sha256": "98e0f3fc06a9cfa3ee717304f20176a7c0b735dfcaecfe0b2b00b1542eec4183",
+  "placement": "Before unchanged entry guard/first pair and between complete restored pairs only; never between the two arms of a pair.",
+  "poll_seconds": 5,
+  "prospective_decision_sha256": "d1c64c87c43cabbecebb8b19085dcabcb3dc57abd488a5c8e5f2138f28a93d09",
+  "raw_host_process_environment_and_transport_records_included": false,
+  "second_fresh_host_incomplete_predecessor": {
+    "excluded": true,
+    "instruction_counts_unread": true,
+    "reason": "The old display-text timer parser stopped between complete pairs when NEXT was temporarily unavailable. The exact offending display string was not retained. The successor was witnessed through a real complete maintenance transition before sampling.",
+    "saved_observations": 2
+  },
+  "services_count": 3,
+  "structured_timer_correction": {
+    "final_minimum_remaining_seconds": 296.435381004,
+    "observations": 7,
+    "previous_window_decision_sha256": "fdad14f93a11246aeb0692d0bc984b3e22f3ce58cfe82e2ddeb11e3ebf72a876",
+    "rehearsal_report_sha256": "6ffca0f28b7b9e5b42154285abf8ec7dae9cbc78cbe5a6631a7283c30f8c090b",
+    "rehearsal_workload_executed": false,
+    "rule": "Typed uint64 realtime/monotonic deadlines; 0 and UINT64_MAX mean unavailable. A missing deadline waits outside pairs and is never admitted. Service states are read after deadlines. Identity/type/service failures still fail closed.",
+    "unavailable_deadline_refusals": 6
+  },
+  "successor_collector_sha256": "f75c9c941dc4ffe937a72d4d1947cc40046bcb12503104654cc7bd33aa7bbc9a",
+  "timer_helper_sha256": "ae6460d1851f99170211466e5908f8f9c5b67191f91d76bded2cd4db89661e57",
+  "windows": {
+    "entry.pair-window.jsonl": {
+      "final_ready": true,
+      "minimum_remaining_seconds": 285.305390845,
+      "observations": 1,
+      "sha256": "896e3434ae225c57e6c532d85d038979e64c3c35bbfb87982755fb17d88aa80d"
+    },
+    "pair-1.pair-window.jsonl": {
+      "final_ready": true,
+      "minimum_remaining_seconds": 212.084483471,
+      "observations": 1,
+      "sha256": "6a0d5bfe9268e866b6cdb74220067166b7db749247fc29ddb9859980d17b88ea"
+    },
+    "pair-2.pair-window.jsonl": {
+      "final_ready": true,
+      "minimum_remaining_seconds": 133.460985501,
+      "observations": 1,
+      "sha256": "a20185699811a0cbc38079d83bf97d935a840faaf1f8cafceaf8c809cd28469e"
+    },
+    "pair-3.pair-window.jsonl": {
+      "final_ready": true,
+      "minimum_remaining_seconds": 320.102900061,
+      "observations": 18,
+      "sha256": "46cc9b93a4fec1569bb39ce3aa80f6c1fce568d334d13c8e5a96e1e526c3b01a"
+    },
+    "pair-4.pair-window.jsonl": {
+      "final_ready": true,
+      "minimum_remaining_seconds": 247.389187567,
+      "observations": 1,
+      "sha256": "2e8f036de7f8737d82bfc916770411464b4ce57d94d7ea3488de95cd9e3734aa"
+    },
+    "pair-5.pair-window.jsonl": {
+      "final_ready": true,
+      "minimum_remaining_seconds": 167.895013308,
+      "observations": 1,
+      "sha256": "b5c6eea04c7633b7e215f07b38a0561ec1df20004a8bb8d3758592a15546d31b"
+    },
+    "pair-6.pair-window.jsonl": {
+      "final_ready": true,
+      "minimum_remaining_seconds": 302.34683809,
+      "observations": 23,
+      "sha256": "23c67956edffb3e74797b335f7fb590d904bc9853a00e7ded780d31aa97dd65c"
+    },
+    "pair-7.pair-window.jsonl": {
+      "final_ready": true,
+      "minimum_remaining_seconds": 229.120430032,
+      "observations": 1,
+      "sha256": "66c63fd87f5585cd5168315eb26da6cf2fccb3d1bf659543ec56a6fcb4cc9846"
+    }
+  },
+  "zero_command_startup_stop": "An absent log-parent directory was repaired separately before any cohort command; all original records remain preserved."
+}

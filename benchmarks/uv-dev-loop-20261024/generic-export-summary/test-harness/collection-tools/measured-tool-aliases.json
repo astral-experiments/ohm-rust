@@ -1,0 +1,8 @@
+{
+  "aliases": {
+    "valgrind/usr/share/doc/libc6-dbg/changelog.Debian.gz": "../libc6/changelog.Debian.gz",
+    "valgrind/usr/share/man/man1/valgrind.bin.1.gz": "valgrind.1.gz"
+  },
+  "relative_to": "profiling-tools",
+  "schema": 1
+}

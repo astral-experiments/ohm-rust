@@ -1,0 +1,34 @@
+{
+  "baseline": {
+    "edges": {
+      "crate_info_to_exported_generic_symbols": {
+        "calls": 480,
+        "inclusive_ir": 995103266
+      },
+      "extern_provider_exported_generic_symbols": {
+        "calls": 479,
+        "inclusive_ir": 698638144
+      }
+    },
+    "final_ir": 1983930657,
+    "profile_sha256": "de3310d3161c950a32081f232405dc40407da8f0cdcf8fd409da8f292d17079f"
+  },
+  "candidate": {
+    "edges": {
+      "crate_info_to_exported_generic_symbols": {
+        "calls": 1,
+        "inclusive_ir": 124286
+      },
+      "crate_info_to_has_generic_symbols_for_c_linker": {
+        "calls": 479,
+        "inclusive_ir": 685946
+      },
+      "extern_provider_has_generic_symbols_for_c_linker": {
+        "calls": 479,
+        "inclusive_ir": 63707
+      }
+    },
+    "final_ir": 962185951,
+    "profile_sha256": "80d47fad9ae9b0c5933fb8fa2ce5f026dccd4f24fc62026e58bb69d4d2317250"
+  }
+}

@@ -1,0 +1,287 @@
+diff --git a/compiler/rustc_codegen_ssa/src/back/linker.rs b/compiler/rustc_codegen_ssa/src/back/linker.rs
+index 18b077a2c..a4aefc2a0 100644
+--- a/compiler/rustc_codegen_ssa/src/back/linker.rs
++++ b/compiler/rustc_codegen_ssa/src/back/linker.rs
+@@ -1621,6 +1621,7 @@ fn for_each_exported_symbols_include_dep<'tcx>(
+ ) {
+     let formats = tcx.dependency_formats(());
+     let deps = &formats[&crate_type];
++    let export_threshold = symbol_export::crates_export_threshold(&[crate_type]);
+ 
+     for (cnum, dep_format) in deps.iter_enumerated() {
+         // For each dependency that we are linking to statically ...
+@@ -1628,8 +1629,13 @@ fn for_each_exported_symbols_include_dep<'tcx>(
+             for &(symbol, info) in tcx.exported_non_generic_symbols(cnum).iter() {
+                 callback(symbol, info, cnum);
+             }
+-            for &(symbol, info) in tcx.exported_generic_symbols(cnum).iter() {
+-                callback(symbol, info, cnum);
++            if export_threshold == SymbolExportLevel::Rust
++                || cnum == LOCAL_CRATE
++                || tcx.has_generic_symbols_for_c_linker(cnum)
++            {
++                for &(symbol, info) in tcx.exported_generic_symbols(cnum).iter() {
++                    callback(symbol, info, cnum);
++                }
+             }
+         }
+     }
+@@ -1777,8 +1783,7 @@ pub(crate) fn linked_symbols(
+     let export_threshold = symbol_export::crates_export_threshold(&[crate_type]);
+     for_each_exported_symbols_include_dep(tcx, crate_type, |symbol, info, cnum| {
+         if info.level.is_below_threshold(export_threshold) && !tcx.is_compiler_builtins(cnum)
+-            || info.used
+-            || info.rustc_std_internal_symbol
++            || info.requires_linker_retention()
+         {
+             symbols.push((
+                 symbol_export::linking_symbol_name_for_instance_in_crate(
+diff --git a/compiler/rustc_codegen_ssa/src/back/symbol_export.rs b/compiler/rustc_codegen_ssa/src/back/symbol_export.rs
+index 524b9fc6a..6af2626ba 100644
+--- a/compiler/rustc_codegen_ssa/src/back/symbol_export.rs
++++ b/compiler/rustc_codegen_ssa/src/back/symbol_export.rs
+@@ -565,6 +565,12 @@ fn upstream_monomorphizations_provider(
+     instances
+ }
+ 
++fn has_generic_symbols_for_c_linker_provider(tcx: TyCtxt<'_>, _: LocalCrate) -> bool {
++    tcx.exported_generic_symbols(LOCAL_CRATE)
++        .iter()
++        .any(|(_, info)| info.is_relevant_for_c_linker())
++}
++
+ fn upstream_monomorphizations_for_provider(
+     tcx: TyCtxt<'_>,
+     def_id: DefId,
+@@ -598,6 +604,7 @@ pub(crate) fn provide(providers: &mut Providers) {
+     providers.queries.is_reachable_non_generic = is_reachable_non_generic_provider_local;
+     providers.queries.exported_non_generic_symbols = exported_non_generic_symbols_provider_local;
+     providers.queries.exported_generic_symbols = exported_generic_symbols_provider_local;
++    providers.queries.has_generic_symbols_for_c_linker = has_generic_symbols_for_c_linker_provider;
+     providers.queries.upstream_monomorphizations = upstream_monomorphizations_provider;
+     providers.queries.is_unreachable_local_definition = is_unreachable_local_definition_provider;
+     providers.queries.upstream_drop_glue_for = upstream_drop_glue_for_provider;
+diff --git a/compiler/rustc_metadata/src/rmeta/decoder/cstore_impl.rs b/compiler/rustc_metadata/src/rmeta/decoder/cstore_impl.rs
+index 76c158098..fcb5a9305 100644
+--- a/compiler/rustc_metadata/src/rmeta/decoder/cstore_impl.rs
++++ b/compiler/rustc_metadata/src/rmeta/decoder/cstore_impl.rs
+@@ -504,6 +504,7 @@ fn into_args(self) -> (DefId, SimplifiedType) {
+     }
+     exported_non_generic_symbols => { cdata.exported_non_generic_symbols(tcx) }
+     exported_generic_symbols => { cdata.exported_generic_symbols(tcx) }
++    has_generic_symbols_for_c_linker => { cdata.root.has_generic_symbols_for_c_linker }
+ 
+     crate_extern_paths => { cdata.source().paths().cloned().collect() }
+     expn_that_defined => { cdata.get_expn_that_defined(tcx, def_id.index) }
+diff --git a/compiler/rustc_metadata/src/rmeta/encoder.rs b/compiler/rustc_metadata/src/rmeta/encoder.rs
+index 3f607d00e..bf55fa0bf 100644
+--- a/compiler/rustc_metadata/src/rmeta/encoder.rs
++++ b/compiler/rustc_metadata/src/rmeta/encoder.rs
+@@ -1095,6 +1095,9 @@ macro_rules! stat {
+                 ),
+             ));
+ 
++        let has_generic_symbols_for_c_linker =
++            proc_macro_data.is_none() && tcx.has_generic_symbols_for_c_linker(LOCAL_CRATE);
++
+         if M::HASH_PUBLIC_API {
+             for (symbol, info) in tcx.exported_non_generic_symbols(LOCAL_CRATE) {
+                 let def_id = match symbol {
+@@ -1183,6 +1186,7 @@ macro_rules! stat {
+             stable_order_of_exportable_impls,
+             exported_non_generic_symbols,
+             exported_generic_symbols,
++            has_generic_symbols_for_c_linker,
+             interpret_alloc_index,
+             tables,
+             syntax_contexts,
+diff --git a/compiler/rustc_metadata/src/rmeta/encoder/public_api_hasher.rs b/compiler/rustc_metadata/src/rmeta/encoder/public_api_hasher.rs
+index ba0cfb966..a2b032a90 100644
+--- a/compiler/rustc_metadata/src/rmeta/encoder/public_api_hasher.rs
++++ b/compiler/rustc_metadata/src/rmeta/encoder/public_api_hasher.rs
+@@ -567,6 +567,7 @@ pub(crate) struct HashableCrateRoot {
+     // therefore belongs in the public hash even when a private body produced an instance.
+     pub(crate) exported_generic_symbols:
+         Hashed<LazyArray<(ExportedSymbol<'static>, SymbolExportInfo)>>,
++    pub(crate) has_generic_symbols_for_c_linker: bool,
+ 
+     // =========== not needed in the public hash ==============
+     // proc macro, ignored. We use the full crate hash as public hash for proc macros
+@@ -677,6 +678,7 @@ pub(super) fn into_crate_root<'h, 'tcx, M: MetadataEncoder<'tcx>>(
+             stable_order_of_exportable_impls: self.stable_order_of_exportable_impls.value,
+             exported_non_generic_symbols: self.exported_non_generic_symbols.0,
+             exported_generic_symbols: self.exported_generic_symbols.value,
++            has_generic_symbols_for_c_linker: self.has_generic_symbols_for_c_linker,
+ 
+             syntax_contexts: self.syntax_contexts.0,
+             expn_data: self.expn_data.0,
+diff --git a/compiler/rustc_metadata/src/rmeta/mod.rs b/compiler/rustc_metadata/src/rmeta/mod.rs
+index 73596c3dd..090f6e1b7 100644
+--- a/compiler/rustc_metadata/src/rmeta/mod.rs
++++ b/compiler/rustc_metadata/src/rmeta/mod.rs
+@@ -295,6 +295,7 @@ pub(crate) struct CrateRoot {
+     stable_order_of_exportable_impls: LazyArray<(DefIndex, usize)>,
+     exported_non_generic_symbols: LazyArray<(ExportedSymbol<'static>, SymbolExportInfo)>,
+     exported_generic_symbols: LazyArray<(ExportedSymbol<'static>, SymbolExportInfo)>,
++    has_generic_symbols_for_c_linker: bool,
+ 
+     tables: LazyTables,
+ 
+diff --git a/compiler/rustc_middle/src/middle/exported_symbols.rs b/compiler/rustc_middle/src/middle/exported_symbols.rs
+index e23ad3c83..053faa2df 100644
+--- a/compiler/rustc_middle/src/middle/exported_symbols.rs
++++ b/compiler/rustc_middle/src/middle/exported_symbols.rs
+@@ -45,6 +45,17 @@ pub struct SymbolExportInfo {
+     pub rustc_std_internal_symbol: bool,
+ }
+ 
++impl SymbolExportInfo {
++    /// Symbols retained even above the consumer's export threshold.
++    pub fn requires_linker_retention(self) -> bool {
++        self.used || self.rustc_std_internal_symbol
++    }
++
++    pub fn is_relevant_for_c_linker(self) -> bool {
++        self.level.is_below_threshold(SymbolExportLevel::C) || self.requires_linker_retention()
++    }
++}
++
+ #[derive(Eq, PartialEq, Debug, Copy, Clone, TyEncodable, TyDecodable, StableHash)]
+ pub enum ExportedSymbol<'tcx> {
+     NonGeneric(DefId),
+@@ -90,3 +101,29 @@ pub fn metadata_symbol_name(tcx: TyCtxt<'_>) -> String {
+         tcx.stable_crate_id(LOCAL_CRATE),
+     )
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::{SymbolExportInfo, SymbolExportKind, SymbolExportLevel};
++
++    #[test]
++    fn c_linker_generic_summary_keeps_retention_exceptions() {
++        for kind in [SymbolExportKind::Text, SymbolExportKind::Data, SymbolExportKind::Tls] {
++            for (level, used, internal, expected) in [
++                (SymbolExportLevel::Rust, false, false, false),
++                (SymbolExportLevel::Rust, true, false, true),
++                (SymbolExportLevel::Rust, false, true, true),
++                (SymbolExportLevel::Rust, true, true, true),
++                (SymbolExportLevel::C, false, false, true),
++                (SymbolExportLevel::C, true, false, true),
++                (SymbolExportLevel::C, false, true, true),
++                (SymbolExportLevel::C, true, true, true),
++            ] {
++                let info =
++                    SymbolExportInfo { level, kind, used, rustc_std_internal_symbol: internal };
++                assert_eq!(info.is_relevant_for_c_linker(), expected, "{info:?}");
++                assert_eq!(info.requires_linker_retention(), used || internal, "{info:?}");
++            }
++        }
++    }
++}
+diff --git a/compiler/rustc_middle/src/queries.rs b/compiler/rustc_middle/src/queries.rs
+index 68896a30d..6d5430a35 100644
+--- a/compiler/rustc_middle/src/queries.rs
++++ b/compiler/rustc_middle/src/queries.rs
+@@ -2576,6 +2576,11 @@
+         separate_provide_extern
+     }
+ 
++    query has_generic_symbols_for_c_linker(cnum: CrateNum) -> bool {
++        desc { "checking generic symbols needed for C-level linking in crate `{}`", cnum }
++        separate_provide_extern
++    }
++
+     query collect_and_partition_mono_items(_: ()) -> MonoItemPartitions<'tcx> {
+         eval_always
+         desc { "collect_and_partition_mono_items" }
+diff --git a/tests/run-make/c-linker-generic-summary/consumer.rs b/tests/run-make/c-linker-generic-summary/consumer.rs
+new file mode 100644
+index 000000000..cd241e8ec
+--- /dev/null
++++ b/tests/run-make/c-linker-generic-summary/consumer.rs
+@@ -0,0 +1,6 @@
++extern crate producer;
++
++#[unsafe(no_mangle)]
++pub extern "C" fn api() -> u32 {
++    producer::force_instantiations()
++}
+diff --git a/tests/run-make/c-linker-generic-summary/producer.rs b/tests/run-make/c-linker-generic-summary/producer.rs
+new file mode 100644
+index 000000000..73b10b6b7
+--- /dev/null
++++ b/tests/run-make/c-linker-generic-summary/producer.rs
+@@ -0,0 +1,18 @@
++#![feature(rustc_attrs)]
++#![allow(internal_features)]
++
++#[inline(never)]
++pub fn ordinary<T: Copy>(value: T) -> T {
++    value
++}
++
++#[cfg_attr(offload, rustc_offload_kernel)]
++#[inline(never)]
++pub fn offload_candidate<T: Copy>(value: T) -> T {
++    value
++}
++
++#[unsafe(no_mangle)]
++pub extern "C" fn force_instantiations() -> u32 {
++    ordinary(10_u32) + offload_candidate(20_u32)
++}
+diff --git a/tests/run-make/c-linker-generic-summary/rmake.rs b/tests/run-make/c-linker-generic-summary/rmake.rs
+new file mode 100644
+index 000000000..fb46edf40
+--- /dev/null
++++ b/tests/run-make/c-linker-generic-summary/rmake.rs
+@@ -0,0 +1,48 @@
++//@ only-linux
++//@ ignore-cross-compile
++//@ needs-dynamic-linking
++//@ needs-crate-type: dylib
++
++// Ordinary shared generics need no C exports, but offload kernels do. Rust
++// dylibs must re-export both. Reuse incremental directories across transitions
++// in both directions so the producer's changed summary invalidates consumers.
++
++use run_make_support::symbols::exported_dynamic_symbol_names;
++use run_make_support::{dynamic_lib_name, object, rust_lib_name, rustc};
++
++fn main() {
++    for offload in [false, true, false] {
++        let mut producer = rustc();
++        producer
++            .input("producer.rs")
++            .crate_type("rlib")
++            .incremental("producer-incremental")
++            .arg("-Zshare-generics=yes")
++            .arg("-Csymbol-mangling-version=v0");
++        if offload {
++            producer.cfg("offload");
++        }
++        producer.run();
++
++        for (name, crate_type) in [("consumer_c", "cdylib"), ("consumer_rust", "dylib")] {
++            rustc()
++                .input("consumer.rs")
++                .crate_name(name)
++                .crate_type(crate_type)
++                .extern_("producer", rust_lib_name("producer"))
++                .incremental(format!("{name}-incremental"))
++                .arg("-Zshare-generics=yes")
++                .arg("-Csymbol-mangling-version=v0")
++                .run();
++
++            let bytes = std::fs::read(dynamic_lib_name(name)).unwrap();
++            let file = object::File::parse(bytes.as_slice()).unwrap();
++            let exports = exported_dynamic_symbol_names(&file);
++            assert!(exports.iter().any(|name| *name == "api"), "{exports:?}");
++            let ordinary = exports.iter().any(|name| name.contains("ordinary"));
++            let kernel = exports.iter().any(|name| name.contains("offload_candidate"));
++            assert_eq!(ordinary, crate_type == "dylib", "{crate_type}: {exports:?}");
++            assert_eq!(kernel, offload || crate_type == "dylib", "{crate_type}: {exports:?}");
++        }
++    }
++}

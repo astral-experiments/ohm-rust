@@ -1,0 +1,51 @@
+profile = "dist"
+
+[build]
+jobs = 24
+build = "x86_64-unknown-linux-gnu"
+host = ["x86_64-unknown-linux-gnu"]
+target = ["x86_64-unknown-linux-gnu"]
+build-stage = 1
+test-stage = 1
+extended = false
+docs = false
+compiler-docs = false
+submodules = false
+locked-deps = true
+allocator = "jemalloc"
+bootstrap-cache-path = "<BUILD_ROOT>/bootstrap-cache"
+
+[rust]
+channel = "dev"
+omit-git-hash = false
+download-rustc = false
+optimize = 3
+codegen-units = 1
+codegen-units-std = 1
+lto = "thin"
+incremental = false
+debug = false
+debug-assertions = false
+debug-assertions-std = false
+debug-logging = false
+debuginfo-level = 1
+strip = false
+frame-pointers = false
+mimalloc = true
+lld = false
+codegen-backends = ["llvm"]
+
+[llvm]
+download-ci-llvm = false
+optimize = true
+assertions = false
+release-debuginfo = false
+targets = "X86"
+experimental-targets = ""
+link-shared = true
+thin-lto = false
+ninja = true
+[target.x86_64-unknown-linux-gnu]
+llvm-config = "<LLVM_ROOT>/bin/llvm-config"
+llvm-has-rust-patches = true
+llvm-filecheck = "<LLVM_ROOT>/bin/FileCheck"

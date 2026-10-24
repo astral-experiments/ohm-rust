@@ -1,0 +1,57 @@
+{
+  "blocks": {
+    "confirmation-1": {
+      "completion_sha256": "579e4b2096a822dacb235d9f6d029cf756ca78156c3e76c51e7ce81523fde342",
+      "host_role": "original-first-block",
+      "inputs_sha256": "5a94c090dba0f297287fe2f9674ddab704c76d89bdf412adb708f489052ba331",
+      "metric_integrity_sha256": "08419a46f148c80e580bf5f52ed67989ef23b0b80715caaa5a3201985a772f91",
+      "raw_gates_sha256": "b171dd5e12d8e703e290e29647404a34acf618d605834b7b7c2983db2f5e1a3d",
+      "summary_sha256": "9c292f4b61e06a33a26be700196e0a91982a1d2b51bcd6dd3bbf707527888034"
+    },
+    "confirmation-2": {
+      "completion_sha256": "ea75f53d2372012839f6ff4ab90e537032cc18ab75ead3d3aaab2994e1c16dc3",
+      "host_role": "fresh-independent-inverse",
+      "inputs_sha256": "f9d18c025ddcf8c9e6fdcdda68229c6c68019449a35907604df5a460244d7d6c",
+      "metric_integrity_sha256": "e5b42c63f00d8f2865e7c94e7d16e7433372072816a8ae080b65bcd5613952c0",
+      "raw_gates_sha256": "050c18a45ccbee66155987824de85bd904296dd32c3346259c788d28f494ce6c",
+      "summary_sha256": "d8b08bc37a9e0e77d738bfde12f2a804d9227108d6aa3b5fc78febac3c32ca8c"
+    }
+  },
+  "excluded_preparation_stops_preserved": true,
+  "input_packet_sha256_by_block": {
+    "confirmation-1": "5a94c090dba0f297287fe2f9674ddab704c76d89bdf412adb708f489052ba331",
+    "confirmation-2": "f9d18c025ddcf8c9e6fdcdda68229c6c68019449a35907604df5a460244d7d6c"
+  },
+  "preparation_corrections": "An early warm script refused the not-yet-staged second bank before Cargo. An excluded binder initially selected the equal outer workspace ID instead of the observed compiler-context child IDs and stopped before sampling. The successor enumerated every changed argv/environment position and retained the outer ID. Neither correction changed measured workload, statistics or output gates.",
+  "private_environment_host_transport_and_path_maps_included": false,
+  "prospective_cross_host_replication": {
+    "all_six_compiler_calls_matched_per_arm": true,
+    "compiled_uv_state_imported": false,
+    "context_rule": "Only the bound compiler-context path component and dead CARGO_MAKEFLAGS omission; actual contexts remain unchanged.",
+    "decision_sha256": "88f68fdb7c1b448262b2608f8c94977722f59601f54dcf3b759a6af458d657b1",
+    "fresh_source_only_banks": true,
+    "launch_decision_sha256": "54396df3a661f03dceca0aee8698a2ca0c5e660ded1fedb0c8ea9bafb0f21eeb",
+    "ordered_argv_words_all_roles": 8851,
+    "profiling_regular_files_exact": 640,
+    "runtime_files_exact_per_arm": 74,
+    "selected_harness_argv_words": 1584,
+    "separate_reporting_no_pooling": true,
+    "usable_environment_rows": 39
+  },
+  "retired_fixed_host_endpoint": {
+    "all_instruction_counts_unread": true,
+    "all_observations_excluded": true,
+    "both_arms_restored": true,
+    "incomplete_inverse_observations": [
+      5,
+      2
+    ],
+    "no_comparative_analysis": true,
+    "reasons": [
+      "Automatic credential maintenance",
+      "Competing Python process detected by the unchanged guard"
+    ],
+    "state": "interrupted-after-first-valid-block"
+  },
+  "status_notification_repair": "After the valid driver returned 0, its read-only status reader rejected the new attempt suffix. A separate reader added only that literal suffix; the complete manifest, restoration and all timer windows authenticated before effects. No collector or analysis gate changed."
+}

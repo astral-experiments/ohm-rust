@@ -1,0 +1,184 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 64f877c05bfc1ad5df6474d2d8024b3eadf5638e..12f2a2438cb744425908016d88221eb0660796ee 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -219,7 +219,7 @@ jobs:
+         run: >-
+           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+           --set rust.lto=off test --stage 1 compiler/rustc_middle
+-          --test-args 'aliases_preserve_allocation_identity check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges'
++          --test-args 'aliases_preserve_allocation_identity check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges lazy_worker_cache'
+ 
+       - name: Run incremental directory copy tests
+         run: >-
+diff --git a/compiler/rustc_metadata/src/creader.rs b/compiler/rustc_metadata/src/creader.rs
+index 4d081f55b9f1ee784f8ab81155e2dcda05ac9d16..97e902cd9aa77cc4c10b46f91179a1fea7b6b512 100644
+--- a/compiler/rustc_metadata/src/creader.rs
++++ b/compiler/rustc_metadata/src/creader.rs
+@@ -580,6 +580,10 @@ fn existing_match(&self, name: Symbol, public_hash: Option<Svh>) -> Option<Crate
+     /// `private-dep` is none during loading. This is equivalent to the scenario where the
+     /// command parameter is set to `public-dependency`
+     fn is_private_dep(&self, externs: &Externs, name: Symbol, private_dep: Option<bool>) -> bool {
++        if private_dep == Some(false) {
++            return false;
++        }
++
+         let extern_private = externs.get(name.as_str()).map(|e| e.is_private_dep);
+         match (extern_private, private_dep) {
+             // Explicit non-private via `--extern`, explicit non-private from metadata, or
+diff --git a/compiler/rustc_middle/src/ty/context.rs b/compiler/rustc_middle/src/ty/context.rs
+index 74ee29867aeb4a83a17af094d5b325f423f5dbff..dc201998ff716bb9c15a986c33f5c922e6259ed9 100644
+--- a/compiler/rustc_middle/src/ty/context.rs
++++ b/compiler/rustc_middle/src/ty/context.rs
+@@ -5,8 +5,11 @@
+ mod impl_interner;
+ pub mod tls;
+ 
++#[cfg(test)]
++mod tests;
++
+ use std::borrow::{Borrow, Cow};
+-use std::cell::{Cell, RefCell};
++use std::cell::{Cell, OnceCell, RefCell};
+ use std::cmp::Ordering;
+ use std::env::VarError;
+ use std::ffi::OsStr;
+@@ -143,6 +146,29 @@ fn dummy() -> Self {
+ type FnSigInstantiationCacheEntry<'tcx> =
+     (PolyFnSig<'tcx>, GenericArgsRef<'tcx>, ty::Unnormalized<'tcx, PolyFnSig<'tcx>>);
+ 
++// A worker may never use a substitution cache. Keep its fixed set of slots
++// unallocated until the first lookup.
++struct LazyWorkerCache<T, const N: usize> {
++    entries: OnceCell<Box<[Cell<Option<T>>]>>,
++}
++
++impl<T, const N: usize> LazyWorkerCache<T, N> {
++    fn new() -> Self {
++        Self { entries: OnceCell::new() }
++    }
++}
++
++impl<T, const N: usize> std::ops::Index<usize> for LazyWorkerCache<T, N> {
++    type Output = Cell<Option<T>>;
++
++    #[inline]
++    fn index(&self, index: usize) -> &Self::Output {
++        // Collect directly into heap storage instead of constructing a large
++        // temporary array on the stack of the first caller.
++        &self.entries.get_or_init(|| (0..N).map(|_| Cell::new(None)).collect())[index]
++    }
++}
++
+ pub struct CtxtInterners<'tcx> {
+     /// The arena that types, regions, etc. are allocated from.
+     arena: &'tcx WorkerLocal<Arena<'tcx>>,
+@@ -180,12 +206,13 @@ pub struct CtxtInterners<'tcx> {
+     args_cache: WorkerLocal<[Cell<Option<GenericArgsRef<'tcx>>>; INTERNER_CACHE_LEN]>,
+     type_lists_cache: WorkerLocal<[Cell<Option<&'tcx List<Ty<'tcx>>>>; INTERNER_CACHE_LEN]>,
+     predicate_cache: WorkerLocal<[Cell<Option<Predicate<'tcx>>>; INTERNER_CACHE_LEN]>,
+-    supertrait_cache: WorkerLocal<[Cell<Option<SupertraitCacheEntry<'tcx>>>; SUPERTRAIT_CACHE_LEN]>,
++    supertrait_cache:
++        WorkerLocal<LazyWorkerCache<SupertraitCacheEntry<'tcx>, SUPERTRAIT_CACHE_LEN>>,
+     clause_instantiation_cache: WorkerLocal<
+-        [Cell<Option<ClauseInstantiationCacheEntry<'tcx>>>; CLAUSE_INSTANTIATION_CACHE_LEN],
++        LazyWorkerCache<ClauseInstantiationCacheEntry<'tcx>, CLAUSE_INSTANTIATION_CACHE_LEN>,
+     >,
+     fn_sig_instantiation_cache: WorkerLocal<
+-        [Cell<Option<FnSigInstantiationCacheEntry<'tcx>>>; FN_SIG_INSTANTIATION_CACHE_LEN],
++        LazyWorkerCache<FnSigInstantiationCacheEntry<'tcx>, FN_SIG_INSTANTIATION_CACHE_LEN>,
+     >,
+ }
+ 
+@@ -229,15 +256,9 @@ fn new(arena: &'tcx WorkerLocal<Arena<'tcx>>) -> CtxtInterners<'tcx> {
+             args_cache: WorkerLocal::new(|_| [const { Cell::new(None) }; INTERNER_CACHE_LEN]),
+             type_lists_cache: WorkerLocal::new(|_| [const { Cell::new(None) }; INTERNER_CACHE_LEN]),
+             predicate_cache: WorkerLocal::new(|_| [const { Cell::new(None) }; INTERNER_CACHE_LEN]),
+-            supertrait_cache: WorkerLocal::new(|_| {
+-                [const { Cell::new(None) }; SUPERTRAIT_CACHE_LEN]
+-            }),
+-            clause_instantiation_cache: WorkerLocal::new(|_| {
+-                [const { Cell::new(None) }; CLAUSE_INSTANTIATION_CACHE_LEN]
+-            }),
+-            fn_sig_instantiation_cache: WorkerLocal::new(|_| {
+-                [const { Cell::new(None) }; FN_SIG_INSTANTIATION_CACHE_LEN]
+-            }),
++            supertrait_cache: WorkerLocal::new(|_| LazyWorkerCache::new()),
++            clause_instantiation_cache: WorkerLocal::new(|_| LazyWorkerCache::new()),
++            fn_sig_instantiation_cache: WorkerLocal::new(|_| LazyWorkerCache::new()),
+         }
+     }
+ 
+diff --git a/compiler/rustc_middle/src/ty/context/tests.rs b/compiler/rustc_middle/src/ty/context/tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..867e25c45ae9e2f9618073380973d6c1cfb201b2
+--- /dev/null
++++ b/compiler/rustc_middle/src/ty/context/tests.rs
+@@ -0,0 +1,46 @@
++use std::cell::Cell;
++
++use super::{
++    CLAUSE_INSTANTIATION_CACHE_LEN, ClauseInstantiationCacheEntry, FN_SIG_INSTANTIATION_CACHE_LEN,
++    FnSigInstantiationCacheEntry, LazyWorkerCache, SUPERTRAIT_CACHE_LEN, SupertraitCacheEntry,
++};
++
++fn first_use<T: Copy, const N: usize>() {
++    let cache = LazyWorkerCache::<T, N>::new();
++    assert!(cache.entries.get().is_none());
++    assert!(cache[N - 1].get().is_none());
++    let entries = cache.entries.get().unwrap();
++    assert_eq!(entries.len(), N);
++    assert!(entries.iter().all(|entry| entry.get().is_none()));
++    assert!(std::ptr::eq(&cache[0], &entries[0]));
++    assert!(std::ptr::eq(&cache[N - 1], &entries[N - 1]));
++}
++
++#[test]
++fn lazy_worker_caches_initialize_each_family_on_first_use() {
++    first_use::<SupertraitCacheEntry<'static>, SUPERTRAIT_CACHE_LEN>();
++    first_use::<ClauseInstantiationCacheEntry<'static>, CLAUSE_INSTANTIATION_CACHE_LEN>();
++    first_use::<FnSigInstantiationCacheEntry<'static>, FN_SIG_INSTANTIATION_CACHE_LEN>();
++}
++
++#[test]
++fn lazy_worker_cache_preserves_entries_and_colliding_slot_replacement() {
++    // Key matching stays in the unchanged consumers. This checks that repeated
++    // accesses and replacement of one slot retain the same backing cells.
++    let cache = LazyWorkerCache::<(u32, u32, u32), 4>::new();
++    cache[1].set(Some((1, 2, 3)));
++    cache[2].set(Some((4, 5, 6)));
++    let entries = cache.entries.get().unwrap().as_ptr();
++    assert_eq!(cache[1].get(), Some((1, 2, 3)));
++    assert_eq!(cache[1].get(), Some((1, 2, 3)));
++    cache[1].set(Some((7, 8, 9)));
++    assert_eq!(cache[1].get(), Some((7, 8, 9)));
++    assert_eq!(cache[2].get(), Some((4, 5, 6)));
++    assert!(cache[0].get().is_none());
++    assert!(cache[3].get().is_none());
++    assert_eq!(entries, cache.entries.get().unwrap().as_ptr());
++    // Retaining a reference to a slot across other accesses must also be valid.
++    let slot: &Cell<_> = &cache[1];
++    cache[3].set(Some((10, 11, 12)));
++    assert_eq!(slot.get(), Some((7, 8, 9)));
++}
+diff --git a/tests/ui/privacy/pub-priv-dep/shared_direct_private.rs b/tests/ui/privacy/pub-priv-dep/shared_direct_private.rs
+index b329a7acb583413635cc239c8f12f1228f4c5d8f..99097d589f9e56c23264b6f684bf716b36aa1156 100644
+--- a/tests/ui/privacy/pub-priv-dep/shared_direct_private.rs
++++ b/tests/ui/privacy/pub-priv-dep/shared_direct_private.rs
+@@ -1,3 +1,4 @@
++//@ revisions: direct_first transitive_first
+ //@ aux-crate:priv:shared=shared.rs
+ //@ aux-crate:reexport=reexport.rs
+ //@ compile-flags: -Zunstable-options
+@@ -20,8 +21,11 @@
+ #![crate_type = "lib"]
+ #![deny(exported_private_dependencies)]
+ 
++#[cfg(direct_first)]
+ extern crate shared;
+ extern crate reexport;
++#[cfg(transitive_first)]
++extern crate shared;
+ 
+ // FIXME: Should this trigger?
+ //

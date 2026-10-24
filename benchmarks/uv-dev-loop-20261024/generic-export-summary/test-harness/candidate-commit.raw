@@ -1,0 +1,6 @@
+tree 3e01c5f6eb6c6cc05f43320d015b6297440d2da5
+parent 83dd78b94b407779b669d2f4e6b95f2efea726d3
+author Charlie Marsh <crmarsh416@gmail.com> 1792805419 +0000
+committer Charlie Marsh <crmarsh416@gmail.com> 1792805419 +0000
+
+Avoid decoding generic exports unused by C-level linking

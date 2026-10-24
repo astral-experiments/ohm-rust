@@ -1,0 +1,82 @@
+{
+  "backtrace_gitlink": "d902726a1dcdc1e1c66f73d1162181b5423c645b",
+  "host_build_tools": {
+    "ar": {
+      "path": "/usr/bin/ar",
+      "realpath": "/usr/bin/x86_64-linux-gnu-ar",
+      "reverified_sha256": "6452af2eea333b8c65e1adb92964fc8f97863ab003fa13f9d12bff5345cd7dbe",
+      "sha256": "6452af2eea333b8c65e1adb92964fc8f97863ab003fa13f9d12bff5345cd7dbe",
+      "version_first_line": "GNU ar (GNU Binutils for Ubuntu) 2.42"
+    },
+    "c++": {
+      "path": "/usr/bin/c++",
+      "realpath": "/usr/bin/x86_64-linux-gnu-g++-13",
+      "reverified_sha256": "1353e9bdd29a7295c7226bf6c63abccce056d8cac31f112e5cdbecc3f28c2769",
+      "sha256": "1353e9bdd29a7295c7226bf6c63abccce056d8cac31f112e5cdbecc3f28c2769",
+      "version_first_line": "c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0"
+    },
+    "cc": {
+      "path": "/usr/bin/cc",
+      "realpath": "/usr/bin/x86_64-linux-gnu-gcc-13",
+      "reverified_sha256": "1b99826121ae6682a634e5efe09bd3e3df58ce58e0b28f849114ab5b89139c26",
+      "sha256": "1b99826121ae6682a634e5efe09bd3e3df58ce58e0b28f849114ab5b89139c26",
+      "version_first_line": "cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0"
+    },
+    "cmake": {
+      "path": "/usr/bin/cmake",
+      "realpath": "/usr/bin/cmake",
+      "reverified_sha256": "1c5227af4edd22d8d689def545e18ee458260c0fd579eba2187967f38817e638",
+      "sha256": "1c5227af4edd22d8d689def545e18ee458260c0fd579eba2187967f38817e638",
+      "version_first_line": "cmake version 3.28.3"
+    },
+    "git": {
+      "path": "/usr/bin/git",
+      "realpath": "/usr/bin/git",
+      "reverified_sha256": "eb54b535467e0975c1284d4c4d08eea779aeb248a5d34b02e2ee171382e22201",
+      "sha256": "eb54b535467e0975c1284d4c4d08eea779aeb248a5d34b02e2ee171382e22201",
+      "version_first_line": "git version 2.43.0"
+    },
+    "ld": {
+      "path": "/usr/bin/ld",
+      "realpath": "/usr/bin/x86_64-linux-gnu-ld.bfd",
+      "sha256": "e9ceb054c12207970f2726dfc07e9a66b411602748628baf27399f02a9bbb31b",
+      "version_first_line": "GNU ld (GNU Binutils for Ubuntu) 2.42"
+    },
+    "ninja": {
+      "path": "/usr/bin/ninja",
+      "realpath": "/usr/bin/ninja",
+      "reverified_sha256": "5965527e09fe2b3787772aa4f711d6a36b393e7f2fcaa744a7a96c5a4ddf59cb",
+      "sha256": "5965527e09fe2b3787772aa4f711d6a36b393e7f2fcaa744a7a96c5a4ddf59cb",
+      "version_first_line": "1.11.1"
+    },
+    "python3": {
+      "path": "/usr/bin/python3",
+      "realpath": "/usr/bin/python3.12",
+      "reverified_sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f",
+      "sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f",
+      "version_first_line": "Python 3.12.3"
+    },
+    "ranlib": {
+      "path": "/usr/bin/ranlib",
+      "realpath": "/usr/bin/x86_64-linux-gnu-ranlib",
+      "reverified_sha256": "60254978b8ee2c1b21b41d16a18a621dbbcc72e43eb2fa9f916818256c77e9ee",
+      "sha256": "60254978b8ee2c1b21b41d16a18a621dbbcc72e43eb2fa9f916818256c77e9ee",
+      "version_first_line": "GNU ranlib (GNU Binutils for Ubuntu) 2.42"
+    },
+    "taskset": {
+      "path": "/usr/bin/taskset",
+      "realpath": "/usr/bin/taskset",
+      "sha256": "a431738fadddc2e2326c8ab81843e72f4011658379381aef1502a6ddb1c1115b",
+      "version_first_line": "taskset from util-linux 2.39.3"
+    }
+  },
+  "llvm_config_sha256": "71c7898bac0043a93a70cc970b7445f8ba78bba71462676e3930db98c8b5b5d0",
+  "llvm_shared_library_sha256": "e79195cf3d08c82bf0c0edaf8f40aa766bb00c1978a4278c2b753539f5a3a904",
+  "llvm_source_commit": "1b9c0d5ff9bbe7634aead059efe6b11a7eeba145",
+  "llvm_version": "23.1.1-rust-dev",
+  "stage0_archives": {
+    "cargo-1.98.0-x86_64-unknown-linux-gnu.tar.xz": "2f512d170d3dd23e16ababcda32ee2e6d5172d861a7af1f504e0b1e270cafab9",
+    "rust-std-1.98.0-x86_64-unknown-linux-gnu.tar.xz": "f5022e6c95a5ad23cca2513dc8281200f585fa188de6370aa37b128a43f876a3",
+    "rustc-1.98.0-x86_64-unknown-linux-gnu.tar.xz": "0e37cb339f447fc44d6d781073bacacebfdc5612f2600e4c7e84c266f5f3aced"
+  }
+}

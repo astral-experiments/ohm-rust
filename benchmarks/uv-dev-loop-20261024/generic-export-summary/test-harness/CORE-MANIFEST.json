@@ -1,0 +1,121 @@
+{
+  "files": {
+    "BUILD-AND-SAMPLE.md": {
+      "bytes": 13669,
+      "sha256": "bf42211fbf83acf1c670a773aefa27fb0f4773bc27b48fb79e9e73129d46fe0d"
+    },
+    "OUTPUT-COMPARISON.md": {
+      "bytes": 2376,
+      "sha256": "8aebc2259711f1590d9579ffaf8ae33bd9070dc2659edaba6f837817b8b540c7"
+    },
+    "README.md": {
+      "bytes": 7761,
+      "sha256": "5d44c5f21eac4a6813b6343c7833b09b37aeda737adf967a4576ef51aeb8d78e"
+    },
+    "baseline-sdk12.patch": {
+      "bytes": 8593,
+      "sha256": "65f6b9880cf63eae111dcd1bef684eaff75e60c693a11fd0810c2d8d49a3806e"
+    },
+    "bootstrap.matched.toml": {
+      "bytes": 1038,
+      "sha256": "d1dc8c5b0732de328f5e130b86c989da350e142b8100a4058fee903b2e515c95"
+    },
+    "build-inputs.json": {
+      "bytes": 3957,
+      "sha256": "f8f670d493af8f9aa80f785c93c8f4d0a563bcb56812161b918ea4a809686b22"
+    },
+    "candidate-commit.raw": {
+      "bytes": 277,
+      "sha256": "2e8c690bcd415cf2d411fb62deffda6933b267ea50bbb3ed0436502c5cb80621"
+    },
+    "candidate.patch": {
+      "bytes": 12990,
+      "sha256": "473207164872d08ab0891ac3552a6a3abbfce71aea4a17d5f4b8954946b75b8b"
+    },
+    "collection-provenance.json": {
+      "bytes": 3366,
+      "sha256": "a18943d1bf53253bc8e94eee4da84378f20db59b91448adb587e6b4483d57a57"
+    },
+    "collection-tools/README.md": {
+      "bytes": 2619,
+      "sha256": "dad414e1ca4e2f8558b95f99cb1d257094b754188084ffd44c1b1b916abda171"
+    },
+    "collection-tools/measured-tool-aliases.json": {
+      "bytes": 235,
+      "sha256": "fda9d23991d507e3473a71781962964ce692b9e8744a2589ef178b0aa9d70199"
+    },
+    "collection-tools/measured-tool-files.json": {
+      "bytes": 89261,
+      "sha256": "9cf097d4cd3f0cab9f524d7473ed28d4de6433e8e709f274c5f407bac1831100"
+    },
+    "collection-tools/ohm-valgrind-env.c": {
+      "bytes": 832,
+      "sha256": "503c8612d9972ed2ce4ef7b4431e569a8c98d0d5f0d1149dd0fff364513e691b"
+    },
+    "collection-tools/tool-identities.json": {
+      "bytes": 1290,
+      "sha256": "dd5f2f5c7a51c3938ce35ac0b4d381505a284008b54e451748be2975f6802aa4"
+    },
+    "counts.json": {
+      "bytes": 11571,
+      "sha256": "9452ad4328f80f0559714437641b610edca3ff0a033919fb05fccfb9b12a7d2e"
+    },
+    "dirty_fixture.py": {
+      "bytes": 15310,
+      "sha256": "a89570fa6080462a772ebdbc73ab4471e0b968f7c357c23b197409fb12f282ad"
+    },
+    "first-pair-mechanism.json": {
+      "bytes": 904,
+      "sha256": "638af77322063ac40b42a2b0419f1f6221bfe6e9c212e80eb273f725a14559bc"
+    },
+    "maintenance-window-admission.json": {
+      "bytes": 4197,
+      "sha256": "580283c60e768d32264f9823ac95eae88e78295648213a1f1cd74244a2ec306b"
+    },
+    "matched-build-recipe.json": {
+      "bytes": 1402,
+      "sha256": "ab8317c395000fc697dbd12ce8496b26fb4d2d908264f36c14ed91eaacd172c9"
+    },
+    "output-guards.json": {
+      "bytes": 2894,
+      "sha256": "6a1a563027d5706ae03b04279b5ae1a8bb4aa53dff9d0b2fc68e314b7110d48d"
+    },
+    "paired-counts.csv": {
+      "bytes": 719,
+      "sha256": "c5d62f71ef5a0507dc1b2ee953cd7b56bbe545cb588c51271a8aa374620f29c9"
+    },
+    "profiles/PROFILE-MANIFEST.json": {
+      "bytes": 40624,
+      "sha256": "136490e3d61fed8154ad80fb725afbcd54174b603c928f58210bf06cbed45788"
+    },
+    "protocol.json": {
+      "bytes": 5417,
+      "sha256": "a1052925311788256a84d26f46a8fa0386a8fec5cfb91eeefa7a65ef850132a5"
+    },
+    "reproduce.py": {
+      "bytes": 8284,
+      "sha256": "3ed67a8e36d2eb9effd42e6fe20eec93d3b588f8d027283734b8a2ce7db94f79"
+    },
+    "results/confirmation-1.json": {
+      "bytes": 1288,
+      "sha256": "cdf9b98aeb488e2398b22babc68a0a363297eb70035f10d4e8112d855f391f04"
+    },
+    "results/confirmation-2.json": {
+      "bytes": 1288,
+      "sha256": "1741cf1f58f2e1eda3f36f8f7e45f4fb9954f6c8756410cfa4939ea17cfd6320"
+    },
+    "runtime-identities.json": {
+      "bytes": 36639,
+      "sha256": "641437e4acd95f494d292f8ebce070f651ad2ea1b8566d79af2aa4f19d4a973a"
+    },
+    "source-identities.json": {
+      "bytes": 2493,
+      "sha256": "9b9e386f43bd32383e940b7ec5b4c9ee2d4db056f12d88a6f7128d25aa9f4099"
+    },
+    "test-strengthening.patch": {
+      "bytes": 2031,
+      "sha256": "0455eb73be8bbcbd74468c1dce62358926f1e1db30fe4bdd525402eb07ffb875"
+    }
+  },
+  "schema": 1
+}

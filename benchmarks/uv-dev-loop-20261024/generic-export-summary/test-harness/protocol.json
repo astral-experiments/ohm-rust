@@ -1,0 +1,117 @@
+{
+  "actual_source_binding": "source-identities.json records the final source/artifacts bound before any sample; the original prospective null candidate fields above are retained.",
+  "baseline_commit": "83dd78b94b407779b669d2f4e6b95f2efea726d3",
+  "baseline_tree": "5628904b977dee390dd085b34bc911c8e9ecb4eb",
+  "blocks": [
+    {
+      "name": "instruction-1",
+      "order": [
+        "AB",
+        "BA",
+        "BA",
+        "AB",
+        "BA",
+        "AB",
+        "AB",
+        "BA"
+      ],
+      "pairs": 8,
+      "seed": 2026102441
+    },
+    {
+      "name": "instruction-2",
+      "order": [
+        "BA",
+        "AB",
+        "AB",
+        "BA",
+        "AB",
+        "BA",
+        "BA",
+        "AB"
+      ],
+      "pairs": 8,
+      "seed": 2026102442
+    }
+  ],
+  "builds_must_be_terminal_before_measurement": true,
+  "candidate_binding": "Freeze exact source and matching compiler/std artifact manifests before any comparative sample.",
+  "candidate_commit": null,
+  "candidate_tree": null,
+  "cargo_command_tail": [
+    "-Zohm-defaults=yes",
+    "test",
+    "--no-run",
+    "--locked",
+    "--offline",
+    "-j8"
+  ],
+  "controller_cpu": 8,
+  "cross_host_amendment_sha256": "88f68fdb7c1b448262b2608f8c94977722f59601f54dcf3b759a6af458d657b1",
+  "fixed_cargo_sha256": "75eff38f65a16abae0a7b9603fc4fa02c846a0b6cb60a72d08b68393849b914b",
+  "fixed_wild_sha256": "5b2baebf62de0f8c185711b808c3f553da3b7166b1c289420df5276b027f5597",
+  "frozen_at": "2026-10-24T01:21:40.072094+00:00",
+  "host": "Original first block on one Linux x86_64 devbox and an independently authorized inverse on a fresh dedicated devbox; controller CPU8 and workload CPUs0-7 on each.",
+  "maintenance_window_amendment": {
+    "all_original_occupancy_output_metric_statistics_and_whole_block_invalidation_unchanged": true,
+    "applies_to": "Fresh-host inverse only, fixed before any valid inverse effects.",
+    "decision_sha256": "d1c64c87c43cabbecebb8b19085dcabcb3dc57abd488a5c8e5f2138f28a93d09",
+    "historical_accepted_pair_cycle_range_seconds": [
+      86.2,
+      94.8
+    ],
+    "minimum_remaining_seconds": 120,
+    "not_a_guarantee_against_unscheduled_activity": true,
+    "placement": "Before entry/first pair and only between completed, restored pairs thereafter.",
+    "poll_seconds": 5,
+    "services_count": 3,
+    "structured_transition_rehearsal": {
+      "final_ready_minimum_seconds": 296.435381004,
+      "observations": 7,
+      "refused_unavailable": 6,
+      "workload_executed": false
+    },
+    "unavailable_deadlines": "Typed 0/UINT64_MAX deadlines wait outside pairs; never admitted without all three concrete deadlines. Identity/type/service errors fail closed."
+  },
+  "metric": "Final Callgrind Ir for the one original rustc PID including worker threads; --trace-children=no excludes linker child counters. Exact captured argv including real link output remains unchanged.",
+  "original_fixed_host_endpoint_status": "Interrupted after the first valid block; five plus two incomplete inverse observations remain excluded and unread.",
+  "original_protocol_sha256": "7bc1fdd30c268ea4118ee21fbaf97d3652deb5848059acee8b14f6c77dd583e1",
+  "purpose": "Primary instruction qualification for conservative generic-export metadata summary; no candidate observations yet.",
+  "repository": "astral-sh/ohm-rust",
+  "role_selector": {
+    "crate_name": "uv",
+    "emit": "dep-info,link",
+    "required_argument": "--test",
+    "source_argument": "crates/uv/src/lib.rs"
+  },
+  "schema": 1,
+  "secondary": "Separate authentic upstream-edit whole-command endpoint; no result from that endpoint is included here.",
+  "state_controls": [
+    "Same physical source/runtime/target/shared/package-home paths across arms.",
+    "Independent per-compiler std, target, shared and Cargo-home banks; never consume cross-version metadata or incremental state.",
+    "Before admission prove restored check and test-build freshness in both arms and capture exact child argv/env and actual outputs.",
+    "Use existing task-scoped profiler/adapter and paired analysis; freeze only necessary role/path/identity deltas.",
+    "Preserve original strict measured-command host checks and accepted observational post-cleanup terminal boundary.",
+    "Restore original source/runtime and converge original commands at the inherited stage boundary; no new per-sample convergence."
+  ],
+  "statistics": {
+    "bootstrap_resamples": 200000,
+    "confidence": 0.99,
+    "exact_two_sided_sign_test": "Report independently; eight wins yields p=0.0078125.",
+    "independent_pass_per_block": {
+      "all_pairs_improve": true,
+      "minimum_reduction_lower_bound_exclusive": 0.001
+    },
+    "point": "1 - exp(mean(log(candidate/base)))",
+    "pooling": "No pooled qualification gate.",
+    "scale": "paired log(candidate/base)"
+  },
+  "stop_rules": [
+    "Stop the endpoint on its first valid statistical failure; no extra samples or retries of valid failures.",
+    "Collect and restore the full fixed block, authenticate all raw/profile/child/output/context gates before examining comparative effects.",
+    "Retain any invalid/incomplete attempt opaque; no automatic replacement cohort."
+  ],
+  "uv_commit": "3d82a6ad5a7eab8c68236553b7846517767c4b61",
+  "workload": "Existing fixed equal-length uv source comment transition; exact fixture helper and original source hash bind before collection. No uv optimization.",
+  "workload_cpus": "0-7"
+}

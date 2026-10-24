@@ -1,0 +1,44 @@
+{
+  "baseline": {
+    "compiled_tree": "5fb5081a44fa86a406ce696a94b03dce7a9b9f74",
+    "embedded_commit": "f93a752e3de7404107ea5908d65c8832aee5625a",
+    "published_commit": "83dd78b94b407779b669d2f4e6b95f2efea726d3",
+    "published_tree": "5628904b977dee390dd085b34bc911c8e9ecb4eb",
+    "tree_difference": "One publication-only CI selector; compiled Rust/test sources identical. The measured archived runtime is reused, not relabeled as an 83dd build."
+  },
+  "candidate_commit_object_sha256": "2e8c690bcd415cf2d411fb62deffda6933b267ea50bbb3ed0436502c5cb80621",
+  "candidate_embedded_commit": "0a72d98143f01fc7db249147df140d2797d7cf73",
+  "commit": "0a72d98143f01fc7db249147df140d2797d7cf73",
+  "files": [
+    "compiler/rustc_codegen_ssa/src/back/linker.rs",
+    "compiler/rustc_codegen_ssa/src/back/symbol_export.rs",
+    "compiler/rustc_metadata/src/rmeta/decoder/cstore_impl.rs",
+    "compiler/rustc_metadata/src/rmeta/encoder.rs",
+    "compiler/rustc_metadata/src/rmeta/encoder/public_api_hasher.rs",
+    "compiler/rustc_metadata/src/rmeta/mod.rs",
+    "compiler/rustc_middle/src/middle/exported_symbols.rs",
+    "compiler/rustc_middle/src/queries.rs",
+    "tests/run-make/c-linker-generic-summary/consumer.rs",
+    "tests/run-make/c-linker-generic-summary/producer.rs",
+    "tests/run-make/c-linker-generic-summary/rmake.rs"
+  ],
+  "measured_tree_public_commit": "9c32953b532ecac39765320122f6f9f88b3ab4e6",
+  "parent": "83dd78b94b407779b669d2f4e6b95f2efea726d3",
+  "patch_sha256": "473207164872d08ab0891ac3552a6a3abbfce71aea4a17d5f4b8954946b75b8b",
+  "shipping": {
+    "measured_sha": "0a72d98143f01fc7db249147df140d2797d7cf73",
+    "measured_tree": "3e01c5f6eb6c6cc05f43320d015b6297440d2da5",
+    "overlay_files": {
+      ".github/workflows/ci.yml": "99b9467816ce7c69cc386652ed40b803dcfa85ad",
+      "tests/run-make/c-linker-generic-summary/rmake.rs": "886ba458adf338641380f9628ce5c967294f4243"
+    },
+    "publication_parent_sha": "9c32953b532ecac39765320122f6f9f88b3ab4e6",
+    "published_commit": "fee3f3ea18653f68ebd7966ec4702ca2e19e99d8",
+    "runtime_files_identical_to_measured_tree": true,
+    "shipping_tree": "7633cc0119a1cd65a67ac00fc884d846f5aac09e",
+    "source_patch_base_sha": "83dd78b94b407779b669d2f4e6b95f2efea726d3",
+    "test_patch_sha256": "0455eb73be8bbcbd74468c1dce62358926f1e1db30fe4bdd525402eb07ffb875",
+    "test_validation_sha256": "61e90ada534a5720ee4d2c3b9bad7ffe9f5b0fbf0f7534f4697f666913633bc1"
+  },
+  "tree": "3e01c5f6eb6c6cc05f43320d015b6297440d2da5"
+}

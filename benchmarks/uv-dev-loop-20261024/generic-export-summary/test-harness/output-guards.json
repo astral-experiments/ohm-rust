@@ -1,0 +1,103 @@
+{
+  "cross_arm_binary_equivalence_claimed": false,
+  "demangled_test_inventory_count": 82,
+  "demangled_test_inventory_equal": true,
+  "dynamic_dependencies_equal": true,
+  "dynamic_exports_equal": true,
+  "entrypoint_equal": true,
+  "exact_within_arm_elf_outputs_by_host": {
+    "fresh-independent-inverse": {
+      "baseline": [
+        {
+          "bytes": 158706990,
+          "kind": "exact",
+          "mode": 448,
+          "sha256": [
+            "eab220ac211694951898e6a0bb55560453f243fd2fccdb685aa284c55d92819a"
+          ]
+        }
+      ],
+      "candidate": [
+        {
+          "bytes": 158785447,
+          "kind": "exact",
+          "mode": 448,
+          "sha256": [
+            "bbc56577018871c648354af7029d3165ff2ce3451854450ad2436ba19c911653"
+          ]
+        }
+      ]
+    },
+    "original-first-block": {
+      "baseline": [
+        {
+          "bytes": 158706990,
+          "kind": "exact",
+          "mode": 448,
+          "sha256": [
+            "8d1f490c5a10a14909af65c3ac1effe145a5e0fa3c651c7952ba10c63e0c401c"
+          ]
+        }
+      ],
+      "candidate": [
+        {
+          "bytes": 158785447,
+          "kind": "exact",
+          "mode": 448,
+          "sha256": [
+            "be494f070571d41ddfb0eedce32d6afe9664a87d09b3d5031edcadac45ddc4e7"
+          ]
+        }
+      ]
+    }
+  },
+  "hash_union_or_mask_used": false,
+  "native_and_no_counter_adapter_replays_passed": true,
+  "observed_non_equivalences": {
+    "cause_of_count_and_size_deltas_proven": false,
+    "defined_global_weak_symbols": {
+      "baseline": 24701,
+      "candidate": 24845,
+      "net_candidate_delta": 144
+    },
+    "demangled_defined_symbols": {
+      "baseline_only": 240,
+      "candidate_only": 384
+    },
+    "text_bytes": {
+      "baseline": 6060007,
+      "candidate": 6080809,
+      "candidate_delta": 20802
+    }
+  },
+  "same_arm_cross_host_observations": {
+    "baseline": {
+      "changed_allocated_payload_sections": [
+        ".note.gnu.build-id"
+      ],
+      "changed_payload_sections": [
+        ".note.gnu.build-id",
+        ".debug_line"
+      ],
+      "section_sizes_equal": true,
+      "text_payload_equal": true,
+      "whole_hash_equal": false
+    },
+    "candidate": {
+      "changed_allocated_payload_sections": [
+        ".note.gnu.build-id"
+      ],
+      "changed_payload_sections": [
+        ".note.gnu.build-id",
+        ".debug_line"
+      ],
+      "section_sizes_equal": true,
+      "text_payload_equal": true,
+      "whole_hash_equal": false
+    }
+  },
+  "scope": "These full hashes are fixture-specific admission data, not portable expected hashes. Fresh fixtures must establish their own exact outputs before observing effects. No section masks were used.",
+  "selected_role": "uv library test-harness compiler: --test --crate-name uv crates/uv/src/lib.rs; not -Zlink-only",
+  "test_bodies_executed": false,
+  "test_listing_equal": true
+}
