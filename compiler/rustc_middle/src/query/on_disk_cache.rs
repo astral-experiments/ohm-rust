@@ -72,6 +72,7 @@ pub struct OnDiskCache {
     generation_count: usize,
     previous_cache: Option<Box<OnDiskCache>>,
     forwarded_query_values: FxHashMap<SerializedDepNodeIndex, SerializedDepNodeIndex>,
+    query_values_present: Option<GrowableBitSet<SerializedDepNodeIndex>>,
     loaded_query_values: Lock<GrowableBitSet<SerializedDepNodeIndex>>,
     pending_query_values: Lock<Vec<(SerializedDepNodeIndex, SerializedDepNodeIndex)>>,
 
@@ -262,6 +263,34 @@ impl OnDiskCache {
         let alloc_decoding_state =
             Arc::new(AllocDecodingState::new(footer.interpret_alloc_index).with_aliases(aliases));
 
+        // Only the current generation needs the membership and promotion index.
+        let query_values_present = if depth == 0 {
+            let indices = footer
+                .query_values_index
+                .iter()
+                .map(|&(index, _)| index)
+                .chain(footer.forwarded_query_values.iter().map(|&(index, _)| index));
+            let entries =
+                footer.query_values_index.len().saturating_add(footer.forwarded_query_values.len());
+            // Bound the bitmap's domain to 16 bits per serialized entry. Sparse
+            // indices keep using the maps, including for outlying cache indices.
+            indices
+                .clone()
+                .map(|index| index.as_usize())
+                .max()
+                .and_then(|index| index.checked_add(1))
+                .filter(|&domain| domain <= entries.saturating_mul(16))
+                .map(|domain| {
+                    let mut present = GrowableBitSet::with_capacity(domain);
+                    for index in indices {
+                        present.insert(index);
+                    }
+                    present
+                })
+        } else {
+            None
+        };
+
         Ok(Self {
             cache_id,
             serialized_data: RwLock::new(Some(data)),
@@ -270,6 +299,7 @@ impl OnDiskCache {
             generation_count,
             previous_cache,
             forwarded_query_values: footer.forwarded_query_values.into_iter().collect(),
+            query_values_present,
             loaded_query_values: Default::default(),
             pending_query_values: Default::default(),
             file_index_to_stable_id: footer.file_index_to_stable_id,
@@ -293,6 +323,7 @@ impl OnDiskCache {
             generation_count: 0,
             previous_cache: None,
             forwarded_query_values: Default::default(),
+            query_values_present: None,
             loaded_query_values: Default::default(),
             pending_query_values: Default::default(),
             file_index_to_stable_id: Default::default(),
@@ -539,6 +570,9 @@ impl OnDiskCache {
     /// Returns true if there is a disk-cached query return value for the given node.
     #[inline]
     pub fn loadable_from_disk(&self, dep_node_index: SerializedDepNodeIndex) -> bool {
+        if let Some(present) = &self.query_values_present {
+            return present.contains(dep_node_index);
+        }
         self.query_values_index.contains_key(&dep_node_index)
             || self.forwarded_query_values.contains_key(&dep_node_index)
         // with_decoder is infallible, so we can stop here
@@ -546,6 +580,13 @@ impl OnDiskCache {
 
     /// Dependency nodes with saved query values, in previous-graph order.
     pub(crate) fn cached_query_indices(&self) -> Vec<SerializedDepNodeIndex> {
+        if let Some(present) = &self.query_values_present {
+            let mut indices = Vec::with_capacity(
+                self.query_values_index.len() + self.forwarded_query_values.len(),
+            );
+            indices.extend(present.iter());
+            return indices;
+        }
         // Restore the old graph traversal order before promoting query values.
         #[allow(rustc::potential_query_instability)]
         let mut indices: Vec<_> = self

@@ -1,0 +1,136 @@
+{
+  "accepted_source_packet_sha256": {
+    "ir_collector": "7066c5129f2c9847344308431884f41c26ce1abc048e6443ab1ff8017da7e4d5",
+    "ir_producer": "f59da91ac303fd80ae2cde6d3d75bccfe6f54187b78fd8706df65bfe65c022dd",
+    "native_guard_collector": "e29501a558c4346672a52506370e91b7fb8c30dfb1baa4fa485da1e9c19bb2c4",
+    "native_guard_producer": "acece8e1a4b032040e3156889dd5cc40c98965bb72868054c7caaa695f725751"
+  },
+  "all_eight_closure_admission_sha256": "08228a7755344de64a4b537e71e20b79de41aa7a5c3dcbe7691127146258b095",
+  "cargo_C25_sha256": "82e5c7418dc282315141b8d8e2550cc160084b79981ce1140e5fd2aaa3c681ce",
+  "compiler_A_commit": "62b38f1441766251f58d7a6243b4e66f2744107c",
+  "compiler_B_commit": "92181057fa048f4f536c417026ae0fcd5d7ffa09",
+  "compiler_B_parent": "d296901b578fb31727267d7358c4aad266625fc9",
+  "compiler_B_production_patch_sha256": "1de643c2237f89fe92d77b15662064c24eb916acd9b63147a23e978e30b25969",
+  "compiler_B_source_manifest_sha256": "329d9d321f4b3fd3eb4c25762ad510f9afcc5ba283257e461c29304edfae1100",
+  "compiler_B_tree": "ea7f676a5e602bf2203d0b746b4c880286ea18c4",
+  "component_validation_sha256": {
+    "a-build": "97322d877b2f0fb1239ca874433a1cf5ef3cb6972e7f2265106ef4e65568e375",
+    "a-check": "456dcea766f7ea4b0d081d56f5d24db4025440b9955302766ae803d011e718a5",
+    "a-test": "2f22a928f8e2d9bc59e002cd4ac8b302324a5b6909572126fdd8fd20e30deefb",
+    "b-build": "9e3e2a5a16fee45b34c5176aa32519f85f44f5b95e6a92f774ea9ede564511b2",
+    "b-check": "de71f2617d203720c2b4f1b4c931b493707040eec0ae117fcafe9d3079a2f5ea",
+    "b-test": "0053a9af61754ff32b9acc0ef289fdaa861dbe10e412dc0d6205f37a7fb82f8b",
+    "ir-block-1": "ac0cdc3f55547d4ca62a9f51118705de3ba7cee257afb04419b5a3d3c5e07dcd",
+    "ir-block-2": "fb88f648b4de876c4dd4887c06ce939fe6a0d1322fb50acd2201a4e3c5fb10e7"
+  },
+  "current_mutable_source_is_not_a_third_compared_runtime": true,
+  "discovery_excluded_from_inference": true,
+  "donor_public_manifest_sha256": "c52c856eb734db8d14d93e586f318b99c81a43fce8e2dcc3b531910f48e429e1",
+  "donor_public_replay_sha256": "9652aeccc4ea07ae6f2687f8f2139ae470f6db2ec032fe6c4c7c2220b9571446",
+  "execution2_activation_sha256": "c3fb1cb98f01723f9e0086d2c44da8ba672b5482ab4ace3333b40642be72b793",
+  "execution_repair_environment_changed": false,
+  "execution_repair_extra_alpha_allocations": 0,
+  "execution_repair_reason": "Missing staged source-file hash map rejected before workload; fresh execution namespace derives the complete map from the sealed manifest.",
+  "finisher_completion_sha256": "b68662ed526cf167bfd5e595780bf02bf50fb2a9c2ca7eb1153717dee798388e",
+  "frozen_alpha_spend_sha256": "2ee4e48944e95fa84cd3c9d370a6127e716b2468bbb624e7fed33b77aabdd2af",
+  "frozen_plan_sha256": "739b7272579edb95a0ad15bb879330d470f0d5815ea791a77239b1158b13aa80",
+  "informational_lineage_correction_sha256": "d6fe9e863ad68594c1f71cf0efacfec9ddb1256b912c8f4d45bd51a373496011",
+  "llvm_sha256": "43bac9749e539cd5988a4d5452b64582cf07ac9e7c059fde29c7bee76e106c51",
+  "normalization_seed": "ohm-ruff-performance-20261023-v1",
+  "numeric_runtime": {
+    "numpy": "2.3.5",
+    "python": "3.12.13"
+  },
+  "numeric_sha256": "cfb87993aab7d8b08b7059696db9f9859791c596734f657c64e3c624d007d2bc",
+  "observed_compiler_crate_id_sets_matched": 69,
+  "original_failed_attempt_cargo_calls": 0,
+  "original_failed_attempt_profiled_compiler_calls": 0,
+  "original_failed_attempt_qualified": false,
+  "private_pair_file_sha256": {
+    "instruction_observations": "75662787f2d89f5c28879b910770851030cbb0e1302cf70579e940073926aeed",
+    "native_guard_pairs": "97ea67320b47eb1f79b1ffc3b3daa426008a7b092ee4b273f9b4bcd560df20dc",
+    "primary_pairs": "2e933ec7f1994b4cb249d995a99bb572c879db905f4ba0391f27a2271731915b"
+  },
+  "private_route_or_environment_included": false,
+  "publication_action_taken": false,
+  "qualification_closure_sha256": "5b7ca2606c6c58c4c3e51f8064a0d4e5ba906e64776b7a116d847902a533c044",
+  "qualification_harness_cases": 7,
+  "qualification_incremental_cases": 2,
+  "qualification_run_make_cases": 5,
+  "qualification_unit_cases": 0,
+  "raw_profiles_included": false,
+  "real_compiler_versions_and_bytes_distinct": true,
+  "root_execution_amendment_sha256": "8ab06691f88b2a37e59309b8d9926ce25da4905d27b854adacdbf35a4d2c6252",
+  "ruff_commit": "93526150df078af7dd8fc4226cdcc469539d2001",
+  "runtime_descriptor_sha256": {
+    "A": "aa30abc7419b138df8574abc98863a52ed5f9dec2847acd244c627e576d1ebe2",
+    "B": "7d2453c0eb699cce67e2377b3ccae61e3feb37cbd2dce384b3061531a0aeafd5"
+  },
+  "schema": "query-cache-presence-public-provenance-v1",
+  "scope": "Sanitized statistical evidence; not full raw capture or portable native runner",
+  "screen_integrity_audit_sha256": "a63f230e61c1a0a0b1b97b785eb4d4ecc9256c1b6ec854bb57b8851286c3d722",
+  "screen_policy_sha256": "8448a34ed2d849db4ad6ffd592a6f7e6ad7b58ed4d9576d9f67472f88db14e98",
+  "source_analysis_sha256": "c071d7de7a542a1c4f87dbbd70c7f57beed36c3f8b18064a18d81f946bce55b2",
+  "source_analyzer_preparation_sha256": "b01ef1a6903a661a1bad805fb3f4fffcb5f7ae5c949c74fdab1f18eb57e2a38e",
+  "source_analyzer_sha256": "b67bf3e775d4e4efd65b0736c94e6052b7ba442148bbfba42dbb4175cb9950b5",
+  "source_independent_review_sha256": "e2114d0f6bbd5be6ad8298f20b5f9caed1f792661ac42b63fc1f3dabdbdb4938",
+  "source_seed_record_sha256": "d0e4fd8eca68aafc977625a5938f4d093c28ce88e93f355d13df6b7af9bd9b15",
+  "std_stable_crate_ids_matched": 26,
+  "unchanged_function_source_sha256": {
+    "decision": "4b25dd3f88cd1748410aa69bd983ca5b1614b8f85836c6f41d57a36501088fbf",
+    "numeric_report": "1803af3e56801bd0080b3492093a4d2f26ee589dc0ed6d12142bbb1e88c85ab5",
+    "reductions": "9eb80f5d213108297fb4e7beefcdcf8d2d31dacb146dc08013cab4ea72ad2210"
+  },
+  "warm_unit_observations": [
+    {
+      "component": "a-check",
+      "counts": {
+        "A": 373,
+        "B": 373
+      },
+      "status": "observed_units"
+    },
+    {
+      "component": "a-build",
+      "counts": {
+        "A": 261,
+        "B": 261
+      },
+      "status": "observed_units"
+    },
+    {
+      "component": "a-test",
+      "counts": {
+        "A": 31,
+        "B": 31
+      },
+      "status": "observed_units"
+    },
+    {
+      "component": "b-test",
+      "counts": {
+        "A": 0,
+        "B": 0
+      },
+      "status": "no_new_unit_observation"
+    },
+    {
+      "component": "b-build",
+      "counts": {
+        "A": 0,
+        "B": 0
+      },
+      "status": "no_new_unit_observation"
+    },
+    {
+      "component": "b-check",
+      "counts": {
+        "A": 0,
+        "B": 0
+      },
+      "status": "no_new_unit_observation"
+    }
+  ],
+  "wild_sha256": "5b2baebf62de0f8c185711b808c3f553da3b7166b1c289420df5276b027f5597",
+  "zero_call_failure_closure_sha256": "86189898b598bc1ae8944a96ff809064ee996ea394f57f0127ca80259b632023"
+}
