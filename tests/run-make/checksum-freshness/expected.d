@@ -1,3 +1,4 @@
+# ohm-raw-checksum-paths-v1
 lib.d: lib.rs foo.rs binary_file
 
 lib.rs:
