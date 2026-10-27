@@ -170,6 +170,17 @@ pub(super) fn hash_macro_token_spans(
     count: &mut usize,
     hasher: &mut StableHasher,
 ) -> bool {
+    visit_source_macro_spans(tcx, def_id, |span| {
+        hash_definition_span(tcx, def_id.to_def_id(), Some(span), false, count, hasher);
+    })
+}
+
+/// Visits the original, unexpanded tokens of a source-written macro definition.
+pub(super) fn visit_source_macro_spans(
+    tcx: TyCtxt<'_>,
+    def_id: LocalDefId,
+    mut visit: impl FnMut(Span),
+) -> bool {
     if tcx.expn_that_defined(def_id) != rustc_span::ExpnId::root() {
         return false;
     }
@@ -190,7 +201,7 @@ pub(super) fn hash_macro_token_spans(
         {
             return false;
         }
-        hash_definition_span(tcx, def_id.to_def_id(), Some(span), false, count, hasher);
+        visit(span);
         true
     };
     if !hash_span(macro_def.body.dspan.open) || !hash_span(macro_def.body.dspan.close) {

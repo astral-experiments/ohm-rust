@@ -1,4 +1,5 @@
 use std::ops::{Bound, Range};
+use std::sync::atomic::Ordering;
 
 use rustc_ast as ast;
 use rustc_ast::token as tk;
@@ -448,6 +449,12 @@ impl<'a, 'b> Rustc<'a, 'b> {
         &self.ecx.sess
     }
 
+    /// A cached expansion must repeat this observation and restore its dep-info on every run.
+    fn observe_foreign_span(&self) {
+        invalidate_cached_expansion();
+        self.sess().proc_macro_observed_foreign_bytes.store(true, Ordering::Relaxed);
+    }
+
     fn psess(&self) -> &ParseSess {
         self.ecx.psess()
     }
@@ -694,6 +701,21 @@ impl server::Server for Rustc<'_, '_> {
 
     fn span_debug(&mut self, span: Self::Span) -> String {
         invalidate_cached_expansion();
+        let observed = &self.sess().proc_macro_observed_foreign_bytes;
+        // Debug exposes the session's raw hygiene and byte positions. An imported file before
+        // even a local token can move its offset without changing the token's line or column.
+        if !observed.load(Ordering::Relaxed)
+            && (!span.ctxt().is_root()
+                || self
+                    .psess()
+                    .source_map()
+                    .files()
+                    .iter()
+                    .take_while(|file| file.start_pos <= span.hi())
+                    .any(|file| file.is_imported()))
+        {
+            observed.store(true, Ordering::Relaxed);
+        }
         if self.ecx.ecfg.span_debug {
             format!("{span:?}")
         } else {
@@ -740,10 +762,12 @@ impl server::Server for Rustc<'_, '_> {
         invalidate_cached_expansion();
         let source_map = self.psess().source_map();
 
-        let relative_start_pos = source_map.lookup_byte_offset(span.lo()).pos;
-        let relative_end_pos = source_map.lookup_byte_offset(span.hi()).pos;
-
-        Range { start: relative_start_pos.0 as usize, end: relative_end_pos.0 as usize }
+        let start = source_map.lookup_byte_offset(span.lo());
+        let end = source_map.lookup_byte_offset(span.hi());
+        if start.sf.is_imported() || end.sf.is_imported() {
+            self.sess().proc_macro_observed_foreign_bytes.store(true, Ordering::Relaxed);
+        }
+        Range { start: start.pos.0 as usize, end: end.pos.0 as usize }
     }
     fn span_start(&mut self, span: Self::Span) -> Self::Span {
         span.shrink_to_lo()
@@ -773,6 +797,9 @@ impl server::Server for Rustc<'_, '_> {
             return None;
         }
 
+        if self_loc.file.is_imported() {
+            self.observe_foreign_span();
+        }
         Some(first.to(second))
     }
 
@@ -782,6 +809,10 @@ impl server::Server for Rustc<'_, '_> {
         start: Bound<usize>,
         end: Bound<usize>,
     ) -> Option<Self::Span> {
+        if self.psess().source_map().is_imported(span) {
+            // Both success (including a returned token's span) and failure expose its bounds.
+            self.observe_foreign_span();
+        }
         let length = span.hi().to_usize() - span.lo().to_usize();
 
         let start = match start {
@@ -818,7 +849,19 @@ impl server::Server for Rustc<'_, '_> {
 
     fn span_source_text(&mut self, span: Self::Span) -> Option<String> {
         invalidate_cached_expansion();
-        self.psess().source_map().span_to_snippet(span).ok()
+        let sm = self.psess().source_map();
+        let source = sm.lookup_source_file(span.lo());
+        if source.is_imported() {
+            self.observe_foreign_span();
+            if let Some(path) = sm.external_source_path(&source)
+                && let Some(path) = path.to_str()
+            {
+                self.sess().file_depinfo.borrow_mut().insert(Symbol::intern(path));
+            } else {
+                self.sess().untrackable_proc_macro_source.store(true, Ordering::Relaxed);
+            }
+        }
+        sm.span_to_snippet(span).ok()
     }
 
     /// Saves the provided span into the metadata of
