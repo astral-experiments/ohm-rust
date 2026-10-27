@@ -2,8 +2,10 @@
 use run_make_support::{rfs, rustc};
 
 fn main() {
-    if cfg!(unix) {
+    #[cfg(unix)]
+    {
         checksum_uses_the_literal_filename();
+        lossy_extern_paths();
     }
 
     rustc().input("lib.rs").arg("-Zchecksum-hash-algorithm=blake3").emit("dep-info").run();
@@ -61,4 +63,52 @@ fn checksum_uses_the_literal_filename() {
     rfs::copy("blob", actual);
     rfs::write(r"actual\ dir/blob", [0xff, 29]);
     assert_eq!(checksum(Path::new("blob"), true), checksum(actual, true));
+}
+
+#[cfg(unix)]
+fn lossy_extern_paths() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::symlink;
+    use std::path::Path;
+
+    // These two real directories produce the same UTF-8 spelling in the depfile.
+    let invalid = Path::new(OsStr::from_bytes(b"input-\xff"));
+    let valid = Path::new("input-\u{fffd}");
+    for (name, dir) in [("left", invalid), ("right", valid)] {
+        rfs::create_dir(dir);
+        rfs::write("input.rs", "pub const VALUE: u8 = 1;");
+        let lib = run_make_support::rust_lib_name(name);
+        rustc().input("input.rs").crate_name(name).crate_type("rlib").output(&lib).run();
+        let target = dir.join("libsame.rlib");
+        rfs::copy(&lib, &target);
+        rfs::remove_file(&lib);
+        symlink(target, lib).unwrap();
+    }
+    let rendered = std::path::absolute(valid).unwrap().join("libsame.rlib");
+    for (crates, checksum) in
+        [(&["left", "right"][..], false), (&["right", "left"], false), (&["right"], true)]
+    {
+        let mut command = rustc();
+        let mut source = String::new();
+        for name in crates {
+            source += &format!("extern crate {name}; const _: u8 = {name}::VALUE;\n");
+            command.extern_(name, run_make_support::rust_lib_name(name));
+        }
+        rfs::write("read.rs", source);
+        command
+            .input("read.rs")
+            .crate_type("rlib")
+            .arg("-Zbinary-dep-depinfo")
+            .arg("-Zchecksum-hash-algorithm=sha256")
+            .emit("dep-info=read.d,metadata")
+            .run();
+        let dep = rfs::read_to_string("read.d");
+        let rendered = rendered.display().to_string().replace(' ', "\\ ");
+        assert!(dep.lines().any(|line| line == format!("{rendered}:")));
+        assert_eq!(
+            dep.lines().any(|line| line.starts_with("# checksum:") && line.ends_with(&rendered)),
+            checksum
+        );
+    }
 }
