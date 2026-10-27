@@ -150,6 +150,14 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
                         {
                             // Keep every candidate's full header visible to selection and coherence.
                             hasher.digest(header, hcx);
+                            // The destination of `From<Private>` can be obtained independently.
+                            if let Some(SimplifiedType::Adt(outer)) = simplified_ty
+                                && !outer.is_local()
+                            {
+                                ecx.with_record_mode(RecordMode::From(trait_id.into()), |ecx| {
+                                    ecx.record_encoded_index(outer)
+                                });
+                            }
                             ecx.spec_encoder_data.retain_public_hash(self_id.into());
                             self_id
                         } else {
@@ -199,10 +207,11 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
     fn pop_record_mode(&mut self);
 }
 
-/// Check metadata can isolate a private impl when neither an exported macro nor an opaque
-/// interface can make its self type usable downstream.
+/// Isolates private impls when neither a macro nor an opaque interface can expose them.
+/// Native consumers also need exported MIR. Keep their existing graph outside incremental rlibs.
 fn can_isolate_private_trait_impls(tcx: TyCtxt<'_>) -> bool {
-    if tcx.codegen_output_mode(()).0
+    if (tcx.codegen_output_mode(()).0
+        && (tcx.sess.opts.incremental.is_none() || tcx.crate_types() != [CrateType::Rlib]))
         || tcx.sess.opts.unstable_opts.always_encode_mir
         || tcx.sess.opts.actually_rustdoc
     {
@@ -225,18 +234,33 @@ fn can_isolate_private_trait_impls(tcx: TyCtxt<'_>) -> bool {
     })
 }
 
-/// A downstream caller can use the payload of a concrete impl only if it can acquire the
-/// nominal self type. Generic, conditional, auto and specialization candidates stay conservative.
+/// Finds the private nominal type that a downstream caller must acquire to use this impl.
+/// Its full header remains attached to the trait for candidate selection and coherence.
 fn private_trait_impl<'tcx>(
     tcx: TyCtxt<'tcx>,
     id: LocalDefId,
     ty: Option<SimplifiedType>,
 ) -> Option<(DefId, ty::ImplTraitHeader<'tcx>)> {
     let SimplifiedType::Adt(self_id) = ty? else { return None };
-    let local = self_id.as_local()?;
+    let native = tcx.codegen_output_mode(()).0;
     let visibility = tcx.effective_visibilities(());
-    if visibility.is_reachable(local)
-        || visibility.is_reachable(id)
+    let visible = |id| {
+        visibility.is_reachable(id)
+            || (native
+                && visibility.is_public_at_level(id, VisibilityLevel::ReachableThroughImplTrait))
+    };
+    let header = tcx.impl_trait_header(id);
+    let owner = if let Some(self_id) = self_id.as_local() {
+        if visible(id) {
+            return None;
+        }
+        self_id
+    } else if native {
+        private_from_input(tcx, id, header)?
+    } else {
+        return None;
+    };
+    if visible(owner)
         || tcx
             .generics_of(id)
             .own_params
@@ -247,9 +271,54 @@ fn private_trait_impl<'tcx>(
     {
         return None;
     }
-    let header = tcx.impl_trait_header(id);
     (header.polarity == ty::ImplPolarity::Positive && header.constness == hir::Constness::NotConst)
-        .then_some((self_id, header))
+        .then_some((owner.into(), header))
+}
+
+/// Unlike traits with associated types, the sole operation of `From<Private>` consumes
+/// a source value. Keep all other trait arguments and externally inlinable conversions rooted.
+fn private_from_input<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    id: LocalDefId,
+    header: ty::ImplTraitHeader<'tcx>,
+) -> Option<LocalDefId> {
+    let trait_ref = header.trait_ref.instantiate_identity().skip_norm_wip();
+    let from = tcx.lang_items().from_fn()?;
+    if tcx.parent(from) != trait_ref.def_id
+        || tcx.associated_item_def_ids(trait_ref.def_id) != [from]
+        || trait_ref.args.len() != 2
+        || !matches!(trait_ref.self_ty().kind(), ty::Adt(_, args) if args.is_empty())
+    {
+        return None;
+    }
+    let ty::Adt(input, args) = *trait_ref.args.type_at(1).kind() else { return None };
+    let local = input.did().as_local()?;
+    let &[method] = tcx.associated_item_def_ids(id) else { return None };
+    let attrs = tcx.codegen_fn_attrs(method);
+    (args.is_empty()
+        && !tcx.local_visibility(local).is_public()
+        && tcx.def_kind(method) == DefKind::AssocFn
+        && !tcx.cross_crate_inlinable(method.expect_local())
+        && !tcx.is_const_fn(method)
+        && !attrs.contains_extern_indicator()
+        && !attrs.flags.contains(CodegenFnAttrFlags::TRACK_CALLER))
+    .then_some(local)
+}
+
+/// Such a block cannot supply an accessible inherent item. References from exported MIR
+/// still reach exactly the methods it uses and retain their individual metadata hashes.
+fn private_inherent_impl(tcx: TyCtxt<'_>, impl_id: DefId) -> bool {
+    tcx.associated_item_def_ids(impl_id).iter().all(|&id| {
+        let local = id.expect_local();
+        tcx.def_kind(id) == DefKind::AssocFn
+            && !tcx.local_visibility(local).is_public()
+            && !tcx
+                .effective_visibilities(())
+                .is_public_at_level(local, VisibilityLevel::ReachableThroughImplTrait)
+            && !tcx.reachable_set(()).contains(&local)
+            && !tcx.is_const_fn(id)
+            && !tcx.codegen_fn_attrs(id).contains_extern_indicator()
+    })
 }
 
 #[derive(Default)]
@@ -2281,7 +2350,36 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 builder.definition_span_hasher.clone().finish();
         }
 
+        let isolate_native_impls = M::HASH_PUBLIC_API
+            && tcx.codegen_output_mode(()).0
+            && can_isolate_private_trait_impls(tcx);
         for (def_id, impls) in &tcx.crate_inherent_impls(()).0.inherent_impls {
+            let adt = def_id.to_def_id();
+            if isolate_native_impls
+                && !tcx.local_visibility(adt.expect_local()).is_public()
+                && !tcx.effective_visibilities(()).is_public_at_level(
+                    adt.expect_local(),
+                    VisibilityLevel::ReachableThroughImplTrait,
+                )
+            {
+                let mut hasher = self.tables.inherent_impls.iter_hasher();
+                let lazy = self.lazy_array_with(
+                    hasher.inspect_digest(impls.iter(), hcx),
+                    |this, &impl_id| {
+                        // The table and its ordered list hash include every impl independently of
+                        // which payload edges a native consumer can observe.
+                        let mode = if private_inherent_impl(tcx, impl_id) {
+                            this.spec_encoder_data.retain_public_hash(impl_id.into());
+                            RecordMode::None
+                        } else {
+                            RecordMode::From(adt.into())
+                        };
+                        this.with_record_mode(mode, |ecx| impl_id.index.encode(ecx));
+                    },
+                );
+                self.tables.inherent_impls.set_hashed(adt.index, lazy, (adt, hasher.finish()), hcx);
+                continue;
+            }
             record_defaulted_array!(self.tables.inherent_impls[def_id.to_def_id()] <- impls.iter(), hcx, |def_id| {
                 assert!(def_id.is_local());
                 def_id.index
