@@ -591,12 +591,11 @@ fn list_metadata(sess: &Session, metadata_loader: &dyn MetadataLoader) {
         Input::File(ref path) => {
             let mut v = Vec::new();
             if let Err(error) = locator::list_file_metadata(
-                &sess.target,
+                sess,
                 path,
                 metadata_loader,
                 &mut v,
                 &sess.opts.unstable_opts.ls,
-                sess.cfg_version,
             ) {
                 if path.extension().is_some_and(|extension| extension == "rs") {
                     let mut err = sess

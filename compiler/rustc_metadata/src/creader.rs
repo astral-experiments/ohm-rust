@@ -69,8 +69,8 @@ pub struct CStore {
     /// This crate has a `#[alloc_error_handler]` item.
     has_alloc_error_handler: bool,
 
-    /// Loaded crates indexed by their name and public API hash.
-    crate_nums_by_public_hash: UnordMap<(Symbol, Svh), CrateNum>,
+    /// Loaded crates indexed by name and either their public or full dependency hash.
+    crate_nums_by_hash: UnordMap<(Symbol, Svh), CrateNum>,
 
     /// Names that were used to load the crates via `extern crate` or paths.
     resolved_externs: UnordMap<Symbol, CrateNum>,
@@ -244,10 +244,16 @@ impl CStore {
         // Crate numbers are reserved before recursively loading dependencies, so
         // metadata registration can finish out of order. Preserve the first
         // ascending crate-number match used by the original linear scan.
-        self.crate_nums_by_public_hash
-            .entry((data.name(), data.public_hash()))
-            .and_modify(|existing| *existing = cmp::min(*existing, cnum))
-            .or_insert(cnum);
+        let mut register_hash = |hash| {
+            self.crate_nums_by_hash
+                .entry((data.name(), hash))
+                .and_modify(|existing| *existing = cmp::min(*existing, cnum))
+                .or_insert(cnum);
+        };
+        register_hash(data.public_hash());
+        if data.private_hash() != data.public_hash() {
+            register_hash(data.private_hash());
+        }
         self.metas[cnum] = Some(Box::new(data));
     }
 
@@ -557,7 +563,7 @@ impl CStore {
             alloc_error_handler_kind: None,
             has_global_allocator: false,
             has_alloc_error_handler: false,
-            crate_nums_by_public_hash: UnordMap::default(),
+            crate_nums_by_hash: UnordMap::default(),
             resolved_externs: UnordMap::default(),
             unused_externs: Vec::new(),
             used_extern_options: Default::default(),
@@ -565,8 +571,8 @@ impl CStore {
         }
     }
 
-    fn existing_match(&self, name: Symbol, public_hash: Option<Svh>) -> Option<CrateNum> {
-        self.crate_nums_by_public_hash.get(&(name, public_hash?)).copied()
+    fn existing_match(&self, name: Symbol, hash: Option<Svh>) -> Option<CrateNum> {
+        self.crate_nums_by_hash.get(&(name, hash?)).copied()
     }
 
     /// Determine whether a dependency should be considered private.
@@ -896,8 +902,10 @@ impl CStore {
         let root = library.metadata.get_root();
         let mut result = LoadResult::Loaded(library);
         for (cnum, data) in self.iter_crate_data() {
-            if data.name() == root.name() && root.public_hash() == data.public_hash() {
-                assert!(root.private_hash() == data.private_hash());
+            if data.name() == root.name()
+                && root.public_hash() == data.public_hash()
+                && root.private_hash() == data.private_hash()
+            {
                 assert!(locator.hash.is_none());
                 info!("load success, going to previous cnum: {}", cnum);
                 result = LoadResult::Previous(cnum);
@@ -956,6 +964,10 @@ impl CStore {
                     dep: &dep,
                 },
             )?;
+            if metadata.legacy_sysroot && !self.get_crate_data(cnum).is_legacy_sysroot() {
+                // A legacy SDK library may only bind to a member of that same installed SDK.
+                return Err(CrateError::NotFound(dep.name));
+            }
             crate_num_map.push(cnum);
         }
 
