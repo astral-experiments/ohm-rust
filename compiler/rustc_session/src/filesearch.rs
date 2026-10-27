@@ -2,12 +2,28 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::{env, fs, iter};
+use std::{env, fs, io, iter};
 
 use rustc_fs_util::try_canonicalize;
 use rustc_target::spec::Target;
 
 use crate::search_paths::{PathKind, SearchPath};
+
+/// Opens a dependency for hashing without blocking on a Unix FIFO.
+pub fn open_regular_file(path: &Path) -> io::Result<fs::File> {
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY);
+    }
+    let file = options.open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "expected a regular file"));
+    }
+    Ok(file)
+}
 
 pub struct FileSearch {
     cli_search_paths: Vec<SearchPath>,
