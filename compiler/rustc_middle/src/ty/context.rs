@@ -3143,9 +3143,8 @@ pub fn provide(providers: &mut Providers) {
             || file.external_src.get().is_some_and(|source| source.get_source().is_some());
         available.then_some(file.src_hash)
     };
-    providers.metadata_source_file_hash = |tcx, id| {
-        tcx.sess.source_map().source_file_by_stable_id(id).map(|file| file.src_hash)
-    };
+    providers.metadata_source_file_hash =
+        |tcx, id| tcx.sess.source_map().source_file_by_stable_id(id).map(|file| file.src_hash);
     providers.is_panic_runtime = |tcx, LocalCrate| find_attr!(tcx, crate, PanicRuntime);
     providers.is_compiler_builtins = |tcx, LocalCrate| find_attr!(tcx, crate, CompilerBuiltins);
     providers.has_panic_handler = |tcx, LocalCrate| {
