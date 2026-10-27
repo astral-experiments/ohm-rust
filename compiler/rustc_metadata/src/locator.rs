@@ -604,6 +604,7 @@ impl<'a> CrateLocator<'a> {
                 self.metadata_loader,
                 self.cfg_version,
                 Some(self.crate_name),
+                Some(self.filesearch),
             ) {
                 Ok(blob) => {
                     if let Some(h) = self.crate_matches(crate_rejections, &blob, &lib) {
@@ -718,7 +719,7 @@ impl<'a> CrateLocator<'a> {
 
         let hash = header.hashes.public_hash;
         if let Some(expected_hash) = self.hash {
-            if hash != expected_hash {
+            if hash != expected_hash && header.hashes.private_hash != expected_hash {
                 info!("Rejecting via hash: expected {} got {}", expected_hash, hash);
                 crate_rejections
                     .via_hash
@@ -811,6 +812,7 @@ fn get_metadata_section<'p>(
     loader: &dyn MetadataLoader,
     cfg_version: &'static str,
     crate_name: Option<Symbol>,
+    filesearch: Option<&FileSearch>,
 ) -> Result<MetadataBlob, MetadataError<'p>> {
     if !filename.exists() {
         return Err(MetadataError::NotPresent(filename));
@@ -899,13 +901,15 @@ fn get_metadata_section<'p>(
         }
         CrateFlavor::Rmeta => get_rmeta_metadata_section(filename)?,
     };
-    let Ok(blob) = MetadataBlob::new(raw_bytes) else {
+    let Ok(mut blob) = MetadataBlob::new(raw_bytes) else {
         return Err(MetadataError::LoadFailure(format!(
             "corrupt metadata encountered in {}",
             filename.display()
         )));
     };
-    match blob.check_compatibility(cfg_version) {
+    match blob.check_compatibility(cfg_version, || {
+        filesearch.is_some_and(|fs| fs.is_sysroot_library(filename))
+    }) {
         Ok(()) => {
             debug!("metadata blob read okay");
             Ok(blob)
@@ -944,15 +948,22 @@ fn get_rmeta_metadata_section<'a, 'p>(filename: &'p Path) -> Result<OwnedSlice, 
 
 /// A diagnostic function for dumping crate metadata to an output stream.
 pub fn list_file_metadata(
-    target: &Target,
+    sess: &Session,
     path: &Path,
     metadata_loader: &dyn MetadataLoader,
     out: &mut dyn Write,
     ls_kinds: &[String],
-    cfg_version: &'static str,
 ) -> IoResult<()> {
     let flavor = get_flavor_from_path(path);
-    match get_metadata_section(target, flavor, path, metadata_loader, cfg_version, None) {
+    match get_metadata_section(
+        &sess.target,
+        flavor,
+        path,
+        metadata_loader,
+        sess.cfg_version,
+        None,
+        Some(sess.target_filesearch()),
+    ) {
         Ok(metadata) => metadata.list_crate_metadata(out, ls_kinds),
         Err(msg) => Err(IoError::new(IoErrorKind::Other, msg.to_string())),
     }
@@ -981,9 +992,16 @@ pub fn get_proc_macros(
     let host_tuple = TargetTuple::from_tuple(config::host_tuple());
     let (host, _) = Target::search(&host_tuple, Path::new(""), false).unwrap();
 
-    let metadata =
-        get_metadata_section(&host, CrateFlavor::Dylib, path, metadata_loader, cfg_version, None)
-            .map_err(|err| io::Error::other(err.to_string()))?;
+    let metadata = get_metadata_section(
+        &host,
+        CrateFlavor::Dylib,
+        path,
+        metadata_loader,
+        cfg_version,
+        None,
+        None,
+    )
+    .map_err(|err| io::Error::other(err.to_string()))?;
     let stable_crate_id = metadata.get_root().stable_crate_id();
 
     let clients = crate::host_dylib::dlsym_proc_macros(path, stable_crate_id).map_err(|err| {

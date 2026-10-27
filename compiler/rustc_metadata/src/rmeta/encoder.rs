@@ -5,6 +5,7 @@ use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::fs::File;
+use std::hash::Hash;
 use std::io::{Read, Seek, Write};
 use std::num::NonZero;
 use std::ops::Deref;
@@ -434,6 +435,7 @@ pub(super) struct EncodeContext<'a, 'tcx, M: MetadataEncoder<'tcx>> {
     // The order inside the `FxIndexSet` is used as on-disk
     // order of `SourceFiles`, and encoded inside `Span`s.
     required_source_files: Option<FxIndexSet<usize>>,
+    native_line_shapes: Option<FxHashMap<(StableSourceFileId, usize), Fingerprint>>,
     metadata_prefix_manifest: Option<MetadataPrefixManifestBuilder>,
     is_proc_macro: bool,
     hygiene_ctxt: &'a HygieneEncodeContext,
@@ -554,7 +556,15 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> SpanEncoder for EncodeContext<'a, 'tcx,
             self.hygiene_ctxt.schedule_expn_data_for_encoding(expn_id);
         }
         expn_id.krate.encode(self);
-        expn_id.local_id.encode(self);
+        if expn_id.krate != LOCAL_CRATE {
+            // Index zero is reserved for the local root expansion. The old index is a lookup
+            // hint because the owning crate can change its expansion order without changing MIR.
+            0_u32.encode(self);
+            expn_id.local_id.encode(self);
+            expn_id.expn_hash().encode(self);
+        } else {
+            expn_id.local_id.encode(self);
+        }
         self.record_encoded_index(expn_id);
     }
 
@@ -589,7 +599,8 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> SpanEncoder for EncodeContext<'a, 'tcx,
                 v.insert(position);
                 // Data is encoded with a SpanTag prefix (see below).
                 self.with_record_mode(RecordMode::From(span.into()), |this| {
-                    span.data().encode(this)
+                    span.data().encode(this);
+                    this.record_native_metadata_location(span);
                 });
             }
         }
@@ -2067,6 +2078,67 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         );
     }
 
+    /// A foreign span stores a producer-local source table index and relative byte range. Either
+    /// can move while the text inside the span stays the same.
+    fn record_native_metadata_location(&mut self, span: Span) {
+        let Some(line_shapes) = &mut self.native_line_shapes else { return };
+        if span.is_dummy() {
+            return;
+        }
+        let sm = self.tcx.sess.source_map();
+        let file_index = sm.lookup_source_file_idx(span.lo());
+        let files = sm.files();
+        let file = &files[file_index];
+        if !file.contains(span.hi()) {
+            return; // A partial span carries only its syntax context.
+        }
+        let index = if file.is_imported() {
+            let external = file.external_src.read();
+            let ExternalSource::Foreign { metadata_index, .. } = &*external else { unreachable!() };
+            *metadata_index
+        } else {
+            self.required_source_files.as_ref().unwrap().get_index_of(&file_index).unwrap() as u32
+        };
+        let mut hasher = StableHasher::new();
+        file.stable_id.hash(&mut hasher);
+        index.hash(&mut hasher);
+        if file.is_imported()
+            || self.tcx.sess.dwarf_version() >= 5
+            || self.tcx.sess.target.is_like_msvc
+            || self.tcx.sess.opts.unstable_opts.embed_source
+        {
+            // Imported text may be absent. Native debug formats can also embed a whole-file checksum.
+            file.src_hash.hash_bytes().hash(&mut hasher);
+        }
+        for pos in [span.lo(), span.hi()] {
+            let pos = file.relative_position(pos);
+            pos.0.hash(&mut hasher);
+            let line = file.lookup_line(pos);
+            line.hash(&mut hasher);
+            if let Some(line) = line {
+                file.lines()[line].0.hash(&mut hasher);
+                if !file.is_imported() {
+                    let shape = line_shapes.entry((file.stable_id, line)).or_insert_with(|| {
+                        let mut shape = StableHasher::new();
+                        if let Some(text) = file.get_line(line) {
+                            // Ordinary ASCII occupies one byte, character and display column.
+                            // Describe exceptional characters once, even on very long lines.
+                            for (offset, ch) in text.char_indices() {
+                                if !ch.is_ascii() || ch.is_ascii_control() {
+                                    (offset, ch).hash(&mut shape);
+                                }
+                            }
+                        }
+                        shape.finish()
+                    });
+                    shape.hash(&mut hasher);
+                }
+            }
+        }
+        drop(files);
+        self.record_encoded_index(Node::MetadataLocation(hasher.finish()));
+    }
+
     fn encode_diagnostic_span(
         &mut self,
         def_id: DefId,
@@ -2085,7 +2157,13 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             }
         });
 
-        self.with_record_mode(RecordMode::None, |this| this.lazy(span))
+        let encoded = self.with_record_mode(RecordMode::None, |this| this.lazy(span));
+        if self.native_line_shapes.is_some() {
+            self.with_record_mode(RecordMode::From(def_id.into()), |this| {
+                this.record_native_metadata_location(span);
+            });
+        }
+        encoded
     }
 
     fn encode_def_ids<'h>(&mut self, hcx: &mut impl PublicApiHashState<'h>) {
@@ -3545,10 +3623,11 @@ fn try_reuse_metadata_prefix(
     }
     drop(source_files);
 
-    let metadata = MetadataBlob::new(slice_owned(previous_metadata, Deref::deref)).ok()?;
-    metadata.check_compatibility(tcx.sess.cfg_version).ok()?;
+    let mut metadata = MetadataBlob::new(slice_owned(previous_metadata, Deref::deref)).ok()?;
+    metadata.check_compatibility(tcx.sess.cfg_version, || false).ok()?;
+    let version = rustc_version(tcx.sess.cfg_version);
     let mut version_encoder = opaque::mem_encoder::MemEncoder::new();
-    rustc_version(tcx.sess.cfg_version).encode(&mut version_encoder);
+    version.encode(&mut version_encoder);
     if manifest.prefix_position < METADATA_HEADER.len() + 8 + version_encoder.position() {
         return None;
     }
@@ -3781,6 +3860,11 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
         source_file_cache,
         interpret_allocs: Default::default(),
         required_source_files,
+        native_line_shapes: (M::HASH_PUBLIC_API
+            && tcx.sess.opts.incremental.is_some()
+            && tcx.crate_types() == [CrateType::Rlib]
+            && tcx.codegen_output_mode(()).0)
+            .then(FxHashMap::default),
         metadata_prefix_manifest: (M::HASH_PUBLIC_API && tcx.dep_graph.is_fully_enabled())
             .then(|| MetadataPrefixManifestBuilder::new(tcx)),
         is_proc_macro: tcx.crate_types().contains(&CrateType::ProcMacro),
@@ -3954,7 +4038,13 @@ fn crate_deps(tcx: TyCtxt<'_>) -> impl Iterator<Item = (CrateNum, CrateDep, Fing
     tcx.crates(()).iter().map(move |&cnum| {
         let dep = CrateDep {
             name: tcx.crate_name(cnum),
-            hash: tcx.public_api_hash(cnum),
+            // Ordinary metadata encodes raw foreign DefIndices and must bind to the
+            // exact producer. RDR metadata resolves foreign DefIds by DefPathHash.
+            hash: if tcx.sess.opts.unstable_opts.public_api_hash {
+                tcx.public_api_hash(cnum)
+            } else {
+                tcx.crate_hash(cnum)
+            },
             host_hash: tcx.crate_host_hash(cnum),
             kind: tcx.crate_dep_kind(cnum),
             extra_filename: tcx.extra_filename(cnum).clone(),
