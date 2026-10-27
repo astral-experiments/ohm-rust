@@ -56,7 +56,7 @@ use tracing::{debug, info, instrument, trace};
 use self::metadata_prefix::{
     MetadataPrefixManifest, MetadataPrefixManifestBuilder, hash_definition_span,
     hash_macro_token_spans, metadata_fingerprint, relocate_metadata_table,
-    source_file_layout_fingerprint,
+    source_file_layout_fingerprint, visit_source_macro_spans,
 };
 use self::public_api_hasher::{
     HashableCrateHeader, HashableCrateRoot, Hashed, NoneIfHashed, PublicApiHasher,
@@ -133,21 +133,23 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
             }
         }
         let tcx = ecx.tcx;
-        let private_impls = Self::HASH_PUBLIC_API && can_isolate_private_trait_impls(tcx);
+        let policy =
+            if Self::HASH_PUBLIC_API { private_impl_policy(tcx) } else { PrivateImpls::None };
         let trait_impls: Vec<_> = trait_impls_map
             .iter()
             .map(|(&trait_id, impls)| TraitImpls {
                 trait_id: (trait_id.krate.as_u32(), Self::encoded_def_index(ecx.tcx, trait_id)),
                 impls: {
-                    let private_impls =
-                        private_impls && !trait_id.is_local() && !tcx.trait_is_auto(trait_id);
+                    let private_impls = policy != PrivateImpls::None
+                        && !trait_id.is_local()
+                        && !tcx.trait_is_auto(trait_id);
                     let mut hasher = PublicApiHasher::default();
                     let array = ecx.lazy_array_with(impls, |ecx, &(id, simplified_ty)| {
                         // Selection can enumerate all candidates, even without a known self type.
                         hasher.digest(&(id, simplified_ty), hcx);
                         let owner = if private_impls
                             && let Some((self_id, header)) =
-                                private_trait_impl(tcx, id, simplified_ty)
+                                private_trait_impl(tcx, id, simplified_ty, policy)
                         {
                             // Keep every candidate's full header visible to selection and coherence.
                             hasher.digest(header, hcx);
@@ -208,31 +210,56 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
     fn pop_record_mode(&mut self);
 }
 
-/// Isolates private impls when neither a macro nor an opaque interface can expose them.
-/// Native consumers also need exported MIR. Keep their existing graph outside incremental rlibs.
-fn can_isolate_private_trait_impls(tcx: TyCtxt<'_>) -> bool {
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PrivateImpls {
+    None,
+    BuiltinDerives,
+    AllEligible,
+}
+
+/// Selects which private implementation payloads can be reached exclusively through their owner.
+fn private_impl_policy(tcx: TyCtxt<'_>) -> PrivateImpls {
     if (tcx.codegen_output_mode(()).0
         && (tcx.sess.opts.incremental.is_none() || tcx.crate_types() != [CrateType::Rlib]))
         || tcx.sess.opts.unstable_opts.always_encode_mir
         || tcx.sess.opts.actually_rustdoc
     {
-        return false;
+        return PrivateImpls::None;
     }
     let items = tcx.hir_crate_items(());
     let visibility = tcx.effective_visibilities(());
-    if items.free_items().any(|id| {
-        matches!(tcx.def_kind(id.owner_id), DefKind::Macro(_))
-            && visibility.public_at_level(id.owner_id.def_id).is_some()
-    }) {
-        return false;
+    let mut exported_macros = false;
+    for item in items.free_items() {
+        let id = item.owner_id.def_id;
+        if matches!(tcx.def_kind(id), DefKind::Macro(_)) && visibility.public_at_level(id).is_some()
+        {
+            // A source-written macro_rules has call-site item privacy. Generated tokens or
+            // definition-site hygiene can reference additional private items.
+            if !tcx.codegen_output_mode(()).0
+                || !tcx.hir_expect_item(id).expect_macro().1.macro_rules
+                || find_attr!(tcx, id, RustcMacroTransparency(..) | AllowInternalUnstable(..))
+                || !visit_source_macro_spans(tcx, id, |_| {})
+            {
+                return PrivateImpls::None;
+            }
+            exported_macros = true;
+        }
     }
     // Privacy marks even a private function's RPIT hidden type as reachable for codegen.
     // With no other opaque interfaces, the ordinary reachability level suffices for checking.
-    items.opaques().all(|id| {
+    if !exported_macros && items.opaques().all(|id| {
         matches!(tcx.hir_node_by_def_id(id).expect_opaque_ty().origin,
             hir::OpaqueTyOrigin::FnReturn { parent, in_trait_or_impl: None }
                 if !visibility.is_public_at_level(parent, VisibilityLevel::ReachableThroughImplTrait))
-    })
+    }) {
+        PrivateImpls::AllEligible
+    } else if tcx.codegen_output_mode(()).0 {
+        // Privacy already marks the underlying types of all defined RPITs, async functions
+        // and TAITs as ReachableThroughImplTrait. Require that stronger per-owner test below.
+        PrivateImpls::BuiltinDerives
+    } else {
+        PrivateImpls::None
+    }
 }
 
 /// Finds the private nominal type that a downstream caller must acquire to use this impl.
@@ -241,8 +268,17 @@ fn private_trait_impl<'tcx>(
     tcx: TyCtxt<'tcx>,
     id: LocalDefId,
     ty: Option<SimplifiedType>,
+    policy: PrivateImpls,
 ) -> Option<(DefId, ty::ImplTraitHeader<'tcx>)> {
     let SimplifiedType::Adt(self_id) = ty? else { return None };
+    if policy == PrivateImpls::BuiltinDerives
+        && !(self_id.is_local()
+            && tcx.def_kind(self_id) == DefKind::Enum
+            && tcx.generics_of(self_id).count() == 0
+            && tcx.is_builtin_derived(id.into()))
+    {
+        return None;
+    }
     let native = tcx.codegen_output_mode(()).0;
     let visibility = tcx.effective_visibilities(());
     let visible = |id| {
@@ -1063,7 +1099,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
 
     fn encode_source_map(
         &mut self,
-    ) -> GraphHashed<LazyTable<u32, Option<LazyValue<rustc_span::SourceFile>>>> {
+    ) -> (GraphHashed<LazyTable<u32, Option<LazyValue<SourceFile>>>>, FxIndexSet<usize>) {
         let source_map_position = self.position();
         if let Some(builder) = &mut self.metadata_prefix_manifest {
             builder.manifest.prefix_position = source_map_position;
@@ -1139,7 +1175,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             }
         }
 
-        adapted.encode(self)
+        (adapted.encode(self), required_source_files)
     }
 
     fn encode_crate_root<'h>(
@@ -1288,7 +1324,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
 
         // Encode source_map. This needs to be done last, because encoding `Span`s tells us which
         // `SourceFiles` we actually need to encode.
-        let source_map = stat!("source-map", || self.encode_source_map());
+        let (source_map, source_files) = stat!("source-map", || self.encode_source_map());
         let target_modifiers = stat!("target-modifiers", || self.encode_target_modifiers(hcx));
         let denied_partial_mitigations = stat!("denied-partial-mitigations", || self
             .encode_enabled_denied_partial_mitigations(hcx));
@@ -1359,6 +1395,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         let hashes = crate_root.header.hashes;
 
         let root = stat!("final", || { self.lazy(crate_root) });
+        track_metadata_source_files(tcx, source_files);
 
         let total_bytes = self.position();
 
@@ -2430,7 +2467,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
 
         let isolate_native_impls = M::HASH_PUBLIC_API
             && tcx.codegen_output_mode(()).0
-            && can_isolate_private_trait_impls(tcx);
+            && private_impl_policy(tcx) == PrivateImpls::AllEligible;
         for (def_id, impls) in &tcx.crate_inherent_impls(()).0.inherent_impls {
             let adt = def_id.to_def_id();
             if isolate_native_impls
@@ -3563,6 +3600,16 @@ fn encode_crate_root<'tcx, 'h, M: MetadataEncoder<'tcx>>(
     });
 }
 
+/// Records the checksums serialized in the source map after the dependencies of the item prefix.
+fn track_metadata_source_files(tcx: TyCtxt<'_>, source_files: FxIndexSet<usize>) {
+    if tcx.dep_graph.is_fully_enabled() {
+        for index in source_files {
+            let id = tcx.sess.source_map().files()[index].stable_id;
+            let _ = tcx.metadata_source_file_hash(id);
+        }
+    }
+}
+
 /// Refreshes the natively encoded metadata suffix while reusing unchanged item bytes.
 fn try_reuse_metadata_prefix(
     tcx: TyCtxt<'_>,
@@ -3590,8 +3637,11 @@ fn try_reuse_metadata_prefix(
     let manifest_path = session_directory
         .join(prefix_work_product.saved_files.get(EncodedMetadata::PREFIX_MANIFEST_EXTENSION)?);
     let changed_dep_node = DepNode::construct(tcx, DepKind::crate_hash, &LOCAL_CRATE);
-    let dependencies =
-        tcx.dep_graph.previous_dependencies_except_red(&metadata_dep_node, &changed_dep_node)?;
+    let dependencies = tcx.dep_graph.previous_dependencies_except_red(
+        &metadata_dep_node,
+        &changed_dep_node,
+        DepKind::metadata_source_file_hash,
+    )?;
     let manifest = MetadataPrefixManifest::load(&manifest_path)?;
     let file = File::open(metadata_path).ok()?;
     // SAFETY: The previous work-product remains immutable; replacement metadata is written to a
@@ -3668,46 +3718,45 @@ fn try_reuse_metadata_prefix(
         .tempfile_in(output_directory)
         .ok()?;
     let prefix_position = manifest.prefix_position;
-    with_encode_metadata_header::<DefPathHashDefIdEncoder<'_>>(
-        tcx,
-        temporary_file.path(),
-        move |ecx| {
-            let preamble = ecx.position();
-            ecx.emit_raw_bytes(&metadata[preamble..prefix_position]);
-            ecx.required_source_files = Some(required_source_files);
-            ecx.metadata_prefix_manifest = Some(MetadataPrefixManifestBuilder {
-                manifest,
-                protected_span_keys: FxIndexSet::default(),
-                definition_span_hasher: StableHasher::new(),
-            });
+    let mut refreshed_source_files = FxIndexSet::default();
+    with_encode_metadata_header::<DefPathHashDefIdEncoder<'_>>(tcx, temporary_file.path(), |ecx| {
+        let preamble = ecx.position();
+        ecx.emit_raw_bytes(&metadata[preamble..prefix_position]);
+        ecx.required_source_files = Some(required_source_files);
+        ecx.metadata_prefix_manifest = Some(MetadataPrefixManifestBuilder {
+            manifest,
+            protected_span_keys: FxIndexSet::default(),
+            definition_span_hasher: StableHasher::new(),
+        });
 
-            previous_root.source_map = ecx.encode_source_map().0;
-            tcx.with_stable_hashing_context(|hcx| {
-                let mut hcx = DefPathHashDefIdEncoder::public_api_hasher(hcx);
-                previous_root.target_modifiers = ecx.encode_target_modifiers(&mut hcx).value;
-                previous_root.denied_partial_mitigations =
-                    ecx.encode_enabled_denied_partial_mitigations(&mut hcx).value;
-            });
-            previous_root.rdr_hashes = Some(ItemPublicHashes {
-                local: relocate_metadata_table(
-                    ecx,
-                    &metadata,
-                    previous_rdr_hashes.local,
-                    local_hashes_range,
-                ),
-                expn: relocate_metadata_table(
-                    ecx,
-                    &metadata,
-                    previous_rdr_hashes.expn,
-                    expn_hashes_range,
-                ),
-                public_global_hash: previous_rdr_hashes.public_global_hash,
-            });
-            previous_root.header.hashes.private_hash = current_private_hash;
-            let root: LazyValue<CrateRoot> = ecx.lazy(previous_root);
-            root.position.get()
-        },
-    );
+        let (source_map, source_files) = ecx.encode_source_map();
+        previous_root.source_map = source_map.0;
+        refreshed_source_files = source_files;
+        tcx.with_stable_hashing_context(|hcx| {
+            let mut hcx = DefPathHashDefIdEncoder::public_api_hasher(hcx);
+            previous_root.target_modifiers = ecx.encode_target_modifiers(&mut hcx).value;
+            previous_root.denied_partial_mitigations =
+                ecx.encode_enabled_denied_partial_mitigations(&mut hcx).value;
+        });
+        previous_root.rdr_hashes = Some(ItemPublicHashes {
+            local: relocate_metadata_table(
+                ecx,
+                &metadata,
+                previous_rdr_hashes.local,
+                local_hashes_range,
+            ),
+            expn: relocate_metadata_table(
+                ecx,
+                &metadata,
+                previous_rdr_hashes.expn,
+                expn_hashes_range,
+            ),
+            public_global_hash: previous_rdr_hashes.public_global_hash,
+        });
+        previous_root.header.hashes.private_hash = current_private_hash;
+        let root: LazyValue<CrateRoot> = ecx.lazy(previous_root);
+        root.position.get()
+    });
     temporary_file.persist(path).ok()?;
 
     // Keep the original dependency closure and ordering, including the current private hash.
@@ -3723,6 +3772,7 @@ fn try_reuse_metadata_prefix(
                     debug_assert_eq!(private_hash, current_private_hash);
                 }
             }
+            track_metadata_source_files(tcx, refreshed_source_files);
         },
         None,
     );

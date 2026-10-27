@@ -1231,6 +1231,12 @@ rustc_queries! {
         desc { "reading source-file contents for {:?}", key }
     }
 
+    /// The checksum written to a crate's metadata, including imported or unavailable sources.
+    query metadata_source_file_hash(key: StableSourceFileId) -> Option<SourceFileHash> {
+        eval_always
+        desc { "reading the metadata source-file checksum for {:?}", key }
+    }
+
     /// Performs lint checking for the module.
     query lint_mod(key: LocalModId) {
         desc { "linting {}", describe_as_module(key, tcx) }

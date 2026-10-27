@@ -1089,30 +1089,26 @@ impl SourceMap {
         self.files().iter().fold(0, |a, f| a + f.count_lines())
     }
 
+    /// The physical source path used when loading an imported file, including reverse remapping.
+    pub fn external_source_path<'a>(&self, source_file: &'a SourceFile) -> Option<Cow<'a, Path>> {
+        let FileName::Real(ref name) = source_file.name else { return None };
+        Some(match name.local_path() {
+            Some(local) => local.into(),
+            None => {
+                // The compiler produces better diagnostics when dependency sources are available.
+                // This reverse remap is safe because add_external_src checks the file content hash.
+                let remapped = name.path(RemapPathScopeComponents::DIAGNOSTICS);
+                self.path_mapping
+                    .reverse_map_prefix_heuristically(remapped)
+                    .map(Cow::from)
+                    .unwrap_or(remapped.into())
+            }
+        })
+    }
+
     pub fn ensure_source_file_source_present(&self, source_file: &SourceFile) -> bool {
         source_file.add_external_src(|| {
-            let FileName::Real(ref name) = source_file.name else {
-                return None;
-            };
-
-            let local_path: Cow<'_, Path> = match name.local_path() {
-                Some(local) => local.into(),
-                None => {
-                    // The compiler produces better error messages if the sources of dependencies
-                    // are available. Attempt to undo any path mapping so we can find remapped
-                    // dependencies.
-                    //
-                    // We can only use the heuristic because `add_external_src` checks the file
-                    // content hash.
-                    let maybe_remapped_path = name.path(RemapPathScopeComponents::DIAGNOSTICS);
-                    self.path_mapping
-                        .reverse_map_prefix_heuristically(maybe_remapped_path)
-                        .map(Cow::from)
-                        .unwrap_or(maybe_remapped_path.into())
-                }
-            };
-
-            self.file_loader.read_file(&local_path).ok()
+            self.file_loader.read_file(&self.external_source_path(source_file)?).ok()
         })
     }
 
