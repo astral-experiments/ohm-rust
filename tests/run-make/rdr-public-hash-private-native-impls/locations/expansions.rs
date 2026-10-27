@@ -4,11 +4,18 @@
 
 pub mod defs {
     macro_rules! first {
-        () => { const _: () = (); };
+        () => {
+            const _: () = ();
+        };
     }
     macro_rules! public {
-        () => { pub struct Public { pub value: u8 } };
+        () => {
+            pub struct Public {
+                pub value: u8,
+            }
+        };
     }
-    #[cfg(all())] first!();
+    #[cfg(all())]
+    first!();
     public!();
 }
