@@ -2,7 +2,7 @@
 #![crate_type = "rlib"]
 
 #[cfg(any())]
-mod extra;
+mod additional;
 pub mod defs;
 
 struct Private;
