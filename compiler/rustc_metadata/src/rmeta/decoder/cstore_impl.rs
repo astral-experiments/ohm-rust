@@ -743,6 +743,11 @@ pub(in crate::rmeta) fn provide(providers: &mut Providers) {
 }
 
 impl CStore {
+    /// Whether any imported crate admits downstream reuse by its public hash.
+    pub fn has_public_api_hash_dependencies(&self) -> bool {
+        self.iter_crate_data().any(|(_, data)| data.root.public_api_hash_opt_enabled)
+    }
+
     pub fn ctor_untracked(&self, tcx: TyCtxt<'_>, def: DefId) -> Option<(CtorKind, DefId)> {
         self.get_crate_data(def.krate).get_ctor(tcx, def.index)
     }
