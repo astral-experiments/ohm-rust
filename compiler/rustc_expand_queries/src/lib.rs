@@ -8,6 +8,7 @@ pub fn setup_callbacks() {
         .swap(&(derive::expand_attribute_macro_cached as _));
     rustc_expand::proc_macro::INVALIDATE_CACHED_EXPANSION
         .swap(&(derive::invalidate_cached_expansion as _));
+    rustc_expand::proc_macro::PROC_MACRO_SOURCE_CODE.swap(&(derive::proc_macro_source_code as _));
     rustc_expand::proc_macro::EXPAND_DERIVE_MACRO_CACHED
         .swap(&(derive::expand_derive_macro_cached as _));
 }
