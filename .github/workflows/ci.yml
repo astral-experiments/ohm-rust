@@ -267,6 +267,7 @@ jobs:
             tests/run-make/test-harness-exact-filter
             tests/run-make/parallel-query-depth-limits
             tests/run-make/incremental-attribute-proc-macro-cache
+            tests/run-make/incremental-proc-macro-native-inputs
             tests/run-make/incremental-proc-macro-parse-source
             tests/run-make/incremental-retained-cache-snapshot
             tests/run-make/incremental-loaded-cache-values
