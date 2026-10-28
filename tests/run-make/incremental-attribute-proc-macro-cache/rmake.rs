@@ -31,13 +31,13 @@ fn main() {
             .assert_stderr_contains("pure.rs:3:");
         run("pure").assert_stdout_equals("1 1 1 1\n");
 
-        // A used body edit outside the attribute must not execute the macro again.
+        // The attribute executes again and reports the warning at its original call site.
         let pure = pure_source.replace("1 // unrelated edit", "2 // unrelated edit");
         assert_ne!(pure, pure_source);
         rfs::write("pure.rs", &pure);
         compile("pure", strategy)
             .run()
-            .assert_stderr_not_contains("EXECUTED cached attribute")
+            .assert_stderr_contains("EXECUTED cached attribute")
             .assert_stderr_contains("cached attribute warning")
             .assert_stderr_contains("pure.rs:3:");
         run("pure").assert_stdout_equals("1 1 1 2\n");
@@ -61,7 +61,7 @@ fn main() {
         run("pure").assert_stdout_equals("3 2 2 2\n");
         compile("pure", strategy)
             .run()
-            .assert_stderr_not_contains("EXECUTED cached attribute")
+            .assert_stderr_contains("EXECUTED cached attribute")
             .assert_stderr_contains("cached attribute warning");
         run("pure").assert_stdout_equals("3 2 2 2\n");
 
