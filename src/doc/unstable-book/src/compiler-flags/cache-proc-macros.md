@@ -6,4 +6,4 @@ The tracking issue for this feature is: [#151364]
 
 ------------------------
 
-This option instructs `rustc` to cache (derive) proc-macro invocations using the incremental system. Note that the compiler does not currently check whether the proc-macro is actually "cacheable" or not. If you use this flag when compiling a crate that uses non-pure proc-macros, it can result in stale expansions being compiled.
+Ohm accepts this option for compatibility. Derive and attribute procedural macros run in each compilation because their native inputs can change independently of their Rust crate hash.
