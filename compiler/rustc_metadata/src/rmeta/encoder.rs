@@ -2255,8 +2255,13 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                     builder.capture_definition_span(tcx, def_id, ident_span, true);
                 }
                 if let Some(ident_span) = ident_span {
-                    let ident_span = self.encode_diagnostic_span(def_id, ident_span, false);
-                    self.tables.def_ident_span.set_some_unhashed(def_id.index, ident_span);
+                    let encoded = self.encode_diagnostic_span(def_id, ident_span, false);
+                    self.tables.def_ident_span.set_some_hashed(
+                        def_id.index,
+                        encoded,
+                        (def_id, ident_span),
+                        hcx,
+                    );
                 }
             }
             if def_kind.has_codegen_attrs() {
@@ -3034,7 +3039,12 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 self.encode_attrs(id, hcx);
                 record!(self.tables.def_keys[def_id] <- def_key, hcx, def_id);
                 let diagnostic_span = self.encode_diagnostic_span(def_id, span, false);
-                self.tables.def_ident_span.set_some_unhashed(def_id.index, diagnostic_span);
+                self.tables.def_ident_span.set_some_hashed(
+                    def_id.index,
+                    diagnostic_span,
+                    (def_id, span),
+                    hcx,
+                );
                 self.tables.def_span.set_some_unhashed(def_id.index, diagnostic_span);
                 record!(self.tables.visibility[def_id] <- Visibility::Public, hcx, Visibility::<DefId>::Public);
                 if let Some(stability) = stability {
@@ -3912,7 +3922,7 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
         required_source_files,
         native_line_shapes: (M::HASH_PUBLIC_API
             && tcx.sess.opts.incremental.is_some()
-            && tcx.crate_types() == [CrateType::Rlib]
+            && tcx.crate_types().iter().any(|ty| ty.has_metadata())
             && tcx.codegen_output_mode(()).0)
             .then(FxHashMap::default),
         metadata_prefix_manifest: (M::HASH_PUBLIC_API && tcx.dep_graph.is_fully_enabled())
