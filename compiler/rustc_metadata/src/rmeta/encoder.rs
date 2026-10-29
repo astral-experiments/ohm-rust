@@ -2126,11 +2126,12 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         if span.is_dummy() {
             return;
         }
+        let span = span.data();
         let sm = self.tcx.sess.source_map();
-        let file_index = sm.lookup_source_file_idx(span.lo());
+        let file_index = sm.lookup_source_file_idx(span.lo);
         let files = sm.files();
         let file = &files[file_index];
-        if !file.contains(span.hi()) {
+        if !file.contains(span.hi) {
             return; // A partial span carries only its syntax context.
         }
         let index = if file.is_imported() {
@@ -2151,7 +2152,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             // Imported text may be absent. Native debug formats can also embed a whole-file checksum.
             file.src_hash.hash_bytes().hash(&mut hasher);
         }
-        for pos in [span.lo(), span.hi()] {
+        for pos in [span.lo, span.hi] {
             let pos = file.relative_position(pos);
             pos.0.hash(&mut hasher);
             let line = file.lookup_line(pos);
