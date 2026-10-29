@@ -1211,6 +1211,7 @@ impl CrateInfo {
 }
 
 pub(crate) fn provide(providers: &mut Providers) {
+    providers.ohm_untracked_relink_inputs = has_untracked_relink_inputs;
     providers.backend_optimization_level = |tcx, cratenum| {
         let for_speed = match tcx.sess.opts.optimize {
             // If globally no optimisation is done, #[optimize] has no effect.
@@ -1245,9 +1246,41 @@ pub(crate) fn provide(providers: &mut Providers) {
     };
 }
 
+/// Assembly can open files outside rustc's dep-info, including when a dependency's
+/// generic function is instantiated in this codegen unit.
+fn has_untracked_relink_inputs(tcx: TyCtxt<'_>, (): ()) -> bool {
+    let opts = &tcx.sess.opts;
+    if !matches!(tcx.sess.lto(), config::Lto::No | config::Lto::ThinLocal)
+        || opts.cg.linker_plugin_lto.enabled()
+        || !opts.cg.llvm_args.is_empty()
+        || !opts.cg.passes.is_empty()
+        || !opts.unstable_opts.llvm_plugins.is_empty()
+        || !opts.unstable_opts.offload.is_empty()
+        || opts.unstable_opts.codegen_backend.is_some()
+    {
+        return true;
+    }
+    tcx.collect_and_partition_mono_items(()).codegen_units.iter().any(|cgu| {
+        cgu.items().keys().any(|item| match *item {
+            MonoItem::GlobalAsm(..) => true,
+            MonoItem::Fn(instance) => {
+                tcx.instance_mir(instance.def).basic_blocks.iter().any(|block| {
+                    matches!(
+                        block.terminator().kind,
+                        rustc_middle::mir::TerminatorKind::InlineAsm { .. }
+                    )
+                })
+            }
+            MonoItem::Static(_) => false,
+        })
+    })
+}
+
 pub fn determine_cgu_reuse<'tcx>(tcx: TyCtxt<'tcx>, cgu: &CodegenUnit<'tcx>) -> CguReuse {
     if !tcx.dep_graph.is_fully_enabled()
         || tcx.sess.opts.unstable_opts.disable_incr_comp_backend_caching
+        || (tcx.sess.opts.unstable_opts.ohm_check_relink_inputs
+            && tcx.ohm_untracked_relink_inputs(()))
     {
         return CguReuse::No;
     }

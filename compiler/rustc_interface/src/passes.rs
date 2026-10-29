@@ -581,7 +581,12 @@ fn escape_dep_env(symbol: Symbol) -> String {
     escaped
 }
 
-fn write_out_deps(tcx: TyCtxt<'_>, outputs: &OutputFilenames, out_filenames: &[PathBuf]) {
+fn write_out_deps(
+    tcx: TyCtxt<'_>,
+    outputs: &OutputFilenames,
+    out_filenames: &[PathBuf],
+    untracked_relink_inputs: bool,
+) {
     // Write out dependency rules to the dep-info file if requested
     let sess = tcx.sess;
     if !sess.opts.output_types.contains_key(&OutputType::DepInfo) {
@@ -689,6 +694,12 @@ fn write_out_deps(tcx: TyCtxt<'_>, outputs: &OutputFilenames, out_filenames: &[P
         // character. Withhold its checksum even if the representable input was inserted last.
         for name in lossy_paths {
             files.insert(name, (0, None));
+        }
+
+        if untracked_relink_inputs && let OutFileName::Real(path) = &deps_output {
+            // A child of the dep-info file can never exist. Cargo must invoke rustc
+            // again so the assembler reopens its inputs and diagnoses missing files.
+            files.insert(normalize_path(path.join("ohm-untracked-relink-inputs")), (0, None));
         }
 
         if sess.proc_macro_observed_foreign_bytes.load(Ordering::Relaxed)
@@ -828,7 +839,7 @@ fn resolver_for_lowering_raw<'tcx>(
     )
 }
 
-pub fn write_dep_info(tcx: TyCtxt<'_>) {
+pub fn write_dep_info(tcx: TyCtxt<'_>, untracked_relink_inputs: bool) {
     // Make sure name resolution and macro expansion is run for
     // the side-effect of providing a complete set of all
     // accessed files and env vars.
@@ -864,7 +875,7 @@ pub fn write_dep_info(tcx: TyCtxt<'_>) {
         }
     }
 
-    write_out_deps(tcx, outputs, &output_paths);
+    write_out_deps(tcx, outputs, &output_paths, untracked_relink_inputs);
 
     let only_dep_info = sess.opts.output_types.contains_key(&OutputType::DepInfo)
         && sess.opts.output_types.len() == 1;
