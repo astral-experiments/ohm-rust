@@ -1,6 +1,6 @@
 //@ needs-asm-support
 
-use run_make_support::{is_windows, rfs, rustc};
+use run_make_support::{is_windows, rfs, rustc, target};
 
 fn main() {
     const MARKER: &str = "ohm-untracked-relink-inputs";
@@ -17,6 +17,22 @@ fn main() {
         assert_eq!(rules.lines().filter(|line| *line == "lib.rs:").count(), 1, "{rules}");
         assert_eq!(rules.contains(MARKER), untracked, "{rules}");
     };
+
+    if matches!(target().as_str(), "x86_64-unknown-linux-gnu" | "aarch64-apple-darwin") {
+        rfs::write("payload.bin", [0]);
+        // The same crate always emits a register barrier and ordinary instructions.
+        for cfg in ["ordinary", "global_macro", "comment_escape", "symbol", "constant", "raw"] {
+            let rules = rustc()
+                .input("inline.rs")
+                .crate_type("rlib")
+                .arg("-Zohm-check-relink-inputs")
+                .cfg(cfg)
+                .emit("link,dep-info=-")
+                .run()
+                .stdout_utf8();
+            assert_eq!(rules.contains(MARKER), cfg != "ordinary", "{cfg}: {rules}");
+        }
+    }
 
     rfs::write("lib.rs", "pub fn ordinary() {}");
     check(&compile("link,dep-info=-").run().stdout_utf8(), false);
