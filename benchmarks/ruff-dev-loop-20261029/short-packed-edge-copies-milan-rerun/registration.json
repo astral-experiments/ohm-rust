@@ -1,0 +1,95 @@
+{
+  "cold_target_per_arm": true,
+  "criteria": "prepublished helper, all 24 raw profiles, median log(change)<0, at least 10 lower, two-sided exact balanced P<.05, native/artifact/admission unchanged",
+  "mother_refusal_sha256": "f5825612d4ec0d013ee010e5ecd8a55841eeaa6814628f22e303539735f822f7",
+  "no_host_fs_writes": true,
+  "one_native_admission_then_fixed_scores": true,
+  "ops": {
+    "guard.py": "3fb1862382c37edb16a9318121a2f42570520470a00c265ec9ec317fb3bd764a",
+    "history.json": "994d26fd9d45556fe5fa974125c970e293550dfcae8c78eff02311a1ac6fc851",
+    "history.pack": "fc56ff62b18362ae669d3c841bf41ab32daca3526bf4be6b3bd6c59f13fb8761",
+    "project.py": "40f22f6638dc6afbf9eceb829ded743609d8c02c5b6d22f3fb78b647ce0b19f0",
+    "run-user.sh": "49aff9bab55e95fe66450671f3d3cc24b9a19c580349fdc2227e10859595a0e1",
+    "start.sh": "41777e71387189c3b2830f204b2ec4d6e51f6a13ec284740b1575ef428de625c",
+    "valgrind": "4652774bd116cb49951ef74115ad4237cad5021b2bd4d80002f09d986ec438b9",
+    "verify.py": "584a1cf0fda5ff1b7baea1b9a4749449dce6ce64a98b6a63cde3ec9ea731bee6"
+  },
+  "owned_cores": [
+    8,
+    9,
+    10,
+    11
+  ],
+  "pair_count": 12,
+  "prior_h7_registration": "d90b5b2b2966bb9841d0535920db1cfebcf26addceaa888229b7c68a8d5473e0",
+  "publish_commit": "1a0048705c5d712ef683400597c98d98b623e974",
+  "publish_manifest": "ec98e063dbd31580966530439da3ffc271054e6ac5ae6b3407d7e756a35a74c2",
+  "replacement": 0,
+  "requested_order": [
+    "1-A",
+    "1-B",
+    "2-B",
+    "2-A",
+    "3-B",
+    "3-A",
+    "4-A",
+    "4-B",
+    "5-A",
+    "5-B",
+    "6-A",
+    "6-B",
+    "7-B",
+    "7-A",
+    "8-B",
+    "8-A",
+    "9-A",
+    "9-B",
+    "10-B",
+    "10-A",
+    "11-A",
+    "11-B",
+    "12-B",
+    "12-A"
+  ],
+  "reserve": {
+    "dev_shm_free_gib": 40,
+    "home_and_durable_scratch": "both mounted read-only in workload namespace",
+    "private_work_free_gib": 0.25,
+    "ram_available_gib": 16,
+    "ram_mount_cap_mib": 2700,
+    "ram_relay_free_gib": 2
+  },
+  "roles": {
+    "A": "1512fb90725102e1290790b2202a88bd968ea60a4c09336803a0939a636cc0ac",
+    "B": "6d088c8d9c7297733e2d29d96e43dd7617f6e2e2f5c777bac2ec3ec05bb3016a"
+  },
+  "scope": "fresh H7 independent second-host Ruff rerun",
+  "scope_of_comparison": "same source, same driver pair, new AMD Milan host/absolute scratch paths, no pooling",
+  "source_supplement": {
+    "git_pack": "fc56ff62b18362ae669d3c841bf41ab32daca3526bf4be6b3bd6c59f13fb8761",
+    "object_count": 12,
+    "object_ids": [
+      "235a65d74a97a2c0097bf3e60a19c7d1d3e880be",
+      "302568e8e3465d3aa7653fadc5815a4e6e4f987c",
+      "61a49c89eb809a238b01616b0a50a0f785702891",
+      "895cfea53074fc27ccf751e37a9c18976914a1f6",
+      "91646d9e4c98ecc4954136f89d5b052be0dc7b20",
+      "9d337e0228677bb682503112a726dc03409eeb05",
+      "cd3832f306d571a114948786a125dbb1996a1744",
+      "d0dffeb19b7b987644c4453ac6eaa8195979399a",
+      "da5eb850870c97a256837a217223e1da492e9f88",
+      "e05d44bb6748999c44a2839a6e96c333cb9d17ef",
+      "e07bf20b069a5e33b58dbf53f657aae792aa808f",
+      "f33840469c693ae8a498a8f96e7bbc2b7aa4ae9b"
+    ],
+    "original_abbreviated_index_diff_refusal": true,
+    "tree_restricted_patch_sha256": "e7ff9141bf58f24e5fb4bf45937621fe6c6ecff5a2fc0d8f25fd8f01af395ed4"
+  },
+  "untimed_h7_first_preflight": {
+    "correction": "Select --tool=callgrind for the preflight version probe. Product and measured flags untouched.",
+    "failure": "H7 has the Callgrind package subset, so an unqualified valgrind --version selected an unavailable Memcheck backend.",
+    "native_cargo_calls": 0,
+    "profile_pairs": 0,
+    "support": "In a separate zero-Cargo native trial the actual H7 Callgrind 3.22.0 ran /bin/true, recorded 187774 Ir and was decoded by its real annotate tool."
+  }
+}

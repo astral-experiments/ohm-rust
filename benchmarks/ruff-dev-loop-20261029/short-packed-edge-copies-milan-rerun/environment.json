@@ -1,0 +1,39 @@
+{
+  "affinity": [
+    8,
+    9,
+    10,
+    11
+  ],
+  "cpu_model": "AMD EPYC-Milan Processor",
+  "evidence_sha256": {
+    "capacity": "7c37ad168d6a921027feb0ac476a287629c17f11f02927ad5181479673f6ca69",
+    "historical-diff": "f126ae3658b2247781520371e1d8c562bf6ce1c64246b07e0da424fab25ec371",
+    "imported-history": "34876fc3dc98a2eeb3de0b1b8453918cbbc971106acd7a2780af0d182a344443",
+    "neutral.annotate": "19a18f3e4ccecb2e0537a9d9e7e142e52bb362786fa29f12839f04c27f0f1a86",
+    "neutral.cg": "29bc6a56bebd5ed94bd4a2f957aa8f554f8195f79412c24c8047027f8f085aa1",
+    "profiler-sha": "af01b5c560556498b3504aa88573fbb1cecdb21f9451a2d9e2b81720e716168a",
+    "profiler-version": "06bd4b41e0b515a43bbb6fa5d24e6596c4604fbc070ea04aa1dd8d2ad3035a53",
+    "public-help": "ee560de7faaaa19390e72769ce026d1f431db51820f4c9ff1da9b4c82a5cc00c",
+    "read-only": "5476af3aeab2d1ee257be45bba7e99a2feeb7aed317e06deadf65e94275d63db"
+  },
+  "external_allocated_reserve_gib": 3,
+  "historical_full_git_diff_sha256": "e7ff9141bf58f24e5fb4bf45937621fe6c6ecff5a2fc0d8f25fd8f01af395ed4",
+  "native_files": {
+    "callgrind-amd64-linux": "825eb197d519240c112e03ed00f40a8bbe1a0a0614f79ea95e28c67e8695cb03",
+    "callgrind_annotate": "e0ac7a2c69db1268d19ff52bd59e65289444f14f09c4daad1adee3ef215b6d4f",
+    "valgrind": "4652774bd116cb49951ef74115ad4237cad5021b2bd4d80002f09d986ec438b9",
+    "valgrind.bin": "def5fdcf6ae64a4d3e6af3786b622978d8313e0734ecf3f6cbe71d8be9e274c8",
+    "vgpreload_core-amd64-linux.so": "87edd6ad90b12bb5fe58f2ea2235db5b6a3d637657488f3e06d07e482354a8c5"
+  },
+  "neutral_Ir": 147425,
+  "neutral_binary": "true",
+  "positive_public_help_sha256": "ee560de7faaaa19390e72769ce026d1f431db51820f4c9ff1da9b4c82a5cc00c",
+  "profiler": "Valgrind 3.22.0",
+  "role_read_only": {
+    "existing_shared_ram": true,
+    "home": true,
+    "secondary": true
+  },
+  "separately_capped_new_ram_mib": 2700
+}
