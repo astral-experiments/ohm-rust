@@ -273,7 +273,7 @@ pub fn run_compiler(at_args: &[String], callbacks: &mut (dyn Callbacks + Send)) 
                 create_and_enter_global_ctxt(compiler, krate, |tcx| {
                     tcx.ensure_ok().early_lint_checks(());
                     pretty::print(sess, pp_mode, pretty::PrintExtra::NeedsAstMap { tcx });
-                    passes::write_dep_info(tcx, false);
+                    passes::write_dep_info(tcx);
                 });
             } else {
                 pretty::print(sess, pp_mode, pretty::PrintExtra::AfterParsing { krate: &krate });
@@ -298,7 +298,7 @@ pub fn run_compiler(at_args: &[String], callbacks: &mut (dyn Callbacks + Send)) 
                 return None;
             }
 
-            passes::write_dep_info(tcx, false);
+            passes::write_dep_info(tcx);
 
             passes::write_interface(tcx);
 
