@@ -1,7 +1,8 @@
 //! A module for searching for libraries
 
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::{env, fs, io, iter};
 
 use rustc_fs_util::try_canonicalize;
@@ -29,7 +30,8 @@ pub struct FileSearch {
     cli_search_paths: Vec<SearchPath>,
     tlib_path: SearchPath,
     use_implicit_sysroot_deps: bool,
-    files: Vec<FileSearchCandidate>,
+    files: OnceLock<Vec<FileSearchCandidate>>,
+    library_prefixes: [Cow<'static, str>; 3],
 }
 
 impl FileSearch {
@@ -71,12 +73,13 @@ impl FileSearch {
         kind: PathKind,
     ) -> impl Iterator<Item = (&'b str, PathBuf)> {
         let exclude_sysroot = kind.matches(PathKind::Crate) && !self.use_implicit_sysroot_deps;
+        let files = self.files();
 
         // The indices are clipped to have only a single iterator returned from this function, to
         // avoid allocating it.
-        let start = self.files.partition_point(|v| *v.filename < *prefix).min(self.files.len());
-        let end = self.files[start..].partition_point(|v| v.filename.starts_with(prefix));
-        let prefixed_items = &self.files[start..][..end];
+        let start = files.partition_point(|v| *v.filename < *prefix).min(files.len());
+        let end = files[start..].partition_point(|v| v.filename.starts_with(prefix));
+        let prefixed_items = &files[start..][..end];
 
         prefixed_items
             .into_iter()
@@ -93,50 +96,74 @@ impl FileSearch {
         tlib_path: &SearchPath,
         target: &Target,
         use_implicit_sysroot_deps: bool,
+        link_only: bool,
     ) -> Self {
         // We keep a list of all found paths that look like libraries in `FileSearch`, to optimize
         // lookup in `get_library_candidates`.
         // These prefixes should be kept in sync with `CrateLocator::find_library_crate`.
-        let prefixes = ["lib", &target.staticlib_prefix, &target.dll_prefix];
-
-        // Load all files from all search paths, filter them by supported prefixes, and sort them,
-        // so that we can efficiently look them up in `get_file_candidates` via binary search.
-        let mut files: Vec<FileSearchCandidate> = Vec::with_capacity(cli_search_paths.len());
-        for (search_path, is_sysroot) in
-            cli_search_paths.iter().map(|path| (path, false)).chain(iter::once((tlib_path, true)))
-        {
-            let Ok(dir) = fs::read_dir(&search_path.dir) else {
-                continue;
-            };
-            files.extend(dir.filter_map(|entry| {
-                let entry = entry.ok()?;
-
-                let filename = entry.file_name();
-                let filename = filename.to_str()?;
-
-                if !SearchPath::should_index_file(search_path.kind, filename)
-                    || !prefixes.iter().any(|prefix| filename.starts_with(prefix))
-                {
-                    return None;
-                }
-                Some(FileSearchCandidate {
-                    dir: Arc::clone(&search_path.dir),
-                    filename: filename.into(),
-                    kind: search_path.kind,
-                    from_sysroot: is_sysroot,
-                })
-            }));
-        }
-        files.sort_unstable_by(|lhs, rhs| lhs.filename.cmp(&rhs.filename));
-
-        FileSearch {
+        let search = FileSearch {
             cli_search_paths: cli_search_paths.to_owned(),
             tlib_path: tlib_path.clone(),
             use_implicit_sysroot_deps,
-            files,
+            files: OnceLock::new(),
+            library_prefixes: [
+                "lib".into(),
+                target.staticlib_prefix.clone(),
+                target.dll_prefix.clone(),
+            ],
+        };
+        if !link_only {
+            search.files();
         }
+        search
+    }
+
+    fn files(&self) -> &[FileSearchCandidate] {
+        self.files.get_or_init(|| {
+            // Load all files from all search paths, filter them by supported prefixes, and sort them,
+            // so that we can efficiently look them up in `get_file_candidates` via binary search.
+            let mut files: Vec<FileSearchCandidate> =
+                Vec::with_capacity(self.cli_search_paths.len());
+            for (search_path, is_sysroot) in self
+                .cli_search_paths
+                .iter()
+                .map(|path| (path, false))
+                .chain(iter::once((&self.tlib_path, true)))
+            {
+                let Ok(dir) = fs::read_dir(&search_path.dir) else {
+                    continue;
+                };
+                files.extend(dir.filter_map(|entry| {
+                    let entry = entry.ok()?;
+
+                    let filename = entry.file_name();
+                    let filename = filename.to_str()?;
+
+                    if !SearchPath::should_index_file(search_path.kind, filename)
+                        || !self
+                            .library_prefixes
+                            .iter()
+                            .any(|prefix| filename.starts_with(prefix.as_ref()))
+                    {
+                        return None;
+                    }
+                    Some(FileSearchCandidate {
+                        dir: Arc::clone(&search_path.dir),
+                        filename: filename.into(),
+                        kind: search_path.kind,
+                        from_sysroot: is_sysroot,
+                    })
+                }));
+            }
+            files.sort_unstable_by(|lhs, rhs| lhs.filename.cmp(&rhs.filename));
+
+            files
+        })
     }
 }
+
+#[cfg(test)]
+mod tests;
 
 /// This type stores `Box<str>` instead of `PathBuf` for the filename, because getting the
 /// `file_name` of a `PathBuf` allocates, which is unnecessary. We have to go through the files
