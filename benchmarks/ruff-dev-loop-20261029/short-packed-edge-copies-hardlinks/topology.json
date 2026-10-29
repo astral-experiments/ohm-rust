@@ -1,0 +1,513 @@
+{
+  "copied_input_names": 36,
+  "hardlink_groups": {
+    "dep-graph": [
+      "dep-graph.bin",
+      "ohm-check-dep-graph.bin"
+    ],
+    "metadata-prefix": [
+      "metadata-prefix-v3.ohm-prefix-v3",
+      "ohm-check-metadata-prefix-v3.ohm-prefix-v3"
+    ],
+    "query-cache": [
+      "ohm-check-query-cache.bin",
+      "query-cache.bin"
+    ],
+    "root-metadata": [
+      "libruff_text_size-74b7263ef8cc0719.rmeta",
+      "metadata.rmeta",
+      "ohm-check-metadata.rmeta"
+    ]
+  },
+  "native_phase": {
+    "A/in-place": {
+      "actual_groups": 4,
+      "alias_classes": {
+        "dep-graph": [
+          "dep-graph.bin",
+          "ohm-check-dep-graph.bin"
+        ],
+        "metadata-prefix": [
+          "metadata-prefix-v3.ohm-prefix-v3",
+          "ohm-check-metadata-prefix-v3.ohm-prefix-v3"
+        ],
+        "query-cache": [
+          "ohm-check-query-cache.bin",
+          "query-cache.bin"
+        ],
+        "root-metadata": [
+          "libruff_text_size-74b7263ef8cc0719.rmeta",
+          "metadata.rmeta",
+          "ohm-check-metadata.rmeta"
+        ]
+      },
+      "links_outside_study": {},
+      "mapped_and_read": {
+        "dep-graph": {
+          "mmap_bytes": 861645,
+          "successful_read_opens": 1,
+          "working_links": 2
+        },
+        "metadata-prefix": {
+          "working_links": 2
+        },
+        "query-cache": {
+          "mmap_bytes": 108499,
+          "successful_read_opens": 1,
+          "working_links": 2
+        },
+        "root-metadata": {
+          "working_links": 2
+        }
+      },
+      "names_observed_when_read": {
+        "dep-graph": [
+          "dep-graph.bin"
+        ],
+        "metadata-prefix": [],
+        "query-cache": [
+          "query-cache.bin"
+        ],
+        "root-metadata": []
+      },
+      "paths": 36,
+      "prior_named_groups": 4,
+      "repeat_rustc": 0,
+      "root_and_threads": 3,
+      "root_rmeta_sha256": "927213d5e867191c8fdee6509ed53b4612a33e3bb3365bcb0ce560b0e7824fb6",
+      "root_rustc": 1,
+      "same_inode_as_live_paths": 36,
+      "stock_wild": 0
+    },
+    "A/joint": {
+      "actual_groups": 4,
+      "alias_classes": {
+        "dep-graph": [
+          "dep-graph.bin",
+          "ohm-check-dep-graph.bin"
+        ],
+        "metadata-prefix": [
+          "metadata-prefix-v3.ohm-prefix-v3",
+          "ohm-check-metadata-prefix-v3.ohm-prefix-v3"
+        ],
+        "query-cache": [
+          "ohm-check-query-cache.bin",
+          "query-cache.bin"
+        ],
+        "root-metadata": [
+          "libruff_text_size-74b7263ef8cc0719.rmeta",
+          "metadata.rmeta",
+          "ohm-check-metadata.rmeta"
+        ]
+      },
+      "links_outside_study": {},
+      "mapped_and_read": {
+        "dep-graph": {
+          "mmap_bytes": 861645,
+          "successful_read_opens": 1,
+          "working_links": 2
+        },
+        "metadata-prefix": {
+          "working_links": 2
+        },
+        "query-cache": {
+          "mmap_bytes": 108499,
+          "successful_read_opens": 1,
+          "working_links": 2
+        },
+        "root-metadata": {
+          "working_links": 2
+        }
+      },
+      "names_observed_when_read": {
+        "dep-graph": [
+          "dep-graph.bin"
+        ],
+        "metadata-prefix": [],
+        "query-cache": [
+          "query-cache.bin"
+        ],
+        "root-metadata": []
+      },
+      "paths": 36,
+      "prior_named_groups": 4,
+      "repeat_rustc": 0,
+      "root_and_threads": 3,
+      "root_rmeta_sha256": "927213d5e867191c8fdee6509ed53b4612a33e3bb3365bcb0ce560b0e7824fb6",
+      "root_rustc": 1,
+      "same_inode_as_live_paths": 0,
+      "stock_wild": 0
+    },
+    "A/public-copy": {
+      "actual_groups": 0,
+      "alias_classes": {
+        "dep-graph": [
+          "dep-graph.bin",
+          "ohm-check-dep-graph.bin"
+        ],
+        "metadata-prefix": [
+          "metadata-prefix-v3.ohm-prefix-v3",
+          "ohm-check-metadata-prefix-v3.ohm-prefix-v3"
+        ],
+        "query-cache": [
+          "ohm-check-query-cache.bin",
+          "query-cache.bin"
+        ],
+        "root-metadata": [
+          "libruff_text_size-74b7263ef8cc0719.rmeta",
+          "metadata.rmeta",
+          "ohm-check-metadata.rmeta"
+        ]
+      },
+      "links_outside_study": {},
+      "mapped_and_read": {
+        "dep-graph": {
+          "mmap_bytes": 861645,
+          "successful_read_opens": 1,
+          "working_links": 2
+        },
+        "metadata-prefix": {
+          "working_links": 2
+        },
+        "query-cache": {
+          "mmap_bytes": 108499,
+          "successful_read_opens": 1,
+          "working_links": 2
+        },
+        "root-metadata": {
+          "working_links": 2
+        }
+      },
+      "names_observed_when_read": {
+        "dep-graph": [
+          "dep-graph.bin"
+        ],
+        "metadata-prefix": [],
+        "query-cache": [
+          "query-cache.bin"
+        ],
+        "root-metadata": []
+      },
+      "paths": 36,
+      "prior_named_groups": 4,
+      "repeat_rustc": 0,
+      "root_and_threads": 3,
+      "root_rmeta_sha256": "927213d5e867191c8fdee6509ed53b4612a33e3bb3365bcb0ce560b0e7824fb6",
+      "root_rustc": 1,
+      "same_inode_as_live_paths": 0,
+      "stock_wild": 0
+    },
+    "B/in-place": {
+      "actual_groups": 4,
+      "alias_classes": {
+        "dep-graph": [
+          "dep-graph.bin",
+          "ohm-check-dep-graph.bin"
+        ],
+        "metadata-prefix": [
+          "metadata-prefix-v3.ohm-prefix-v3",
+          "ohm-check-metadata-prefix-v3.ohm-prefix-v3"
+        ],
+        "query-cache": [
+          "ohm-check-query-cache.bin",
+          "query-cache.bin"
+        ],
+        "root-metadata": [
+          "libruff_text_size-74b7263ef8cc0719.rmeta",
+          "metadata.rmeta",
+          "ohm-check-metadata.rmeta"
+        ]
+      },
+      "links_outside_study": {},
+      "mapped_and_read": {
+        "dep-graph": {
+          "mmap_bytes": 861427,
+          "successful_read_opens": 1,
+          "working_links": 2
+        },
+        "metadata-prefix": {
+          "working_links": 2
+        },
+        "query-cache": {
+          "mmap_bytes": 108608,
+          "successful_read_opens": 1,
+          "working_links": 2
+        },
+        "root-metadata": {
+          "working_links": 2
+        }
+      },
+      "names_observed_when_read": {
+        "dep-graph": [
+          "dep-graph.bin"
+        ],
+        "metadata-prefix": [],
+        "query-cache": [
+          "query-cache.bin"
+        ],
+        "root-metadata": []
+      },
+      "paths": 36,
+      "prior_named_groups": 4,
+      "repeat_rustc": 0,
+      "root_and_threads": 3,
+      "root_rmeta_sha256": "927213d5e867191c8fdee6509ed53b4612a33e3bb3365bcb0ce560b0e7824fb6",
+      "root_rustc": 1,
+      "same_inode_as_live_paths": 36,
+      "stock_wild": 0
+    },
+    "B/joint": {
+      "actual_groups": 4,
+      "alias_classes": {
+        "dep-graph": [
+          "dep-graph.bin",
+          "ohm-check-dep-graph.bin"
+        ],
+        "metadata-prefix": [
+          "metadata-prefix-v3.ohm-prefix-v3",
+          "ohm-check-metadata-prefix-v3.ohm-prefix-v3"
+        ],
+        "query-cache": [
+          "ohm-check-query-cache.bin",
+          "query-cache.bin"
+        ],
+        "root-metadata": [
+          "libruff_text_size-74b7263ef8cc0719.rmeta",
+          "metadata.rmeta",
+          "ohm-check-metadata.rmeta"
+        ]
+      },
+      "links_outside_study": {},
+      "mapped_and_read": {
+        "dep-graph": {
+          "mmap_bytes": 861427,
+          "successful_read_opens": 1,
+          "working_links": 2
+        },
+        "metadata-prefix": {
+          "working_links": 2
+        },
+        "query-cache": {
+          "mmap_bytes": 108608,
+          "successful_read_opens": 1,
+          "working_links": 2
+        },
+        "root-metadata": {
+          "working_links": 2
+        }
+      },
+      "names_observed_when_read": {
+        "dep-graph": [
+          "dep-graph.bin"
+        ],
+        "metadata-prefix": [],
+        "query-cache": [
+          "query-cache.bin"
+        ],
+        "root-metadata": []
+      },
+      "paths": 36,
+      "prior_named_groups": 4,
+      "repeat_rustc": 0,
+      "root_and_threads": 3,
+      "root_rmeta_sha256": "927213d5e867191c8fdee6509ed53b4612a33e3bb3365bcb0ce560b0e7824fb6",
+      "root_rustc": 1,
+      "same_inode_as_live_paths": 0,
+      "stock_wild": 0
+    },
+    "B/public-copy": {
+      "actual_groups": 0,
+      "alias_classes": {
+        "dep-graph": [
+          "dep-graph.bin",
+          "ohm-check-dep-graph.bin"
+        ],
+        "metadata-prefix": [
+          "metadata-prefix-v3.ohm-prefix-v3",
+          "ohm-check-metadata-prefix-v3.ohm-prefix-v3"
+        ],
+        "query-cache": [
+          "ohm-check-query-cache.bin",
+          "query-cache.bin"
+        ],
+        "root-metadata": [
+          "libruff_text_size-74b7263ef8cc0719.rmeta",
+          "metadata.rmeta",
+          "ohm-check-metadata.rmeta"
+        ]
+      },
+      "links_outside_study": {},
+      "mapped_and_read": {
+        "dep-graph": {
+          "mmap_bytes": 861427,
+          "successful_read_opens": 1,
+          "working_links": 2
+        },
+        "metadata-prefix": {
+          "working_links": 2
+        },
+        "query-cache": {
+          "mmap_bytes": 108608,
+          "successful_read_opens": 1,
+          "working_links": 2
+        },
+        "root-metadata": {
+          "working_links": 2
+        }
+      },
+      "names_observed_when_read": {
+        "dep-graph": [
+          "dep-graph.bin"
+        ],
+        "metadata-prefix": [],
+        "query-cache": [
+          "query-cache.bin"
+        ],
+        "root-metadata": []
+      },
+      "paths": 36,
+      "prior_named_groups": 4,
+      "repeat_rustc": 0,
+      "root_and_threads": 3,
+      "root_rmeta_sha256": "927213d5e867191c8fdee6509ed53b4612a33e3bb3365bcb0ce560b0e7824fb6",
+      "root_rustc": 1,
+      "same_inode_as_live_paths": 0,
+      "stock_wild": 0
+    }
+  },
+  "per_slot_raw_digests": {
+    "slot-1-A": {
+      "measurement.json": "f691835ee0688cd7bfa29ef4c6acfbf6f95bc905d2903602f4de8e866766686e",
+      "pre-dirty-topology.json": "8808a2aa6b760311a30fa6e3d418d09dcc12f7bb972359f7dff51a9f730df321",
+      "terminal.json": "73731b674ef424afeb3dc671abf893cdddc67eb9a596c5ab06afcc4403ea249f"
+    },
+    "slot-1-B": {
+      "measurement.json": "648c7abf8f9b1d324040c3dea1bfaf164cecf774a5f7cad7902f6aa946a8f02c",
+      "pre-dirty-topology.json": "c1a7d463cc591c613452e1d2d92651bcbc49871db9591b171290c3ac82408daf",
+      "terminal.json": "8e9367355fad981e8e4fc5085eb40c13c0df7d14c21f7f44a7c20c7b8b548611"
+    },
+    "slot-10-A": {
+      "measurement.json": "5c734c26300bad9cddc5e913a71f76a2ed6315a1cb9321cc50fb4adbc66a185e",
+      "pre-dirty-topology.json": "8da55e71cbfa8a5bf520cbfe81d89a8e8c70fadf233b4c57318dac17df3cbccb",
+      "terminal.json": "196133acdd033a1bbda0d610bb04c311f88fba0d26193a28d5b3fbedf9160475"
+    },
+    "slot-10-B": {
+      "measurement.json": "d93aa4a3d6485f752c79f74d15fc3e9578f6ad137d87ee270ec85de81c66afc8",
+      "pre-dirty-topology.json": "bb33d5399942209b73daaa6844d6d19a6a55d63b996a3f871605eabf805fbaa9",
+      "terminal.json": "0b0e923dd2802bf233377780b91e5408c95be3743be1c106df523c343f89cb66"
+    },
+    "slot-11-A": {
+      "measurement.json": "d2002762a06ce8b106411ef3c2e0763511642cf8963b5515b50e919684841e82",
+      "pre-dirty-topology.json": "20ebcad18c4e59321f2c92780bc953411dce36a42658f9683234966cb5f0b8ee",
+      "terminal.json": "294a8eca7ae00454ed9871c95c869c29286e9c878cbf9ffd471f79a033c4432c"
+    },
+    "slot-11-B": {
+      "measurement.json": "32eb1dba02d6f88e008b7d23b821a4f6157183cdf21c3477a9d06a5303556b67",
+      "pre-dirty-topology.json": "2e0dee09b8b0e184b934da4a7d1e497a619104f789a0dc518b61b7f99def96ab",
+      "terminal.json": "72bccbd8d7aef7e0ce4ca25dba07088999aaab90edb526da08b447e92a2dd411"
+    },
+    "slot-12-A": {
+      "measurement.json": "036fe32c57be75a09da71f980c15765a291286b4793fb2b8a7e53ca1b4598aaa",
+      "pre-dirty-topology.json": "79c6b1515c2e2c3778a90972e0accdefbbc52959dcc80c0c217e52755c728be3",
+      "terminal.json": "c0d3ece0a300268a6a31e05946857ae10bb5646f5e188ed8d93747c096966ca9"
+    },
+    "slot-12-B": {
+      "measurement.json": "91dca39a2596b1c877936046803a664bba5aa332302a9374f6ac165a38cfb14f",
+      "pre-dirty-topology.json": "07071f758894994d552a4e6b50eceaf394fc954427edf306f13b77770286596c",
+      "terminal.json": "62873d4871b6c33d6d0a42a702460149e9ff8c52cdccf510d8f69df6df18c9b7"
+    },
+    "slot-2-A": {
+      "measurement.json": "2143f4665126fcd1b23a843b4449ef88d235b153dc1eacdc917294f7c346d1e4",
+      "pre-dirty-topology.json": "4a2e77dda0e29874be7c8efc44bd4d2de64b37badfd3002af00d79e0dc3923d4",
+      "terminal.json": "8f7e9d286977af993c08930d507959da7ff68fd0b2450e8c6c49ea34de40b32c"
+    },
+    "slot-2-B": {
+      "measurement.json": "d3e0a8197e66858d2cc7e2cbccccb3ea1b9501345b8aa6723cea8dc88e73f43a",
+      "pre-dirty-topology.json": "2b467daca4a76c5821f982e54ac36089a93954142ddb1a68d7f47cbe24c044fb",
+      "terminal.json": "ee9269fb0b5ab249033258d440bd617607576e2951120f6b7a7d7161452ece0d"
+    },
+    "slot-3-A": {
+      "measurement.json": "51f17a3bd2de4fccbb6a7eb1c48e78e0eb32d4779181287c1d6cb208fc439009",
+      "pre-dirty-topology.json": "f0d4d98a4bf796c52019698e85ff130c5378dd46bd3c6179b542e3e001aa88c2",
+      "terminal.json": "87f3628ba129ec78d980db14025405762425972648829014b9e3948cb4a45cf5"
+    },
+    "slot-3-B": {
+      "measurement.json": "6644db589cd982b8232b30c34f4e343acb5c4cb751836b4139cf782c3b560fc8",
+      "pre-dirty-topology.json": "4855cd967a0fdfd25105aab68e633e374c6811b44888a3d7f17c4d971e768aaf",
+      "terminal.json": "bb23f4c0b03fbd1407c76849aa8abf4278a94b2ca9c4f05658ccc1b21ad43734"
+    },
+    "slot-4-A": {
+      "measurement.json": "0cbced6846e5f6c2fc555c497b19ed5163ca169e3f8fa3401ec099819eb67da5",
+      "pre-dirty-topology.json": "cb02c7740332989446d809da1a3b90e7c76447c77e106ad9a55f7eb1c656875f",
+      "terminal.json": "6c42cd1b5b8ca58a452081cfac910bc6107dec5247bde242e44d075da3ba1501"
+    },
+    "slot-4-B": {
+      "measurement.json": "2503d703900eca1f6b318629dd7d7250595a9763442d2c47d43bdf78830a7ab5",
+      "pre-dirty-topology.json": "ae65b3519e57368a6a819e6a67d694d1355078665802042354ac4f61f2dc131f",
+      "terminal.json": "a88679d760318b10b95e3fef62df44ee86b5ba86dfa992ebed2beef730ce4c1e"
+    },
+    "slot-5-A": {
+      "measurement.json": "b10162b8d20e5ed3d277c15cbf5115e2ac6e358be4572e0018845dcece382574",
+      "pre-dirty-topology.json": "47d6e473c0f646892efb1caca8caa5e88a22f098f6828651e657c16472f08210",
+      "terminal.json": "494759e42c480ad67b0d930f835f1982f7dfeff7cba65bf470ceb3ef0913ae2a"
+    },
+    "slot-5-B": {
+      "measurement.json": "e892a848cb4a47eda317193b8a59ead9f79d3cf4fe1fb0a6da8b81f68fa8d58f",
+      "pre-dirty-topology.json": "ac0d5772aa47c736e5b9cb74ee17c071a5f6fd14c9d459d42ab20857dd33759e",
+      "terminal.json": "8e730fa709925677b3be097edd6906606e3d12cc043d998a50db4da36fabc8d0"
+    },
+    "slot-6-A": {
+      "measurement.json": "3168e138f747c738f426f1d57955c6d2e2d1668c60703bbc2b850697032b8a11",
+      "pre-dirty-topology.json": "1a8c958af92fb204f19009ec6e9068f3ff787875c67300cefeb1e372b9678fb2",
+      "terminal.json": "256a1626786190929b7ebc3444c13826eb5a9af2c39ba739c53a87a77eb9b5ae"
+    },
+    "slot-6-B": {
+      "measurement.json": "e806da24e7890a69ea425a55d8441fc2baded5d2e953e97f49c0d06d03588c8a",
+      "pre-dirty-topology.json": "55fadf8f60b479d93b7a31f6541ca3acd61a9d2be492c58a2d1e716590f20a73",
+      "terminal.json": "515aa9827c68481c112c1a7cb84d61e094e1dcc9b907f666bacf8328a30eda1e"
+    },
+    "slot-7-A": {
+      "measurement.json": "970695e0ca64c61f258bdb2c7809d2af1a46cbcd462dd98d9e5c5b02d3f779be",
+      "pre-dirty-topology.json": "0f3a836ade8d5b12bd4d70f55a4c8d6ca8c3bc1852c0b12d7b86f278947b73f2",
+      "terminal.json": "ba33591e812980c1b74dda4cc4923f15646c3e3cec1cfc12566943e0d7e51111"
+    },
+    "slot-7-B": {
+      "measurement.json": "8d3716c4e55ebec264845c36af5dbe11d5b879647978e1a63be907f34882c23b",
+      "pre-dirty-topology.json": "71b5c9ec1c3c393ef33234b1752ef01b9900d2b47a343809a38b52200eb33f5a",
+      "terminal.json": "3a1e2fd0e031ea3769811d16de190e55ab46d8394ec823c8c166df89c2e60505"
+    },
+    "slot-8-A": {
+      "measurement.json": "42067e4ba6d887fa315d59a5edaf34a8dcf19f35378f6696ea5daaee73a0fa1b",
+      "pre-dirty-topology.json": "6b1e740fa5873943774dccb0e176de9ba6bf49900915d52dc0811a540b6ec616",
+      "terminal.json": "fbc97c720a2a5c7b2f4d9424e020e0d3a3731e51d927b54c946789ae3a5ea72b"
+    },
+    "slot-8-B": {
+      "measurement.json": "179d56a6fd2a46f9f649548cec0928d05dbe7716df49a64bbb6ff682e6ffd15b",
+      "pre-dirty-topology.json": "d7cd8de02226f1b564867469629c6a657d530a0fa89e7ef48390e7ab435767c9",
+      "terminal.json": "511052002590ef08be021f1f6794dce12af9137f7b06eeab09636846f0ae5317"
+    },
+    "slot-9-A": {
+      "measurement.json": "ba1c99e6c2f5f5eb5c7e06132a702eb42208e42c7edff7621e277628d815e3fa",
+      "pre-dirty-topology.json": "6180aa71012c20e6897ca3f399266d63882d60707e0ae20d983046e7bb9d2d72",
+      "terminal.json": "0ca281477ee7f32ffa081b0dfc4713d754fc74167bea3c5c91696f7de847e171"
+    },
+    "slot-9-B": {
+      "measurement.json": "10a34259d2eb2fb31dd540662e1eba78e07a854b00483fa542233029d75e79a4",
+      "pre-dirty-topology.json": "7da1494d71ca10b7c971adaf0fe293e6aac361f81c281e3f160e143d91cafc53",
+      "terminal.json": "c93a45a2577dba4849a6e44b84b83b82edc17a6071a6991f0a04812b92d5c475"
+    }
+  },
+  "strace_native_manifest_sha256": {
+    "A/in-place": "85225e20448542abab66adc3ef6ff88a44565d4d64e88da3fe2479e86a3675f6",
+    "A/joint": "ee18bd67675eb6091bcec7be8ba831d9cf8c42636a7be07eaef21221d9eb9c4e",
+    "A/public-copy": "99eb777dd28e1c02a2e09d90bbf1e7291fc38be4fee4748444a35ce511b23184",
+    "B/in-place": "94650fcc4156a87c67752c127f58ce2902d2d6def862620f061895d41a949b92",
+    "B/joint": "cf3612a3f832d93ee6ff5c2b38a169533a678bebd623869ba99dd4779abef5a3",
+    "B/public-copy": "abc7d5dab5e96716c22d013d2c1d7240d356e1afbcafb6a3b99ab914bfba95b7"
+  },
+  "training_reports": {
+    "independent-preserved-topology.json": "5f49b95613c44b15580c10255cda8c9296c18725c2f14ce2ba9d8a95576bb09a",
+    "original-live-topology.json": "4f68e4d125d3144d68ae664c2ea6bd3399d2fb51b414cdccd743332930028d2d",
+    "public-copy-topology.json": "5377e718c65856445c2db3d1c3dc1cd83aab86472986a3ac9bce36862bc99983"
+  }
+}

@@ -1,0 +1,434 @@
+{
+  "A/in-place": {
+    "actual_groups": 4,
+    "alias_classes": {
+      "dep-graph": [
+        "dep-graph.bin",
+        "ohm-check-dep-graph.bin"
+      ],
+      "metadata-prefix": [
+        "metadata-prefix-v3.ohm-prefix-v3",
+        "ohm-check-metadata-prefix-v3.ohm-prefix-v3"
+      ],
+      "query-cache": [
+        "ohm-check-query-cache.bin",
+        "query-cache.bin"
+      ],
+      "root-metadata": [
+        "libruff_text_size-67dbf8f6e0f00488.rmeta",
+        "metadata.rmeta",
+        "ohm-check-metadata.rmeta"
+      ]
+    },
+    "links_outside_study": {},
+    "mapped_and_read": {
+      "dep-graph": {
+        "mmap_bytes": 859515,
+        "successful_read_opens": 1,
+        "working_links": 2
+      },
+      "metadata-prefix": {
+        "working_links": 2
+      },
+      "query-cache": {
+        "mmap_bytes": 108605,
+        "successful_read_opens": 1,
+        "working_links": 2
+      },
+      "root-metadata": {
+        "working_links": 2
+      }
+    },
+    "names_observed_when_read": {
+      "dep-graph": [
+        "dep-graph.bin"
+      ],
+      "metadata-prefix": [],
+      "query-cache": [
+        "query-cache.bin"
+      ],
+      "root-metadata": []
+    },
+    "paths": 36,
+    "prior_named_groups": 4,
+    "raw_trace_shas": {
+      "fs-task.1869489.gz": "765234f230473c13689607152a1662e4dcf38297432af87b4e4f8c4d8f67e97a",
+      "fs-task.1869491.gz": "9c8a5d802a5a627ae1739cd4e87262f686c7716f10f55ceff35bc0e7e74d8bdb",
+      "fs-task.1869492.gz": "2611767156e407e7266e12bff976498b2f778a89a6e99afb782ed975e12e918f",
+      "fs-task.1869494.gz": "ea498e37ab14c3e101b0c268a06c10b4ba629f3a6a036b2c724a81339dae68b8",
+      "fs-task.1869495.gz": "66d41f2abcbeb15807b398ea5f3b91ff18b670149e9876fae9262354353370fd",
+      "fs-task.1869499.gz": "e16e7faa33df1f23643d92156ee1111c2a41fc5a870b71fc856f485b3d65a83c",
+      "fs-task.1869500.gz": "c27960d8c7b3f69f741e16310ef4af511ae573f074fe81b5c529cad7ce497773",
+      "fs-task.1869501.gz": "4ec5936f925e5529d81961f550b246266d176352f5c9031f264da7ec0030e593",
+      "fs-task.1869502.gz": "dc1191b9519d34dc1eeccc0fce63fef8aefac9e4845a13a63c60958d042f0eec",
+      "fs-task.1869503.gz": "22f093a86959380bb11bb7b89bcea67814912fefdcb2954545c94f40ff00fe88",
+      "fs-task.1869504.gz": "14236de03eafae07118a5a088edefa84f93e4ca8f3e373d758662857a293b7ea"
+    },
+    "repeat_rustc": 0,
+    "root_and_threads": 3,
+    "root_rmeta_sha256": "6e1266e7373872f855ed60cba082f7db9900f1074c3398068bbfec2aac799faf",
+    "root_rustc": 1,
+    "same_inode_as_live_paths": 36,
+    "stock_wild": 0
+  },
+  "A/joint": {
+    "actual_groups": 4,
+    "alias_classes": {
+      "dep-graph": [
+        "dep-graph.bin",
+        "ohm-check-dep-graph.bin"
+      ],
+      "metadata-prefix": [
+        "metadata-prefix-v3.ohm-prefix-v3",
+        "ohm-check-metadata-prefix-v3.ohm-prefix-v3"
+      ],
+      "query-cache": [
+        "ohm-check-query-cache.bin",
+        "query-cache.bin"
+      ],
+      "root-metadata": [
+        "libruff_text_size-67dbf8f6e0f00488.rmeta",
+        "metadata.rmeta",
+        "ohm-check-metadata.rmeta"
+      ]
+    },
+    "links_outside_study": {},
+    "mapped_and_read": {
+      "dep-graph": {
+        "mmap_bytes": 859515,
+        "successful_read_opens": 1,
+        "working_links": 2
+      },
+      "metadata-prefix": {
+        "working_links": 2
+      },
+      "query-cache": {
+        "mmap_bytes": 108605,
+        "successful_read_opens": 1,
+        "working_links": 2
+      },
+      "root-metadata": {
+        "working_links": 2
+      }
+    },
+    "names_observed_when_read": {
+      "dep-graph": [
+        "dep-graph.bin"
+      ],
+      "metadata-prefix": [],
+      "query-cache": [
+        "query-cache.bin"
+      ],
+      "root-metadata": []
+    },
+    "paths": 36,
+    "prior_named_groups": 4,
+    "raw_trace_shas": {
+      "fs-task.1869818.gz": "ef4fc8359e25f425f81a954e39d96ab2627089b895573f646a3461ba4f0e37eb",
+      "fs-task.1869819.gz": "62af9bed0bc33af0617a9a91a33735b3c270af090abfc0201ffab43f157d1da2",
+      "fs-task.1869820.gz": "d7cafe07b26cd237d125ec60655bd5bae77be89ccdfcaeb8a5b55cfd86b71eb3",
+      "fs-task.1869821.gz": "823e40e628264d3385cae3dd9a47d8378561e1b49a7684f4253fbf666e15bb4c",
+      "fs-task.1869822.gz": "43353547ad87666ad4c882fda1b7e5ec761e40ddc440bb2b299170652e63b42d",
+      "fs-task.1869828.gz": "33143bccac6809e1f7c9c166907dde7361aa38e7b72c4cc7d00f1432c6143c6d",
+      "fs-task.1869831.gz": "b0d15be693161e518f0cf7204ad8f6d2c6cf90722de0f439bbcf0e6d275630d0",
+      "fs-task.1869832.gz": "4f72b723afa54c51c2093138d923ac90e7edd69ea230c88d6ed848574228e20a",
+      "fs-task.1869833.gz": "c6ecd12ce41fa47bb0e1b2d58b80aed376e9b82e66eb8546d86d06f9ec488a4f",
+      "fs-task.1869834.gz": "b5baee26a8de4f0321a7be4f068b50162195d9ae49dc2c7e15bac79ac75939fb",
+      "fs-task.1869835.gz": "41b2cf8748b34c4f6c2be646dd6b5cf1bcc6d1b2c340a115524dcdb7f8d452a9"
+    },
+    "repeat_rustc": 0,
+    "root_and_threads": 3,
+    "root_rmeta_sha256": "6e1266e7373872f855ed60cba082f7db9900f1074c3398068bbfec2aac799faf",
+    "root_rustc": 1,
+    "same_inode_as_live_paths": 0,
+    "stock_wild": 0
+  },
+  "A/public-copy": {
+    "actual_groups": 0,
+    "alias_classes": {
+      "dep-graph": [
+        "dep-graph.bin",
+        "ohm-check-dep-graph.bin"
+      ],
+      "metadata-prefix": [
+        "metadata-prefix-v3.ohm-prefix-v3",
+        "ohm-check-metadata-prefix-v3.ohm-prefix-v3"
+      ],
+      "query-cache": [
+        "ohm-check-query-cache.bin",
+        "query-cache.bin"
+      ],
+      "root-metadata": [
+        "libruff_text_size-67dbf8f6e0f00488.rmeta",
+        "metadata.rmeta",
+        "ohm-check-metadata.rmeta"
+      ]
+    },
+    "links_outside_study": {},
+    "mapped_and_read": {
+      "dep-graph": {
+        "mmap_bytes": 859515,
+        "successful_read_opens": 1,
+        "working_links": 2
+      },
+      "metadata-prefix": {
+        "working_links": 2
+      },
+      "query-cache": {
+        "mmap_bytes": 108605,
+        "successful_read_opens": 1,
+        "working_links": 2
+      },
+      "root-metadata": {
+        "working_links": 2
+      }
+    },
+    "names_observed_when_read": {
+      "dep-graph": [
+        "dep-graph.bin"
+      ],
+      "metadata-prefix": [],
+      "query-cache": [
+        "query-cache.bin"
+      ],
+      "root-metadata": []
+    },
+    "paths": 36,
+    "prior_named_groups": 4,
+    "raw_trace_shas": {
+      "fs-task.1869708.gz": "f140449b32e541ff6d0cc39970ac2ecc5cf168880c5fa6726528665ab17c323e",
+      "fs-task.1869709.gz": "536303b9fd7eab153130058155d7314bf23be8434a2546c60e918c19991d97ff",
+      "fs-task.1869710.gz": "91cc444531b8513ac729dc6628ec3826df3133fa79510b12927c508fb3d72e83",
+      "fs-task.1869711.gz": "b969e61819403fb8336371149e3fbe70e02bf4fa5781ffb03675a016d0a834b8",
+      "fs-task.1869712.gz": "e20e07645650376e3c54e710da122612ec8de2c4f33e49e608a2c27fbe3033bb",
+      "fs-task.1869714.gz": "2417674f8d66ac923ee4eabb2f7e35a750bc296bd5b439ad838b1d532dffdee4",
+      "fs-task.1869715.gz": "983f444c668799f3df53325324aaf58834a7ff387a7c250648fa067b7c6359b5",
+      "fs-task.1869716.gz": "d80f77f3429e7391fd44046b654d23e50583ebbc9e3186559ed8116b9eb62161",
+      "fs-task.1869717.gz": "36691588a941efef4e285c5c92b29e55f5728fca14424409a13f5d5cb0e46e89",
+      "fs-task.1869718.gz": "5b5dc294ba80a5345535a747c40174ca48df4beb9a564e3d2797adba8d053e40",
+      "fs-task.1869719.gz": "602124d6c77570603fbc7ed489588068135d666969606972d38d6c32dae27161"
+    },
+    "repeat_rustc": 0,
+    "root_and_threads": 3,
+    "root_rmeta_sha256": "6e1266e7373872f855ed60cba082f7db9900f1074c3398068bbfec2aac799faf",
+    "root_rustc": 1,
+    "same_inode_as_live_paths": 0,
+    "stock_wild": 0
+  },
+  "B/in-place": {
+    "actual_groups": 4,
+    "alias_classes": {
+      "dep-graph": [
+        "dep-graph.bin",
+        "ohm-check-dep-graph.bin"
+      ],
+      "metadata-prefix": [
+        "metadata-prefix-v3.ohm-prefix-v3",
+        "ohm-check-metadata-prefix-v3.ohm-prefix-v3"
+      ],
+      "query-cache": [
+        "ohm-check-query-cache.bin",
+        "query-cache.bin"
+      ],
+      "root-metadata": [
+        "libruff_text_size-67dbf8f6e0f00488.rmeta",
+        "metadata.rmeta",
+        "ohm-check-metadata.rmeta"
+      ]
+    },
+    "links_outside_study": {},
+    "mapped_and_read": {
+      "dep-graph": {
+        "mmap_bytes": 861443,
+        "successful_read_opens": 1,
+        "working_links": 2
+      },
+      "metadata-prefix": {
+        "working_links": 2
+      },
+      "query-cache": {
+        "mmap_bytes": 108610,
+        "successful_read_opens": 1,
+        "working_links": 2
+      },
+      "root-metadata": {
+        "working_links": 2
+      }
+    },
+    "names_observed_when_read": {
+      "dep-graph": [
+        "dep-graph.bin"
+      ],
+      "metadata-prefix": [],
+      "query-cache": [
+        "query-cache.bin"
+      ],
+      "root-metadata": []
+    },
+    "paths": 36,
+    "prior_named_groups": 4,
+    "raw_trace_shas": {
+      "fs-task.1870229.gz": "0492389953fce3aad0ab5a90807a75016ca292d3e6c85a48e500dfd33b28217e",
+      "fs-task.1870230.gz": "c17013ccb0c97ba7bdcc7a969d39fe0984b2b32b9d64e56370e172458296f01e",
+      "fs-task.1870231.gz": "21be65ecc0f09ee89f03111e729393bb6f501352ba56e6c9109a31bcaa7fb055",
+      "fs-task.1870232.gz": "b8d685553ec1f115a79ee9ddc3423bc310b678a7a25125ffebd4852a9f49c414",
+      "fs-task.1870233.gz": "d234408e5e4dfbb0341883af9275d12332f4f1b8708353eff6c09408a476378f",
+      "fs-task.1870234.gz": "baab2612667e0730b94442cea34aab969b12e18741dbee198d9b69f62b57b846",
+      "fs-task.1870235.gz": "ede07d704d06779aee8f9f2bb37c04593ab4fb9401f9d15d22fefc8d00498624",
+      "fs-task.1870236.gz": "e733417aa7e60dcf8fe61a9bc02527198dc53616200dad04a29adaf18f8da4cf",
+      "fs-task.1870237.gz": "611d9ce2df9feff5abfd67d472ea336b41ef6f21a1cfe7dbddd7b53ffeadb356",
+      "fs-task.1870238.gz": "e2ca281169f814f0a779a94054c4f419dcfbed94d568fcf2311fa164ac093484",
+      "fs-task.1870239.gz": "eeefcbc1b201d05b42ddfd6d584561bf581fdf724cf84a769dd77d42c797db16"
+    },
+    "repeat_rustc": 0,
+    "root_and_threads": 3,
+    "root_rmeta_sha256": "6e1266e7373872f855ed60cba082f7db9900f1074c3398068bbfec2aac799faf",
+    "root_rustc": 1,
+    "same_inode_as_live_paths": 36,
+    "stock_wild": 0
+  },
+  "B/joint": {
+    "actual_groups": 4,
+    "alias_classes": {
+      "dep-graph": [
+        "dep-graph.bin",
+        "ohm-check-dep-graph.bin"
+      ],
+      "metadata-prefix": [
+        "metadata-prefix-v3.ohm-prefix-v3",
+        "ohm-check-metadata-prefix-v3.ohm-prefix-v3"
+      ],
+      "query-cache": [
+        "ohm-check-query-cache.bin",
+        "query-cache.bin"
+      ],
+      "root-metadata": [
+        "libruff_text_size-67dbf8f6e0f00488.rmeta",
+        "metadata.rmeta",
+        "ohm-check-metadata.rmeta"
+      ]
+    },
+    "links_outside_study": {},
+    "mapped_and_read": {
+      "dep-graph": {
+        "mmap_bytes": 861443,
+        "successful_read_opens": 1,
+        "working_links": 2
+      },
+      "metadata-prefix": {
+        "working_links": 2
+      },
+      "query-cache": {
+        "mmap_bytes": 108610,
+        "successful_read_opens": 1,
+        "working_links": 2
+      },
+      "root-metadata": {
+        "working_links": 2
+      }
+    },
+    "names_observed_when_read": {
+      "dep-graph": [
+        "dep-graph.bin"
+      ],
+      "metadata-prefix": [],
+      "query-cache": [
+        "query-cache.bin"
+      ],
+      "root-metadata": []
+    },
+    "paths": 36,
+    "prior_named_groups": 4,
+    "raw_trace_shas": {
+      "fs-task.1870322.gz": "ed3717eb1d29dd365bdebf3d3ddfe5f68973218f0a1fcb5c82d1d26f834c7731",
+      "fs-task.1870323.gz": "8ed35ca8bdf83f0b227b43e4b216f5dd74c6feebd5d95501d4e6ecdb6b3b6ced",
+      "fs-task.1870324.gz": "9ddf5ec670e6575b3b411e19b433391d4cfa67fe9d930570225ab3d393372afd",
+      "fs-task.1870325.gz": "c9c5435a0490493780babaa613780feb35cdccda7a14d40b7cdd22dd9a72eabe",
+      "fs-task.1870326.gz": "015b1c0767df38c4db8b9a7e80bc1a54ae5d1ba11e4378f55c3ec1ea7bc6c78d",
+      "fs-task.1870329.gz": "25149575a0b333a4699f802f6d8aeb2ea93740b9270f73fc6157fa744af65bf9",
+      "fs-task.1870330.gz": "585dd505587867855b42dfee832b84277a13f0a6a15e18810c0d0498e92f6fa6",
+      "fs-task.1870331.gz": "c7396d758051d8735ecb0ad143bae3f69f0734f9b53d9e79b9194e795cb203dd",
+      "fs-task.1870332.gz": "385cf7b6a285e0df8332d7463d8b1fb67ca5f6f720e326e361c4c866a19679d9",
+      "fs-task.1870333.gz": "2019742a5b026a74ea9dfb32b38ff33b245f70bb84f2070ddc1f521c4c7a1c22",
+      "fs-task.1870334.gz": "8e370fac35cbc4e728262fdd5fc1264107e44c70a03ea735e3e01fb92002894e"
+    },
+    "repeat_rustc": 0,
+    "root_and_threads": 3,
+    "root_rmeta_sha256": "6e1266e7373872f855ed60cba082f7db9900f1074c3398068bbfec2aac799faf",
+    "root_rustc": 1,
+    "same_inode_as_live_paths": 0,
+    "stock_wild": 0
+  },
+  "B/public-copy": {
+    "actual_groups": 0,
+    "alias_classes": {
+      "dep-graph": [
+        "dep-graph.bin",
+        "ohm-check-dep-graph.bin"
+      ],
+      "metadata-prefix": [
+        "metadata-prefix-v3.ohm-prefix-v3",
+        "ohm-check-metadata-prefix-v3.ohm-prefix-v3"
+      ],
+      "query-cache": [
+        "ohm-check-query-cache.bin",
+        "query-cache.bin"
+      ],
+      "root-metadata": [
+        "libruff_text_size-67dbf8f6e0f00488.rmeta",
+        "metadata.rmeta",
+        "ohm-check-metadata.rmeta"
+      ]
+    },
+    "links_outside_study": {},
+    "mapped_and_read": {
+      "dep-graph": {
+        "mmap_bytes": 861443,
+        "successful_read_opens": 1,
+        "working_links": 2
+      },
+      "metadata-prefix": {
+        "working_links": 2
+      },
+      "query-cache": {
+        "mmap_bytes": 108610,
+        "successful_read_opens": 1,
+        "working_links": 2
+      },
+      "root-metadata": {
+        "working_links": 2
+      }
+    },
+    "names_observed_when_read": {
+      "dep-graph": [
+        "dep-graph.bin"
+      ],
+      "metadata-prefix": [],
+      "query-cache": [
+        "query-cache.bin"
+      ],
+      "root-metadata": []
+    },
+    "paths": 36,
+    "prior_named_groups": 4,
+    "raw_trace_shas": {
+      "fs-task.1870276.gz": "eef87f22b11f214b364ba276b12afd55caff3e28619517fa6f520bf4a80816a2",
+      "fs-task.1870277.gz": "f1612afdd895981f6a3bec695fa55e3e096685f312fdfbd444ae84dfdba6eb65",
+      "fs-task.1870278.gz": "6dcbf62ec103bfb31a6eb59abfb87af1d073d623755807eedcd011dd3d000b30",
+      "fs-task.1870279.gz": "57376beb5c95309aa34b7a2f835074c137025ecfef76498f0043dd638ee217bc",
+      "fs-task.1870280.gz": "7694c9aca9ce7151c1cdb3c075a98cb72c31eba3fb2619c00555c8f9d39e4686",
+      "fs-task.1870281.gz": "acb82fd3438ce503a24256266dacb9f44b7b8eac2335e2ef4382e34f281b6a53",
+      "fs-task.1870283.gz": "44d5cd0c5cc4b676a6ec152b4cdee6039d3700fd52f0f9529e6623d81d2b207b",
+      "fs-task.1870284.gz": "94aee05e49ffbe758320001ec22f327fd880078a025de118a7e790b892e19784",
+      "fs-task.1870285.gz": "c0bc2ff5f4a7f85e4b04e705abf5ed2967224508bb0037dcb41b484e442ba073",
+      "fs-task.1870286.gz": "972ca1affed688a4d7744e8e9ece7236ff63464fd44bb8d08c5de2c40dbbddb0",
+      "fs-task.1870287.gz": "46f25ea9f801c80ab9c3c489a06025b78ec65374f7e7d326ee48fecb40d422f9"
+    },
+    "repeat_rustc": 0,
+    "root_and_threads": 3,
+    "root_rmeta_sha256": "6e1266e7373872f855ed60cba082f7db9900f1074c3398068bbfec2aac799faf",
+    "root_rustc": 1,
+    "same_inode_as_live_paths": 0,
+    "stock_wild": 0
+  }
+}

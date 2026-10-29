@@ -1,0 +1,27 @@
+{
+  "independent_coordinate_trial": {
+    "admitted_pairs": 0,
+    "contribution_here": 0,
+    "home_reserve": 48318382080,
+    "ledger_sha256": "f5825612d4ec0d013ee010e5ecd8a55841eeaa6814628f22e303539735f822f7",
+    "minimum_home_bytes": 48315752448,
+    "partial_counts_examined": false,
+    "private_completed_profiles": 18,
+    "registration": "281a7869e0abec8f3ffa238d0227aef690149e23e3078ee1c3cf3af069a59603",
+    "trigger": "HOME free space"
+  },
+  "parser_parent_diagnostic": {
+    "admitted_pairs": 0,
+    "coherent_native_edit": true,
+    "contribution_here": 0,
+    "total_rmeta": 72,
+    "warm_empty_identical_rmeta": 65
+  },
+  "separate_milan_preflight": {
+    "admitted_pairs": 0,
+    "cargo_commands": 0,
+    "contribution_here": 0,
+    "registration": "d90b5b2b2966bb9841d0535920db1cfebcf26addceaa888229b7c68a8d5473e0",
+    "trigger": "packaged valgrind wrapper default selected absent Memcheck before Cargo. The actual Callgrind backend passed a separate native probe before the fresh registration."
+  }
+}

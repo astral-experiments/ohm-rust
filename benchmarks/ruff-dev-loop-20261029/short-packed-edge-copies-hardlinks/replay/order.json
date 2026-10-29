@@ -1,0 +1,17 @@
+{
+  "orders": [
+    "AB",
+    "BA",
+    "AB",
+    "BA",
+    "BA",
+    "BA",
+    "AB",
+    "AB",
+    "AB",
+    "BA",
+    "AB",
+    "BA"
+  ],
+  "unit": "new distinct within-pair order; six each"
+}

@@ -1,0 +1,67 @@
+{
+  "arms": [
+    "722b9412d2386e70d6cffba132544c0e3ae09cd7",
+    "0869644256763281c951e44ab168edd9006a65ae"
+  ],
+  "census": {
+    "classes": 4,
+    "names": 9,
+    "outside": 0,
+    "paths": 36
+  },
+  "cpu": [
+    8,
+    9,
+    10,
+    11
+  ],
+  "criteria": "Twelve fixed pairs, no replacements, native root+empty external E0599 and positive/legacy digest equality, all 24 ordinary-prior hardlink class and disjoint-donor checks, >=10/12 lower whole Ir, median log(B/A)<0 and two-sided exact balanced P<.05 (924 assignments); report effect CI and scope irrespective of outcome. Registered observation is direct full rustc process, after truth native Cargo/no-restores and separate shared-donor direct controls.",
+  "disk_mem_floors_gib": [
+    45,
+    40,
+    16
+  ],
+  "evidence": "true ordinary cargo+ohm, typed launch/empty/noop/E0599+external ELFs, per-process native open/read/mmap/link/move syscalls, real full census; no instruction or time claims",
+  "modes": [
+    "immediate in-place old\u2192current without restoring any build file",
+    "original independent copytree for products/shared",
+    "joint copy-preserving all within/between roots hardlinks with new private inodes"
+  ],
+  "notes": "Training and three ordinary live/copied/true-joint dirty Cargo traversals before profiling; all scored slots explicitly verify 4 alias groups including dep-graph.bin and query-cache.bin being read, whole distinct ELF/metadata and own untouched seed. All prior inodes are private physically independent from the immutable donor. Both arms also train/empty separately. All raw native and startup controls are retained, including failed preflights.",
+  "orders": [
+    "AB",
+    "BA",
+    "AB",
+    "BA",
+    "BA",
+    "BA",
+    "AB",
+    "AB",
+    "AB",
+    "BA",
+    "AB",
+    "BA"
+  ],
+  "public_package": "ec98e063dbd31580966530439da3ffc271054e6ac5ae6b3407d7e756a35a74c2",
+  "scope": "independent 12-pair whole-rustc confirmation on the literal Cargo-dispatched argv from a root source edit, with inodes preserved in the common private prior; no wall claim",
+  "scope_exclusions": [
+    "original unmodified published launcher is a separate copied-topology study",
+    "original coordinator interrupted cohort contributes zero",
+    "no whole Cargo wall or shipped toolchain performance claim"
+  ],
+  "source": "1a0048705c5d712ef683400597c98d98b623e974",
+  "source_codes": {
+    "child.sh": "8d1de605388892b24b80e7b0d5fc636ce76a6410f490b1485d7267062e10b1a2",
+    "launch-exec.sh": "a9424cc34d2d99bb6a457fc1397f418214ac10937893329ccc4fb33f3913b352",
+    "pkg/RUFF-LICENSE": "2597d854122b77ddc71971564ca2350a37608575ce324adc5650a2b2051c8f18",
+    "pkg/admit.py": "ccf407b4f4ad30304636148c0f341f6731f1bcea8360481982fe5c6906e5e13f",
+    "pkg/external.rs": "899aee3abc6a94857f04f6c3a3770a2784abc50e3cd034d071dd81c25ee49247",
+    "pkg/legacy.rs": "e3541e4a4d4a51377883e5661afa745da9a5f310d3ef44c618f2ac2f8446ec8f",
+    "pkg/order.json": "a59db06f772873092e34f75a70d7cfb0732dd65f71c01c6e63addbb6dd3c5983",
+    "pkg/run.py": "56ba187c26e61ce5bb0f5fc71a1451a86e93404c46a58953a0a0b8fac4347887",
+    "pkg/schedule.txt": "6c61812939d66677843a783e1984a1b2c60adc6ba5171a18a0026dbf922bac3c",
+    "pkg/verify-whole.py": "e2048f97c836a664c45583cf7d960ae4d83270d2525cd379e52fd67921aa281d",
+    "pkg/worker.py": "35031228899fdc10599018e32105bba16f9a28414d9448c28a9b1be0ba05680e",
+    "topology-functions.py": "677b042fe0c320142e0d2e25bb05fe005fcb5937a0d2499ef56b14af09886293"
+  }
+}
