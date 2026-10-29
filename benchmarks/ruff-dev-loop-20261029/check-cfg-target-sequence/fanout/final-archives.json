@@ -1,0 +1,26 @@
+{
+  "A": {
+    "actual_names": [
+      ".1wzgle4.rcgu.o",
+      ".1koa0tw.rcgu.o"
+    ],
+    "bytes_each": 108062,
+    "independent_empty_sha256": "d612f11d03e69a4d5a634e5d47e5429fdfad81ca33fa45c899f798618f2c1f00",
+    "real_paths_in_final_state": 1,
+    "reconstructed_entire_file": true,
+    "recorded_sha256": "435609646aed11c00ab7885378781888c8d0b17f5ea8629b79c9679e526f7c2a",
+    "slot": "A-pair-12-H"
+  },
+  "D": {
+    "actual_names": [
+      ".0qrn9j6.rcgu.o",
+      ".17enaru.rcgu.o"
+    ],
+    "bytes_each": 108062,
+    "independent_empty_sha256": "0c1b4ecf075d9730f7a1f5c646a25747c6a79487d551bf70c96f8b0cb06d9049",
+    "real_paths_in_final_state": 1,
+    "reconstructed_entire_file": true,
+    "recorded_sha256": "defaea65d087b407b7b473442b79e76c2de00459bf0b49e30df302d24e6fdf98",
+    "slot": "D-pair-12-H"
+  }
+}

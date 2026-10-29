@@ -1,0 +1,196 @@
+{
+  "additional_guest_profiles": {
+    "bytes": 18130100,
+    "copies": 10,
+    "private_archive_sha256": "016b34574c58e7b6b8e7f79685fbd2e149ac1b7d838cf4cbf3c0b86e9bb0a03f",
+    "role": "D",
+    "stock_links": 8
+  },
+  "all_corresponding_external_and_harness_ELF_across_A_and_D": true,
+  "kind": "New explanatory runner sanity; outside the 24 registered instruction pairs. A ran normally. D profiled its two warm dirty compiler sets.",
+  "script_sha256": "28d800bbcf729ea728c9dae3412477abad4ef5159f5c106fdc3f77eae144335d",
+  "states": {
+    "A": {
+      "all_five_native_phases": {
+        "add": {
+          "counts": {
+            "auto_traits": 0,
+            "constructors": 1,
+            "indexing": 1,
+            "main": 8
+          },
+          "external": "d599ac96be8e81b3fe1cbc66be6cf91bede83738b465cb13d01924b3c77e80cd",
+          "root_archive": "e51e1fe83f036fe50995986a78e241526b48eaa2ba18359d00551efd9bdbf851",
+          "source": "H",
+          "tests": {
+            "auto_traits": "f9ac1ce1f0f3e97124eb948c4b58607a69ffd1a123686b0af6724be6988eca99",
+            "constructors": "1b1e1bfa6f3785b6d34ef8ef3f7d402605a31333e4da8e675543dfcafb400e96",
+            "indexing": "4164797795737112ab391f117b8269655a5d4b63b892d9d09a4c8e5a2d57af3b",
+            "main": "183f88ed9ba092cda420d691191a66abbb036f85eae4d309bd52036846e67c0f"
+          }
+        },
+        "empty-added": {
+          "counts": {
+            "auto_traits": 0,
+            "constructors": 1,
+            "indexing": 1,
+            "main": 8
+          },
+          "external": "d599ac96be8e81b3fe1cbc66be6cf91bede83738b465cb13d01924b3c77e80cd",
+          "root_archive": "17570a523107f87f8e1a6a6dc96782a1db72c5b16ad097023eb3d904908adad5",
+          "source": "H",
+          "tests": {
+            "auto_traits": "f9ac1ce1f0f3e97124eb948c4b58607a69ffd1a123686b0af6724be6988eca99",
+            "constructors": "1b1e1bfa6f3785b6d34ef8ef3f7d402605a31333e4da8e675543dfcafb400e96",
+            "indexing": "4164797795737112ab391f117b8269655a5d4b63b892d9d09a4c8e5a2d57af3b",
+            "main": "183f88ed9ba092cda420d691191a66abbb036f85eae4d309bd52036846e67c0f"
+          }
+        },
+        "empty-removed": {
+          "counts": {
+            "auto_traits": 0,
+            "constructors": 1,
+            "indexing": 1,
+            "main": 8
+          },
+          "external": "E0599",
+          "root_archive": "240c1e02abd721054a71d3f3db0e16206245abcb83ce69df805c2859f1bbc0c8",
+          "source": "P",
+          "tests": {
+            "auto_traits": "f9ac1ce1f0f3e97124eb948c4b58607a69ffd1a123686b0af6724be6988eca99",
+            "constructors": "1b1e1bfa6f3785b6d34ef8ef3f7d402605a31333e4da8e675543dfcafb400e96",
+            "indexing": "a9e6c0e2863e16ea245302f624c97dc270a7806790bafe085538a349afecb48d",
+            "main": "f4a056cf20d47e36b4bcb4159fd7d12e4aa1ec722748b2d1b6c21a40b0c05dc5"
+          }
+        },
+        "remove": {
+          "counts": {
+            "auto_traits": 0,
+            "constructors": 1,
+            "indexing": 1,
+            "main": 8
+          },
+          "external": "E0599",
+          "root_archive": "0720b6a8fca404d392fdbbb7a6c8c5325408f4f709e42919927a308daf2a9b27",
+          "source": "P",
+          "tests": {
+            "auto_traits": "f9ac1ce1f0f3e97124eb948c4b58607a69ffd1a123686b0af6724be6988eca99",
+            "constructors": "1b1e1bfa6f3785b6d34ef8ef3f7d402605a31333e4da8e675543dfcafb400e96",
+            "indexing": "a9e6c0e2863e16ea245302f624c97dc270a7806790bafe085538a349afecb48d",
+            "main": "f4a056cf20d47e36b4bcb4159fd7d12e4aa1ec722748b2d1b6c21a40b0c05dc5"
+          }
+        },
+        "train": {
+          "counts": {
+            "auto_traits": 0,
+            "constructors": 1,
+            "indexing": 1,
+            "main": 8
+          },
+          "external": "d599ac96be8e81b3fe1cbc66be6cf91bede83738b465cb13d01924b3c77e80cd",
+          "root_archive": "50b0791c3285ed4de327b874981a0209eaaeb6ce29d172b191568e288991b5a7",
+          "source": "H",
+          "tests": {
+            "auto_traits": "f9ac1ce1f0f3e97124eb948c4b58607a69ffd1a123686b0af6724be6988eca99",
+            "constructors": "1b1e1bfa6f3785b6d34ef8ef3f7d402605a31333e4da8e675543dfcafb400e96",
+            "indexing": "4164797795737112ab391f117b8269655a5d4b63b892d9d09a4c8e5a2d57af3b",
+            "main": "183f88ed9ba092cda420d691191a66abbb036f85eae4d309bd52036846e67c0f"
+          }
+        }
+      },
+      "private_native_ledger_sha256": "f69f4ed7ef0719cb51df40b37131d915884568e9f34b1889654c4a4365a25abe",
+      "result_sha256": "55627d7584c697be97aadfbccf9ce9dee7c09dced1a7e651552370b10ccd407a"
+    },
+    "D": {
+      "all_five_native_phases": {
+        "add": {
+          "counts": {
+            "auto_traits": 0,
+            "constructors": 1,
+            "indexing": 1,
+            "main": 8
+          },
+          "external": "d599ac96be8e81b3fe1cbc66be6cf91bede83738b465cb13d01924b3c77e80cd",
+          "root_archive": "84ba354a03a2207882bab7214fef07d9d129cf26cdfc88f5ac1e039eb2823c3a",
+          "source": "H",
+          "tests": {
+            "auto_traits": "f9ac1ce1f0f3e97124eb948c4b58607a69ffd1a123686b0af6724be6988eca99",
+            "constructors": "1b1e1bfa6f3785b6d34ef8ef3f7d402605a31333e4da8e675543dfcafb400e96",
+            "indexing": "4164797795737112ab391f117b8269655a5d4b63b892d9d09a4c8e5a2d57af3b",
+            "main": "183f88ed9ba092cda420d691191a66abbb036f85eae4d309bd52036846e67c0f"
+          }
+        },
+        "empty-added": {
+          "counts": {
+            "auto_traits": 0,
+            "constructors": 1,
+            "indexing": 1,
+            "main": 8
+          },
+          "external": "d599ac96be8e81b3fe1cbc66be6cf91bede83738b465cb13d01924b3c77e80cd",
+          "root_archive": "339de1a2940c0aae53283f927ad53c90e7e12b04741f68ce4b1eb992019bf1a5",
+          "source": "H",
+          "tests": {
+            "auto_traits": "f9ac1ce1f0f3e97124eb948c4b58607a69ffd1a123686b0af6724be6988eca99",
+            "constructors": "1b1e1bfa6f3785b6d34ef8ef3f7d402605a31333e4da8e675543dfcafb400e96",
+            "indexing": "4164797795737112ab391f117b8269655a5d4b63b892d9d09a4c8e5a2d57af3b",
+            "main": "183f88ed9ba092cda420d691191a66abbb036f85eae4d309bd52036846e67c0f"
+          }
+        },
+        "empty-removed": {
+          "counts": {
+            "auto_traits": 0,
+            "constructors": 1,
+            "indexing": 1,
+            "main": 8
+          },
+          "external": "E0599",
+          "root_archive": "4f5eb65b7b1d7ae23a65eda50525f04ff0c746015885ce8aca69b0a97de16e71",
+          "source": "P",
+          "tests": {
+            "auto_traits": "f9ac1ce1f0f3e97124eb948c4b58607a69ffd1a123686b0af6724be6988eca99",
+            "constructors": "1b1e1bfa6f3785b6d34ef8ef3f7d402605a31333e4da8e675543dfcafb400e96",
+            "indexing": "a9e6c0e2863e16ea245302f624c97dc270a7806790bafe085538a349afecb48d",
+            "main": "f4a056cf20d47e36b4bcb4159fd7d12e4aa1ec722748b2d1b6c21a40b0c05dc5"
+          }
+        },
+        "remove": {
+          "counts": {
+            "auto_traits": 0,
+            "constructors": 1,
+            "indexing": 1,
+            "main": 8
+          },
+          "external": "E0599",
+          "root_archive": "22cf1d08d4f966551de4c2fd4e49468898b4eccd07143919933f91861eb5f736",
+          "source": "P",
+          "tests": {
+            "auto_traits": "f9ac1ce1f0f3e97124eb948c4b58607a69ffd1a123686b0af6724be6988eca99",
+            "constructors": "1b1e1bfa6f3785b6d34ef8ef3f7d402605a31333e4da8e675543dfcafb400e96",
+            "indexing": "a9e6c0e2863e16ea245302f624c97dc270a7806790bafe085538a349afecb48d",
+            "main": "f4a056cf20d47e36b4bcb4159fd7d12e4aa1ec722748b2d1b6c21a40b0c05dc5"
+          }
+        },
+        "train": {
+          "counts": {
+            "auto_traits": 0,
+            "constructors": 1,
+            "indexing": 1,
+            "main": 8
+          },
+          "external": "d599ac96be8e81b3fe1cbc66be6cf91bede83738b465cb13d01924b3c77e80cd",
+          "root_archive": "366aa5cbd58fa64186ca7ce047edcd18deb084037bed29693999afc05c716e4f",
+          "source": "H",
+          "tests": {
+            "auto_traits": "f9ac1ce1f0f3e97124eb948c4b58607a69ffd1a123686b0af6724be6988eca99",
+            "constructors": "1b1e1bfa6f3785b6d34ef8ef3f7d402605a31333e4da8e675543dfcafb400e96",
+            "indexing": "4164797795737112ab391f117b8269655a5d4b63b892d9d09a4c8e5a2d57af3b",
+            "main": "183f88ed9ba092cda420d691191a66abbb036f85eae4d309bd52036846e67c0f"
+          }
+        }
+      },
+      "private_native_ledger_sha256": "1a39549be654138afc6f22bddea286b7423a71d829c9be108b6986d96b934e9f",
+      "result_sha256": "72c871a9973619b3d2d6a98c6367b53509f761d190c3658f39dc1a962efed02c"
+    }
+  }
+}

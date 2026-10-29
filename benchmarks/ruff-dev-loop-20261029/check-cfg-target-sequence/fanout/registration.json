@@ -1,0 +1,73 @@
+{
+  "all_six_untouched_fd_proof": "a0de9538d79ad50706d9e9e946419c8fd20a8034cf174f47afb1b417e6b7e717",
+  "baseline_unmodified_native_phase_archive": "5005fae94e28fcaaa562f135ecf085e6b42b1dd7dff4e508e08d57a75d9f4002",
+  "bootstrap_seed": 2026102916492,
+  "decision": "This is an instruction study, not a wall experiment. First off-clock compare independently role-trained original warm states on both natural real edits, with unmodified Cargo argv and all 5 actual rustc + 4 stock links preserved. The native common-file check remains separate. A real job interception occurs only after Cargo execs the genuine compiler, at its first loader syscall; the same PID execs a guest with the original literal argv, environment vector and FDs. Admission requires five per-process full profile receipts identifying the corresponding actual SDK driver, matching unprofiled compiler argv (allow only generated per-session ephemeral paths with native validation), jobserver FD and linked products, fresh repeat, ten real tests and both current-input external verdicts. Reject incomplete or changed workload. No raw pilot IR effect estimate, no data collected on prior failed cohorts. All 24 pairs remain to be run only if admitted and disk permits. No replacements.",
+  "execution_order": "For each of twelve blocks, genuine removal P then genuine addition H. For each direction run the two registered roles immediately adjacent, same CPU set and host, real default dirty state. Numeric rows are summed only after all jobs/outputs/validations have completed. Held setup probes excluded.",
+  "input": {
+    "cargo": "789c2f116732ed642565d0f92c500838f8cd53664fbe60f205a5621c43cbecf1",
+    "cli": [
+      "cargo",
+      "+ohm",
+      "test",
+      "-p",
+      "ruff_text_size",
+      "--no-run",
+      "--locked",
+      "--offline",
+      "-j4"
+    ],
+    "compiler": {
+      "A": "59e16bbe7fe101de0693812ec391c3aefc55718085abcc5fba2f8a990533fd27",
+      "D": "b1a90ba451b0356111b566e4cf4c5c5b1b47bcc6be7d733c883e50721f6d47d7"
+    },
+    "driver": {
+      "A": "1512fb90725102e1290790b2202a88bd968ea60a4c09336803a0939a636cc0ac",
+      "D": "2f379dfe84e65e15b82b2dcdc110da39e57dee6717e5e83a2646d6cff71f1578"
+    },
+    "historical": "61a49c89eb809a238b01616b0a50a0f785702891",
+    "physical_source_sha": {
+      "H": "f61f9d66ec9dcc29bac8067dd4d5910db6b7e52009ef7cc976ac0478c6800c52",
+      "P": "097615fdf261460b1c30900d535bb5bde4ab709a402d4850b49820a6923b0771"
+    },
+    "root_source": "93526150df078af7dd8fc4226cdcc469539d2001",
+    "wild": "0d6335808b647d499f3d74993b602e64ff0625206c809bf4913c487eea380cd5"
+  },
+  "kind": "prospective optional native compiler instruction followup",
+  "pair_count": 12,
+  "primary": "sum of the complete five rustc process guest instruction counts (ascribed by inbound executable inode, original crate, pid, guest cmd header, actual mapped driver), one paired ratio 1-D/A per direction. No Cargo or stock linker instruction claim. Per-role and per-target raw totals and inclusive fill_well_known counts secondary. Median paired proportion with 95% bootstrap, 50000 draws within AD/DA separately; two-sided exact sign ignoring ties, Holm .05 for the two directions. Qualifies both if lower CI >0.1%, median positive, >=10/12 favorable, both adjusted p<.05, all native gates. Always report failed or null outcome.",
+  "resources": "only local 8\u201311; preserve home>45 GiB, secondary>40 GiB, RAM>16 GiB, private tmpfs>256 MiB continuously; 750 MiB maximum auxiliary durable raw receiver; require estimate plus slack before score; this host could be denied if sufficient non-contending capacity is not present.",
+  "schedule": {
+    "H": [
+      "AD",
+      "DA",
+      "AD",
+      "AD",
+      "AD",
+      "DA",
+      "DA",
+      "DA",
+      "DA",
+      "AD",
+      "AD",
+      "DA"
+    ],
+    "P": [
+      "AD",
+      "DA",
+      "DA",
+      "AD",
+      "AD",
+      "AD",
+      "DA",
+      "AD",
+      "DA",
+      "DA",
+      "AD",
+      "DA"
+    ]
+  },
+  "schedule_seed": 2026102916491,
+  "semantic": "For every slot, verify all 16 reported names/body sizes vs same-role independently empty H/P. 15 literal files; root .rlib reconstruction limited to exactly four 7-character fields certified by the real GNU symbol index, two complete native object bodies and .rmeta-link. Immediate rustc-free 11/11, 4 complete harness ELFs and current verdict, exact raw bytes/checked consumer as original. Full A/D source profiles, compiled-child native environment, known adverse unscored cases remain separately retained.",
+  "separate_common_receipt": "cf2aa3398f78b004de318515dd51b45b62342d15c228511d2b44a0b49fd02a20"
+}

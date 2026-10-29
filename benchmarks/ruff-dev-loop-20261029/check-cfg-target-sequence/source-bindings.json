@@ -7,6 +7,33 @@
     "compiler/rustc_session/src/config/target_cfg_values/tests.rs": "0640379ae80644ddac1625c1f5e36ce897bf83a0c3aae12d02ec3bc5c05d4838",
     "tests/ui/check-cfg/target-values-from-other-targets.rs": "51ff4b4edb21d5afd2deb77cf08fdf58f7c137a6063441373a39f725e5398e90"
   },
+  "final_ci": {
+    "linux_log_sha256": "91482795ae757cf8da6f7f2809f2bd38f6fe9d556cc691dfb49af12eb0ec3be7",
+    "linux_rustc_session_selection": {
+      "filter": "search builtin_target_values",
+      "passed": 6,
+      "ran": 6
+    },
+    "linux_ui_selection_including_cross_target": {
+      "passed": 7,
+      "ran": 7
+    },
+    "required": {
+      "Compiler and regression tests": "success",
+      "Compiler and regression tests (macOS)": "success",
+      "Formatting and tidy": "success"
+    },
+    "workflow": "https://github.com/astral-sh/ohm-rust/actions/runs/40917926462"
+  },
+  "final_draft_head": "77e5b1004025a0b5d07765d44dfc8a603b1a07c7",
+  "final_files": {
+    ".github/workflows/ci.yml": "08caf9c082d100beeee226b6f54ee937b5db3ba5ba021e45eba5989cf2e255bc",
+    "compiler/rustc_session/src/config/builtin_target_cfg_values.rs": "d7f3308edbb2f85b45927337abed91e7d4784cc1153c6abe273cb9a2a0202f74",
+    "compiler/rustc_session/src/config/cfg.rs": "399bf6f02e147b389dce26efb232829536172c3b0c55060f525daee71b193176",
+    "compiler/rustc_session/src/config/target_cfg_values.rs": "76cca16864d29f0b3dcd5a12368e46fbe8c00e2e7f9c0feb4723e542ce37fc15",
+    "compiler/rustc_session/src/config/target_cfg_values/tests.rs": "a6186dd3fdd3ca9ed96596e92d2c05e1594c6da92fe33f424b65f5fb34ec8e9a",
+    "tests/ui/check-cfg/target-values-from-other-targets.rs": "51ff4b4edb21d5afd2deb77cf08fdf58f7c137a6063441373a39f725e5398e90"
+  },
   "identical_trees": {
     "compiler/rustc_data_structures": "4b5f97c8cca8a1a460d6fa95df8454e6acab276a",
     "compiler/rustc_session": "7501ac44b595f2953aaa1e47e892f00d562782da",
@@ -16,10 +43,12 @@
   "initial_rebased_source": "b01a078b6f33cea2ca2c6c9dfb43624e6ce69b5b",
   "measured_child": "a413698809569f88fe88e07a393c65ba81153c2b",
   "measured_parent": "722b9412d2386e70d6cffba132544c0e3ae09cd7",
+  "prior_tidy_qualified_source": "14860f2a10e8b39ca416bf0cb570904273996117",
   "publication_adjustments": [
     "CI from the underlying branch was preserved upon transfer to the draft base.",
     "The first hosted formatter requested three normal layout changes.",
-    "Tidy required moving the two tests to a dedicated tests.rs. The generated readback points to its source with a new relative path. The entire production text preceding cfg(test) was compared to the formatter commit and is identical."
+    "Tidy required moving the two tests to a dedicated tests.rs. The generated readback points to its source with a new relative path. The entire production text preceding cfg(test) was compared to the formatter commit and is identical.",
+    "The hosted Linux compiler warns about intentional set iteration. The final commit limits the lint allowance to the test statement comparing the public iterator order. Its only changed file relative to the preceding head is the test module."
   ],
   "publication_base": "569aefbe9016e23bbfdf7f5615990102f2cb5e44",
   "rustfmt_commit": "f4725647118d04efb6c15e659fdd6d3d5703ec1d",

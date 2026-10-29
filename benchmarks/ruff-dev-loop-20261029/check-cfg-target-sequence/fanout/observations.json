@@ -1,0 +1,1730 @@
+{
+  "A-pair-01-H": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98225077
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 185914564
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 155147673
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 469315690
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 311529843
+      }
+    },
+    "direction": "H",
+    "fill": 11167137,
+    "raw_slot": "82fcb6aac61b6304c3085504815a1b70e9951f63361c73810fc9f5d5b5abf3f8",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1220132847
+  },
+  "A-pair-01-P": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98076106
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 185591815
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 154864335
+      },
+      "main": {
+        "fill": 2233441,
+        "fill_calls": 1,
+        "total": 468087759
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 311203400
+      }
+    },
+    "direction": "P",
+    "fill": 11167128,
+    "raw_slot": "cbc71df64522f4f2696270bf1fc4431195c88f5ca4b32f9ef8b906686ab0a63a",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1217823415
+  },
+  "A-pair-02-H": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233395,
+        "fill_calls": 1,
+        "total": 98000100
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 185609142
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 155052132
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 468458564
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 311998718
+      }
+    },
+    "direction": "H",
+    "fill": 11167128,
+    "raw_slot": "d0ed7643b45d47de2c7ced2579519b793904312d6b2a025fd79611d1e45a6626",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1219118656
+  },
+  "A-pair-02-P": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98834030
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 186502282
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 155686603
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 471182704
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 313220512
+      }
+    },
+    "direction": "P",
+    "fill": 11167137,
+    "raw_slot": "1df6ab4f4116f72119d85c30471c86b5c39c5bc9451680a399bff56ae89f5ed4",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1225426131
+  },
+  "A-pair-03-H": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98845468
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 186570029
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 156088404
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 471190463
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 316126177
+      }
+    },
+    "direction": "H",
+    "fill": 11167137,
+    "raw_slot": "f53edc47776e9a196bfd7c10469354074203790c7ee112b3bef399a30b441b1f",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1228820541
+  },
+  "A-pair-03-P": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98192973
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 185850369
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 155286633
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 468605108
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 310987429
+      }
+    },
+    "direction": "P",
+    "fill": 11167137,
+    "raw_slot": "8f9d3774a522d1e977f2e4e74ff3431fdbc8b5d1e7b2c5b99ea8979bb524efab",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1218922512
+  },
+  "A-pair-04-H": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98217202
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 186304275
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 155116458
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 469026550
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 313420445
+      }
+    },
+    "direction": "H",
+    "fill": 11167137,
+    "raw_slot": "33e10726a71f78f2c1bd5bc1a8ce3d94ed107c27d3bfa1a47b687c67e3d024e5",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1222084930
+  },
+  "A-pair-04-P": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98002064
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 185596110
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 154840610
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 468868369
+      },
+      "ruff_text_size": {
+        "fill": 2236762,
+        "fill_calls": 1,
+        "total": 309874148
+      }
+    },
+    "direction": "P",
+    "fill": 11170470,
+    "raw_slot": "c9929e674a70a1edc36c6efd8d54d08496b24bd0c0062b8c56be61d0f1775c96",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1217181301
+  },
+  "A-pair-05-H": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98001481
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 185691643
+      },
+      "indexing": {
+        "fill": 2233441,
+        "fill_calls": 1,
+        "total": 154862102
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 468951949
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 312238033
+      }
+    },
+    "direction": "H",
+    "fill": 11167128,
+    "raw_slot": "bc271ce0180e1f2c38cb8b527a1bc585678c61965b630c1fe1f12a260e10a057",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1219745208
+  },
+  "A-pair-05-P": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98838217
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 186516043
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 156027889
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 471593426
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 312980514
+      }
+    },
+    "direction": "P",
+    "fill": 11167137,
+    "raw_slot": "df08a1d9d8ed1c5bf36919210f609ee304e9fd2b6160d97fcce54205bfd8b828",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1225956089
+  },
+  "A-pair-06-H": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98826025
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 186777338
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 155605820
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 471186783
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 312549874
+      }
+    },
+    "direction": "H",
+    "fill": 11167137,
+    "raw_slot": "72583444e6ed7c405c2f32e51083a138737029fda4408878202e5983f8c08054",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1224945840
+  },
+  "A-pair-06-P": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98217620
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 185903862
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 155408838
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 468692147
+      },
+      "ruff_text_size": {
+        "fill": 2234103,
+        "fill_calls": 1,
+        "total": 310429760
+      }
+    },
+    "direction": "P",
+    "fill": 11167811,
+    "raw_slot": "d579bc97f0875a3cde408bdb6fd28276afef18167c51f35d5821be354468923c",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1218652227
+  },
+  "A-pair-07-H": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98223652
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 185887918
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 155432442
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 468960897
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 312313783
+      }
+    },
+    "direction": "H",
+    "fill": 11167137,
+    "raw_slot": "34a3e62da301878c55981ac5496136c50c916fc07c104a3f5787deddb7717d53",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1220818692
+  },
+  "A-pair-07-P": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233395,
+        "fill_calls": 1,
+        "total": 97998936
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 185966807
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 154825667
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 468911845
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 309330884
+      }
+    },
+    "direction": "P",
+    "fill": 11167128,
+    "raw_slot": "211257454a46ba3319bfce177067a868cf6e16c6fccbd3bc0f135b4432a48f60",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1217034139
+  },
+  "A-pair-08-H": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98019945
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 186115391
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 154904484
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 468159859
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 311791429
+      }
+    },
+    "direction": "H",
+    "fill": 11167137,
+    "raw_slot": "5f5e708518cff709c44aaf5a6b23a8f4279011ec3ebef7e2ed1efb3db824627a",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1218991108
+  },
+  "A-pair-08-P": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98828394
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 186649042
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 156137557
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 471362169
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 312680919
+      }
+    },
+    "direction": "P",
+    "fill": 11167137,
+    "raw_slot": "4e89e4e0f10d5d99dae906c86a2845b7e024e0127cd4ee11bcee3444c9b4ccc1",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1225658081
+  },
+  "A-pair-09-H": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98863235
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 186552366
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 155680990
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 471212372
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 314796532
+      }
+    },
+    "direction": "H",
+    "fill": 11167137,
+    "raw_slot": "f95824fb73b58c14d4aec1846c2b9b36c813bdf328baec18e8757208f9d18456",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1227105495
+  },
+  "A-pair-09-P": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98219972
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 186558774
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 155095742
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 468820145
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 310119606
+      }
+    },
+    "direction": "P",
+    "fill": 11167137,
+    "raw_slot": "23b5baa904c5fb6c9fc70069637b01e762c0a7c11a5a0dfb17bb83e0f87fcfe1",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1218814239
+  },
+  "A-pair-10-H": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98213648
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 185916979
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 155061034
+      },
+      "main": {
+        "fill": 2233441,
+        "fill_calls": 1,
+        "total": 469414127
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 312032240
+      }
+    },
+    "direction": "H",
+    "fill": 11167128,
+    "raw_slot": "836b593558eebf3cf8b6aedb0bed7f9e9d6dc32e70b06d45dad455b6306c38cb",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1220638028
+  },
+  "A-pair-10-P": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98004208
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 185570792
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 154875342
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 468873852
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 310415494
+      }
+    },
+    "direction": "P",
+    "fill": 11167137,
+    "raw_slot": "a468f9b169bd7ac0b61d4776f14464cedc420e36fceba4f624227c0bffb67e31",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1217739688
+  },
+  "A-pair-11-H": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98001532
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 185557500
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 154988649
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 468191107
+      },
+      "ruff_text_size": {
+        "fill": 2234103,
+        "fill_calls": 1,
+        "total": 312877593
+      }
+    },
+    "direction": "H",
+    "fill": 11167811,
+    "raw_slot": "5b7f799d1a32a6131d2aeed8f3b1795ff7df1d79c534ac6909deb2ff8b5e1733",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1219616381
+  },
+  "A-pair-11-P": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98825488
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 186468440
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 156176981
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 471126452
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 312724001
+      }
+    },
+    "direction": "P",
+    "fill": 11167137,
+    "raw_slot": "17509057d9a608f14dfb91a60a13eb060342cc28c260a45753703af6332ecadb",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1225321362
+  },
+  "A-pair-12-H": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98842544
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 186986571
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 155624003
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 471485512
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 314383453
+      }
+    },
+    "direction": "H",
+    "fill": 11167137,
+    "raw_slot": "d401deeae7b55f66a675f7792ffeb232ab52575bca04640d3c3ab055903bbf74",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1227322083
+  },
+  "A-pair-12-P": {
+    "arm": "A",
+    "compiled": {
+      "auto_traits": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 98201017
+      },
+      "constructors": {
+        "fill": 2233404,
+        "fill_calls": 1,
+        "total": 185834193
+      },
+      "indexing": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 155143337
+      },
+      "main": {
+        "fill": 2233450,
+        "fill_calls": 1,
+        "total": 468707119
+      },
+      "ruff_text_size": {
+        "fill": 2233429,
+        "fill_calls": 1,
+        "total": 312299911
+      }
+    },
+    "direction": "P",
+    "fill": 11167137,
+    "raw_slot": "f7d2bca7112c80d1606ca0a47e7f42b98509e8eb600de9c32df0155b6198792a",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1220185577
+  },
+  "D-pair-01-H": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 96687441
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 184751051
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 153514248
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 467317100
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 311666634
+      }
+    },
+    "direction": "H",
+    "fill": 3481615,
+    "raw_slot": "5c0e60096de7c3e392fda929d517887c11137019b07040704ae461a124e61465",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1213936474
+  },
+  "D-pair-01-P": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 96468685
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 184047232
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 153284172
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 467154255
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 308212715
+      }
+    },
+    "direction": "P",
+    "fill": 3481615,
+    "raw_slot": "64ef161af579273cd29ad3f39a92844adb033052846ce4f5fab57dd49cdc6a08",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1209167059
+  },
+  "D-pair-02-H": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 96474306
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 184586690
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 153322124
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 466520263
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 310264944
+      }
+    },
+    "direction": "H",
+    "fill": 3481615,
+    "raw_slot": "29bb5ae10bbf9766b9f8452c0967793f6eacc3ee5fc9149b2e439f54cc52c25f",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1211168327
+  },
+  "D-pair-02-P": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 97296277
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 185101730
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 154063376
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 469600499
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 313690038
+      }
+    },
+    "direction": "P",
+    "fill": 3481615,
+    "raw_slot": "b9234de1101bcfb0f43b295e9a96ecab8e4740b9d3bff41071cf76c6d1f4bde1",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1219751920
+  },
+  "D-pair-03-H": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 97300956
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 185019593
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 154112107
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 470133967
+      },
+      "ruff_text_size": {
+        "fill": 699768,
+        "fill_calls": 3,
+        "total": 310873614
+      }
+    },
+    "direction": "H",
+    "fill": 3484944,
+    "raw_slot": "0ff2d2f484255ac39d27cc94bc55bdf5d4bb6cf7309502325a6cfb0fc21105a7",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1217440237
+  },
+  "D-pair-03-P": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 96677228
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 184369366
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 153522390
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 467626500
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 307982033
+      }
+    },
+    "direction": "P",
+    "fill": 3481615,
+    "raw_slot": "b9b78d653faab378f77f699c897a1586002def8f7e1a66983156f4438a603f9a",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1210177517
+  },
+  "D-pair-04-H": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 96679534
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 184387269
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 153575610
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 467602385
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 309372065
+      }
+    },
+    "direction": "H",
+    "fill": 3481615,
+    "raw_slot": "91312bac13769d3a0b3587bfea2328971a4927505386d4489091c6de9716ff54",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1211616863
+  },
+  "D-pair-04-P": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 96482046
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 184507014
+      },
+      "indexing": {
+        "fill": 696307,
+        "fill_calls": 3,
+        "total": 153287094
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 466752254
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 307836039
+      }
+    },
+    "direction": "P",
+    "fill": 3481606,
+    "raw_slot": "5f2ac7aa004e9cd8cb3eea65ede6e8009b97e9452520226b507354871bed72a9",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1208864447
+  },
+  "D-pair-05-H": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 96485407
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 184009500
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 153497257
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 466673418
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 309679804
+      }
+    },
+    "direction": "H",
+    "fill": 3481615,
+    "raw_slot": "dd32108059cb25c182955782d8ee51f5422ea7002913e8feb6e41d252dffd25a",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1210345386
+  },
+  "D-pair-05-P": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 97336059
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 184912294
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 154081939
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 469923273
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 312304477
+      }
+    },
+    "direction": "P",
+    "fill": 3481615,
+    "raw_slot": "ce3023a002a4adb674ab6caac6aae612a3eb52f62be0d5b841b84f222aa9cba4",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1218558042
+  },
+  "D-pair-06-H": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696263,
+        "fill_calls": 3,
+        "total": 97307145
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 185345085
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 154136432
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 469600984
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 313251361
+      }
+    },
+    "direction": "H",
+    "fill": 3481606,
+    "raw_slot": "664e4fbff9b0737a8b033b5bd0862e6fb542f059b79ad9b009254b0455fdf484",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1219641007
+  },
+  "D-pair-06-P": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 96688888
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 184515597
+      },
+      "indexing": {
+        "fill": 696307,
+        "fill_calls": 3,
+        "total": 153508089
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 467082510
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 309403821
+      }
+    },
+    "direction": "P",
+    "fill": 3481606,
+    "raw_slot": "c8ac62693fac28bb3f2e8a72715782f3f2745551cf9718c82bea00ac14d2e93d",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1211198905
+  },
+  "D-pair-07-H": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 96691259
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 184406508
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 153523838
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 467490452
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 310662074
+      }
+    },
+    "direction": "H",
+    "fill": 3481615,
+    "raw_slot": "3ff662fd065f1b9cb2a2bd010049527dc93121d09aaab22430d0b31f4d54952a",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1212774131
+  },
+  "D-pair-07-P": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 96468417
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 184436492
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 153308545
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 466652805
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 306779705
+      }
+    },
+    "direction": "P",
+    "fill": 3481615,
+    "raw_slot": "dc2841a78b1f9186add9cc92119dfd3de69d57a13ab9071ccc0067e16049dcfe",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1207645964
+  },
+  "D-pair-08-H": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 96471137
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 184222162
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 153342505
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 466909481
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 307129447
+      }
+    },
+    "direction": "H",
+    "fill": 3481615,
+    "raw_slot": "c78c072e6b86b7a976858874c6341166168211f4c8be9ebf5491650e8c97cda2",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1208074732
+  },
+  "D-pair-08-P": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 97291465
+      },
+      "constructors": {
+        "fill": 696263,
+        "fill_calls": 3,
+        "total": 184976484
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 154129875
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 469699100
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 312128980
+      }
+    },
+    "direction": "P",
+    "fill": 3481606,
+    "raw_slot": "f057779ae94dda51b515d20a5625ac5622d4f2975ac3d260e13b20fee16adc11",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1218225904
+  },
+  "D-pair-09-H": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 97327898
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 184978969
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 154100123
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 469603952
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 313348454
+      }
+    },
+    "direction": "H",
+    "fill": 3481615,
+    "raw_slot": "ce568124de0b0097e4d49ca4bf4b92be28b18866c3234aece7adf6032af8bed2",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1219359396
+  },
+  "D-pair-09-P": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 96683687
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 184410995
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 153849471
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 467156181
+      },
+      "ruff_text_size": {
+        "fill": 697113,
+        "fill_calls": 3,
+        "total": 310172239
+      }
+    },
+    "direction": "P",
+    "fill": 3482289,
+    "raw_slot": "cc5035945c62e0d0c620c21118617ce005a28e4b87fe9a0fd875977dd0ca50ea",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1212272573
+  },
+  "D-pair-10-H": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 96679948
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 184684462
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 153520889
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 467348545
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 310601988
+      }
+    },
+    "direction": "H",
+    "fill": 3481615,
+    "raw_slot": "98219187798a2418adfdcafca2f30a2bbb4c85dfb3914120fbf5fe563ddcd2c1",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1212835832
+  },
+  "D-pair-10-P": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 96471531
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 184028422
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 153396564
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 466962687
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 308567043
+      }
+    },
+    "direction": "P",
+    "fill": 3481615,
+    "raw_slot": "5eb46dedad2f2bc9807fd7622a55732d5e3ff54f27377c2f8a1c6b56ad980d09",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1209426247
+  },
+  "D-pair-11-H": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 96466767
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 184068999
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 153466893
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 466517355
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 309533555
+      }
+    },
+    "direction": "H",
+    "fill": 3481615,
+    "raw_slot": "47d6cc053968fda8006d1aa63abcda45d8f7bae01c478f12eea71323c017200b",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1210053569
+  },
+  "D-pair-11-P": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 97299168
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 185327664
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 154081031
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 469590908
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 311639436
+      }
+    },
+    "direction": "P",
+    "fill": 3481615,
+    "raw_slot": "792177f8c16b6685261bdd3a18af0a1d998eff854d0f94570adc20f6c1be851b",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1217938207
+  },
+  "D-pair-12-H": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 97304345
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 185374915
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 154079247
+      },
+      "main": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 469780599
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 314524865
+      }
+    },
+    "direction": "H",
+    "fill": 3481615,
+    "raw_slot": "02a3e7736f7a7615ce8d2a5ec9b53d744cd624ffd8086bf78ff4a991d526aea4",
+    "reader": "1..4\n",
+    "reader_elf": "7d5b47603d0b7239d0cc4fd097f9b8b69ff93b8f63fc38056db39fdd7510eea3",
+    "total": 1221063971
+  },
+  "D-pair-12-P": {
+    "arm": "D",
+    "compiled": {
+      "auto_traits": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 96667808
+      },
+      "constructors": {
+        "fill": 696272,
+        "fill_calls": 3,
+        "total": 184252752
+      },
+      "indexing": {
+        "fill": 696316,
+        "fill_calls": 3,
+        "total": 153504956
+      },
+      "main": {
+        "fill": 696307,
+        "fill_calls": 3,
+        "total": 467261689
+      },
+      "ruff_text_size": {
+        "fill": 696439,
+        "fill_calls": 3,
+        "total": 309244071
+      }
+    },
+    "direction": "P",
+    "fill": 3481606,
+    "raw_slot": "65292e518e6544aa9ee44158e79cc4adcede01c59c2b194e0d46b2482a78bd31",
+    "reader": "E0599",
+    "reader_elf": null,
+    "total": 1210931276
+  }
+}
