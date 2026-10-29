@@ -1,0 +1,1294 @@
+{
+  "crate": "ruff_python_trivia",
+  "mode": "build",
+  "native": {
+    "A": {
+      "canonical_input_argv": "d4c0f1e3cc6655fe5323eb1ae8a506acd6fc6c8e3e54493d7cc96828ee69c80b",
+      "cargo": [
+        "cargo",
+        "+ohm",
+        "build",
+        "--offline",
+        "--locked",
+        "-p",
+        "ruff_python_trivia",
+        "-j",
+        "4",
+        "--message-format=json"
+      ],
+      "cargo_artifacts": [
+        [
+          "either",
+          [
+            "lib"
+          ],
+          true,
+          [
+            "std",
+            "use_std"
+          ]
+        ],
+        [
+          "itertools",
+          [
+            "lib"
+          ],
+          true,
+          [
+            "use_alloc",
+            "use_std"
+          ]
+        ],
+        [
+          "memchr",
+          [
+            "lib"
+          ],
+          true,
+          [
+            "alloc",
+            "std"
+          ]
+        ],
+        [
+          "ruff_python_trivia",
+          [
+            "lib"
+          ],
+          false,
+          []
+        ],
+        [
+          "ruff_source_file",
+          [
+            "lib"
+          ],
+          true,
+          []
+        ],
+        [
+          "ruff_text_size",
+          [
+            "lib"
+          ],
+          true,
+          []
+        ],
+        [
+          "rustc_hash",
+          [
+            "lib"
+          ],
+          true,
+          [
+            "std"
+          ]
+        ],
+        [
+          "tinyvec",
+          [
+            "lib"
+          ],
+          true,
+          [
+            "alloc",
+            "default",
+            "tinyvec_macros"
+          ]
+        ],
+        [
+          "tinyvec_macros",
+          [
+            "lib"
+          ],
+          true,
+          []
+        ],
+        [
+          "unicode_ident",
+          [
+            "lib"
+          ],
+          true,
+          []
+        ],
+        [
+          "unicode_normalization",
+          [
+            "lib"
+          ],
+          true,
+          [
+            "std"
+          ]
+        ]
+      ],
+      "clean_native_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "0e664cb13d700750d2f83e180990533ebb48d35417536f0dc664285ba795aa91"
+      },
+      "clean_output_identities": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "direct_output_identities": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "dirty_links": 0,
+      "dirty_native_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "8632ff55e01a8401f9912dc13797305598fddcb68044a2a6130de758f2ce82e8"
+      },
+      "dirty_output_identities": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "dirty_rustc": [
+        "ruff_python_trivia"
+      ],
+      "environment_hash": "f8ec8becc4fa7681482487cec010701d200c91fd08d1e950506aec04fbaf970c",
+      "extern_operands": 7,
+      "externs": {
+        "itertools": {
+          "identity": "80a0bdb9b3500923023f5d4622ced76ca396c242940db3559742eeaf15ee5a0c",
+          "raw": "80a0bdb9b3500923023f5d4622ced76ca396c242940db3559742eeaf15ee5a0c"
+        },
+        "memchr": {
+          "identity": "4f4cdbfd17f4d49827a55c26f334b3abf739f67b3b7ac07e40d3bcc0e257861b",
+          "raw": "4f4cdbfd17f4d49827a55c26f334b3abf739f67b3b7ac07e40d3bcc0e257861b"
+        },
+        "ruff_source_file": {
+          "identity": "af303708b3555ed849a3c3d53295721f568133badaa0fce81e3f9a9b6bdc4879",
+          "raw": "af303708b3555ed849a3c3d53295721f568133badaa0fce81e3f9a9b6bdc4879"
+        },
+        "ruff_text_size": {
+          "identity": "11f707369c37a95b607a859c8c7a167e13c6f23a55c7ad63eed69fee52bd6b1c",
+          "raw": "11f707369c37a95b607a859c8c7a167e13c6f23a55c7ad63eed69fee52bd6b1c"
+        },
+        "rustc_hash": {
+          "identity": "1a5caedc7451a7326318b349dfe1b3d1af0f85fbb5a110e46e787e6146349802",
+          "raw": "1a5caedc7451a7326318b349dfe1b3d1af0f85fbb5a110e46e787e6146349802"
+        },
+        "unicode_ident": {
+          "identity": "3bdbb19c0bad21bbd8f6db1619808e15f0f5f61008f4c7060ea529d91a6ef037",
+          "raw": "3bdbb19c0bad21bbd8f6db1619808e15f0f5f61008f4c7060ea529d91a6ef037"
+        },
+        "unicode_normalization": {
+          "identity": "701f08ee76c747b473044b4348e9ee630d61270ddfa5701c7e5da9d75263eeca",
+          "raw": "701f08ee76c747b473044b4348e9ee630d61270ddfa5701c7e5da9d75263eeca"
+        }
+      },
+      "genuine_hardlinks": {
+        "groups": [
+          [
+            "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rlib",
+            "products/debug/libruff_python_trivia.rlib"
+          ],
+          [
+            "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_python_trivia-2y61jbfs79ba8/s-hno1l7opht-1gpryxw-b5uzdokdtv8gm57jvg3st3dii/metadata.rmeta",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_python_trivia-2y61jbfs79ba8/s-hno1l7opht-1gpryxw-b5uzdokdtv8gm57jvg3st3dii/ohm-build-metadata.rmeta"
+          ],
+          [
+            "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_source_file/ba785f50d106af30/out/libruff_source_file-ba785f50d106af30.rmeta",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_source_file-26s9tios5qzip/s-hno1l6uuok-153cmj5-b5hleqnrjdicu228pd7q9qsau/metadata.rmeta",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_source_file-26s9tios5qzip/s-hno1l6uuok-153cmj5-b5hleqnrjdicu228pd7q9qsau/ohm-build-metadata.rmeta"
+          ],
+          [
+            "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_text_size/a9fb1b29b65fd24d/out/libruff_text_size-a9fb1b29b65fd24d.rmeta",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_text_size-3ipsy19dq1uu4/s-hno1l683fc-0395rt2-17k62p3iuovppj2jdu7zgalwj/metadata.rmeta",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_text_size-3ipsy19dq1uu4/s-hno1l683fc-0395rt2-17k62p3iuovppj2jdu7zgalwj/ohm-build-metadata.rmeta"
+          ],
+          [
+            "products/debug/incremental/77cc7b255aa910fd/ruff_python_trivia-2y61jbfs79ba8/s-hno1l7opht-1gpryxw-b5uzdokdtv8gm57jvg3st3dii/dep-graph.bin",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_python_trivia-2y61jbfs79ba8/s-hno1l7opht-1gpryxw-b5uzdokdtv8gm57jvg3st3dii/ohm-build-dep-graph.bin"
+          ],
+          [
+            "products/debug/incremental/77cc7b255aa910fd/ruff_python_trivia-2y61jbfs79ba8/s-hno1l7opht-1gpryxw-b5uzdokdtv8gm57jvg3st3dii/metadata-prefix-v3.ohm-prefix-v3",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_python_trivia-2y61jbfs79ba8/s-hno1l7opht-1gpryxw-b5uzdokdtv8gm57jvg3st3dii/ohm-build-metadata-prefix-v3.ohm-prefix-v3"
+          ],
+          [
+            "products/debug/incremental/77cc7b255aa910fd/ruff_python_trivia-2y61jbfs79ba8/s-hno1l7opht-1gpryxw-b5uzdokdtv8gm57jvg3st3dii/ohm-build-query-cache.bin",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_python_trivia-2y61jbfs79ba8/s-hno1l7opht-1gpryxw-b5uzdokdtv8gm57jvg3st3dii/query-cache.bin"
+          ],
+          [
+            "products/debug/incremental/77cc7b255aa910fd/ruff_source_file-26s9tios5qzip/s-hno1l6uuok-153cmj5-b5hleqnrjdicu228pd7q9qsau/dep-graph.bin",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_source_file-26s9tios5qzip/s-hno1l6uuok-153cmj5-b5hleqnrjdicu228pd7q9qsau/ohm-build-dep-graph.bin"
+          ],
+          [
+            "products/debug/incremental/77cc7b255aa910fd/ruff_source_file-26s9tios5qzip/s-hno1l6uuok-153cmj5-b5hleqnrjdicu228pd7q9qsau/metadata-prefix-v3.ohm-prefix-v3",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_source_file-26s9tios5qzip/s-hno1l6uuok-153cmj5-b5hleqnrjdicu228pd7q9qsau/ohm-build-metadata-prefix-v3.ohm-prefix-v3"
+          ],
+          [
+            "products/debug/incremental/77cc7b255aa910fd/ruff_source_file-26s9tios5qzip/s-hno1l6uuok-153cmj5-b5hleqnrjdicu228pd7q9qsau/ohm-build-query-cache.bin",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_source_file-26s9tios5qzip/s-hno1l6uuok-153cmj5-b5hleqnrjdicu228pd7q9qsau/query-cache.bin"
+          ],
+          [
+            "products/debug/incremental/77cc7b255aa910fd/ruff_text_size-3ipsy19dq1uu4/s-hno1l683fc-0395rt2-17k62p3iuovppj2jdu7zgalwj/dep-graph.bin",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_text_size-3ipsy19dq1uu4/s-hno1l683fc-0395rt2-17k62p3iuovppj2jdu7zgalwj/ohm-build-dep-graph.bin"
+          ],
+          [
+            "products/debug/incremental/77cc7b255aa910fd/ruff_text_size-3ipsy19dq1uu4/s-hno1l683fc-0395rt2-17k62p3iuovppj2jdu7zgalwj/metadata-prefix-v3.ohm-prefix-v3",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_text_size-3ipsy19dq1uu4/s-hno1l683fc-0395rt2-17k62p3iuovppj2jdu7zgalwj/ohm-build-metadata-prefix-v3.ohm-prefix-v3"
+          ],
+          [
+            "products/debug/incremental/77cc7b255aa910fd/ruff_text_size-3ipsy19dq1uu4/s-hno1l683fc-0395rt2-17k62p3iuovppj2jdu7zgalwj/ohm-build-query-cache.bin",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_text_size-3ipsy19dq1uu4/s-hno1l683fc-0395rt2-17k62p3iuovppj2jdu7zgalwj/query-cache.bin"
+          ]
+        ],
+        "groups_sha256": "07187e3bbb1528ceda266d6e4987e19872205816d6566045a6bed881933518a0",
+        "physical_files": 205,
+        "regular_paths": 221
+      },
+      "public_hash_arguments": [
+        "-Zpublic-api-hash"
+      ],
+      "subject": {
+        "cargo": "789c2f116732ed642565d0f92c500838f8cd53664fbe60f205a5621c43cbecf1",
+        "commit": "722b9412d2386e70d6cffba132544c0e3ae09cd7",
+        "driver": "1512fb90725102e1290790b2202a88bd968ea60a4c09336803a0939a636cc0ac",
+        "edit": "83a3afc3156d73ae4296f3fa74ede28e4c72bfcd",
+        "product": "59e16bbe7fe101de0693812ec391c3aefc55718085abcc5fba2f8a990533fd27",
+        "ruff": "93526150df078af7dd8fc4226cdcc469539d2001",
+        "rustc": "fa2ed3ec44adb4455d5323c4ee582becd5307cb4aae6b5cfc3cdc289b3140512",
+        "sources": [
+          "28924b3e970299c42f667703bf8fc803f5ed17f28363d0821f7a571275dbd273",
+          "5ac70d40126b21302e0f5ff21e9ef60c65f1bbcada53e2f0d92dd3d42b5ba0f8"
+        ],
+        "wild": "0d6335808b647d499f3d74993b602e64ff0625206c809bf4913c487eea380cd5"
+      },
+      "test_verdicts": {
+        "current": {
+          "binary": "3937c356b57ae385add0e523e09734b77a4aa2c5838557d6d3a42b3ee46f1336",
+          "exit": 0,
+          "inventory": "c2999b60a7d7dab7c24ea2efa58d66ec560e51f060e978d8ad6475d5276059d2",
+          "name": "textwrap::tests::adjust_indent",
+          "test_count": 40
+        },
+        "previous": {
+          "binary": "ae8b24911fe8cf15dea5b5cffb3e3c3b4e6ea560425506dbd504d1714423d331",
+          "exit": 101,
+          "inventory": "c2999b60a7d7dab7c24ea2efa58d66ec560e51f060e978d8ad6475d5276059d2",
+          "name": "textwrap::tests::adjust_indent",
+          "test_count": 40
+        }
+      },
+      "unchanged": {
+        "rustc": [],
+        "wild": 0
+      }
+    },
+    "B": {
+      "canonical_input_argv": "346d29c37e03bf37c31ad078c6f8b48021ef3f11a4d31c2ca89e648970579b13",
+      "cargo": [
+        "cargo",
+        "+ohm",
+        "build",
+        "--offline",
+        "--locked",
+        "-p",
+        "ruff_python_trivia",
+        "-j",
+        "4",
+        "--message-format=json"
+      ],
+      "cargo_artifacts": [
+        [
+          "either",
+          [
+            "lib"
+          ],
+          true,
+          [
+            "std",
+            "use_std"
+          ]
+        ],
+        [
+          "itertools",
+          [
+            "lib"
+          ],
+          true,
+          [
+            "use_alloc",
+            "use_std"
+          ]
+        ],
+        [
+          "memchr",
+          [
+            "lib"
+          ],
+          true,
+          [
+            "alloc",
+            "std"
+          ]
+        ],
+        [
+          "ruff_python_trivia",
+          [
+            "lib"
+          ],
+          false,
+          []
+        ],
+        [
+          "ruff_source_file",
+          [
+            "lib"
+          ],
+          true,
+          []
+        ],
+        [
+          "ruff_text_size",
+          [
+            "lib"
+          ],
+          true,
+          []
+        ],
+        [
+          "rustc_hash",
+          [
+            "lib"
+          ],
+          true,
+          [
+            "std"
+          ]
+        ],
+        [
+          "tinyvec",
+          [
+            "lib"
+          ],
+          true,
+          [
+            "alloc",
+            "default",
+            "tinyvec_macros"
+          ]
+        ],
+        [
+          "tinyvec_macros",
+          [
+            "lib"
+          ],
+          true,
+          []
+        ],
+        [
+          "unicode_ident",
+          [
+            "lib"
+          ],
+          true,
+          []
+        ],
+        [
+          "unicode_normalization",
+          [
+            "lib"
+          ],
+          true,
+          [
+            "std"
+          ]
+        ]
+      ],
+      "clean_native_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-02060f85f5704ba3/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "2e1f9fe1f79bf0dfcb24603ef000d7ef6f33451939caccb6ae90b8c0f9254514"
+      },
+      "clean_output_identities": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-02060f85f5704ba3/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "direct_output_identities": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "dirty_links": 0,
+      "dirty_native_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-02060f85f5704ba3/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "0e37340bbe57a73bb34bc6b6842bbccbe6568be31a7a4baa862d6c328b5e1f58"
+      },
+      "dirty_output_identities": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-02060f85f5704ba3/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "dirty_rustc": [
+        "ruff_python_trivia"
+      ],
+      "environment_hash": "f8ec8becc4fa7681482487cec010701d200c91fd08d1e950506aec04fbaf970c",
+      "extern_operands": 7,
+      "externs": {
+        "itertools": {
+          "identity": "80a0bdb9b3500923023f5d4622ced76ca396c242940db3559742eeaf15ee5a0c",
+          "raw": "80a0bdb9b3500923023f5d4622ced76ca396c242940db3559742eeaf15ee5a0c"
+        },
+        "memchr": {
+          "identity": "4f4cdbfd17f4d49827a55c26f334b3abf739f67b3b7ac07e40d3bcc0e257861b",
+          "raw": "4f4cdbfd17f4d49827a55c26f334b3abf739f67b3b7ac07e40d3bcc0e257861b"
+        },
+        "ruff_source_file": {
+          "identity": "af303708b3555ed849a3c3d53295721f568133badaa0fce81e3f9a9b6bdc4879",
+          "raw": "af303708b3555ed849a3c3d53295721f568133badaa0fce81e3f9a9b6bdc4879"
+        },
+        "ruff_text_size": {
+          "identity": "11f707369c37a95b607a859c8c7a167e13c6f23a55c7ad63eed69fee52bd6b1c",
+          "raw": "11f707369c37a95b607a859c8c7a167e13c6f23a55c7ad63eed69fee52bd6b1c"
+        },
+        "rustc_hash": {
+          "identity": "1a5caedc7451a7326318b349dfe1b3d1af0f85fbb5a110e46e787e6146349802",
+          "raw": "1a5caedc7451a7326318b349dfe1b3d1af0f85fbb5a110e46e787e6146349802"
+        },
+        "unicode_ident": {
+          "identity": "3bdbb19c0bad21bbd8f6db1619808e15f0f5f61008f4c7060ea529d91a6ef037",
+          "raw": "3bdbb19c0bad21bbd8f6db1619808e15f0f5f61008f4c7060ea529d91a6ef037"
+        },
+        "unicode_normalization": {
+          "identity": "701f08ee76c747b473044b4348e9ee630d61270ddfa5701c7e5da9d75263eeca",
+          "raw": "701f08ee76c747b473044b4348e9ee630d61270ddfa5701c7e5da9d75263eeca"
+        }
+      },
+      "genuine_hardlinks": {
+        "groups": [
+          [
+            "products/debug/build/workspaces/77cc7b255aa910fd/v2-02060f85f5704ba3/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rlib",
+            "products/debug/libruff_python_trivia.rlib"
+          ],
+          [
+            "products/debug/build/workspaces/77cc7b255aa910fd/v2-02060f85f5704ba3/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_python_trivia-2y61jbfs79ba8/s-hno1lhesli-1ax3njr-b5uzdokdtv8gm57jvg3st3dii/metadata.rmeta",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_python_trivia-2y61jbfs79ba8/s-hno1lhesli-1ax3njr-b5uzdokdtv8gm57jvg3st3dii/ohm-build-metadata.rmeta"
+          ],
+          [
+            "products/debug/build/workspaces/77cc7b255aa910fd/v2-02060f85f5704ba3/ruff_source_file/ba785f50d106af30/out/libruff_source_file-ba785f50d106af30.rmeta",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_source_file-26s9tios5qzip/s-hno1lglvzh-1t317sq-b5hleqnrjdicu228pd7q9qsau/metadata.rmeta",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_source_file-26s9tios5qzip/s-hno1lglvzh-1t317sq-b5hleqnrjdicu228pd7q9qsau/ohm-build-metadata.rmeta"
+          ],
+          [
+            "products/debug/build/workspaces/77cc7b255aa910fd/v2-02060f85f5704ba3/ruff_text_size/a9fb1b29b65fd24d/out/libruff_text_size-a9fb1b29b65fd24d.rmeta",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_text_size-3ipsy19dq1uu4/s-hno1lg0qif-0brhq9y-17k62p3iuovppj2jdu7zgalwj/metadata.rmeta",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_text_size-3ipsy19dq1uu4/s-hno1lg0qif-0brhq9y-17k62p3iuovppj2jdu7zgalwj/ohm-build-metadata.rmeta"
+          ],
+          [
+            "products/debug/incremental/77cc7b255aa910fd/ruff_python_trivia-2y61jbfs79ba8/s-hno1lhesli-1ax3njr-b5uzdokdtv8gm57jvg3st3dii/dep-graph.bin",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_python_trivia-2y61jbfs79ba8/s-hno1lhesli-1ax3njr-b5uzdokdtv8gm57jvg3st3dii/ohm-build-dep-graph.bin"
+          ],
+          [
+            "products/debug/incremental/77cc7b255aa910fd/ruff_python_trivia-2y61jbfs79ba8/s-hno1lhesli-1ax3njr-b5uzdokdtv8gm57jvg3st3dii/metadata-prefix-v3.ohm-prefix-v3",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_python_trivia-2y61jbfs79ba8/s-hno1lhesli-1ax3njr-b5uzdokdtv8gm57jvg3st3dii/ohm-build-metadata-prefix-v3.ohm-prefix-v3"
+          ],
+          [
+            "products/debug/incremental/77cc7b255aa910fd/ruff_python_trivia-2y61jbfs79ba8/s-hno1lhesli-1ax3njr-b5uzdokdtv8gm57jvg3st3dii/ohm-build-query-cache.bin",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_python_trivia-2y61jbfs79ba8/s-hno1lhesli-1ax3njr-b5uzdokdtv8gm57jvg3st3dii/query-cache.bin"
+          ],
+          [
+            "products/debug/incremental/77cc7b255aa910fd/ruff_source_file-26s9tios5qzip/s-hno1lglvzh-1t317sq-b5hleqnrjdicu228pd7q9qsau/dep-graph.bin",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_source_file-26s9tios5qzip/s-hno1lglvzh-1t317sq-b5hleqnrjdicu228pd7q9qsau/ohm-build-dep-graph.bin"
+          ],
+          [
+            "products/debug/incremental/77cc7b255aa910fd/ruff_source_file-26s9tios5qzip/s-hno1lglvzh-1t317sq-b5hleqnrjdicu228pd7q9qsau/metadata-prefix-v3.ohm-prefix-v3",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_source_file-26s9tios5qzip/s-hno1lglvzh-1t317sq-b5hleqnrjdicu228pd7q9qsau/ohm-build-metadata-prefix-v3.ohm-prefix-v3"
+          ],
+          [
+            "products/debug/incremental/77cc7b255aa910fd/ruff_source_file-26s9tios5qzip/s-hno1lglvzh-1t317sq-b5hleqnrjdicu228pd7q9qsau/ohm-build-query-cache.bin",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_source_file-26s9tios5qzip/s-hno1lglvzh-1t317sq-b5hleqnrjdicu228pd7q9qsau/query-cache.bin"
+          ],
+          [
+            "products/debug/incremental/77cc7b255aa910fd/ruff_text_size-3ipsy19dq1uu4/s-hno1lg0qif-0brhq9y-17k62p3iuovppj2jdu7zgalwj/dep-graph.bin",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_text_size-3ipsy19dq1uu4/s-hno1lg0qif-0brhq9y-17k62p3iuovppj2jdu7zgalwj/ohm-build-dep-graph.bin"
+          ],
+          [
+            "products/debug/incremental/77cc7b255aa910fd/ruff_text_size-3ipsy19dq1uu4/s-hno1lg0qif-0brhq9y-17k62p3iuovppj2jdu7zgalwj/metadata-prefix-v3.ohm-prefix-v3",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_text_size-3ipsy19dq1uu4/s-hno1lg0qif-0brhq9y-17k62p3iuovppj2jdu7zgalwj/ohm-build-metadata-prefix-v3.ohm-prefix-v3"
+          ],
+          [
+            "products/debug/incremental/77cc7b255aa910fd/ruff_text_size-3ipsy19dq1uu4/s-hno1lg0qif-0brhq9y-17k62p3iuovppj2jdu7zgalwj/ohm-build-query-cache.bin",
+            "products/debug/incremental/77cc7b255aa910fd/ruff_text_size-3ipsy19dq1uu4/s-hno1lg0qif-0brhq9y-17k62p3iuovppj2jdu7zgalwj/query-cache.bin"
+          ]
+        ],
+        "groups_sha256": "3bd79c3c10951c9af195109bb57fdb673045aca97cf0227b7237a97131522f99",
+        "physical_files": 205,
+        "regular_paths": 221
+      },
+      "public_hash_arguments": [
+        "-Zpublic-api-hash"
+      ],
+      "subject": {
+        "cargo": "789c2f116732ed642565d0f92c500838f8cd53664fbe60f205a5621c43cbecf1",
+        "commit": "181a2fd00972e05e75b47ec4c3cf1941f0f0d8ec",
+        "driver": "ab02b0d846382be23ff2d05805d374bb844b4cb057f2a377b3b42050bc4bd7eb",
+        "edit": "83a3afc3156d73ae4296f3fa74ede28e4c72bfcd",
+        "product": "c8908dcecd1fefa8befc677c580e094c21228b705484a0028170b769f2ac50d8",
+        "ruff": "93526150df078af7dd8fc4226cdcc469539d2001",
+        "rustc": "fa2ed3ec44adb4455d5323c4ee582becd5307cb4aae6b5cfc3cdc289b3140512",
+        "sources": [
+          "28924b3e970299c42f667703bf8fc803f5ed17f28363d0821f7a571275dbd273",
+          "5ac70d40126b21302e0f5ff21e9ef60c65f1bbcada53e2f0d92dd3d42b5ba0f8"
+        ],
+        "wild": "0d6335808b647d499f3d74993b602e64ff0625206c809bf4913c487eea380cd5"
+      },
+      "test_verdicts": {
+        "current": {
+          "binary": "3937c356b57ae385add0e523e09734b77a4aa2c5838557d6d3a42b3ee46f1336",
+          "exit": 0,
+          "inventory": "c2999b60a7d7dab7c24ea2efa58d66ec560e51f060e978d8ad6475d5276059d2",
+          "name": "textwrap::tests::adjust_indent",
+          "test_count": 40
+        },
+        "previous": {
+          "binary": "ae8b24911fe8cf15dea5b5cffb3e3c3b4e6ea560425506dbd504d1714423d331",
+          "exit": 101,
+          "inventory": "c2999b60a7d7dab7c24ea2efa58d66ec560e51f060e978d8ad6475d5276059d2",
+          "name": "textwrap::tests::adjust_indent",
+          "test_count": 40
+        }
+      },
+      "unchanged": {
+        "rustc": [],
+        "wild": 0
+      }
+    }
+  },
+  "profiles": {
+    "profile-01-A": {
+      "bytes": 12220795,
+      "graph": {
+        "inclusive": 8751649,
+        "self_cost": 3125580
+      },
+      "ir": 685534254,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "94ce9850c18fcafa72ddb9cc5f6fc3f65e67c99d736d466b0897394c09c99850"
+      },
+      "raw_sha256": "d4745178893320af0a53e449c39ca9545a83f046b7edd719b37e1880b750bf1d"
+    },
+    "profile-01-B": {
+      "bytes": 12208636,
+      "graph": {
+        "inclusive": 6386222,
+        "self_cost": 1783482
+      },
+      "ir": 684743486,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "a308c81f5f60e8dcb3e5aabf83bb3cb71b104904bd40db84439abc774d3bc177"
+      },
+      "raw_sha256": "02d669d8c2f3467c47e3776e896383e022d37e9678b02efa6961435ee1efda75"
+    },
+    "profile-02-A": {
+      "bytes": 12216800,
+      "graph": {
+        "inclusive": 8753643,
+        "self_cost": 3125580
+      },
+      "ir": 686494754,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "a02b5aafb45664c79d2a1e169a0193ca32a42606a69fe146d4a1bda0201585c8"
+      },
+      "raw_sha256": "3e32e451c826eced46e1b5786788ff6384e23c1879ebae7ae29fbed483b3eba2"
+    },
+    "profile-02-B": {
+      "bytes": 12209969,
+      "graph": {
+        "inclusive": 6386033,
+        "self_cost": 1783482
+      },
+      "ir": 684411720,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "184bc6d9ad8fc760126837292e3ddd5b29d9e8f51c550afbbb60085bf55123cd"
+      },
+      "raw_sha256": "70094d2b72164892135d23ae05de54d16ed58248504fb25d2c8cae5ceea032ea"
+    },
+    "profile-03-A": {
+      "bytes": 12215434,
+      "graph": {
+        "inclusive": 8752221,
+        "self_cost": 3125580
+      },
+      "ir": 685950696,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "324c4bd6ca5151980fe2eb5bd1d62c65a171152b5fc6be4eb7b98a5f088e4fd2"
+      },
+      "raw_sha256": "d5ec0d3424f10f5bb9acc9d41718fbb6b8ba2f36dd71aa9265aff0f639e02638"
+    },
+    "profile-03-B": {
+      "bytes": 12208909,
+      "graph": {
+        "inclusive": 6384114,
+        "self_cost": 1783482
+      },
+      "ir": 684264944,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "8dab73756265ce221127088fef49bd9451dfb424d5d65b2363fdbbe38e4d01ce"
+      },
+      "raw_sha256": "89ebfd9d271a8ab1175face11871d16c74f3efbc12b9f7463f3f8e9b9de84d20"
+    },
+    "profile-04-A": {
+      "bytes": 12218628,
+      "graph": {
+        "inclusive": 8753456,
+        "self_cost": 3125580
+      },
+      "ir": 686868348,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "a833b5ea1a55686b9874ee5a3ac49e96140c766f31a072583630ce13c787fa21"
+      },
+      "raw_sha256": "bf9fe9d0f1b3cde02e80d724aa23974d5f1b07c284719e14630f079b8c37e6e1"
+    },
+    "profile-04-B": {
+      "bytes": 12207090,
+      "graph": {
+        "inclusive": 6382909,
+        "self_cost": 1783482
+      },
+      "ir": 684617121,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "5891d79418b17f61faf89a3f043ceb1e52bce58b6e0ee74a2147b1f13fc091a7"
+      },
+      "raw_sha256": "075a9202f5ccccac22569432e655a2aba67b5efc1b9491b13fdc9630416d0351"
+    },
+    "profile-05-A": {
+      "bytes": 12217369,
+      "graph": {
+        "inclusive": 8752244,
+        "self_cost": 3125580
+      },
+      "ir": 685614162,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "31168dabe9676580a60cc721e3adb45ea11caec55b1345470a57e6125d93dbcf"
+      },
+      "raw_sha256": "bf10e4d526c788170ae7daa97bc710fd19b11f64b7f904bd70164b9716652c00"
+    },
+    "profile-05-B": {
+      "bytes": 12207897,
+      "graph": {
+        "inclusive": 6382716,
+        "self_cost": 1783482
+      },
+      "ir": 685775904,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "06af36efde068eb401f424df6a688b7843995007e3381cbf51555d74a91dce7d"
+      },
+      "raw_sha256": "5691357911de86c95a8b8b22aad8e6dbe03cf796c7f95366c92003af44e98eb4"
+    },
+    "profile-06-A": {
+      "bytes": 12220183,
+      "graph": {
+        "inclusive": 8750268,
+        "self_cost": 3125580
+      },
+      "ir": 688530151,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "09d844c69cb2aef94f4d4976229b46f771fa938f20ffcdd8a062a5850aafe8cf"
+      },
+      "raw_sha256": "9b1fe3a6a4cfdc8224eca805b6d84e830625815bb66a630cbf3a147dec54a26c"
+    },
+    "profile-06-B": {
+      "bytes": 12207536,
+      "graph": {
+        "inclusive": 6382650,
+        "self_cost": 1783482
+      },
+      "ir": 683980752,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "4602341468bf61f829f41cec9d9870a3f02dc6fadba2af3f5d713d4027f0205f"
+      },
+      "raw_sha256": "cefce10b35cf3cd635cfdb95ebd23c97d9fe04097a27bacbd023d08e59981a23"
+    },
+    "profile-07-A": {
+      "bytes": 12217596,
+      "graph": {
+        "inclusive": 8751128,
+        "self_cost": 3125580
+      },
+      "ir": 686039250,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "db63ff7a36614e2c00ad623b817e76fa38dd4ca49876029d2bf018d3d23479a2"
+      },
+      "raw_sha256": "124ab27849b995185a03d1f7e797f763ebfe8385c566638585afdc617b277bfc"
+    },
+    "profile-07-B": {
+      "bytes": 12206749,
+      "graph": {
+        "inclusive": 6385833,
+        "self_cost": 1783482
+      },
+      "ir": 682584120,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "bca1592a5df64e85aed0ff379a1987b135debb7a4fb19f2169602e172c36e2db"
+      },
+      "raw_sha256": "952196c7a2b7aa2a99c902af395005327520dbb70d433aedab46398b1884e2a7"
+    },
+    "profile-08-A": {
+      "bytes": 12217906,
+      "graph": {
+        "inclusive": 8753245,
+        "self_cost": 3125580
+      },
+      "ir": 685785640,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "3d7bbb89a6a4d9b485509f915746a555802b951748ccc9b1edc4536fab3fe508"
+      },
+      "raw_sha256": "d7c7ee6bd49b5a4adcef0ca1abd8ac462fda5e5961b63defa23ed601e6cc04c5"
+    },
+    "profile-08-B": {
+      "bytes": 12207028,
+      "graph": {
+        "inclusive": 6382655,
+        "self_cost": 1783482
+      },
+      "ir": 682471324,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "71140f93cd72897e98d62beb5297e27e12db8f4187b3703139478b6e959b4074"
+      },
+      "raw_sha256": "1fd86c122ad3353ef8ba1d2ac18a44b3f559f323dc7aa256ef46c499c39302cd"
+    },
+    "profile-09-A": {
+      "bytes": 12214553,
+      "graph": {
+        "inclusive": 8750490,
+        "self_cost": 3125580
+      },
+      "ir": 686363317,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "e6e2a0f446f781902e6398c01d11fb397bd741dfb182eff9120d9d572698b344"
+      },
+      "raw_sha256": "7a1e3547a6e8e22eca542a28f7626c2b8b24207f58fdd4793a1e8ada1d434af9"
+    },
+    "profile-09-B": {
+      "bytes": 12206316,
+      "graph": {
+        "inclusive": 6383808,
+        "self_cost": 1783482
+      },
+      "ir": 683198048,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "cd128f39a5d0924d7b17050f643700350952e42d52e962fc408045473e820cb7"
+      },
+      "raw_sha256": "44107bd36e140555688be5b3a7a829a8f33a99391f2e7508fcc8e5460f04cacf"
+    },
+    "profile-10-A": {
+      "bytes": 12215464,
+      "graph": {
+        "inclusive": 8754113,
+        "self_cost": 3125580
+      },
+      "ir": 685616182,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "6466e3d9328fe3c588bc9f8f8bbe461b3227f658592c42bfcc4afd13ad0489a4"
+      },
+      "raw_sha256": "809852596776a1aaeafc0be124437b72323c8978ee642920d70b497a1725d3dd"
+    },
+    "profile-10-B": {
+      "bytes": 12205422,
+      "graph": {
+        "inclusive": 6386697,
+        "self_cost": 1783482
+      },
+      "ir": 684904747,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "f49dba55466e7a8c1a0b2ff1bfcfddbcaab5b939cf448103d192e3aa3848f11e"
+      },
+      "raw_sha256": "053eadbbd3477ee24fdffa493f525b266b8f1bee8ab9ad3050fbb40fd24c958b"
+    },
+    "profile-11-A": {
+      "bytes": 12218514,
+      "graph": {
+        "inclusive": 8751502,
+        "self_cost": 3125580
+      },
+      "ir": 687987489,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "5775ce6859de3b45cb7eb2f5243d1d134825ad0a7c12c35c03d66163b0e8e894"
+      },
+      "raw_sha256": "44fdfc765612a43835c11fc6279c54e58e3e685dab44cada01a673ce4f01038c"
+    },
+    "profile-11-B": {
+      "bytes": 12203615,
+      "graph": {
+        "inclusive": 6384746,
+        "self_cost": 1783482
+      },
+      "ir": 683522187,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "4f47d075285d09ecf3babf73d03060a733dfc97df8cfb8d0c34eee92fd174ca1"
+      },
+      "raw_sha256": "87f1ffc194976ee5dd30201bd58f54070431cdb008ccbf29e16e03fe892c957a"
+    },
+    "profile-12-A": {
+      "bytes": 12219932,
+      "graph": {
+        "inclusive": 8751950,
+        "self_cost": 3125580
+      },
+      "ir": 685995979,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "8c0cc63270c1c65d862420c0cbb9e115c87cb6e5a5f7a191b2e24beb07765b7c"
+      },
+      "raw_sha256": "c536adebbdc541b17c885c88d78a72e9801456a7e980ca8f41076413265808e9"
+    },
+    "profile-12-B": {
+      "bytes": 12207430,
+      "graph": {
+        "inclusive": 6382669,
+        "self_cost": 1783482
+      },
+      "ir": 683746569,
+      "outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "195af13b5db7205e49854da4f958ab6c2e2dfbabb374d2d82f32d9f7090321b1"
+      },
+      "raw_outputs": {
+        "products/debug/build/workspaces/77cc7b255aa910fd/v2-ca7ad3db7d4838a6/ruff_python_trivia/60aac7af7678c486/out/libruff_python_trivia-60aac7af7678c486.rmeta": "e7ff1072923d27ae32410753faae5915b9d9f5edff7348f672d29cd72ed1955e",
+        "products/debug/libruff_python_trivia.rlib": "ce9aedd7ca1be9e02fc58592e993b4dc5761b1caf3b704c2269259fa6753150e"
+      },
+      "raw_sha256": "fdab32a11872e7e3de34efb5818a6943174ffb52613e1592bd264538764658a8"
+    }
+  },
+  "raw_archives": {
+    "profiles.tar.xz": "6c64a4cb89445e7ea9f6022c2ebec9fb5dd8883a406b6e8a33f29902534e4467",
+    "receipts.tgz": "32173e6deff9daa81c96cad65a11e3e77ae9e5ed843afbd574b67500ed8109e8",
+    "result.json": "156c25c4e688e9e3bbebbcf83b41e6763edc58511dc99a057f3aadc52a0ded26"
+  },
+  "rows": [
+    {
+      "i": 1,
+      "order": "AB",
+      "phase": "wall",
+      "values": {
+        "A": 0.39619908,
+        "B": 0.388664803
+      }
+    },
+    {
+      "i": 2,
+      "order": "BA",
+      "phase": "wall",
+      "values": {
+        "A": 0.395403514,
+        "B": 0.382370501
+      }
+    },
+    {
+      "i": 3,
+      "order": "BA",
+      "phase": "wall",
+      "values": {
+        "A": 0.399706432,
+        "B": 0.397908748
+      }
+    },
+    {
+      "i": 4,
+      "order": "AB",
+      "phase": "wall",
+      "values": {
+        "A": 0.394301237,
+        "B": 0.38976047
+      }
+    },
+    {
+      "i": 5,
+      "order": "BA",
+      "phase": "wall",
+      "values": {
+        "A": 0.395142135,
+        "B": 0.384285957
+      }
+    },
+    {
+      "i": 6,
+      "order": "BA",
+      "phase": "wall",
+      "values": {
+        "A": 0.395562839,
+        "B": 0.388389921
+      }
+    },
+    {
+      "i": 7,
+      "order": "AB",
+      "phase": "wall",
+      "values": {
+        "A": 0.408966909,
+        "B": 0.398438847
+      }
+    },
+    {
+      "i": 8,
+      "order": "BA",
+      "phase": "wall",
+      "values": {
+        "A": 0.398249062,
+        "B": 0.405596154
+      }
+    },
+    {
+      "i": 9,
+      "order": "AB",
+      "phase": "wall",
+      "values": {
+        "A": 0.413359937,
+        "B": 0.38343259
+      }
+    },
+    {
+      "i": 10,
+      "order": "BA",
+      "phase": "wall",
+      "values": {
+        "A": 0.394650782,
+        "B": 0.39174235
+      }
+    },
+    {
+      "i": 11,
+      "order": "AB",
+      "phase": "wall",
+      "values": {
+        "A": 0.394655095,
+        "B": 0.392108276
+      }
+    },
+    {
+      "i": 12,
+      "order": "BA",
+      "phase": "wall",
+      "values": {
+        "A": 0.397751963,
+        "B": 0.39201898
+      }
+    },
+    {
+      "i": 13,
+      "order": "AB",
+      "phase": "wall",
+      "values": {
+        "A": 0.401107349,
+        "B": 0.387247185
+      }
+    },
+    {
+      "i": 14,
+      "order": "BA",
+      "phase": "wall",
+      "values": {
+        "A": 0.387382839,
+        "B": 0.39061253
+      }
+    },
+    {
+      "i": 15,
+      "order": "AB",
+      "phase": "wall",
+      "values": {
+        "A": 0.403867221,
+        "B": 0.381019317
+      }
+    },
+    {
+      "i": 16,
+      "order": "BA",
+      "phase": "wall",
+      "values": {
+        "A": 0.40382029,
+        "B": 0.381276759
+      }
+    },
+    {
+      "i": 17,
+      "order": "BA",
+      "phase": "wall",
+      "values": {
+        "A": 0.398581445,
+        "B": 0.38428266
+      }
+    },
+    {
+      "i": 18,
+      "order": "AB",
+      "phase": "wall",
+      "values": {
+        "A": 0.399708707,
+        "B": 0.390149145
+      }
+    },
+    {
+      "i": 19,
+      "order": "AB",
+      "phase": "wall",
+      "values": {
+        "A": 0.398261531,
+        "B": 0.395498126
+      }
+    },
+    {
+      "i": 20,
+      "order": "AB",
+      "phase": "wall",
+      "values": {
+        "A": 0.392052205,
+        "B": 0.389384525
+      }
+    },
+    {
+      "i": 1,
+      "order": "BA",
+      "phase": "profile",
+      "values": {
+        "A": 685534254,
+        "B": 684743486
+      }
+    },
+    {
+      "i": 2,
+      "order": "AB",
+      "phase": "profile",
+      "values": {
+        "A": 686494754,
+        "B": 684411720
+      }
+    },
+    {
+      "i": 3,
+      "order": "AB",
+      "phase": "profile",
+      "values": {
+        "A": 685950696,
+        "B": 684264944
+      }
+    },
+    {
+      "i": 4,
+      "order": "AB",
+      "phase": "profile",
+      "values": {
+        "A": 686868348,
+        "B": 684617121
+      }
+    },
+    {
+      "i": 5,
+      "order": "BA",
+      "phase": "profile",
+      "values": {
+        "A": 685614162,
+        "B": 685775904
+      }
+    },
+    {
+      "i": 6,
+      "order": "BA",
+      "phase": "profile",
+      "values": {
+        "A": 688530151,
+        "B": 683980752
+      }
+    },
+    {
+      "i": 7,
+      "order": "AB",
+      "phase": "profile",
+      "values": {
+        "A": 686039250,
+        "B": 682584120
+      }
+    },
+    {
+      "i": 8,
+      "order": "BA",
+      "phase": "profile",
+      "values": {
+        "A": 685785640,
+        "B": 682471324
+      }
+    },
+    {
+      "i": 9,
+      "order": "BA",
+      "phase": "profile",
+      "values": {
+        "A": 686363317,
+        "B": 683198048
+      }
+    },
+    {
+      "i": 10,
+      "order": "BA",
+      "phase": "profile",
+      "values": {
+        "A": 685616182,
+        "B": 684904747
+      }
+    },
+    {
+      "i": 11,
+      "order": "AB",
+      "phase": "profile",
+      "values": {
+        "A": 687987489,
+        "B": 683522187
+      }
+    },
+    {
+      "i": 12,
+      "order": "AB",
+      "phase": "profile",
+      "values": {
+        "A": 685995979,
+        "B": 683746569
+      }
+    }
+  ],
+  "statistics": {
+    "profile": {
+      "candidate_median": 684122848.0,
+      "candidate_wins": 11,
+      "paired_95_percent_interval": [
+        0.22884178162624336,
+        0.4623592646237573
+      ],
+      "pairs": 12,
+      "parent_median": 686017614.5,
+      "percent_saved": 0.346732124927418,
+      "two_sided_balanced_randomization_p": 0.0021645021645021645,
+      "two_sided_sign_p": 0.00634765625
+    },
+    "wall": {
+      "candidate_median": 0.3895724975,
+      "candidate_wins": 18,
+      "paired_95_percent_interval": [
+        1.270456616908744,
+        3.163000122695492
+      ],
+      "pairs": 20,
+      "parent_median": 0.3980005125,
+      "percent_saved": 2.192527541002498,
+      "two_sided_balanced_randomization_p": 0.0002165017644893806,
+      "two_sided_sign_p": 0.0004024505615234375
+    }
+  },
+  "tag": "confirm-build"
+}

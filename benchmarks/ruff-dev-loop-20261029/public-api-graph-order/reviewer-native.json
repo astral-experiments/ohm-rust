@@ -1,0 +1,84 @@
+{
+  "native-source-test-v6": {
+    "archive_sha256": "a84254a9739225b32531cd307bff75768dbb70d0477fc3ce1d925f249bc453ee",
+    "arms": {
+      "A": {
+        "clean": [
+          "76a22df0161d853a881242f96ecadc209a4f06436c6ba673a592162153fe4110"
+        ],
+        "commit": "569aefbe9016e23bbfdf7f5615990102f2cb5e44",
+        "crate": "ruff_source_file",
+        "dirty_links": 1,
+        "driver": "400fa81966f344440458529a083be5bf91f414b828e8278a6d461b3fe9d810fd",
+        "extern_count": 4,
+        "mode": "test",
+        "native": [
+          "76a22df0161d853a881242f96ecadc209a4f06436c6ba673a592162153fe4110"
+        ],
+        "repeat": {
+          "rustc": [],
+          "wild": 0
+        }
+      },
+      "B": {
+        "clean": [
+          "76a22df0161d853a881242f96ecadc209a4f06436c6ba673a592162153fe4110"
+        ],
+        "commit": "6ab241bbf3ee174260bb553ed29b1e29e64e885d",
+        "crate": "ruff_source_file",
+        "dirty_links": 1,
+        "driver": "674872829422c2c028f8d22968b2c17acbd4868255bebeab438bad654535af0c",
+        "extern_count": 4,
+        "mode": "test",
+        "native": [
+          "76a22df0161d853a881242f96ecadc209a4f06436c6ba673a592162153fe4110"
+        ],
+        "repeat": {
+          "rustc": [],
+          "wild": 0
+        }
+      }
+    }
+  },
+  "native-trivia-check-v3": {
+    "archive_sha256": "ab689570a42dbba2d52522c20c81e3e7b589eb59fb6877336f589321303f2200",
+    "arms": {
+      "A": {
+        "clean": [
+          "7bc0965be69ec545b2b9f624cb68ee471ccd9397c9766827891774f4290c4bba"
+        ],
+        "commit": "722b9412d2386e70d6cffba132544c0e3ae09cd7",
+        "crate": "ruff_python_trivia",
+        "dirty_links": 0,
+        "driver": "1512fb90725102e1290790b2202a88bd968ea60a4c09336803a0939a636cc0ac",
+        "extern_count": 7,
+        "mode": "check",
+        "native": [
+          "7bc0965be69ec545b2b9f624cb68ee471ccd9397c9766827891774f4290c4bba"
+        ],
+        "repeat": {
+          "rustc": [],
+          "wild": 0
+        }
+      },
+      "B": {
+        "clean": [
+          "7bc0965be69ec545b2b9f624cb68ee471ccd9397c9766827891774f4290c4bba"
+        ],
+        "commit": "181a2fd00972e05e75b47ec4c3cf1941f0f0d8ec",
+        "crate": "ruff_python_trivia",
+        "dirty_links": 0,
+        "driver": "ab02b0d846382be23ff2d05805d374bb844b4cb057f2a377b3b42050bc4bd7eb",
+        "extern_count": 7,
+        "mode": "check",
+        "native": [
+          "7bc0965be69ec545b2b9f624cb68ee471ccd9397c9766827891774f4290c4bba"
+        ],
+        "repeat": {
+          "rustc": [],
+          "wild": 0
+        }
+      }
+    }
+  }
+}
