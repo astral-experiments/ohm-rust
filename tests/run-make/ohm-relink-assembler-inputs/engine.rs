@@ -1,15 +1,16 @@
 pub fn payload<T>() -> u32 {
-    let byte: u32;
+    let word: u32;
     unsafe {
         core::arch::asm!(
             "jmp 3f",
             "2:",
             ".incbin \"payload.bin\"",
+            ".include \"indirect.s\"",
             "3:",
-            "movzx {byte:e}, byte ptr [rip + 2b]",
-            byte = out(reg) byte,
+            "movzx {word:e}, word ptr [rip + 2b]",
+            word = out(reg) word,
             options(nostack, preserves_flags),
         );
     }
-    byte
+    word
 }
