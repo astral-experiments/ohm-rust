@@ -1,6 +1,6 @@
 //@ needs-asm-support
 
-use run_make_support::{rfs, rustc};
+use run_make_support::{is_windows, rfs, rustc};
 
 fn main() {
     const MARKER: &str = "ohm-untracked-relink-inputs";
@@ -27,7 +27,21 @@ fn main() {
     let named =
         compile("link,dep-info=probe.d").arg("--error-format=json").arg("--json=artifacts").run();
     assert_eq!(named.stderr_utf8().matches(r#""emit":"dep-info""#).count(), 1);
-    check(&rfs::read_to_string("probe.d"), true);
+    let rules = rfs::read_to_string("probe.d");
+    check(&rules, true);
+    let first = rules.lines().next().unwrap();
+    assert!(first.starts_with("libprobe.rlib: lib.rs ") && first.ends_with(MARKER));
+    assert!(rules.lines().any(|line| line == "probe.d: lib.rs"));
+
+    if !is_windows() {
+        rfs::create_dir("out: dir");
+        compile("link,dep-info=out: dir/probe.d").out_dir("out: dir").run();
+        let rules = rfs::read_to_string("out: dir/probe.d");
+        let (target, inputs) = rules.lines().next().unwrap().split_once(": ").unwrap();
+        assert_eq!(target, r"out\:\ dir/libprobe.rlib");
+        assert!(inputs.ends_with(MARKER));
+        assert!(rules.lines().any(|line| line == r"out\:\ dir/probe.d: lib.rs"));
+    }
 
     check(&compile("dep-info=-").run().stdout_utf8(), false);
     check(&compile("metadata,dep-info=-").run().stdout_utf8(), false);
