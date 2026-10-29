@@ -1294,6 +1294,9 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 ),
             ));
 
+        let has_generic_symbols_for_c_linker =
+            proc_macro_data.is_none() && tcx.has_generic_symbols_for_c_linker(LOCAL_CRATE);
+
         if M::HASH_PUBLIC_API {
             for (symbol, info) in tcx.exported_non_generic_symbols(LOCAL_CRATE) {
                 let def_id = match symbol {
@@ -1382,6 +1385,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             stable_order_of_exportable_impls,
             exported_non_generic_symbols,
             exported_generic_symbols,
+            has_generic_symbols_for_c_linker,
             interpret_alloc_index,
             tables,
             syntax_contexts,
