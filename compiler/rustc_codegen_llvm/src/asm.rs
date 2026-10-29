@@ -1633,7 +1633,7 @@ fn file_free_inline_asm(
         return false;
     }
 
-    // Mark a substituted GPR as a single token. LLVM prints only a register name for these
+    // Mark a substituted register as a single token. LLVM prints only a register name for these
     // classes and modifiers. Reject a literal marker so it cannot impersonate a register.
     let mut text = String::new();
     for piece in template {
@@ -1652,6 +1652,7 @@ fn file_free_inline_asm(
                         X86InlineAsmRegClass::reg
                             | X86InlineAsmRegClass::reg_abcd
                             | X86InlineAsmRegClass::reg_byte
+                            | X86InlineAsmRegClass::xmm_reg
                     ) | InlineAsmRegClass::AArch64(AArch64InlineAsmRegClass::reg)
                 ) || modifier.is_some_and(|m| !reg.valid_modifiers(arch).contains(&m))
                 {
@@ -1675,8 +1676,14 @@ fn file_free_asm_line(arch: InlineAsmArch, line: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b' ' | b'\t' | b'_' | b'@'));
     }
     let (opcode, args) = line.split_once([' ', '\t']).unwrap_or((line, ""));
+    let register_operands = |count| {
+        args.split(',').map(|arg| arg.trim_matches([' ', '\t'])).eq(std::iter::repeat_n("@", count))
+    };
     match (arch, opcode) {
         (_, "nop") | (InlineAsmArch::X86_64, "syscall" | "cpuid") => args.is_empty(),
+        (InlineAsmArch::X86_64, "sqrtsd" | "sqrtss") => register_operands(2),
+        (InlineAsmArch::X86_64, "vfmadd213sd" | "vfmadd213ss") => register_operands(3),
+        (InlineAsmArch::X86_64, "vfmaddsd" | "vfmaddss") => register_operands(4),
         (_, "mov") | (InlineAsmArch::X86_64, "xchg") => {
             let Some((dst, src)) = args.split_once(',') else { return false };
             [dst, src].iter().all(|arg| {

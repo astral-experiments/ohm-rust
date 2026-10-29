@@ -22,6 +22,29 @@ pub unsafe fn syscall(number: usize) -> usize {
     result ^ core::arch::x86_64::__cpuid_count(0, 0).eax as usize
 }
 
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn float_registers(mut x: f64, y: f64, z: f64) -> f64 {
+    core::arch::asm!(
+        "sqrtsd {x}, {x}",
+        "vfmadd213sd {x}, {y}, {z}",
+        "vfmaddsd {x}, {x}, {y}, {z}",
+        x = inout(xmm_reg) x, y = in(xmm_reg) y, z = in(xmm_reg) z,
+        options(pure, nomem, nostack),
+    );
+    x
+}
+
+#[cfg(all(target_arch = "x86_64", float_memory))]
+pub unsafe fn float_memory(source: *const f64) -> f64 {
+    let value: f64;
+    core::arch::asm!(
+        "sqrtsd {value}, qword ptr [{source}]",
+        value = out(xmm_reg) value, source = in(reg) source,
+        options(readonly, nostack),
+    );
+    value
+}
+
 #[cfg(comment_escape)]
 pub fn reads_file() {
     unsafe { core::arch::asm!(concat!("/* first */ .inc", "bin \"payload.bin\" /* last */")) }
