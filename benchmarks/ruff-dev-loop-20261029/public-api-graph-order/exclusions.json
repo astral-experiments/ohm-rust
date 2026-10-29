@@ -1,4 +1,9 @@
 {
+  "live-native-v1": {
+    "included_blocks": 0,
+    "reason": "First parent produced the same clean and warm output bytes, but the second Cargo target path had a different workspace ID. The new registration uses independent empty roots at precisely the same paths with all original comparison rules.",
+    "status": "failed before sampling"
+  },
   "results/primary-check": {
     "completed_pairs": {
       "profile": 0,
