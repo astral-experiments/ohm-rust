@@ -54,7 +54,8 @@ fn main() {
 
     rfs::write(
         "lib.rs",
-        "fn require<const N: usize>() { const { assert!(N > 0) }; }\npub fn call() { require::<0>() }",
+        "fn require<const N: usize>() { const { assert!(N > 0) }; }\n\
+         pub fn call() { require::<0>() }",
     );
     let failure = compile("link,dep-info=-").run_fail();
     failure.assert_stderr_contains("evaluation panicked");
