@@ -581,9 +581,9 @@ fn escape_dep_env(symbol: Symbol) -> String {
     escaped
 }
 
-fn write_out_deps(
+/// Writes the dependency rules for the output paths checked by `prepare_outputs`.
+pub fn write_dep_info_for_outputs(
     tcx: TyCtxt<'_>,
-    outputs: &OutputFilenames,
     out_filenames: &[PathBuf],
     untracked_relink_inputs: bool,
 ) {
@@ -592,7 +592,8 @@ fn write_out_deps(
     if !sess.opts.output_types.contains_key(&OutputType::DepInfo) {
         return;
     }
-    let deps_output = outputs.path(OutputType::DepInfo);
+    let _timer = sess.timer("write_dep_info");
+    let deps_output = tcx.output_filenames(()).path(OutputType::DepInfo);
     let deps_filename = deps_output.as_path();
 
     let result = try {
@@ -696,10 +697,14 @@ fn write_out_deps(
             files.insert(name, (0, None));
         }
 
-        if untracked_relink_inputs && let OutFileName::Real(path) = &deps_output {
-            // A child of the dep-info file can never exist. Cargo must invoke rustc
-            // again so the assembler reopens its inputs and diagnoses missing files.
-            files.insert(normalize_path(path.join("ohm-untracked-relink-inputs")), (0, None));
+        if untracked_relink_inputs {
+            // A child of a regular file cannot exist. Stdout has no pathname, so use
+            // the running compiler to anchor its missing prerequisite.
+            let parent = match &deps_output {
+                OutFileName::Real(path) => Cow::Borrowed(path),
+                OutFileName::Stdout => Cow::Owned(env::current_exe()?),
+            };
+            files.insert(normalize_path(parent.join("ohm-untracked-relink-inputs")), (0, None));
         }
 
         if sess.proc_macro_observed_foreign_bytes.load(Ordering::Relaxed)
@@ -840,17 +845,17 @@ fn resolver_for_lowering_raw<'tcx>(
 }
 
 pub fn write_dep_info(tcx: TyCtxt<'_>) {
-    write_dep_info_with_relink_inputs(tcx, false);
+    write_dep_info_for_outputs(tcx, &prepare_outputs(tcx), false);
 }
 
-pub(crate) fn write_dep_info_with_relink_inputs(tcx: TyCtxt<'_>, untracked_relink_inputs: bool) {
+/// Checks for conflicting output paths and creates the requested output directories.
+pub fn prepare_outputs(tcx: TyCtxt<'_>) -> Vec<PathBuf> {
     // Make sure name resolution and macro expansion is run for
     // the side-effect of providing a complete set of all
     // accessed files and env vars.
     let _ = tcx.resolver_for_lowering();
 
     let sess = tcx.sess;
-    let _timer = sess.timer("write_dep_info");
     let crate_name = tcx.crate_name(LOCAL_CRATE);
 
     let outputs = tcx.output_filenames(());
@@ -879,8 +884,6 @@ pub(crate) fn write_dep_info_with_relink_inputs(tcx: TyCtxt<'_>, untracked_relin
         }
     }
 
-    write_out_deps(tcx, outputs, &output_paths, untracked_relink_inputs);
-
     let only_dep_info = sess.opts.output_types.contains_key(&OutputType::DepInfo)
         && sess.opts.output_types.len() == 1;
 
@@ -891,6 +894,7 @@ pub(crate) fn write_dep_info_with_relink_inputs(tcx: TyCtxt<'_>, untracked_relin
             }
         }
     }
+    output_paths
 }
 
 pub fn write_interface<'tcx>(tcx: TyCtxt<'tcx>) {
