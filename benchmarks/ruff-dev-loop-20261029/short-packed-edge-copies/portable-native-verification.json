@@ -1,0 +1,181 @@
+{
+  "earlier_scratch_rejected_before_cargo": "host output tmpfs was noexec, rustup returned EACCES, zero Cargo; preserved locally",
+  "mode": "native-only; fresh independent local Ruff clone, matched previously built neutral drivers and released -19 Cargo/Wild. No instructions from this second route used in the results.",
+  "native_check": {
+    "both_direct": true,
+    "profiles_already_present": 0,
+    "same_external_verdicts": {
+      "current-external": {
+        "binary": "765e87f0cff53e4240d59f3ef02091381c73656182fe68dedd89f8f8eb122271",
+        "caller": "899aee3abc6a94857f04f6c3a3770a2784abc50e3cd034d071dd81c25ee49247",
+        "codes": [],
+        "compiler_exit": 0,
+        "diagnostics": [],
+        "exit": 0,
+        "source": "f61f9d66ec9dcc29bac8067dd4d5910db6b7e52009ef7cc976ac0478c6800c52",
+        "stdout": "1..3:\u00e9\n"
+      },
+      "current-legacy": {
+        "binary": "9d79da225292dd2585e20145a65c2cb910ca9cc62ec52b85508dce06fe86cb40",
+        "caller": "e3541e4a4d4a51377883e5661afa745da9a5f310d3ef44c618f2ac2f8446ec8f",
+        "codes": [],
+        "compiler_exit": 0,
+        "diagnostics": [],
+        "exit": 0,
+        "source": "f61f9d66ec9dcc29bac8067dd4d5910db6b7e52009ef7cc976ac0478c6800c52",
+        "stdout": "1..3:\u00e9\n"
+      },
+      "previous-external": {
+        "caller": "899aee3abc6a94857f04f6c3a3770a2784abc50e3cd034d071dd81c25ee49247",
+        "codes": [
+          "E0599"
+        ],
+        "compiler_exit": 1,
+        "diagnostics": [
+          "no method named `to_std_range` found for struct `TextRange` in the current scope"
+        ],
+        "source": "097615fdf261460b1c30900d535bb5bde4ab709a402d4850b49820a6923b0771"
+      },
+      "previous-legacy": {
+        "binary": "d5a9b44b1b7eba1a049136dbc0692824a07dfd233e3eb115b963b6b76e9e1bb4",
+        "caller": "e3541e4a4d4a51377883e5661afa745da9a5f310d3ef44c618f2ac2f8446ec8f",
+        "codes": [],
+        "compiler_exit": 0,
+        "diagnostics": [],
+        "exit": 0,
+        "source": "097615fdf261460b1c30900d535bb5bde4ab709a402d4850b49820a6923b0771",
+        "stdout": "1..3:\u00e9\n"
+      }
+    },
+    "verified_whole_rmeta": {
+      "bytes": 68720,
+      "sha256": "17d18be3c8879e2fba6972e04f818230c5f08616e7d3742c37e54270a0fad696"
+    }
+  },
+  "native_receipt_sha256": "cd165d01e8ff6dafc88b74f17fce4e28d2af686303ac3ebc6f401ce57a4d75d5",
+  "ordinary_cargo_commands": {
+    "A": {
+      "build-current": {
+        "fresh": 0,
+        "raw_stdout_sha256": "89a66fe28c3d6eab05d8b2da881502abaaed43b4af1b554ff140969760fc6b72",
+        "reported_root": [
+          "06a822428e2106a1d189e4c045e70b0ef9068193b1d312dca80e24da57cefd03",
+          "30a55ab0df2bf036194491f433be6f395361a7a0d999237696ca3721545c76ec"
+        ],
+        "typed": 1
+      },
+      "build-previous": {
+        "fresh": 0,
+        "raw_stdout_sha256": "89a66fe28c3d6eab05d8b2da881502abaaed43b4af1b554ff140969760fc6b72",
+        "reported_root": [
+          "6832edefb906a406df61a2f21ff06b04ab2a4795ead238e433e9b5e167da9987",
+          "ed73a2377ea2ae02e80d36fd7ef1c88f3233c0696845b505c8cbb5921dcf94ac"
+        ],
+        "typed": 1
+      },
+      "clean": {
+        "fresh": 0,
+        "raw_stdout_sha256": "7a7b34001756454955dba14f97e8f3ae477847df750a68f3d9de9405cc210114",
+        "reported_root": [
+          "17d18be3c8879e2fba6972e04f818230c5f08616e7d3742c37e54270a0fad696"
+        ],
+        "typed": 1
+      },
+      "native": {
+        "fresh": 0,
+        "raw_stdout_sha256": "7a7b34001756454955dba14f97e8f3ae477847df750a68f3d9de9405cc210114",
+        "reported_root": [
+          "17d18be3c8879e2fba6972e04f818230c5f08616e7d3742c37e54270a0fad696"
+        ],
+        "typed": 1
+      },
+      "previous": {
+        "fresh": 0,
+        "raw_stdout_sha256": "7a7b34001756454955dba14f97e8f3ae477847df750a68f3d9de9405cc210114",
+        "reported_root": [
+          "1c2ab3df5fde1ae2290ac62fd0339e5baf2309bc273a4e429d585eb3efa991b1"
+        ],
+        "typed": 1
+      },
+      "repeat": {
+        "fresh": 1,
+        "raw_stdout_sha256": "785b864cd8e37fa79d79773a62a243d19090073c153f261b98c317a701308a2f",
+        "reported_root": [
+          "17d18be3c8879e2fba6972e04f818230c5f08616e7d3742c37e54270a0fad696"
+        ],
+        "typed": 1
+      }
+    },
+    "B": {
+      "build-current": {
+        "fresh": 0,
+        "raw_stdout_sha256": "f4081ee6601243180f09e22d15f1ab7fa7c4097ba7ccb025f8330b050ee74573",
+        "reported_root": [
+          "30a55ab0df2bf036194491f433be6f395361a7a0d999237696ca3721545c76ec",
+          "cd2d2cb2c23a8cc2a51892a6d331fc3e9e6cfb99252754f056d96edf847965a5"
+        ],
+        "typed": 1
+      },
+      "build-previous": {
+        "fresh": 0,
+        "raw_stdout_sha256": "f4081ee6601243180f09e22d15f1ab7fa7c4097ba7ccb025f8330b050ee74573",
+        "reported_root": [
+          "ed73a2377ea2ae02e80d36fd7ef1c88f3233c0696845b505c8cbb5921dcf94ac",
+          "f91f83aee46aa830826521e028869a049d5163c3d39095ed95b6f504ae42de05"
+        ],
+        "typed": 1
+      },
+      "clean": {
+        "fresh": 0,
+        "raw_stdout_sha256": "37f99d874fad1c9c1bf46cd377ef80e79b374ee83f2930f54d7b3ebc5fbd5d4a",
+        "reported_root": [
+          "17d18be3c8879e2fba6972e04f818230c5f08616e7d3742c37e54270a0fad696"
+        ],
+        "typed": 1
+      },
+      "native": {
+        "fresh": 0,
+        "raw_stdout_sha256": "37f99d874fad1c9c1bf46cd377ef80e79b374ee83f2930f54d7b3ebc5fbd5d4a",
+        "reported_root": [
+          "17d18be3c8879e2fba6972e04f818230c5f08616e7d3742c37e54270a0fad696"
+        ],
+        "typed": 1
+      },
+      "previous": {
+        "fresh": 0,
+        "raw_stdout_sha256": "37f99d874fad1c9c1bf46cd377ef80e79b374ee83f2930f54d7b3ebc5fbd5d4a",
+        "reported_root": [
+          "1c2ab3df5fde1ae2290ac62fd0339e5baf2309bc273a4e429d585eb3efa991b1"
+        ],
+        "typed": 1
+      },
+      "repeat": {
+        "fresh": 1,
+        "raw_stdout_sha256": "3f0baa02b9220d7d8340149ee86a40f4d116071d12c521c157e4a06c0ddfc1bd",
+        "reported_root": [
+          "17d18be3c8879e2fba6972e04f818230c5f08616e7d3742c37e54270a0fad696"
+        ],
+        "typed": 1
+      }
+    }
+  },
+  "std_manifest_sha256": "53e5cd88333d4ca27052c67d765e4baf2854a7044a6af5198d7ea6c4955572d5",
+  "tool": {
+    "A": {
+      "common": [
+        "789c2f116732ed642565d0f92c500838f8cd53664fbe60f205a5621c43cbecf1",
+        "0d6335808b647d499f3d74993b602e64ff0625206c809bf4913c487eea380cd5"
+      ],
+      "driver": "1512fb90725102e1290790b2202a88bd968ea60a4c09336803a0939a636cc0ac",
+      "rustc": "fa2ed3ec44adb4455d5323c4ee582becd5307cb4aae6b5cfc3cdc289b3140512"
+    },
+    "B": {
+      "common": [
+        "789c2f116732ed642565d0f92c500838f8cd53664fbe60f205a5621c43cbecf1",
+        "0d6335808b647d499f3d74993b602e64ff0625206c809bf4913c487eea380cd5"
+      ],
+      "driver": "6d088c8d9c7297733e2d29d96e43dd7617f6e2e2f5c777bac2ec3ec05bb3016a",
+      "rustc": "fa2ed3ec44adb4455d5323c4ee582becd5307cb4aae6b5cfc3cdc289b3140512"
+    }
+  }
+}

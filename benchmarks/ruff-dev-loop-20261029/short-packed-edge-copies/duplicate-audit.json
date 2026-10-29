@@ -1,0 +1,17 @@
+{
+  "branches": 320,
+  "compiler_tips": 326,
+  "distinct_pr_or_branch_heads": 328,
+  "excluded_benchmark_only_commits": [
+    "52627489f8f2bacc6204571430f682a8013a72b5",
+    "684921c9838cd25db28cec4ff9c58c4d67abea61"
+  ],
+  "only_proposal_at_capture": [
+    "branch:charlie/inline-short-packed-edge-copies"
+  ],
+  "proposal_blob": "03a88f775346a76985b7deb7881378e05254e657",
+  "pull_requests": 227,
+  "raw_gh_source_report_sha256": "5d43f525cb67905b13c979d6ed7f5a3dae0dfa0aca1bb00a7c9ea8fa8c04dd8d",
+  "same_original_copy_blobs": 12,
+  "subsequent_own_pull_request": 258
+}

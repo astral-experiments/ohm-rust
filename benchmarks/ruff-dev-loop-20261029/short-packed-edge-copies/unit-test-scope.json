@@ -1,0 +1,29 @@
+{
+  "actual_rustc_middle_execs": [
+    {
+      "argc": 447,
+      "argv_sha256": "ab5073fe5644fc7ca45517dae5e2a01d67015f205f42b9206adc842e0a250eae",
+      "output": "lib",
+      "raw_line_sha256": "de4d5d42e5bd89216730f9047a2a2d0e85d554433f2d84f651c8811ea7162663",
+      "role": "bootstrap-rustc-shim",
+      "test_arg": false
+    },
+    {
+      "argc": 467,
+      "argv_sha256": "9c301d3f72e7b7a96c37f7ac7b56f96e842f9c8aaaa7e3fe1c1164f28bf3a36a",
+      "output": "lib",
+      "raw_line_sha256": "8765f0cfd3cb5bb926f36ad0aca58f66f6f4b3d2678024edce703e85e328fabb",
+      "role": "stage0-rustc",
+      "test_arg": false
+    }
+  ],
+  "ci_filter": "dep_graph::serialized::tests::",
+  "compiled_source_extracted_cases": 65792,
+  "in_tree_test_command": "python3 x.py --ci false --set rust.lto=off test --stage 1 --tests compiler/rustc_middle --test-args='--exact dep_graph::serialized::tests::short_packed_edge_copies_preserve_the_existing_prefix_and_order'",
+  "native_ci_filter_config_commit": "2222af0a66e1869698fc8adadd70843273bcd4a0",
+  "original_bootstrap_trace_gzip_sha256": "2101d07d45c29ad4ee89449ad998f3085d96c0242ba9172e1a6eb90cc145c6f7",
+  "original_research_compile_command": "build --stage 1 compiler/rustc library/std",
+  "retained_test_executable": false,
+  "source_test": "dep_graph::serialized::tests::short_packed_edge_copies_preserve_the_existing_prefix_and_order",
+  "stage1_libtest_executed": false
+}

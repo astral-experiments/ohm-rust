@@ -1,0 +1,15 @@
+{
+  "all_totals": "8b2ba4df08ae4a20c273b189fe25d8d99fd090585d558169932526939839f15e",
+  "compact_evidence_sha256": "39d41497162bf56b2d5d8ea49201ffb76e1d854bf91fe045cc103d3f7a667076",
+  "confirmatory_balanced_assignments": 924,
+  "confirmatory_tail_counts": [
+    10,
+    10
+  ],
+  "measured_holdout_registration": "f3be40714ec970aa0e460f4985567da6741c6c060819ce86072e8b4cd56249a3",
+  "negative_controls": {
+    "one_different_arm_artifact": 1,
+    "pretend_parser_was_measured": 1,
+    "reversed_registered_decision": 1
+  }
+}

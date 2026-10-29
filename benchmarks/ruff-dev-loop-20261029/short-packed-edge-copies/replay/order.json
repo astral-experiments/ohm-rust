@@ -1,0 +1,18 @@
+{
+  "method": "first six of the twelve 1-based pair indices ascending by SHA256(utf8(seed+\"/\"+index)) get AB; rest BA",
+  "order": [
+    "AB",
+    "BA",
+    "BA",
+    "AB",
+    "AB",
+    "AB",
+    "BA",
+    "BA",
+    "AB",
+    "BA",
+    "AB",
+    "BA"
+  ],
+  "seed": "rustc-722b9412/08696442-ruff-61a49c89eb-20261029-12-fixed-pairs-before-outcomes"
+}
