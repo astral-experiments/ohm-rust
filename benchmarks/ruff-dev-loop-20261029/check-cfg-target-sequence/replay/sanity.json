@@ -1,0 +1,70 @@
+{
+  "actual_tracer_elf": "c11ae6180d6846b25c6338927bd33a84dd606b4ebb805a6c088b21bf9fa915ba",
+  "different_absolute_source_and_target_per_role": true,
+  "excluded_from_registered_samples": true,
+  "portable_tracer_source": "cfc0e0c29ea2488bc8222abb3c3beeb0da8b517f5bf37819700a19d3f199e9aa",
+  "runs": {
+    "portable-instruction-control": {
+      "A": {
+        "metadata_per_state": {
+          "H": "79c7355c6f136ab0707d63b52eaa76bc22dec568d6ac2b603ec42f936dd07a4f",
+          "P": "1d8c920b840aef36e97e380ef74932cc50eca5a8bb339d4be272698a8f916e45"
+        },
+        "negative_error_codes": [
+          "E0432",
+          "E0407"
+        ],
+        "raw_whole_compiler_sanity": {
+          "H": 208271988,
+          "P": 200860096
+        },
+        "same_role_restored_consumer": "1b2c2bd820bd7a57bdf98e1f670fe066e2b084720942ff1a343d62f43cf4898e",
+        "validated_native_source_phases": 5
+      },
+      "D": {
+        "metadata_per_state": {
+          "H": "0f5d9fdee379259ce2c793e600036c99dab3c6ac299f402eb255f411dec6a543",
+          "P": "97d265c7b0598755f6670b3a47287cf8143aab27fbd3f3b8be20b95aae266110"
+        },
+        "negative_error_codes": [
+          "E0432",
+          "E0407"
+        ],
+        "raw_whole_compiler_sanity": {
+          "H": 206722269,
+          "P": 199316868
+        },
+        "same_role_restored_consumer": "680e6d38d2268acc82c9af00870c3431f03a8d066b7fd2a95d914e3aaaa3b43b",
+        "validated_native_source_phases": 5
+      }
+    },
+    "portable-replay-control": {
+      "A": {
+        "metadata_per_state": {
+          "H": "79c7355c6f136ab0707d63b52eaa76bc22dec568d6ac2b603ec42f936dd07a4f",
+          "P": "1d8c920b840aef36e97e380ef74932cc50eca5a8bb339d4be272698a8f916e45"
+        },
+        "negative_error_codes": [
+          "E0432",
+          "E0407"
+        ],
+        "raw_whole_compiler_sanity": {},
+        "same_role_restored_consumer": "e384ed1e07de15095f085c4d5e8fb0d48220938e4d003b10afe79095f784a64c",
+        "validated_native_source_phases": 5
+      },
+      "D": {
+        "metadata_per_state": {
+          "H": "0f5d9fdee379259ce2c793e600036c99dab3c6ac299f402eb255f411dec6a543",
+          "P": "97d265c7b0598755f6670b3a47287cf8143aab27fbd3f3b8be20b95aae266110"
+        },
+        "negative_error_codes": [
+          "E0432",
+          "E0407"
+        ],
+        "raw_whole_compiler_sanity": {},
+        "same_role_restored_consumer": "12b438e3cd055ee4e8a8c5efcf62ce502b22ec8546b08f23889e068e5250744d",
+        "validated_native_source_phases": 5
+      }
+    }
+  }
+}

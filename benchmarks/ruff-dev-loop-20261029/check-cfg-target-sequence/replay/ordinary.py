@@ -19,6 +19,8 @@ def main():
     p.add_argument("sdk", type=Path, help="complete Rust toolchain including the selected Cargo")
     p.add_argument("cargo_home", type=Path, help="dedicated offline registry cache for the run")
     p.add_argument("output", type=Path, help="new work directory (must not exist)")
+    p.add_argument("--callgrind", type=Path, metavar="TRACER",
+                   help="optional compiled replay/trace.c program for one real dirty rustc in each direction")
     args = p.parse_args()
     packet = Path(__file__).resolve().parents[1]
     cfg = json.loads((packet / "controls.json").read_bytes())
@@ -30,6 +32,10 @@ def main():
     cargo_home = args.cargo_home.resolve(strict=True)
     if not (cargo_home / "registry").is_dir() or not (sdk / "bin/cargo").is_file():
         p.error("expected a complete SDK and an offline registry")
+    tracer = args.callgrind.resolve(strict=True) if args.callgrind else None
+    wild = sdk / "lib/rustlib/x86_64-unknown-linux-gnu/bin/wild-ld/ld.bfd"
+    if tracer and not (wild.is_file() and Path("/usr/bin/valgrind.bin").is_file()):
+        p.error("the optional Linux x86-64 counter requires the stock Wild and Valgrind executables")
     out.mkdir()
     source = out / "ruff"
     subprocess.run(["git", "clone", "--quiet", "--shared", "--no-checkout", args.ruff.resolve(), source], check=True)
@@ -82,7 +88,26 @@ def main():
         command = cfg["package_command"]
         name = str(n) + "-" + label
         for phase in ("edit", "repeat"):
-            plain = invoke(name + "-" + phase, command, env, 0)
+            record = None
+            args_for_phase = command
+            if tracer and n in (1, 2) and phase == "edit":
+                record = out / (name + "-profile")
+                record.mkdir(mode=0o700)
+                args_for_phase = [tracer, record, sdk / "bin/rustc", wild, "ruff_options_metadata", "--", *command]
+            plain = invoke(name + "-" + phase, args_for_phase, env, 0)
+            if record is not None:
+                profiles = list(record.glob("output.*"))
+                assert len(profiles) == 1
+                with profiles[0].open() as profile:
+                    totals = [int(line.split()[1]) for line in profile if line.startswith("totals: ")]
+                assert len(totals) == 1 and totals[0] > 0
+                lines = plain.stdout.decode().splitlines()
+                assert len(lines) == 3 and lines[:2] == ["cargo 0", "links 0"]
+                _, pid, crate, attached, code = lines[2].split()
+                assert crate == "ruff_options_metadata" and attached == "1" and code == "0"
+                assert profiles[0].name == f"output.{pid}.{pid}"
+                records.append({"phase": name, "selected_compiler_instructions": totals[0],
+                                "callgrind_profile": profiles[0].name})
             compiled = b"Checking ruff_options_metadata " in plain.stderr
             assert compiled == (phase == "edit"), (name, phase, plain.stderr)
         typed = invoke(name + "-typed", command + ["--message-format=json"], env, 0)
