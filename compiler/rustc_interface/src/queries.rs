@@ -39,7 +39,7 @@ impl Linker {
             && !tcx.sess.opts.unstable_opts.no_codegen
             && (codegen_backend.name() != "llvm" || tcx.ohm_untracked_relink_inputs(()))
         {
-            passes::write_dep_info(tcx, true);
+            passes::write_dep_info_with_relink_inputs(tcx, true);
         }
 
         Linker {
