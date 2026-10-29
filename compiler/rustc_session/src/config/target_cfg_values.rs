@@ -95,9 +95,13 @@ mod tests {
             for t in Target::builtins() {
                 let mut scalars = [None; 8];
                 let mut group = Vec::new();
-                fields(&t, |kind, value| scalars[kind] = Some(value), |names| {
-                    group.extend(names.iter().map(|s| s.to_string()));
-                });
+                fields(
+                    &t,
+                    |kind, value| scalars[kind] = Some(value),
+                    |names| {
+                        group.extend(names.iter().map(|s| s.to_string()));
+                    },
+                );
                 let [abi, arch, endian, env, format, os, width, vendor] =
                     scalars.map(|s| index(&mut strings, s.unwrap().as_str().to_owned()));
                 let group = group.into_iter().map(|s| index(&mut strings, s)).collect::<Vec<_>>();
@@ -148,7 +152,8 @@ mod tests {
                     (0..count).map(|n| Some(Symbol::intern(&format!("user-{n}")))).collect();
                 let mut expected = user.clone();
                 for target in Target::builtins().chain(std::iter::once(current.clone())) {
-                    expected.extend(target.options.families.iter().map(|s| Some(Symbol::intern(s))));
+                    expected
+                        .extend(target.options.families.iter().map(|s| Some(Symbol::intern(s))));
                 }
                 let mut actual = std::array::from_fn(|_| ExpectedValues::Any);
                 actual[4] = ExpectedValues::Some(user);

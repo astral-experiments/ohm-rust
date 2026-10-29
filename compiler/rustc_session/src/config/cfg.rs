@@ -446,9 +446,10 @@ impl CheckCfg {
             }
 
             if self.exhaustive_values {
-                let buckets = self.expecteds.get_disjoint_mut(VALUES).map(|bucket| {
-                    bucket.expect("unable to get all the check-cfg values buckets")
-                });
+                let buckets = self
+                    .expecteds
+                    .get_disjoint_mut(VALUES)
+                    .map(|bucket| bucket.expect("unable to get all the check-cfg values buckets"));
                 target_cfg_values::fill(buckets, current_target);
             }
         }
