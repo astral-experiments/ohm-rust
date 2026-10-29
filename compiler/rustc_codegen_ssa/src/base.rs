@@ -23,7 +23,7 @@ use rustc_middle::middle::dependency_format::{Dependencies, Linkage};
 use rustc_middle::middle::exported_symbols::{self, SymbolExportKind};
 use rustc_middle::middle::lang_items;
 use rustc_middle::mir::interpret::{CTFE_ALLOC_SALT, ErrorHandled, Scalar};
-use rustc_middle::mir::{BinOp, ConstValue, TerminatorKind};
+use rustc_middle::mir::{BinOp, ConstValue, RelinkInputs, TerminatorKind};
 use rustc_middle::mono::{CodegenUnit, CodegenUnitNameBuilder, MonoItem, MonoItemPartitions};
 use rustc_middle::query::Providers;
 use rustc_middle::ty::layout::{HasTyCtxt, HasTypingEnv, LayoutOf, TyAndLayout};
@@ -1211,8 +1211,15 @@ impl CrateInfo {
 }
 
 pub(crate) fn provide(providers: &mut Providers) {
-    providers.ohm_untracked_relink_inputs = |tcx, ()| {
-        has_untracked_relink_inputs(tcx, |kind| matches!(kind, TerminatorKind::InlineAsm { .. }))
+    providers.ohm_untracked_relink_inputs =
+        |tcx, ()| tcx.ohm_relink_inputs(()) == RelinkInputs::Rebuild;
+    providers.ohm_relink_inputs = |tcx, ()| {
+        if has_untracked_relink_inputs(tcx, |kind| matches!(kind, TerminatorKind::InlineAsm { .. }))
+        {
+            RelinkInputs::Rebuild
+        } else {
+            RelinkInputs::Tracked
+        }
     };
     providers.backend_optimization_level = |tcx, cratenum| {
         let for_speed = match tcx.sess.opts.optimize {
@@ -1252,7 +1259,7 @@ pub(crate) fn provide(providers: &mut Providers) {
 /// generic function is instantiated in this codegen unit.
 pub fn has_untracked_relink_inputs<'tcx>(
     tcx: TyCtxt<'tcx>,
-    asm_has_untracked_inputs: impl Fn(&TerminatorKind<'tcx>) -> bool,
+    mut asm_has_untracked_inputs: impl FnMut(&TerminatorKind<'tcx>) -> bool,
 ) -> bool {
     let opts = &tcx.sess.opts;
     if !matches!(tcx.sess.lto(), config::Lto::No | config::Lto::ThinLocal)
