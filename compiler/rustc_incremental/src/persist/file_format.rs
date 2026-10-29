@@ -26,8 +26,8 @@ use crate::diagnostics;
 const FILE_MAGIC: &[u8] = b"RSIC";
 
 /// Change this if the header format changes.
-// The native input classification adds a query to the on-disk dep graph.
-const HEADER_FORMAT_VERSION: u16 = 7;
+// Older work products could have been overwritten through a saved link object.
+const HEADER_FORMAT_VERSION: u16 = 8;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);
