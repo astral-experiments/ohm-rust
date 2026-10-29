@@ -1633,7 +1633,7 @@ fn file_free_inline_asm(
         return false;
     }
 
-    // Mark a substituted GPR as a single token. LLVM prints only a register name for these
+    // Mark a substituted register as a single token. LLVM prints only a register name for these
     // classes and modifiers. Reject a literal marker so it cannot impersonate a register.
     let mut text = String::new();
     for piece in template {
@@ -1652,6 +1652,7 @@ fn file_free_inline_asm(
                         X86InlineAsmRegClass::reg
                             | X86InlineAsmRegClass::reg_abcd
                             | X86InlineAsmRegClass::reg_byte
+                            | X86InlineAsmRegClass::xmm_reg
                     ) | InlineAsmRegClass::AArch64(AArch64InlineAsmRegClass::reg)
                 ) || modifier.is_some_and(|m| !reg.valid_modifiers(arch).contains(&m))
                 {
@@ -1677,18 +1678,51 @@ fn file_free_asm_line(arch: InlineAsmArch, line: &str) -> bool {
     let (opcode, args) = line.split_once([' ', '\t']).unwrap_or((line, ""));
     match (arch, opcode) {
         (_, "nop") | (InlineAsmArch::X86_64, "syscall" | "cpuid") => args.is_empty(),
-        (_, "mov") | (InlineAsmArch::X86_64, "xchg") => {
+        (InlineAsmArch::X86_64, _) => file_free_x86_instruction(opcode, args),
+        (InlineAsmArch::AArch64, "mov") => {
             let Some((dst, src)) = args.split_once(',') else { return false };
             [dst, src].iter().all(|arg| {
                 let arg = arg.trim_matches([' ', '\t']);
-                arg == "@"
-                    || match arch {
-                        InlineAsmArch::X86_64 => X86InlineAsmReg::parse(arg).is_ok(),
-                        InlineAsmArch::AArch64 => AArch64InlineAsmReg::parse(arg).is_ok(),
-                        _ => false,
-                    }
+                arg == "@" || AArch64InlineAsmReg::parse(arg).is_ok()
             })
         }
         _ => false,
     }
+}
+
+/// Recognize the Intel-syntax instructions used in register and memory atomic operations.
+fn file_free_x86_instruction(opcode: &str, args: &str) -> bool {
+    match opcode {
+        "lock" => {
+            let Some((op, arg)) = args.split_once([' ', '\t']) else { return false };
+            matches!(op, "cmpxchg16b" | "not" | "neg") && file_free_x86_operand(arg)
+        }
+        "neg" | "not" | "setne" => file_free_x86_operand(args),
+        "add" | "adc" | "and" | "cmovae" | "cmovb" | "cmovge" | "cmovl" | "cmp" | "mov" | "or"
+        | "sbb" | "sub" | "vmovdqa" | "xchg" | "xor" => args
+            .split_once(',')
+            .is_some_and(|(dst, src)| file_free_x86_operand(dst) && file_free_x86_operand(src)),
+        "jne" => args.strip_suffix(['b', 'f']).is_some_and(asm_decimal),
+        label => args.is_empty() && label.strip_suffix(':').is_some_and(asm_decimal),
+    }
+}
+
+fn asm_decimal(s: &str) -> bool {
+    !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// Accept literal registers, immediates, and an address consisting of a register and optional displacement.
+fn file_free_x86_operand(arg: &str) -> bool {
+    let reg = |s: &str| s == "@" || X86InlineAsmReg::parse(s).is_ok();
+    let arg = arg.trim_matches([' ', '\t']);
+    if reg(arg) || asm_decimal(arg) {
+        return true;
+    }
+    let Some((size, address)) = arg.split_once(" ptr [") else { return false };
+    let Some(address) = address.strip_suffix(']') else { return false };
+    matches!(size, "byte" | "word" | "dword" | "qword" | "xmmword")
+        && match address.split_once(" + ") {
+            Some((base, offset)) => reg(base) && asm_decimal(offset),
+            None => reg(address),
+        }
 }
