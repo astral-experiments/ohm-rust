@@ -1,0 +1,38 @@
+{
+  "identical_trees": {
+    "compiler/rustc_data_structures": "4b5f97c8cca8a1a460d6fa95df8454e6acab276a",
+    "compiler/rustc_session": "7501ac44b595f2953aaa1e47e892f00d562782da",
+    "compiler/rustc_span": "f6b57ecad0820710d159b9b401d243eb5eb15269",
+    "compiler/rustc_target": "3d5e7efd4e7a26fdddda0cbd5b88cde42939ce50"
+  },
+  "measured_child": "a413698809569f88fe88e07a393c65ba81153c2b",
+  "measured_parent": "722b9412d2386e70d6cffba132544c0e3ae09cd7",
+  "publication_base": "569aefbe9016e23bbfdf7f5615990102f2cb5e44",
+  "source": {
+    ".github/workflows/ci.yml": {
+      "actual": "08caf9c082d100beeee226b6f54ee937b5db3ba5ba021e45eba5989cf2e255bc",
+      "identical": false,
+      "old_child": "b2162ab3cd5b0d044d2dc1d4dac96a47419a20165de883d2ba1b9bdc59223cfd"
+    },
+    "compiler/rustc_session/src/config/builtin_target_cfg_values.rs": {
+      "actual": "d7f3308edbb2f85b45927337abed91e7d4784cc1153c6abe273cb9a2a0202f74",
+      "identical": true,
+      "old_child": "d7f3308edbb2f85b45927337abed91e7d4784cc1153c6abe273cb9a2a0202f74"
+    },
+    "compiler/rustc_session/src/config/cfg.rs": {
+      "actual": "d6ce83be3f60b670e196ba1b920807fe83a10211775651a9395f679f0efcaaa4",
+      "identical": true,
+      "old_child": "d6ce83be3f60b670e196ba1b920807fe83a10211775651a9395f679f0efcaaa4"
+    },
+    "compiler/rustc_session/src/config/target_cfg_values.rs": {
+      "actual": "977d8b78d845d9a9b7910f1ab740325ee46d48c7d56ecfbad08ce02edb8814bb",
+      "identical": true,
+      "old_child": "977d8b78d845d9a9b7910f1ab740325ee46d48c7d56ecfbad08ce02edb8814bb"
+    },
+    "tests/ui/check-cfg/target-values-from-other-targets.rs": {
+      "actual": "51ff4b4edb21d5afd2deb77cf08fdf58f7c137a6063441373a39f725e5398e90",
+      "identical": true,
+      "old_child": "51ff4b4edb21d5afd2deb77cf08fdf58f7c137a6063441373a39f725e5398e90"
+    }
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "D_cli_oracle": "010b5bf8134802a3e619353bb4066d6da260299fee3cf0f9072b481a783899e0",
+  "IR_raw": "c14753a220ef01884448613a77d80bd801fbf46060b1a4b642679b84b683c83e",
+  "before_after_native_edits": 8,
+  "buckets": 9,
+  "build_comparison": "7eb044334d3aa3f3a26d8e46f9c8dbcd1b9cd5f0bb4d4d2d22b9749161d1e13f",
+  "caller_failure_codes": [
+    "E0432",
+    "E0407"
+  ],
+  "caller_statuses": [
+    0,
+    101,
+    101,
+    0
+  ],
+  "caller_stdout": "[[overrides]]\npaths = [\"src\"]\n",
+  "cargo": "789c2f116732ed642565d0f92c500838f8cd53664fbe60f205a5621c43cbecf1",
+  "cpus": [
+    8,
+    9,
+    10,
+    11
+  ],
+  "custom_print_sha": "8fac66b72e8b4439cdd2ff6e8a6db04f42c6cdaabd310ea9448269aaf81aea9f",
+  "diagnostic_sha": "1d1681bcbd498b46d3c5f6a3a443e192ed16b382bf64bae8b3d109bcfdd17caf",
+  "driver": {
+    "A": "1512fb90725102e1290790b2202a88bd968ea60a4c09336803a0939a636cc0ac",
+    "D": "2f379dfe84e65e15b82b2dcdc110da39e57dee6717e5e83a2646d6cff71f1578"
+  },
+  "earlier_reduced_table_failed_cases": 57,
+  "edit": "d192bd40016360ddd4132ee880fd8d268fb5cc20",
+  "excluded_raw": {
+    "h7_incomplete_D": "3ec3b4964a0c9dece05bc345e3aa677441af81b193632872608aa8fa410231ce",
+    "local_pre_observer": "9d314237084f469a4009dbd503c7398ed9018b9b7360f335ebcc09dcc6e9d908",
+    "local_rematerialized_identity": "37c06af3b1cd24fcdd95543c3c5266890210e384bb10646d4ca0bccd73edd5ba",
+    "local_startup": "85f19099c3dd4cc6ee3bab75a0129d5926d01aa550360c2630fe3b66644af3ac"
+  },
+  "external_callback_exit": 0,
+  "external_callback_sha": "ae9fe19b31ba10966c68ca7273bf46bf1ea2af01701fd390628d2b1fa1975aea",
+  "external_elf": [
+    476008,
+    "adc96eb5c37b17aa195b7e604b3b62f236da6d57b38f11b695f13680428fb1ce"
+  ],
+  "frontends": "fa2ed3ec44adb4455d5323c4ee582becd5307cb4aae6b5cfc3cdc289b3140512",
+  "immediate_measured_repeats": 128,
+  "interner_and_order_cases": 170,
+  "interner_and_order_matched": 170,
+  "linux": "6.8.0-147-generic",
+  "machine": "AMD EPYC-Milan Processor",
+  "native_print_sha": "59b268ad0e1b6b2e3b9271e631754e7f75b55c216613f02e14119274086ee2a6",
+  "natural_raw": "0a867cd36b81cb553cc04434d47dee7e193b926a980370be5a7fd601cfc56361",
+  "neutral_compiler": true,
+  "neutral_driver_bytes": {
+    "A": 143660784,
+    "D": 143663544
+  },
+  "ordinary_measured_edits": 128,
+  "package_command": [
+    "cargo",
+    "+ohm",
+    "check",
+    "--locked",
+    "--offline",
+    "-j4",
+    "-p",
+    "ruff_options_metadata"
+  ],
+  "post_and_pre_caller_verified": true,
+  "qnx_variants_same": true,
+  "raw_native_training_cases": [
+    "P pristine then zero",
+    "H ordinary then zero",
+    "P restore then zero",
+    "H reapply then zero",
+    "H independent empty then zero"
+  ],
+  "registered_ir": "af4736c624ad349a749b2262f07a2782c7de4c552c3a5a7dd2ee12e8665914dc",
+  "registered_wall": "9f845c7c3e29bcc3ed8b893263469d5f8d88abf96c3073934bcba8d1bb7ec37b",
+  "registry_target": "native x86_64-unknown-linux-gnu",
+  "rmeta": {
+    "H": [
+      38692,
+      "0dbaf18bffb14f4e352607ebd205ed2cfc36c90c8817ff0ef347c3003cce380c"
+    ],
+    "P": [
+      35500,
+      "056428a29d379950975c16a55e553082410d1a1ae0737adb934afc4094e059e7"
+    ]
+  },
+  "ruff": "93526150df078af7dd8fc4226cdcc469539d2001",
+  "rust_child": "a413698809569f88fe88e07a393c65ba81153c2b",
+  "rust_parent": "722b9412d2386e70d6cffba132544c0e3ae09cd7",
+  "rust_source_identical_to_latest": "9f8db07b69b2f58ac9b64e3c9ec1ef8decdb5d1e",
+  "same_119_compiler_argv": true,
+  "same_53_std": true,
+  "scoped_native_check": "5b5da308fef7d56ef1c9a6020958d8a17cede6eed236437d204334d1fa7ed8b3",
+  "source_sha": {
+    "H": "a688593a209c2bb3a32fff69dc6efe9c6a55bec327a3de9d52da454cd7d14377",
+    "P": "8516ecfa02990a0b0c93574208c36e93e1406f75e54f90a1bc738c815c71aec9"
+  },
+  "table_rust_sha": "d7f3308edbb2f85b45927337abed91e7d4784cc1153c6abe273cb9a2a0202f74",
+  "target_values": 151,
+  "unscored_zero_checks": 136,
+  "wall_raw": "574d9fdef9419da8648148cc36ec2904d2736e690db7cdb2fb9c394c97c37152",
+  "wall_verified": "eda8f46ad704dbcf4ebc4a52bb6a3045517205d6583ba7c13504a5fe19a7a2c2",
+  "wild": "0d6335808b647d499f3d74993b602e64ff0625206c809bf4913c487eea380cd5"
+}
