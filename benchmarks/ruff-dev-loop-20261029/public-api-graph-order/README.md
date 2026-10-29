@@ -4,16 +4,19 @@ Rustc already interns each node while recording its metadata dependency graph. T
 
 ## Ruff results
 
+On the proposed commit and its exact parent, the dirty compiler used fewer instructions but the user waited longer for this build. Across 20 pairs, the whole command took 2.51% longer (95% interval 0.73–4.20% longer, two-sided balanced randomization p = 0.0128). Four of 20 candidate builds were faster. The whole dirty compiler used 0.4880% fewer instructions over 12 pairs (95% interval 0.4369–0.5343%, all twelve faster by this measure). This case was registered before the proposed compiler was built. The earlier elapsed-time wins have not reproduced on the proposed compiler.
+
 Each row used 12 counterbalanced pairs of the entire dirty rustc process and 20 other pairs of ordinary whole-Cargo wall time. Percentages are mean paired log-ratio savings with a fixed-seed paired bootstrap interval. All 12 compiler pairs improved in each check and in the primary build. Eleven of 12 improved in the independent build. The two predeclared primary instruction tests both pass a Holm adjustment at 0.05. Their two-sided sign p-values were 0.000488 before adjustment. The confirming edit was selected before inspecting the primary counts. [Line-ending edit](https://github.com/astral-sh/ruff/commit/88d851449d2345e11da991794f3e9bfbbd666719) · [Independent comment-indentation edit](https://github.com/astral-sh/ruff/commit/83a3afc3156d73ae4296f3fa74ede28e4c72bfcd)
 
 | Edit and command | Dirty rustc instructions saved | Paired 95% interval | Whole Cargo median, parent to candidate |
 | --- | ---: | ---: | ---: |
-| `ruff_source_file` check | 0.3979% | 0.3974–0.3984% | 221.8 → 222.7 ms |
-| `ruff_source_file` build | 0.4722% | 0.3936–0.5446% | 403.1 → 392.4 ms |
-| `ruff_python_trivia` check | 0.3877% | 0.3870–0.3885% | 212.2 → 216.5 ms |
-| `ruff_python_trivia` build | 0.3467% | 0.2288–0.4624% | 398.0 → 389.6 ms |
+| **Proposed stack** `ruff_source_file` build | 0.4880% | 0.4369–0.5343% | **383.0 → 395.5 ms** |
+| Earlier stack `ruff_source_file` check | 0.3979% | 0.3974–0.3984% | 221.8 → 222.7 ms |
+| Earlier stack `ruff_source_file` build | 0.4722% | 0.3936–0.5446% | 403.1 → 392.4 ms |
+| Earlier stack `ruff_python_trivia` check | 0.3877% | 0.3870–0.3885% | 212.2 → 216.5 ms |
+| Earlier stack `ruff_python_trivia` build | 0.3467% | 0.2288–0.4624% | 398.0 → 389.6 ms |
 
-The primary build's paired whole-command saving was 2.00% (95% interval 0.11–3.52%). The independent build also improved, by 2.19% (95% interval 1.27–3.16%) over 20 pairs. Eighteen pairs were faster on that edit. The two cohorts stay separate. Neither check established a wall-time improvement. The second check's paired estimate was 5.20% slower, with an interval from 13.42% slower to 0.43% faster. These were concurrent development hosts with fixed CPU affinity. The instruction measurement is the primary endpoint. The initial cohort covers a small library edit and its immediate development cycle.
+On the earlier compiler stack, the primary build's paired whole-command saving was 2.00% (95% interval 0.11–3.52%). The independent build also improved, by 2.19% (95% interval 1.27–3.16%) over 20 pairs. Eighteen pairs were faster on that edit. The two cohorts stay separate. Neither check established a wall-time improvement. The second check's paired estimate was 5.20% slower, with an interval from 13.42% slower to 0.43% faster. These were concurrent development hosts with fixed CPU affinity. The instruction measurement is the primary endpoint. The initial cohort covers a small library edit and its immediate development cycle.
 
 Each arm trained Cargo from empty state, applied the historical production edit in place and built it through the ordinary Cargo entry point. Exactly one root compiler ran after the edit, and the first unchanged repeat launched zero compilers and zero linkers. The old source failed its real regression test and the edited source passed. The ordered test inventories and complete test executables agreed between the compilers. Every metadata output was checked against an independent empty target. Paths, contents, timestamps and all hardlink equivalence classes in the warm target and shared build directory were verified on restoration. The check on the second crate included 40 tests in its inventory and the first crate included 13.
 
@@ -23,7 +26,9 @@ Library archives can contain fresh rustc-generated member names on two otherwise
 
 ## Compiler and correctness
 
-The measured optimized stage1 source pair was `722b9412` and `181a2fd0`, without release PGO or BOLT. Both arms have the same compiler version stamp, upstream bootstrap LLVM, 119 compiler-build commands, 53 standard-library files, signed Ohm `-19` Cargo and stock Wild. Only the compiler driver differs among the 55 Rust SDK files. The source patch has the same Git patch ID on this stack and on the proposed stack above the UTF-8 fix. [Measured Rust base](https://github.com/astral-sh/ohm-rust/commit/722b9412d2386e70d6cffba132544c0e3ae09cd7) · [UTF-8 fix](https://github.com/astral-sh/ohm-rust/pull/259)
+The earlier optimized stage1 source pair was `722b9412` and `181a2fd0`, without release PGO or BOLT. Both arms have the same compiler version stamp, upstream bootstrap LLVM, 119 compiler-build commands, 53 standard-library files, signed Ohm `-19` Cargo and stock Wild. Only the compiler driver differs among the 55 Rust SDK files. The source patch has the same Git patch ID on this stack and on the proposed stack above the UTF-8 fix. [Measured Rust base](https://github.com/astral-sh/ohm-rust/commit/722b9412d2386e70d6cffba132544c0e3ae09cd7) · [UTF-8 fix](https://github.com/astral-sh/ohm-rust/pull/259)
+
+The exact-stack replication used matched stage1 builds from `569aefbe` and `6ab241bb`, with signed `-19` Cargo and stock Wild. It ran on CPU cores 4–7. The earlier source pair ran on 20–23 of the same machine. Restore and compiler checks were identical on both pairs.
 
 The compiler built from the proposed source commit `6ab241bb` and its corrected parent `569aefbe` also produced nine identical public hash notifications and nine byte-identical metadata files across ASCII, multibyte and partial-character spans. Both compilers passed the downstream proc-macro check, and their real Cargo and run-make executables matched byte for byte. A separate path-dependency fixture exercised a private body change, an invalid public associated-type change, a repair and a clean rebuild, with the same verdicts and outputs on both original arms. The companion Rust program checked 335,923 insertion-order, reachability and equal-fingerprint cases. A source audit covered 229 Ohm Rust PRs and 323 branch tips, with 331 distinct commits. All 15 versions of this particular source file on those tips still used the previous fingerprint-map sort.
 
