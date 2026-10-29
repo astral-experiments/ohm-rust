@@ -86,7 +86,10 @@ fn builtin_target_values_preserve_family_buckets() {
             fill(actual.each_mut(), &current);
             let ExpectedValues::Some(values) = &actual[4] else { unreachable!() };
             assert_eq!(values.capacity(), expected.capacity());
-            assert!(values.iter().eq(expected.iter()));
+            // A compiler driver can observe the order of the public set.
+            #[allow(rustc::potential_query_instability)]
+            let same_order = values.iter().eq(expected.iter());
+            assert!(same_order);
         }
     });
 }
