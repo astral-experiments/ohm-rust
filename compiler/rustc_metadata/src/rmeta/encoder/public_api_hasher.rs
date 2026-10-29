@@ -150,7 +150,6 @@ use rustc_middle::middle::debugger_visualizer::DebuggerVisualizerFile;
 use rustc_middle::middle::exported_symbols::{ExportedSymbol, SymbolExportInfo};
 use rustc_middle::middle::lib_features::FeatureStability;
 use rustc_middle::mir::interpret::AllocId;
-use rustc_middle::ty::data_structures::IndexMap;
 use rustc_middle::ty::{PredicateKind, Ty, TyCtxt};
 use rustc_session::config::mitigation_coverage::DeniedPartialMitigation;
 use rustc_session::config::{SymbolManglingVersion, TargetModifier};
@@ -605,8 +604,8 @@ pub(super) fn crate_hashes<'tcx, 'h>(
     // when reusing the encoded item prefix in a later session.
     let tcx = ecx.tcx;
     if let Some(manifest) = &mut ecx.metadata_prefix_manifest
-        && graph.nodes.keys().any(
-            |node| matches!(node, Node::Span(span) if !manifest.capture_protected_span(tcx, *span)),
+        && graph.nodes.iter().any(
+            |(node, _)| matches!(node, Node::Span(span) if !manifest.capture_protected_span(tcx, *span)),
         )
     {
         ecx.metadata_prefix_manifest = None;
@@ -722,15 +721,15 @@ pub(crate) enum RecordMode<'tcx> {
 }
 
 struct ReachabilityGraph<'tcx> {
-    nodes: IndexMap<Node<'tcx>, Fingerprint>,
+    nodes: Vec<(Node<'tcx>, Fingerprint)>,
     edges: IndexVec<NodeIdx, Vec<NodeIdx>>,
     roots: Vec<NodeIdx>,
 }
 
 impl fmt::Debug for ReachabilityGraph<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let node = |idx| self.nodes.get_index(idx).unwrap().0;
-        let fingerprint = |idx| self.nodes.get_index(idx).unwrap().1;
+        let node = |idx: NodeIdx| self.nodes[idx].0;
+        let fingerprint = |idx: NodeIdx| self.nodes[idx].1;
         let reachable = self.reachable_set();
         writeln!(f, "roots:")?;
         for root in &self.roots {
@@ -864,27 +863,32 @@ impl<'tcx> ReachabilityGraphBuilder<'tcx> {
             reachable
         };
 
-        let mut hashes: IndexMap<_, _> = self
+        let mut order: Vec<_> = self
             .nodes
             .iter()
             .enumerate()
             .filter(|(index, _)| reachable[*index])
-            .map(|(_, &node)| (node, stable_hash(hcx, &node)))
+            .map(|(index, node)| (stable_hash(hcx, node), index))
             .collect();
-        hashes.sort_by_key(|_, v| *v);
+        // Break ties by insertion order, as in a stable sort by fingerprint.
+        order.sort_unstable();
 
-        // Translate the temporary interning indices into the stable graph order once per node.
         let mut node_indices = IndexVec::from_elem_n(usize::MAX, self.nodes.len());
-        for (index, node) in hashes.keys().enumerate() {
-            node_indices[self.nodes.get_index_of(node).unwrap()] = index;
-        }
+        let nodes: Vec<_> = order
+            .into_iter()
+            .enumerate()
+            .map(|(index, (hash, original))| {
+                node_indices[original] = index;
+                (self.nodes[original], hash)
+            })
+            .collect();
         drop(self.nodes);
 
         // iterating here is fine, as we stable sort right after
         #[allow(rustc::potential_query_instability)]
         let mut roots: Vec<_> = self.roots.into_iter().map(|node| node_indices[node]).collect();
         roots.sort();
-        let mut edges = IndexVec::from_elem_n(Vec::default(), hashes.len());
+        let mut edges = IndexVec::from_elem_n(Vec::default(), nodes.len());
         for (node, node_edges) in self.edges.into_iter_enumerated() {
             if !reachable[node] {
                 continue;
@@ -897,7 +901,7 @@ impl<'tcx> ReachabilityGraphBuilder<'tcx> {
             edges[node_indices[node]] = node_edges;
         }
 
-        ReachabilityGraph { roots, edges, nodes: hashes }
+        ReachabilityGraph { roots, edges, nodes }
     }
 
     /// Adds an edge from the active [`RecordMode::From`] node, suppresses the node under
@@ -1120,7 +1124,7 @@ fn node_fingerprint(
     tcx: TyCtxt<'_>,
     node_index: NodeIdx,
 ) -> Fingerprint {
-    let (node_key, base_hash) = graph.nodes.get_index(node_index).unwrap();
+    let (node_key, base_hash) = &graph.nodes[node_index];
     match hashes.get_node(node_key, tcx) {
         Some(encoded_data_hash) => base_hash.combine_commutative(encoded_data_hash),
         None => *base_hash,
@@ -1182,8 +1186,8 @@ fn build_public_hashes<'tcx>(
 
     let mut public_hashes = ItemPublicHashesBuilder::default();
     let mut hasher = StableHasher::new();
-    for node_index in 0..graph.nodes.len() {
-        match graph.nodes.get_index(node_index).unwrap().0 {
+    for (node_index, (node, _)) in graph.nodes.iter().enumerate() {
+        match node {
             Node::DefId(id) => {
                 if let Some(local) = id.as_local() {
                     let fingerprint = scc_fingerprints[sccs.scc(node_index)];
