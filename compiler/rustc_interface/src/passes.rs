@@ -697,15 +697,21 @@ pub fn write_dep_info_for_outputs(
             files.insert(name, (0, None));
         }
 
-        if untracked_relink_inputs {
-            // A child of a regular file cannot exist. Stdout has no pathname, so use
-            // the running compiler to anchor its missing prerequisite.
-            let parent = match &deps_output {
-                OutFileName::Real(path) => Cow::Borrowed(path),
-                OutFileName::Stdout => Cow::Owned(env::current_exe()?),
+        let relink_marker = if untracked_relink_inputs {
+            // A non-directory cannot have children. The Unix null device also avoids
+            // introducing Make metacharacters from the depfile or executable name.
+            let parent = if cfg!(unix) {
+                Cow::Borrowed(Path::new("/dev/null"))
+            } else {
+                match &deps_output {
+                    OutFileName::Real(path) => Cow::Borrowed(path.as_path()),
+                    OutFileName::Stdout => Cow::Owned(env::current_exe()?),
+                }
             };
-            files.insert(normalize_path(parent.join("ohm-untracked-relink-inputs")), (0, None));
-        }
+            Some(normalize_path(parent.join("ohm-untracked-relink-inputs")))
+        } else {
+            None
+        };
 
         if sess.proc_macro_observed_foreign_bytes.load(Ordering::Relaxed)
             && CStore::from_tcx(tcx).has_public_api_hash_dependencies()
@@ -731,19 +737,35 @@ pub fn write_dep_info_for_outputs(
             {
                 writeln!(file, "# ohm-raw-checksum-paths-v2")?;
             }
+            let inputs = files.keys().map(String::as_str).intersperse(" ").collect::<String>();
+            let mut depfile_target = None;
+            // Make treats spaces as separators and a Unix filename may contain the
+            // colon that Cargo uses to find the first rule's prerequisites.
+            let target = |path: &Path| {
+                let name = escape_dep_filename(&path.to_string_lossy());
+                if cfg!(unix) { name.replace(':', r"\:") } else { name }
+            };
             for path in out_filenames {
-                writeln!(
-                    file,
-                    "{}: {}\n",
-                    path.display(),
-                    files.keys().map(String::as_str).intersperse(" ").collect::<String>()
-                )?;
+                if let Some(marker) = &relink_marker {
+                    if !deps_output.is_stdout() && path == deps_filename {
+                        // Make restarts if it remakes an included depfile. Keep its rule
+                        // after the full input list that Cargo reads from the first rule.
+                        depfile_target = Some(path);
+                        continue;
+                    }
+                    writeln!(file, "{}: {inputs} {marker}\n", target(path))?;
+                } else {
+                    writeln!(file, "{}: {inputs}\n", path.display())?;
+                }
+            }
+            if let Some(path) = depfile_target {
+                writeln!(file, "{}: {inputs}\n", target(path))?;
             }
 
             // Emit a fake target for each input file to the compilation. This
             // prevents `make` from spitting out an error if a file is later
             // deleted. For more info see #28735
-            for path in files.keys() {
+            for path in files.keys().chain(relink_marker.iter()) {
                 writeln!(file, "{path}:")?;
             }
 
