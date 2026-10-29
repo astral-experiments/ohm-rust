@@ -331,17 +331,16 @@ pub fn run_compiler(at_args: &[String], callbacks: &mut (dyn Callbacks + Send)) 
                 callbacks.after_analysis(compiler, tcx)
             };
             let after_analysis = if check_relink_inputs {
-                let result = catch_fatal_errors(analyze);
-                let untracked = match &result {
-                    Ok(Compilation::Stop) => false,
-                    Ok(Compilation::Continue) => {
-                        tcx.dcx().has_errors().is_some()
+                // If analysis or monomorphization aborts, assembler inputs may be unknown.
+                let mut untracked = true;
+                let result = catch_fatal_errors(|| {
+                    let after_analysis = analyze();
+                    untracked = after_analysis == Compilation::Continue
+                        && (tcx.dcx().has_errors().is_some()
                             || codegen_backend.name() != "llvm"
-                            || tcx.ohm_untracked_relink_inputs(())
-                    }
-                    // Analysis did not finish, so we cannot rule out assembler inputs.
-                    Err(_) => true,
-                };
+                            || tcx.ohm_untracked_relink_inputs(()));
+                    after_analysis
+                });
                 passes::write_dep_info_for_outputs(tcx, &output_paths, untracked);
                 result.unwrap_or_else(|fatal| fatal.raise())
             } else {
