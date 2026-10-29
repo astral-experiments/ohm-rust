@@ -565,6 +565,12 @@ fn upstream_monomorphizations_provider(
     instances
 }
 
+fn has_generic_symbols_for_c_linker_provider(tcx: TyCtxt<'_>, _: LocalCrate) -> bool {
+    tcx.exported_generic_symbols(LOCAL_CRATE)
+        .iter()
+        .any(|(_, info)| info.is_relevant_for_c_linker())
+}
+
 fn upstream_monomorphizations_for_provider(
     tcx: TyCtxt<'_>,
     def_id: DefId,
@@ -598,6 +604,7 @@ pub(crate) fn provide(providers: &mut Providers) {
     providers.queries.is_reachable_non_generic = is_reachable_non_generic_provider_local;
     providers.queries.exported_non_generic_symbols = exported_non_generic_symbols_provider_local;
     providers.queries.exported_generic_symbols = exported_generic_symbols_provider_local;
+    providers.queries.has_generic_symbols_for_c_linker = has_generic_symbols_for_c_linker_provider;
     providers.queries.upstream_monomorphizations = upstream_monomorphizations_provider;
     providers.queries.is_unreachable_local_definition = is_unreachable_local_definition_provider;
     providers.queries.upstream_drop_glue_for = upstream_drop_glue_for_provider;
