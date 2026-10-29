@@ -47,6 +47,7 @@ use rustc_interface::{Linker, create_and_enter_global_ctxt, interface, passes};
 use rustc_lint::unerased_lint_store;
 use rustc_metadata::creader::MetadataLoader;
 use rustc_metadata::locator;
+use rustc_middle::mir::RelinkInputs;
 use rustc_middle::ty::TyCtxt;
 use rustc_parse::lexer::StripTokens;
 use rustc_parse::{new_parser_from_file, new_parser_from_source_str, unwrap_or_emit_fatal};
@@ -332,16 +333,17 @@ pub fn run_compiler(at_args: &[String], callbacks: &mut (dyn Callbacks + Send)) 
             };
             let after_analysis = if check_relink_inputs {
                 // If analysis or monomorphization aborts, assembler inputs may be unknown.
-                let mut untracked = true;
+                let mut inputs = RelinkInputs::Rebuild;
                 let result = catch_fatal_errors(|| {
                     let after_analysis = analyze();
-                    untracked = after_analysis == Compilation::Continue
-                        && (tcx.dcx().has_errors().is_some()
-                            || codegen_backend.name() != "llvm"
-                            || tcx.ohm_untracked_relink_inputs(()));
+                    if after_analysis == Compilation::Stop {
+                        inputs = RelinkInputs::Tracked;
+                    } else if tcx.dcx().has_errors().is_none() && codegen_backend.name() == "llvm" {
+                        inputs = tcx.ohm_relink_inputs(());
+                    }
                     after_analysis
                 });
-                passes::write_dep_info_for_outputs(tcx, &output_paths, untracked);
+                passes::write_dep_info_with_relink_inputs(tcx, &output_paths, inputs);
                 result.unwrap_or_else(|fatal| fatal.raise())
             } else {
                 analyze()
