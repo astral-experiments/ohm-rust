@@ -839,7 +839,11 @@ fn resolver_for_lowering_raw<'tcx>(
     )
 }
 
-pub fn write_dep_info(tcx: TyCtxt<'_>, untracked_relink_inputs: bool) {
+pub fn write_dep_info(tcx: TyCtxt<'_>) {
+    write_dep_info_with_relink_inputs(tcx, false);
+}
+
+pub(crate) fn write_dep_info_with_relink_inputs(tcx: TyCtxt<'_>, untracked_relink_inputs: bool) {
     // Make sure name resolution and macro expansion is run for
     // the side-effect of providing a complete set of all
     // accessed files and env vars.
