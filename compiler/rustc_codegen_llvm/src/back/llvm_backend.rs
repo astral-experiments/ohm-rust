@@ -257,6 +257,10 @@ impl CodegenBackend for LlvmCodegenBackend {
         }
     }
 
+    fn provide(&self, providers: &mut rustc_middle::util::Providers) {
+        providers.queries.ohm_untracked_relink_inputs = crate::asm::has_untracked_relink_inputs;
+    }
+
     fn print(&self, req: &PrintRequest, out: &mut String, sess: &Session) {
         use std::fmt::Write;
         match req.kind {
