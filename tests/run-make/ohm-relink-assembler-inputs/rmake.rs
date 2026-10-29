@@ -24,12 +24,20 @@ fn main() {
             .emit("link,dep-info=reader.d");
         cmd
     };
-    for byte in [17, 29] {
-        rfs::write("payload.bin", [byte]);
+    rfs::write("indirect.s", ".include \"second.s\"\n");
+    for (direct, nested) in [(17, 1), (29, 1), (29, 2)] {
+        rfs::write("payload.bin", [direct]);
+        rfs::write("second.s", format!(".byte {nested}\n"));
         compile_reader().run();
-        run("reader").assert_stdout_equals(byte.to_string());
+        run("reader").assert_stdout_equals(u16::from_le_bytes([direct, nested]).to_string());
         assert!(rfs::read_to_string("reader.d").contains(MARKER));
     }
+    rfs::remove_file("second.s");
+    compile_reader().run_fail().assert_stderr_contains("second.s");
+    rfs::write("second.s", ".byte 2\n");
     rfs::remove_file("payload.bin");
     compile_reader().run_fail().assert_stderr_contains("payload.bin");
+    rfs::write("payload.bin", [17]);
+    compile_reader().run();
+    run("reader").assert_stdout_equals(u16::from_le_bytes([17, 2]).to_string());
 }
