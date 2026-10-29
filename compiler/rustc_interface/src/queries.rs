@@ -34,6 +34,14 @@ impl Linker {
         let (ongoing_codegen, crate_info, metadata) =
             passes::start_codegen(codegen_backend, tcx, early_metadata);
 
+        if tcx.sess.opts.unstable_opts.ohm_check_relink_inputs
+            && tcx.sess.opts.output_types.should_codegen()
+            && !tcx.sess.opts.unstable_opts.no_codegen
+            && (codegen_backend.name() != "llvm" || tcx.ohm_untracked_relink_inputs(()))
+        {
+            passes::write_dep_info(tcx, true);
+        }
+
         Linker {
             dep_graph: tcx.dep_graph.clone(),
             output_filenames: Arc::clone(tcx.output_filenames(())),
