@@ -1,0 +1,52 @@
+{
+  "results/primary-check": {
+    "completed_pairs": {
+      "profile": 0,
+      "wall": 0
+    },
+    "included_pairs": 0,
+    "reason": "Comparing raw compiler-specific Cargo output namespaces failed admission before scoring.",
+    "status": "failed"
+  },
+  "test-control-v4": {
+    "included_pairs": 0,
+    "reason": "The observed duplicate extern names were addressed before running the separate test control.",
+    "status": "registered but never launched"
+  },
+  "v2/results/primary-build": {
+    "completed_pairs": {
+      "profile": 0,
+      "wall": 20
+    },
+    "included_pairs": 0,
+    "reason": "Initial copier did not preserve Cargo hardlinks. A completed copied-state check and any incomplete or interrupted build measurements were excluded.",
+    "status": "failed"
+  },
+  "v2/results/primary-build-restart": {
+    "completed_pairs": {
+      "profile": 4,
+      "wall": 20
+    },
+    "included_pairs": 0,
+    "reason": "Initial copier did not preserve Cargo hardlinks. A completed copied-state check and any incomplete or interrupted build measurements were excluded.",
+    "status": "failed"
+  },
+  "v2/results/primary-check": {
+    "completed_pairs": {
+      "profile": 12,
+      "wall": 20
+    },
+    "included_pairs": 0,
+    "reason": "Initial copier did not preserve Cargo hardlinks. A completed copied-state check and any incomplete or interrupted build measurements were excluded.",
+    "status": "complete"
+  },
+  "v3/results/primary-test": {
+    "completed_pairs": {
+      "profile": 0,
+      "wall": 0
+    },
+    "included_pairs": 0,
+    "reason": "Before timing the test harness, native admission encountered a linker temporary path outside the three allowed option kinds. Previously only one of two explicit operands with the same extern name was recorded. Both native clean executables matched. A separate strict test-only run was registered.",
+    "status": "failed"
+  }
+}
