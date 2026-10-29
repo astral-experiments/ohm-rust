@@ -505,6 +505,7 @@ provide! { tcx, def_id, other, cdata,
     }
     exported_non_generic_symbols => { cdata.exported_non_generic_symbols(tcx) }
     exported_generic_symbols => { cdata.exported_generic_symbols(tcx) }
+    has_generic_symbols_for_c_linker => { cdata.root.has_generic_symbols_for_c_linker }
 
     crate_extern_paths => {
         tcx.arena.alloc_from_iter(cdata.source().paths().map(|p| tcx.arena.alloc_path(p)))
