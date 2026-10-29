@@ -1,0 +1,92 @@
+{
+  "compiler/rustc_data_structures/src/stable_hash.rs": {
+    "fixed": {
+      "git_blob": "26090fdb26754ab5f38e368443e284df42f8e593",
+      "matches": [
+        [
+          "impl StableHash for str",
+          433
+        ],
+        [
+          "self.as_bytes().stable_hash(hcx, hasher);",
+          436
+        ]
+      ],
+      "sha256": "0f3da0f59d2a1bdde2a9cc2ae2a501e573a3d154f9a84c785b908441bb1e3f74"
+    },
+    "parent": {
+      "git_blob": "26090fdb26754ab5f38e368443e284df42f8e593",
+      "matches": [
+        [
+          "impl StableHash for str",
+          433
+        ],
+        [
+          "self.as_bytes().stable_hash(hcx, hasher);",
+          436
+        ]
+      ],
+      "sha256": "0f3da0f59d2a1bdde2a9cc2ae2a501e573a3d154f9a84c785b908441bb1e3f74"
+    }
+  },
+  "compiler/rustc_metadata/src/rmeta/encoder/public_api_hasher.rs": {
+    "fixed": {
+      "git_blob": "fa50dfe39a8cf69373c562900472bb0b5bec8a78",
+      "matches": [
+        [
+          "Node::Span(span) => tcx.with_stable_hashing_context",
+          971
+        ]
+      ],
+      "sha256": "791906c8757ba2b26061fda574408fc597817f45b03f74e6709de5701c6d1852"
+    },
+    "parent": {
+      "git_blob": "c827e3e37297826116355a904c3117ede632ab6b",
+      "matches": [
+        [
+          "Node::Span(span) => tcx.with_stable_hashing_context",
+          971
+        ]
+      ],
+      "sha256": "b6629f21d330b07885bd67f98a78ea3676d8a7a4df397e1ceb8464488db943e4"
+    }
+  },
+  "compiler/rustc_span/src/source_map.rs": {
+    "fixed": {
+      "git_blob": "acd3578781f0c9256e75cf1f6a5ae8fbcb6682b2",
+      "matches": [
+        [
+          "pub fn span_to_source",
+          599
+        ],
+        [
+          "if start_index > end_index || end_index > source_len",
+          618
+        ],
+        [
+          "extract_source(src, start_index, end_index)",
+          628
+        ]
+      ],
+      "sha256": "d31b989b13a326089b44b18c877d8976cb9bc6d1a2568d815ff742b8b0983a76"
+    },
+    "parent": {
+      "git_blob": "acd3578781f0c9256e75cf1f6a5ae8fbcb6682b2",
+      "matches": [
+        [
+          "pub fn span_to_source",
+          599
+        ],
+        [
+          "if start_index > end_index || end_index > source_len",
+          618
+        ],
+        [
+          "extract_source(src, start_index, end_index)",
+          628
+        ]
+      ],
+      "sha256": "d31b989b13a326089b44b18c877d8976cb9bc6d1a2568d815ff742b8b0983a76"
+    }
+  }
+}

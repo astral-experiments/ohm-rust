@@ -1,0 +1,7 @@
+[package]
+name="span_probe_app"
+version="0.1.0"
+edition="2021"
+
+[dependencies]
+span_lib={path="../span_lib"}

@@ -1,0 +1,322 @@
+{
+  "arms": {
+    "fixed": {
+      "bootstrap": "13210606f85d962cde708d3ed5d6a9de7b95b559ba2c888e182b1ee704130657",
+      "cargo": "789c2f116732ed642565d0f92c500838f8cd53664fbe60f205a5621c43cbecf1",
+      "commit": "569aefbe9016e23bbfdf7f5615990102f2cb5e44",
+      "compiler_tree": "6b3cbb40372dd182dd2b93aea4a82016fa4893c4",
+      "driver": "400fa81966f344440458529a083be5bf91f414b828e8278a6d461b3fe9d810fd",
+      "ordinary": {
+        "default-first-build": {
+          "actual_rustc": [
+            "span_probe",
+            "span_probe_app"
+          ],
+          "cargo_stderr": "7388615c6c44fb915ddc0aa1104e9311eceb5f4088c5bffcbea4c5b45c018b6a",
+          "cargo_stdout": "a273e5ba0f4a662d0fe461149183479a8c45267da0797a54576aaf9ccb9871a8",
+          "consumer": {
+            "bytes": 431856,
+            "exit": 0,
+            "sha256": "d5eeee26fe2198146cb1ab962cec8c109c24acf0ac7fe2628861ebdca290e473",
+            "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "exit": 0,
+          "original_trace": "111189571ff935db4365a9de9904201b6b1ae47bc6e131156d659e1f2845a5a4",
+          "stock_wild": 1
+        },
+        "default-first-check": {
+          "actual_rustc": [
+            "span_probe_macro",
+            "span_probe",
+            "span_probe_app"
+          ],
+          "cargo_stderr": "3d85c3bb2f0375765f947f57e4b5828bbc6a8a9eb6cc653c106d53ede2a777a5",
+          "cargo_stdout": "a1bbef29d10d5feb14e7b02937e77b5d482bc4773259dfc52056b1533a24f176",
+          "consumer": null,
+          "exit": 0,
+          "original_trace": "d7ce67c5159feac82710a42b8463f7092ec5b7b3964f9f9619fabc9f13bbdc30",
+          "stock_wild": 1
+        },
+        "default-repeat-build": {
+          "actual_rustc": [],
+          "cargo_stderr": "609928fcb95b20ebffad98663500f6e90c4dfb82e9b32a280de1eaef7de074e0",
+          "cargo_stdout": "95b8ec7f47fd07a354cd501165068181cefc37274bb6fef197e0dd40a1df237c",
+          "consumer": {
+            "bytes": 431856,
+            "exit": 0,
+            "sha256": "d5eeee26fe2198146cb1ab962cec8c109c24acf0ac7fe2628861ebdca290e473",
+            "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "exit": 0,
+          "original_trace": "5e04b47d94ed884f35b7150ecce93626176f3aba669ac8a660c3f2d03d66f061",
+          "stock_wild": 0
+        },
+        "default-repeat-check": {
+          "actual_rustc": [],
+          "cargo_stderr": "609928fcb95b20ebffad98663500f6e90c4dfb82e9b32a280de1eaef7de074e0",
+          "cargo_stdout": "8824487da269542adbb667917acb07b5d66de9ca59631860e5bf67f33ff92058",
+          "consumer": null,
+          "exit": 0,
+          "original_trace": "d053c9dfefe163b97caba527bb022d40f38c228d13eb44e0aea2493e456a6018",
+          "stock_wild": 0
+        },
+        "no-defaults-first-build": {
+          "actual_rustc": [
+            "span_probe",
+            "span_probe_app"
+          ],
+          "cargo_stderr": "bac9bdb1a4fc0122e2b39aaab139c9ec00d9adf964fdb0dc7b96eda25d20a60e",
+          "cargo_stdout": "92e4994d3be0c589336e00c7d70bf5bd7f3b584e02f802c62bf95c29f0120fd3",
+          "consumer": {
+            "bytes": 444600,
+            "exit": 0,
+            "sha256": "a26e232142ebd9319d374a772b71137c9ee6e3e481a0978d65bc7e6f125e9811",
+            "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "exit": 0,
+          "original_trace": "50c653b890a8021923891aa02da94d5c854994a90fa7c16a10d90fb5de1e9d43",
+          "stock_wild": 0
+        },
+        "no-defaults-first-check": {
+          "actual_rustc": [
+            "span_probe_macro",
+            "span_probe",
+            "span_probe_app"
+          ],
+          "cargo_stderr": "4498554c75f8c9923d594e363f25b3d7f79c1947c9c0fcff58e826b3912f056e",
+          "cargo_stdout": "5d7f008588f9012584f9192cf1d7e14a0848586c54eacd3eca7642cb7e3a45b8",
+          "consumer": null,
+          "exit": 0,
+          "original_trace": "9238d5790ab8e463908ddfdecdf656e494adce6b010215bb73f9fbb7dce4b95e",
+          "stock_wild": 0
+        },
+        "no-defaults-repeat-build": {
+          "actual_rustc": [],
+          "cargo_stderr": "f8939505220e21e405cac241dc96bbb6ad78a0a0c2f058621624401d567a1112",
+          "cargo_stdout": "07737d194c194593afd61a5767b535a01ab4162b420093c4933f89db7d31e95f",
+          "consumer": {
+            "bytes": 444600,
+            "exit": 0,
+            "sha256": "a26e232142ebd9319d374a772b71137c9ee6e3e481a0978d65bc7e6f125e9811",
+            "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "exit": 0,
+          "original_trace": "29a9ad34f87be6267c99cd3505bfeb97cdb26d11fd5c16d1099d9d01e451ac81",
+          "stock_wild": 0
+        },
+        "no-defaults-repeat-check": {
+          "actual_rustc": [],
+          "cargo_stderr": "f8939505220e21e405cac241dc96bbb6ad78a0a0c2f058621624401d567a1112",
+          "cargo_stdout": "72a1398faadca2704dfb55d441051a7d8dd932924573ca78ae3f2920155192f9",
+          "consumer": null,
+          "exit": 0,
+          "original_trace": "e4f8e1db513ba8afe4d3ed3b87e22da27e754786f2ebeebe2fbba5a4820eba6f",
+          "stock_wild": 0
+        }
+      },
+      "public_hash": {
+        "ascii": "aec16f5e90529f063409c9efee078493",
+        "ascii-restore": "aec16f5e90529f063409c9efee078493",
+        "partial-leading": "844d4ef7d60103b497964024bc4c476d",
+        "partial-leading-outside": "844d4ef7d60103b497964024bc4c476d",
+        "partial-tail": "abbf0a7d438f5cc9c9a6a6f45eda159e",
+        "partial-tail-changed": "90515418a5e0f9c4db45cef0c170d613",
+        "partial-tail-restore": "abbf0a7d438f5cc9c9a6a6f45eda159e",
+        "whole-alt": "2f3207b84ab902de9e76d0d4164206aa",
+        "whole-utf8": "f6886df9a0cb4cf2ed67f1da9849bb26"
+      },
+      "rmake": {
+        "exit": 0,
+        "main": true,
+        "native_children": [
+          "main.rs",
+          "span_lib.rs",
+          "subspan.rs"
+        ],
+        "trace": "854f65d507e3e8de2670de4c76e498efda28888fc7c02713e9b7f863a3b6452c",
+        "used_checked_in_sources": {
+          "main.rs": "d7cdf3f0e9b0b20c7a9934e085b69ff29a5954f8b050620d0c21e09c55ca0c81",
+          "rmake.rs": "901d5e37182e0481566931df3b6b240fef3f31323857b3bb79327d41dd57212e",
+          "span_lib.rs": "4c0fd7b4427efa6201a11bb58682f0a86f4d77329edb88c90efa2584f982d8d1",
+          "subspan.rs": "f0889903beb523d5050c4d6f105fb76aaeadcb2633152c5993e86f515bf54cef"
+        }
+      },
+      "rustc": "fa2ed3ec44adb4455d5323c4ee582becd5307cb4aae6b5cfc3cdc289b3140512",
+      "sdk_manifest": "37eb8270eb59c3d3810786fd2860f89f635a5aa86f38344f97306ce24135d3b3",
+      "source_sha": "aa018e367c7c35017ee2e757440ea4d7c1aeca477164621fabe031f001b244a9",
+      "stamp": "9f8db07b69b2f58ac9b64e3c9ec1ef8decdb5d1e",
+      "test_no_run": {
+        "executed": [
+          "816ed9e19f5f62a1e1650dfdcec8ad3dc5a786261eb7fd50f2bdc2d53d673b7a",
+          "0 tests, 0 benchmarks\n",
+          "\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n"
+        ],
+        "exit": 0,
+        "native_trace": "097f26779e0a61a0de0c43b53eba5ffd33f7c73052726bcda089dde353f2bcd8"
+      },
+      "tree": "1682c20ce5a7348f816d7160f7d60b254aff29e6",
+      "wild": "0d6335808b647d499f3d74993b602e64ff0625206c809bf4913c487eea380cd5"
+    },
+    "parent": {
+      "bootstrap": "896b7b7ced516a101a2e3761845ddcf411298efa0976d0c96f0f10a2056b8ff6",
+      "cargo": "789c2f116732ed642565d0f92c500838f8cd53664fbe60f205a5621c43cbecf1",
+      "commit": "9f8db07b69b2f58ac9b64e3c9ec1ef8decdb5d1e",
+      "compiler_tree": "40ad878be0c038e37bde2e3e318e8c6292e90b14",
+      "driver": "0f2008a9799d73f79e1f302b7cc34380f9730930ea1aeee6e7cb73961d06ee91",
+      "ordinary": {
+        "default-first-build": {
+          "actual_rustc": [
+            "span_probe"
+          ],
+          "cargo_stderr": "9be0bc6e11133ba9c1c8fb639afe2eae42c7f56f2e9159a89d5636e8bd69d616",
+          "cargo_stdout": "e63296b83f648dd5a4b4cf48c7e8ac992956ab27c783c653fd592d68809a88bd",
+          "consumer": null,
+          "exit": 101,
+          "original_trace": "692b3cb13febafbbbc913dea0f65bff2372f04728a091d53e368c4ba2eb91cf0",
+          "stock_wild": 0
+        },
+        "default-first-check": {
+          "actual_rustc": [
+            "span_probe_macro",
+            "span_probe"
+          ],
+          "cargo_stderr": "16b2fe88d612cdbfeef94b706b36f26e6dbd7aaa61825608f8fae228b452bd02",
+          "cargo_stdout": "edbd86d0cec8f76b9dc7b57655e0a5a83e8281841f215c7235752c76540bc687",
+          "consumer": null,
+          "exit": 101,
+          "original_trace": "17cb13c07294791038eee6d418fedcd6bfe9fb20ba4fa788d655f2098f67bc84",
+          "stock_wild": 1
+        },
+        "default-repeat-build": {
+          "actual_rustc": [
+            "span_probe"
+          ],
+          "cargo_stderr": "da1024ae7d534410b063219e15d0a56aac8d27e70d7eabb011fd8c37b1aca84f",
+          "cargo_stdout": "e63296b83f648dd5a4b4cf48c7e8ac992956ab27c783c653fd592d68809a88bd",
+          "consumer": null,
+          "exit": 101,
+          "original_trace": "512a2a265ba759e78fdaeccfceffc492092324af8ec9eee7689aea0063172cfc",
+          "stock_wild": 0
+        },
+        "default-repeat-check": {
+          "actual_rustc": [
+            "span_probe"
+          ],
+          "cargo_stderr": "52e0ee5fd6582f33d347226e874f883b4e39b7edd02aff1ef4c55aa8e727e575",
+          "cargo_stdout": "e63296b83f648dd5a4b4cf48c7e8ac992956ab27c783c653fd592d68809a88bd",
+          "consumer": null,
+          "exit": 101,
+          "original_trace": "fde9988599ff6fbdf2718e5a52f96418f91bc7ba8193cb6aee1d7a8b54a0556e",
+          "stock_wild": 0
+        },
+        "no-defaults-first-build": {
+          "actual_rustc": [
+            "span_probe",
+            "span_probe_app"
+          ],
+          "cargo_stderr": "54cce081ae45038e2f519938b3318328f67d64f78dd8862ad325ef4d811e2723",
+          "cargo_stdout": "92e4994d3be0c589336e00c7d70bf5bd7f3b584e02f802c62bf95c29f0120fd3",
+          "consumer": {
+            "bytes": 444600,
+            "exit": 0,
+            "sha256": "a26e232142ebd9319d374a772b71137c9ee6e3e481a0978d65bc7e6f125e9811",
+            "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "exit": 0,
+          "original_trace": "f90e36c3dc1ff1fac3c864b00b6579258cbe7884f1abc15f6fb537dcbcfdbd17",
+          "stock_wild": 0
+        },
+        "no-defaults-first-check": {
+          "actual_rustc": [
+            "span_probe_macro",
+            "span_probe",
+            "span_probe_app"
+          ],
+          "cargo_stderr": "a227a75a904f81b32f2e526e1a35490ef92f52b04ee4fd4378be7648616248f6",
+          "cargo_stdout": "5d7f008588f9012584f9192cf1d7e14a0848586c54eacd3eca7642cb7e3a45b8",
+          "consumer": null,
+          "exit": 0,
+          "original_trace": "9ad65dfbdc0212cf54351b0b29494828758c9e8b7c1054c3a7d7246df49b1936",
+          "stock_wild": 0
+        },
+        "no-defaults-repeat-build": {
+          "actual_rustc": [],
+          "cargo_stderr": "f8939505220e21e405cac241dc96bbb6ad78a0a0c2f058621624401d567a1112",
+          "cargo_stdout": "07737d194c194593afd61a5767b535a01ab4162b420093c4933f89db7d31e95f",
+          "consumer": {
+            "bytes": 444600,
+            "exit": 0,
+            "sha256": "a26e232142ebd9319d374a772b71137c9ee6e3e481a0978d65bc7e6f125e9811",
+            "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "exit": 0,
+          "original_trace": "e95aedb6257bf61ad50c697549a58348533d4488ffe9600a88bfd2f83dfa9a29",
+          "stock_wild": 0
+        },
+        "no-defaults-repeat-check": {
+          "actual_rustc": [],
+          "cargo_stderr": "f8939505220e21e405cac241dc96bbb6ad78a0a0c2f058621624401d567a1112",
+          "cargo_stdout": "72a1398faadca2704dfb55d441051a7d8dd932924573ca78ae3f2920155192f9",
+          "consumer": null,
+          "exit": 0,
+          "original_trace": "54ecb1350a68aae7347ffaf86e4a2e8eab26b6e3f7674f9d9be1a27265210156",
+          "stock_wild": 0
+        }
+      },
+      "public_hash": {
+        "ascii": "aec16f5e90529f063409c9efee078493",
+        "ascii-restore": "aec16f5e90529f063409c9efee078493",
+        "partial-leading": null,
+        "partial-leading-outside": null,
+        "partial-tail": null,
+        "partial-tail-changed": null,
+        "partial-tail-restore": null,
+        "whole-alt": "2f3207b84ab902de9e76d0d4164206aa",
+        "whole-utf8": "f6886df9a0cb4cf2ed67f1da9849bb26"
+      },
+      "rmake": {
+        "exit": 1,
+        "main": false,
+        "native_children": [
+          "span_lib.rs",
+          "subspan.rs"
+        ],
+        "trace": "50b46a4516f523dfe6c3a48fd99c219fdf4acba3b0d7e0af0c24e7d01b31c629",
+        "used_checked_in_sources": {
+          "main.rs": "d7cdf3f0e9b0b20c7a9934e085b69ff29a5954f8b050620d0c21e09c55ca0c81",
+          "rmake.rs": "901d5e37182e0481566931df3b6b240fef3f31323857b3bb79327d41dd57212e",
+          "span_lib.rs": "4c0fd7b4427efa6201a11bb58682f0a86f4d77329edb88c90efa2584f982d8d1",
+          "subspan.rs": "f0889903beb523d5050c4d6f105fb76aaeadcb2633152c5993e86f515bf54cef"
+        }
+      },
+      "rustc": "fa2ed3ec44adb4455d5323c4ee582becd5307cb4aae6b5cfc3cdc289b3140512",
+      "sdk_manifest": "900443503dca3c89d9d406bda3efd2a22c7de631fd92cb29ad066d927089483d",
+      "source_sha": "9f3a60ed917e18e05d3d28f9223a3c53fcb54561ca7edfd5c90e050320c1c8b6",
+      "stamp": "9f8db07b69b2f58ac9b64e3c9ec1ef8decdb5d1e",
+      "test_no_run": {
+        "executed": [],
+        "exit": 101,
+        "native_trace": "e47cfb39e61f2bc029a9bf225c8b9bd03b9d5279ca682ccc892b4048b676f969"
+      },
+      "tree": "3dddb975fabcc584014c8bce410466aef2dcefef",
+      "wild": "0d6335808b647d499f3d74993b602e64ff0625206c809bf4913c487eea380cd5"
+    }
+  },
+  "known_source_commitments": {
+    "Cargo.lock": "1514ffba8c6d631225d36958c780cc5e14a45a8c9201c83193495cfa8401a949",
+    "Cargo.toml": "5c3bc21293f8c7207bc0a9590611934de7f4c34b49003c47727a6bf27a16656f",
+    "app/Cargo.toml": "ede1a2098d9f85848292530dc264c8241b14d1bab3da7951ca887911f570efa3",
+    "app/src/main.rs": "741ec7ca84d6c26517f4b70b16e478eec3e785ddcfb0719540c0e1a585a111f7",
+    "lib/Cargo.toml": "bc5f6070a9d2b95de75006ebc520ba81891f5585bedd7dd83b91e345827cbe6e",
+    "lib/src/lib.rs": "f512f282febe4e7a8b8ee6721530f0513c9b2927e87b0cd815a6692b488f5db9",
+    "mac/Cargo.toml": "98d926c95abbd2c9a849c8f51ae82f935ea3300a1f383d119c4f4b9abe4c056c",
+    "mac/src/lib.rs": "ab9946860452d70376fe4998c8cf7307f9620267b6247162b4a5256a1b153478"
+  },
+  "scope": "Locally source-built matched Rust+std, no PGO/BOLT, same signed -19 Cargo and stock Wild; one compiler-only source delta, four test files. Raw process and child test streams remain independently retained."
+}

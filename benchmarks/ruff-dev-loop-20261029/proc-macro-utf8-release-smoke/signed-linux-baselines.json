@@ -1,0 +1,116 @@
+{
+  "17": {
+    "default-build": {
+      "build_finished": false,
+      "stderr_sha256": "1f60ce44cdc49b5b7fc3d3d2250ee18b3d8f16abcddec1c27c9c4262843527eb",
+      "stdout_sha256": "7873e4dc0ea3941e11d22a9677ac98851ad4a51e583ed5a8d9142ca008cc9c09",
+      "utf8_panic": true
+    },
+    "default-check": {
+      "build_finished": false,
+      "stderr_sha256": "0f71032043727c0ab2d3b5a30c6db7734c10b0d5aab8b50dad3e84ba88edf65b",
+      "stdout_sha256": "f15a241ed6c6aa2836e0e50c8fa846d5e898dd2fe8a1d77966a59e0c1b098a64",
+      "utf8_panic": true
+    },
+    "default-test": {
+      "build_finished": false,
+      "stderr_sha256": "195ff70cce08450501bf6651a2d58a3bef97479b5a7555e5f4540caea33133c5",
+      "stdout_sha256": "7873e4dc0ea3941e11d22a9677ac98851ad4a51e583ed5a8d9142ca008cc9c09",
+      "utf8_panic": true
+    },
+    "no-defaults-build": {
+      "build_finished": true,
+      "stderr_sha256": "b64782cbcc6a3cd807ef980bb76e6df98ec6d46058d40fbce3372ed9f6a0bd5c",
+      "stdout_sha256": "c17722d594b5c9f18b6aa6636f84d7c787d81c0c11099749b8ae5077ea505e64",
+      "utf8_panic": false
+    },
+    "no-defaults-check": {
+      "build_finished": true,
+      "stderr_sha256": "4ca77387332b3b0fe5c611e10f337a1501b13fa9b0d14599ec7926b12f961436",
+      "stdout_sha256": "7d1e0cc485aceeb701bfe60198ac02f26ee4f641e17120c76b0f0de720a5d636",
+      "utf8_panic": false
+    },
+    "no-defaults-test": {
+      "build_finished": true,
+      "stderr_sha256": "7890f8a11dc1c15cc443142356c572528e34cf8e6df5b26f5257e2cf866495a4",
+      "stdout_sha256": "bcda99c64484b267978bfb56f8153e3e263b1ae9cfa4f6cc426ae37fa750781a",
+      "utf8_panic": false
+    }
+  },
+  "18": {
+    "default-build": {
+      "build_finished": false,
+      "stderr_sha256": "94af27a1a263790862ad8489d2d1ab807a60bcac0122467c25ab57df33fed696",
+      "stdout_sha256": "34430daf9252dd323d05f3434382a69fe2cc88c34fd9355e6796718892337529",
+      "utf8_panic": true
+    },
+    "default-check": {
+      "build_finished": false,
+      "stderr_sha256": "b875607c16100ecc862419f9125796975cb00266c648ab04f4f73da8aeb5eccc",
+      "stdout_sha256": "875fa0ed7cc017dbe83755f913872edda5e195e9571b9c7cacbde11a515e11bb",
+      "utf8_panic": true
+    },
+    "default-test": {
+      "build_finished": false,
+      "stderr_sha256": "1d6d715b1836f644d6d135ce89e32e4db8b57a264a9c11e09b41c7f5805f5017",
+      "stdout_sha256": "34430daf9252dd323d05f3434382a69fe2cc88c34fd9355e6796718892337529",
+      "utf8_panic": true
+    },
+    "no-defaults-build": {
+      "build_finished": true,
+      "stderr_sha256": "b00949c6c23498c231b572047b9e1979428ec66b086f3c836645fa717e35eb58",
+      "stdout_sha256": "85a233528c19ff5b7d7d0884cc080745f1f3fe25ac4e2955e137de1deab43d4b",
+      "utf8_panic": false
+    },
+    "no-defaults-check": {
+      "build_finished": true,
+      "stderr_sha256": "71ca735c33ac2362f1fa1aeb324d8b56572ec9532ada282efcb4e2d0afb58d97",
+      "stdout_sha256": "def03d5e98f44c57e796b60abac9c22d1f599856dcd566e7311db2812dbddfe8",
+      "utf8_panic": false
+    },
+    "no-defaults-test": {
+      "build_finished": true,
+      "stderr_sha256": "d3f50d76b8d19a0a0e08071e9f7143b1f5898c6aa27b16041bc92978ef4fb07f",
+      "stdout_sha256": "48d62de4e25e32c38776ae19e603706276a2ded4c1edcf990de7592b3572d3cf",
+      "utf8_panic": false
+    }
+  },
+  "19": {
+    "default-build": {
+      "build_finished": false,
+      "stderr_sha256": "0fe1c5bbf269e6eb96669809f486164ee032b1bbe2ca13fbcc9bc663c81c0927",
+      "stdout_sha256": "e9fa375b3fa5d82f77553258b9c288d90c01a8adce6b1c46578a65082ef9d623",
+      "utf8_panic": true
+    },
+    "default-check": {
+      "build_finished": false,
+      "stderr_sha256": "4f66c24e4eed6d994292b77e27276b19bf38a3184db91d8a34cc794b36fe6750",
+      "stdout_sha256": "a53d93b6b77db8b89b8c2841e0ca50496468ef9108a9b682a0e5f383fc577649",
+      "utf8_panic": true
+    },
+    "default-test": {
+      "build_finished": false,
+      "stderr_sha256": "2debb4ffe1b7fdf70bfb5617e09f7f8b7376a2d1f166994fc54bc8e62b5f8b1f",
+      "stdout_sha256": "e9fa375b3fa5d82f77553258b9c288d90c01a8adce6b1c46578a65082ef9d623",
+      "utf8_panic": true
+    },
+    "no-defaults-build": {
+      "build_finished": true,
+      "stderr_sha256": "c24b25365e8b75053d79b4d88d7172bc3629a9fc2ed20532fb5e8088d8f3023c",
+      "stdout_sha256": "7a76c366562027e95aedd6347d2343dbbef8cd0fd54cf1d89c44a08998a3c63a",
+      "utf8_panic": false
+    },
+    "no-defaults-check": {
+      "build_finished": true,
+      "stderr_sha256": "d7b07708a04aabe71b7f0e7b595c8798aa1ce0de0b861bf1a1713fd2d5e1b8ed",
+      "stdout_sha256": "702f48a98fc221278ac32a8df09c80522b24ee43e9cdde673d3a8d0b41993f09",
+      "utf8_panic": false
+    },
+    "no-defaults-test": {
+      "build_finished": true,
+      "stderr_sha256": "69ff7754b46aa6f5c2bf6abf70f660787afd43f52d854a5f40df02e98c4d09a4",
+      "stdout_sha256": "e2bb6c71b08a04a9ff04ef873ef686b3f154c63ba55c1296cde1cb65f36217eb",
+      "utf8_panic": false
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "linux": {
+    "focused_failed": 0,
+    "focused_filtered": 521,
+    "focused_ignored": 0,
+    "focused_passed": 43,
+    "head": "569aefbe9016e23bbfdf7f5615990102f2cb5e44",
+    "job": 123548880934,
+    "log_sha256": "7dcc4024102b83a1953e19f7fe6a81c754c4f678ee9d89273ec28357b323ba96",
+    "run": 40902662865,
+    "selected_pattern": "tests/run-make/rdr-public-hash*"
+  },
+  "macos": {
+    "focused_failed": 0,
+    "focused_filtered": 521,
+    "focused_ignored": 5,
+    "focused_passed": 38,
+    "head": "569aefbe9016e23bbfdf7f5615990102f2cb5e44",
+    "job": 123548881500,
+    "log_sha256": "7695f1a6527fb6b447c776a7642ffa2fea5840f59763247b6687dc8c05b5f236",
+    "run": 40902662865,
+    "selected_pattern": "tests/run-make/rdr-public-hash*"
+  }
+}

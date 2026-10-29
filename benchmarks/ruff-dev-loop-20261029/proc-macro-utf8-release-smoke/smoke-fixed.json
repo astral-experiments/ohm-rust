@@ -1,0 +1,136 @@
+{
+  "commands": [
+    {
+      "case": "default-check-first",
+      "dirty": [
+        "subspan",
+        "span_lib",
+        "span_probe_app"
+      ],
+      "exit": 0,
+      "utf8_panic": false
+    },
+    {
+      "case": "default-check-repeat",
+      "dirty": [],
+      "exit": 0,
+      "utf8_panic": false
+    },
+    {
+      "case": "default-build-first",
+      "dirty": [
+        "span_lib",
+        "span_probe_app"
+      ],
+      "executable_sha256": "caf9658072dcbc5d5e772d1ca0ff57d152b5dad38bbc3bc88d89761bf6164bb2",
+      "exit": 0,
+      "utf8_panic": false
+    },
+    {
+      "case": "default-build-repeat",
+      "dirty": [],
+      "executable_sha256": "caf9658072dcbc5d5e772d1ca0ff57d152b5dad38bbc3bc88d89761bf6164bb2",
+      "exit": 0,
+      "utf8_panic": false
+    },
+    {
+      "case": "default-test-first",
+      "dirty": [
+        "span_probe_app"
+      ],
+      "executable_sha256": "4951945f460e2ada4248d65f71efbbf01c0672a794a28f7b4dcd227cebd0ede6",
+      "exit": 0,
+      "utf8_panic": false
+    },
+    {
+      "case": "default-test-repeat",
+      "dirty": [],
+      "executable_sha256": "4951945f460e2ada4248d65f71efbbf01c0672a794a28f7b4dcd227cebd0ede6",
+      "exit": 0,
+      "utf8_panic": false
+    },
+    {
+      "case": "defaults-off-check-first",
+      "dirty": [
+        "subspan",
+        "span_lib",
+        "span_probe_app"
+      ],
+      "exit": 0,
+      "utf8_panic": false
+    },
+    {
+      "case": "defaults-off-check-repeat",
+      "dirty": [],
+      "exit": 0,
+      "utf8_panic": false
+    },
+    {
+      "case": "defaults-off-build-first",
+      "dirty": [
+        "span_lib",
+        "span_probe_app"
+      ],
+      "executable_sha256": "5cf3eef4e36de1ca35c36ac516d30dd2d940f8e94f7923a1ebc4f462fcd84593",
+      "exit": 0,
+      "utf8_panic": false
+    },
+    {
+      "case": "defaults-off-build-repeat",
+      "dirty": [],
+      "executable_sha256": "5cf3eef4e36de1ca35c36ac516d30dd2d940f8e94f7923a1ebc4f462fcd84593",
+      "exit": 0,
+      "utf8_panic": false
+    },
+    {
+      "case": "defaults-off-test-first",
+      "dirty": [
+        "span_probe_app"
+      ],
+      "executable_sha256": "30cd79564594762ffda37f63104fe5b1c5441c625891bfa033069042d6ad10f7",
+      "exit": 0,
+      "utf8_panic": false
+    },
+    {
+      "case": "defaults-off-test-repeat",
+      "dirty": [],
+      "executable_sha256": "30cd79564594762ffda37f63104fe5b1c5441c625891bfa033069042d6ad10f7",
+      "exit": 0,
+      "utf8_panic": false
+    }
+  ],
+  "expectation": "fixed",
+  "sdk": {
+    "cargo": "cargo 1.99.0-dev (235f92286 2026-10-28) (ohm-1.99.0-19)\nrelease: 1.99.0-dev\ncommit-hash: 235f9228651b74c591e6f62cae4c9b761448dd2d\ncommit-date: 2026-10-28\nhost: x86_64-unknown-linux-gnu\nlibgit2: 1.9.6 (sys:0.21.0 vendored)\nlibcurl: 8.21.0-DEV (sys:0.4.90+curl-8.21.0 vendored ssl:OpenSSL/3.6.3)\nssl: OpenSSL 3.6.3 9 Jun 2026\nos: Ubuntu 24.4.0 (noble) [64-bit]\n",
+    "cargo_sha256": "789c2f116732ed642565d0f92c500838f8cd53664fbe60f205a5621c43cbecf1",
+    "driver_sha256": "400fa81966f344440458529a083be5bf91f414b828e8278a6d461b3fe9d810fd",
+    "rustc": "rustc 1.99.0-dev (9f8db07b6 2026-10-29) (ohm-ruff-lint-scout)\nbinary: rustc\ncommit-hash: 9f8db07b69b2f58ac9b64e3c9ec1ef8decdb5d1e\ncommit-date: 2026-10-29\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0-dev\nLLVM version: 23.1.1\n",
+    "rustc_sha256": "fa2ed3ec44adb4455d5323c4ee582becd5307cb4aae6b5cfc3cdc289b3140512"
+  },
+  "stream_sha256": {
+    "default-build-first.stderr": "46d3b2a9c91775e64a0c9029d1c2c98c1da703c8113f45abb718178730e9fb86",
+    "default-build-first.stdout": "9b27a917a1d902d0e42668acb053b83a2da9bf608de45541a6980b7991137b89",
+    "default-build-repeat.stderr": "f4ccb643f5fe4ab783e269de16946b980173e92255af3fa26c9c08e2fea605ed",
+    "default-build-repeat.stdout": "d0d50ac9af4d73b87f40f24a0c279afbf4d84e1fbc116a2f2dc8636221527ca4",
+    "default-check-first.stderr": "9180134e632af78687aba4df9ff926d4511868295f0581825860a474607cad2a",
+    "default-check-first.stdout": "a21a2fa3421e1bcb95caaa807f020d8ebac9a6223a11b82d0c65b0f45a99a395",
+    "default-check-repeat.stderr": "5adee4ea2dc082fb378b91cca2817974cf97ea739f212f7d38f9ebf63675cba5",
+    "default-check-repeat.stdout": "8e0fb3868ff99c3967ca6439560c2987f0fdd237c637ee23071480208090bb73",
+    "default-test-first.stderr": "81d65211eac4960ac3002e3c76dbd3f40c5fe166f99079990b357f26d2598c39",
+    "default-test-first.stdout": "9b69671990a090a728893958e1b1cd4823dfad652814297fab387b13dbb8c338",
+    "default-test-repeat.stderr": "fb33d31976365e9a2f61f805dbd3554849e85b972d426558de3818db7e1f823d",
+    "default-test-repeat.stdout": "85da59b554564841e46721baf24528d26efb938f082900a27fa64c183c1a6617",
+    "defaults-off-build-first.stderr": "3f08df435cbed5cbfebc42bc2aa2862022396a2a89fdd7c8e4b728fc7fc27188",
+    "defaults-off-build-first.stdout": "ccbdd4f6149e3ef5f85e6ea8288cc014ec0267ae4ba579791b2f572e8dee7e3e",
+    "defaults-off-build-repeat.stderr": "5adee4ea2dc082fb378b91cca2817974cf97ea739f212f7d38f9ebf63675cba5",
+    "defaults-off-build-repeat.stdout": "1975f6d0808548144ed6c57041ba784d1b331aba690dceff72acb41353bbe8fc",
+    "defaults-off-check-first.stderr": "7fefe39e6e8a53018e3e2dd93dd86dfc306bafc2ea9c288b284457ea50a04cf3",
+    "defaults-off-check-first.stdout": "cb198087f576d38cae920f0bdd161c3d8025950055a95dd41e2d58de69d0941e",
+    "defaults-off-check-repeat.stderr": "5adee4ea2dc082fb378b91cca2817974cf97ea739f212f7d38f9ebf63675cba5",
+    "defaults-off-check-repeat.stdout": "35ac3ce31b20e60090fe52a3c55f6e8785c8a8636baf25edb8402e99de66f26f",
+    "defaults-off-test-first.stderr": "95c1fd8fb37a322656e366bdc037bf8b774a738f144889c04a60de3f2e0020fc",
+    "defaults-off-test-first.stdout": "52ab68c8904795807880c150bc2e89b81b772cfc9db80f3ab94cf152a6c41d17",
+    "defaults-off-test-repeat.stderr": "fb33d31976365e9a2f61f805dbd3554849e85b972d426558de3818db7e1f823d",
+    "defaults-off-test-repeat.stdout": "8fa76d5d98a4a0c47769e0a5809c881c6a83604e0ffc4dabf32c710dfeae4952"
+  }
+}

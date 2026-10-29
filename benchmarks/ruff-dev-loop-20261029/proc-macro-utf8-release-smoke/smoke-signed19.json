@@ -1,0 +1,125 @@
+{
+  "commands": [
+    {
+      "case": "default-check-first",
+      "dirty": [
+        "subspan"
+      ],
+      "exit": 101,
+      "utf8_panic": true
+    },
+    {
+      "case": "default-check-repeat",
+      "dirty": [],
+      "exit": 101,
+      "utf8_panic": true
+    },
+    {
+      "case": "default-build-first",
+      "dirty": [],
+      "exit": 101,
+      "utf8_panic": true
+    },
+    {
+      "case": "default-build-repeat",
+      "dirty": [],
+      "exit": 101,
+      "utf8_panic": true
+    },
+    {
+      "case": "default-test-first",
+      "dirty": [],
+      "exit": 101,
+      "utf8_panic": true
+    },
+    {
+      "case": "default-test-repeat",
+      "dirty": [],
+      "exit": 101,
+      "utf8_panic": true
+    },
+    {
+      "case": "defaults-off-check-first",
+      "dirty": [
+        "subspan",
+        "span_lib",
+        "span_probe_app"
+      ],
+      "exit": 0,
+      "utf8_panic": false
+    },
+    {
+      "case": "defaults-off-check-repeat",
+      "dirty": [],
+      "exit": 0,
+      "utf8_panic": false
+    },
+    {
+      "case": "defaults-off-build-first",
+      "dirty": [
+        "span_lib",
+        "span_probe_app"
+      ],
+      "executable_sha256": "b43475f1ee4bec62b5388e0fc03b8560b6179d34ab075ee49e6b17819272d65c",
+      "exit": 0,
+      "utf8_panic": false
+    },
+    {
+      "case": "defaults-off-build-repeat",
+      "dirty": [],
+      "executable_sha256": "b43475f1ee4bec62b5388e0fc03b8560b6179d34ab075ee49e6b17819272d65c",
+      "exit": 0,
+      "utf8_panic": false
+    },
+    {
+      "case": "defaults-off-test-first",
+      "dirty": [
+        "span_probe_app"
+      ],
+      "executable_sha256": "526e614a15686a03841cf9f1eed26196f8e02f3a11c8c3fd8a36fb014a9acf2e",
+      "exit": 0,
+      "utf8_panic": false
+    },
+    {
+      "case": "defaults-off-test-repeat",
+      "dirty": [],
+      "executable_sha256": "526e614a15686a03841cf9f1eed26196f8e02f3a11c8c3fd8a36fb014a9acf2e",
+      "exit": 0,
+      "utf8_panic": false
+    }
+  ],
+  "expectation": "affected",
+  "sdk": {
+    "cargo": "cargo 1.99.0-dev (235f92286 2026-10-28) (ohm-1.99.0-19)\nrelease: 1.99.0-dev\ncommit-hash: 235f9228651b74c591e6f62cae4c9b761448dd2d\ncommit-date: 2026-10-28\nhost: x86_64-unknown-linux-gnu\nlibgit2: 1.9.6 (sys:0.21.0 vendored)\nlibcurl: 8.21.0-DEV (sys:0.4.90+curl-8.21.0 vendored ssl:OpenSSL/3.6.3)\nssl: OpenSSL 3.6.3 9 Jun 2026\nos: Ubuntu 24.4.0 (noble) [64-bit]\n",
+    "cargo_sha256": "789c2f116732ed642565d0f92c500838f8cd53664fbe60f205a5621c43cbecf1",
+    "driver_sha256": "f772b49abec18759edbd9cb7f9f2930097d6ba64d9a2b82837edf4451acc3014",
+    "rustc": "rustc 1.99.0-dev (eef2f3425 2026-10-28) (ohm-1.99.0-19)\nbinary: rustc\ncommit-hash: eef2f3425c1c6f7fddfb4555769a9f90fe1e0f53\ncommit-date: 2026-10-28\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0-dev\nLLVM version: 23.1.1\n",
+    "rustc_sha256": "5694abe50767a22cebeccb767143f7404d5e81c4b1760cff4426466bf410e511"
+  },
+  "stream_sha256": {
+    "default-build-first.stderr": "5395ede77b9226b462456edb9eea4498ed88683de0da43e188e17918414b1606",
+    "default-build-first.stdout": "9631315f9edf9db69f012ddeb17336d496822353da1a9131c42ced3339b3e505",
+    "default-build-repeat.stderr": "b6a575f3bf31d76a114bc8370dd8251cac0aa79fbfc417ea3f96ae5127b46af9",
+    "default-build-repeat.stdout": "9631315f9edf9db69f012ddeb17336d496822353da1a9131c42ced3339b3e505",
+    "default-check-first.stderr": "9eaf80b6438bb6d62da2e9fe78bc0f1a74d5a64eaf9d81678f382969f9620ef5",
+    "default-check-first.stdout": "48023b5772be7a7fc7df5ab6078d6e48030e620a35fb618c3954f32224b1775d",
+    "default-check-repeat.stderr": "44824053585409ef64e3f7d64962f10b230de69ead8e3266e217e3c367974adb",
+    "default-check-repeat.stdout": "9631315f9edf9db69f012ddeb17336d496822353da1a9131c42ced3339b3e505",
+    "default-test-first.stderr": "19252e1e3e6a0c975b1bc1a615caf1c4ae1baaaa74426a3741f7f361321fe4b8",
+    "default-test-first.stdout": "9631315f9edf9db69f012ddeb17336d496822353da1a9131c42ced3339b3e505",
+    "default-test-repeat.stderr": "ff5c69ee0b3a1b154c2a1c10551ac7e38d1e30281af519c51d1d0ddf5925bafc",
+    "default-test-repeat.stdout": "9631315f9edf9db69f012ddeb17336d496822353da1a9131c42ced3339b3e505",
+    "defaults-off-build-first.stderr": "028c1fa1eac321da27bef5127a413a057ce65ffabe3dd9f2da0855635467f4d7",
+    "defaults-off-build-first.stdout": "f108786245e9d2fcfe73be47ba7aed2fa542395ad526909a1ecf7b2ac297eba3",
+    "defaults-off-build-repeat.stderr": "27958294d2e64e79bb814f6ac8212191640105ec4e4af309cf831201e2bf4693",
+    "defaults-off-build-repeat.stdout": "d92b419088d406d157c804164be2b120a508378e7149ea2e37318e98daf24d3f",
+    "defaults-off-check-first.stderr": "572d61ef65f7ea0d57723bee1677d90b293fc7ceb90b7f6f7fa9e3116fb04fdf",
+    "defaults-off-check-first.stdout": "c870227ae68933fdd63737151c35de28534e57a3a82f814a4afcf2db4b876cea",
+    "defaults-off-check-repeat.stderr": "27958294d2e64e79bb814f6ac8212191640105ec4e4af309cf831201e2bf4693",
+    "defaults-off-check-repeat.stdout": "163016d51de7b268f33bad0891262c211d5a7809c74ec21cd5413c662a769fa2",
+    "defaults-off-test-first.stderr": "9d46555c1a43629c82a105b178e3e12fa27c9cae7d00007e57ce932a87d7328d",
+    "defaults-off-test-first.stdout": "4a7f0a5de9d9613806e996d54b57e5e0241eddab3455907e4663fdbaca8c600e",
+    "defaults-off-test-repeat.stderr": "5e15e14085969c10d5874ad9f1de731c91f82c6f0ccca6141f8d1926b34a5f2c",
+    "defaults-off-test-repeat.stdout": "23bee4e79aa21d34de05be4ca57725ce6a9e75f10e723f8b074fb04756d6b803"
+  }
+}

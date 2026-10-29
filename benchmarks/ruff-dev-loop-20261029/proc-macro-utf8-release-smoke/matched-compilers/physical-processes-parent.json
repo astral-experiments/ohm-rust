@@ -1,0 +1,123 @@
+[
+  {
+    "absolute_process_stream_sha256": "394bacb5d6348e99696e163b799a7130248eb220136d051c197dc1da299922b5",
+    "actual_rustc": [
+      {
+        "crate": "span_probe_macro",
+        "kernel_argv_sha256": "321a4e641855a0b19c3f167837659d6ad2133b5af4214d47cad2bcb1050b2f92",
+        "public_api": true
+      },
+      {
+        "crate": "span_probe",
+        "kernel_argv_sha256": "82926601ce36ca240ca3fe050c4e4e380fd69629f207d7d5b66b8d59c10bdd2d",
+        "public_api": true
+      }
+    ],
+    "command": "default-first-check",
+    "kernel_trace_sha256": "17cb13c07294791038eee6d418fedcd6bfe9fb20ba4fa788d655f2098f67bc84",
+    "native_link_commands": {
+      "collect2": 1,
+      "stock-wild": 1
+    }
+  },
+  {
+    "absolute_process_stream_sha256": "11945382372761d5dfe92e3d125b76c3eb22655dc18ea428fe9543c924f5a685",
+    "actual_rustc": [
+      {
+        "crate": "span_probe",
+        "kernel_argv_sha256": "321f6702fe3afb0fbc4f2487389dbb86aefa0acbcf7bca804bd60990cd1c3ef1",
+        "public_api": true
+      }
+    ],
+    "command": "default-first-build",
+    "kernel_trace_sha256": "692b3cb13febafbbbc913dea0f65bff2372f04728a091d53e368c4ba2eb91cf0",
+    "native_link_commands": {}
+  },
+  {
+    "absolute_process_stream_sha256": "2802fe3df1af0bb136242ee95140d853c27532093430c3f517e9f8ebbc06466a",
+    "actual_rustc": [
+      {
+        "crate": "span_probe",
+        "kernel_argv_sha256": "82926601ce36ca240ca3fe050c4e4e380fd69629f207d7d5b66b8d59c10bdd2d",
+        "public_api": true
+      }
+    ],
+    "command": "default-repeat-check",
+    "kernel_trace_sha256": "fde9988599ff6fbdf2718e5a52f96418f91bc7ba8193cb6aee1d7a8b54a0556e",
+    "native_link_commands": {}
+  },
+  {
+    "absolute_process_stream_sha256": "94227686afc8aa838732a583e799e6dac659744971ffcb9873cb30eebecdc5da",
+    "actual_rustc": [
+      {
+        "crate": "span_probe",
+        "kernel_argv_sha256": "321f6702fe3afb0fbc4f2487389dbb86aefa0acbcf7bca804bd60990cd1c3ef1",
+        "public_api": true
+      }
+    ],
+    "command": "default-repeat-build",
+    "kernel_trace_sha256": "512a2a265ba759e78fdaeccfceffc492092324af8ec9eee7689aea0063172cfc",
+    "native_link_commands": {}
+  },
+  {
+    "absolute_process_stream_sha256": "eb93422dcfece468ddbb2bc78a2c7130cb0deec19e66e019c5e8e7933f40955d",
+    "actual_rustc": [
+      {
+        "crate": "span_probe_macro",
+        "kernel_argv_sha256": "312aabfe87aeed7d5c24bf4cd28dcd493e4cab7878879fabbb6612ee68ff353f",
+        "public_api": false
+      },
+      {
+        "crate": "span_probe",
+        "kernel_argv_sha256": "8346f3f4ac5fb1203ffa8815d514a7f9f6fa029dde688e0962638ee6f920f946",
+        "public_api": false
+      },
+      {
+        "crate": "span_probe_app",
+        "kernel_argv_sha256": "62e031f766cbb787fc4354c5991b197d51312a54315e7467687fa6bf56074959",
+        "public_api": false
+      }
+    ],
+    "command": "no-defaults-first-check",
+    "kernel_trace_sha256": "9ad65dfbdc0212cf54351b0b29494828758c9e8b7c1054c3a7d7246df49b1936",
+    "native_link_commands": {
+      "collect2": 1,
+      "system-linker": 1
+    }
+  },
+  {
+    "absolute_process_stream_sha256": "be4710c36690d1d28d11829e654f409f5e6311fb7d9d3285a9d82340a3da814d",
+    "actual_rustc": [
+      {
+        "crate": "span_probe",
+        "kernel_argv_sha256": "59f41210b7e09aa29716bf47c8680a68c1c50844713ce1540ef4f972b02087d2",
+        "public_api": false
+      },
+      {
+        "crate": "span_probe_app",
+        "kernel_argv_sha256": "e464e7c74aa05c5edf9fc87d4a137a1e37147c5f8190d202a42b04b80f836593",
+        "public_api": false
+      }
+    ],
+    "command": "no-defaults-first-build",
+    "kernel_trace_sha256": "f90e36c3dc1ff1fac3c864b00b6579258cbe7884f1abc15f6fb537dcbcfdbd17",
+    "native_link_commands": {
+      "collect2": 1,
+      "system-linker": 1
+    }
+  },
+  {
+    "absolute_process_stream_sha256": "779911d89a060ffbf296be28ec2aad9e7d9541806734b069065b901a8b942ee4",
+    "actual_rustc": [],
+    "command": "no-defaults-repeat-check",
+    "kernel_trace_sha256": "54ecb1350a68aae7347ffaf86e4a2e8eab26b6e3f7674f9d9be1a27265210156",
+    "native_link_commands": {}
+  },
+  {
+    "absolute_process_stream_sha256": "26d64d3c8aeb4cdab14dc6d2ca69c0749145faf85b203aa55af2412032fa7e5e",
+    "actual_rustc": [],
+    "command": "no-defaults-repeat-build",
+    "kernel_trace_sha256": "e95aedb6257bf61ad50c697549a58348533d4488ffe9600a88bfd2f83dfa9a29",
+    "native_link_commands": {}
+  }
+]
