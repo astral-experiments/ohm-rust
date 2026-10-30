@@ -74,6 +74,12 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ninja
 
+      - name: Install Ninja for Linux distribution tests
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ninja-build
+
       - name: Run bootstrap and component PGO tests
         shell: bash
         run: |
