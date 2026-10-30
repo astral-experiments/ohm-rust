@@ -58,6 +58,13 @@ pub trait Emitter {
     /// Currently only supported for the JSON format.
     fn emit_artifact_notification(&mut self, _path: &Path, _artifact_type: &str) {}
 
+    /// Emit a notification that a metadata artifact has been output, including its public API hash
+    /// when one is available.
+    /// Currently only supported for the JSON format.
+    fn emit_metadata_artifact_notification(&mut self, path: &Path, _public_api_hash: Option<&str>) {
+        self.emit_artifact_notification(path, "metadata");
+    }
+
     /// Emit a timestamp with start/end of a timing section.
     /// Currently only supported for the JSON format.
     fn emit_timing_section(&mut self, _record: TimingRecord, _event: TimingEvent) {}

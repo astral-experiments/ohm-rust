@@ -40,7 +40,7 @@ use rustc_errors::{Diag, ErrorGuaranteed, LintBuffer};
 use rustc_hir::attrs::StrippedCfgItem;
 use rustc_hir::attrs::lang_items::LangItem;
 use rustc_hir::def::{CtorKind, CtorOf, DefKind, DocLinkResMap, LifetimeRes, Res};
-use rustc_hir::def_id::{CrateNum, DefId, DefIdMap, LocalDefId, LocalDefIdMap};
+use rustc_hir::def_id::{CrateNum, DefId, DefIdMap, LocalDefId, LocalDefIdMap, VisibilityDefId};
 use rustc_hir::definitions::PerParentDisambiguatorState;
 use rustc_hir::{self as hir, MissingLifetimeKind, attrs as attr, find_attr};
 use rustc_index::IndexVec;
@@ -503,7 +503,13 @@ impl TyCtxt<'_> {
     /// Compare def-ids based on their position in def-id tree, ancestor def-ids are considered
     /// larger than descendant def-ids, and two different def-ids are considered unordered if
     /// neither of them is an ancestor of the other.
-    fn def_id_partial_cmp(self, lhs: DefId, rhs: DefId) -> Option<Ordering> {
+    fn def_id_partial_cmp(
+        self,
+        lhs: impl Into<VisibilityDefId>,
+        rhs: impl Into<VisibilityDefId>,
+    ) -> Option<Ordering> {
+        let lhs = lhs.into().0;
+        let rhs = rhs.into().0;
         // Def-ids from different crates are always unordered.
         if lhs.krate != rhs.krate {
             return None;
@@ -530,8 +536,8 @@ impl TyCtxt<'_> {
 
     pub fn is_descendant_of(
         self,
-        descendant: impl Into<DefId>,
-        ancestor: impl Into<DefId>,
+        descendant: impl Into<VisibilityDefId>,
+        ancestor: impl Into<VisibilityDefId>,
     ) -> bool {
         matches!(
             self.def_id_partial_cmp(descendant.into(), ancestor.into()),
@@ -559,9 +565,9 @@ impl Visibility<LocalModId> {
     }
 }
 
-impl<Id: Into<DefId>> Visibility<Id> {
+impl<Id: Into<VisibilityDefId>> Visibility<Id> {
     /// Returns `true` if an item with this visibility is accessible from the given module.
-    pub fn is_accessible_from(self, module: impl Into<DefId>, tcx: TyCtxt<'_>) -> bool {
+    pub fn is_accessible_from(self, module: impl Into<VisibilityDefId>, tcx: TyCtxt<'_>) -> bool {
         match self {
             // Public items are visible everywhere.
             Visibility::Public => true,
@@ -2245,10 +2251,6 @@ impl<'tcx> TyCtxt<'tcx> {
         self.impl_is_of_trait(def_id).then(|| self.impl_trait_id(def_id))
     }
 
-    pub fn is_exportable(self, def_id: DefId) -> bool {
-        self.exportable_items(def_id.krate).contains(&def_id)
-    }
-
     /// Check if the given `DefId` is `#\[automatically_derived\]`, *and*
     /// whether it was produced by expanding a builtin derive macro.
     pub fn is_builtin_derived(self, def_id: DefId) -> bool {
@@ -2303,12 +2305,12 @@ impl<'tcx> TyCtxt<'tcx> {
         mut ident: Ident,
         scope: DefId,
         item_id: LocalDefId,
-    ) -> (Ident, ModId) {
+    ) -> (Ident, VisibilityDefId) {
         let scope = ident
             .span
             .normalize_to_macros_2_0_and_adjust(self.expn_that_defined(scope))
             .and_then(|actual_expansion| actual_expansion.expn_data().parent_module)
-            .unwrap_or_else(|| self.parent_module_from_def_id(item_id).to_mod_id());
+            .unwrap_or_else(|| self.parent_module_from_def_id(item_id).to_def_id().into());
         (ident, scope)
     }
 

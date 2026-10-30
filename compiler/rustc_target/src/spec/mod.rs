@@ -66,6 +66,7 @@ pub mod crt_objects;
 mod abi_map;
 mod base;
 mod json;
+mod stable_hash;
 mod tuple;
 
 pub use abi_map::{AbiMap, AbiMapping};

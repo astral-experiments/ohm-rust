@@ -561,3 +561,16 @@ impl From<LocalModId> for DefId {
         typed.0.into()
     }
 }
+
+/// Marks a [`DefId`] used only for visibility checks during metadata encoding.
+///
+/// Encoding this wrapper deliberately omits a reachability-graph edge, so callers must not unwrap
+/// it and use the inner [`DefId`] as a metadata query key.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, StableHash, Decodable, Debug)]
+pub struct VisibilityDefId(pub DefId);
+
+impl<T: Into<DefId>> From<T> for VisibilityDefId {
+    fn from(value: T) -> Self {
+        Self(value.into())
+    }
+}
