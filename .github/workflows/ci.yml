@@ -70,6 +70,21 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off --warnings deny check compiler
 
+      - name: Verify Ninja for Linux distribution tests
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          if ! command -v ninja >/dev/null; then
+            sudo apt-get -o Acquire::Retries=3 update
+            sudo apt-get install --yes --no-install-recommends ninja-build
+          fi
+          command -v ninja
+          ninja --version
+          probe="$(mktemp -d)"
+          printf '%s\n' 'rule write' '  command = printf verified > $out' 'build out: write' > "$probe/build.ninja"
+          ninja -C "$probe" out
+          test "$(cat "$probe/out")" = verified
+
       - name: Install Ninja for distribution tests
         if: runner.os == 'macOS'
         run: brew install ninja
