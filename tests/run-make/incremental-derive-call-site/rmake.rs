@@ -13,7 +13,8 @@ fn main() {
         // The previous anchor disappears, and the native macro must observe its new line.
         ("after_lines", "12345", "\n\n"),
     ] {
-        let source = source.replace("= 1;", &format!("= {value};")).replace("struct Anchor;", anchor);
+        let source =
+            source.replace("= 1;", &format!("= {value};")).replace("struct Anchor;", anchor);
         let line = 1 + source.lines().position(|s| s.starts_with("#[derive(")).unwrap();
         rfs::write("main.rs", source);
         rustc()
