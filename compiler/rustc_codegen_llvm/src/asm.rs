@@ -1623,6 +1623,11 @@ fn file_free_inline_asm(
         "x86_64-unknown-linux-gnu" => InlineAsmArch::X86_64,
         "aarch64-unknown-linux-gnu" => {
             *verify_native_link = true;
+            // The kernel reads the syscall arguments at run time. With no template
+            // placeholders, the assembler sees only this instruction.
+            if matches!(template, [InlineAsmTemplatePiece::String(line)] if line == "svc 0") {
+                return true;
+            }
             if let [
                 InlineAsmOperand::In {
                     reg: InlineAsmRegOrRegClass::RegClass(class),
