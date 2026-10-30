@@ -9,7 +9,7 @@ use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::attrs::NativeLibKind;
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::mir::interpret::{PointerArithmetic, Scalar as ConstScalar};
-use rustc_middle::mir::{InlineAsmMacro, InlineAsmOperand, RelinkInputs, TerminatorKind};
+use rustc_middle::mir::{InlineAsmMacro, InlineAsmOperand, Operand, RelinkInputs, TerminatorKind};
 use rustc_middle::ty::layout::TyAndLayout;
 use rustc_middle::ty::{Instance, TyCtxt};
 use rustc_middle::{bug, span_bug};
@@ -1579,15 +1579,8 @@ fn llvm_fixup_output_type<'ll, 'tcx>(
 
 /// Cargo can reuse a native object when rustc knows all of its assembler inputs.
 pub(crate) fn relink_inputs(tcx: TyCtxt<'_>, (): ()) -> RelinkInputs {
-    let arch = match &tcx.sess.opts.target_triple {
-        TargetTuple::TargetTuple(t) if t == "x86_64-unknown-linux-gnu" => {
-            Some(InlineAsmArch::X86_64)
-        }
-        TargetTuple::TargetTuple(t) if t == "aarch64-apple-darwin" => Some(InlineAsmArch::AArch64),
-        _ => None,
-    };
     let mut saw_asm = false;
-    let mut saw_frame_pointer_move = false;
+    let mut verify_native_link = false;
     let untracked = rustc_codegen_ssa::base::has_untracked_relink_inputs(tcx, |kind| {
         let TerminatorKind::InlineAsm { asm_macro, template, operands, options, .. } = kind else {
             return false;
@@ -1595,9 +1588,7 @@ pub(crate) fn relink_inputs(tcx: TyCtxt<'_>, (): ()) -> RelinkInputs {
         saw_asm = true;
         *asm_macro != InlineAsmMacro::Asm
             || options.intersects(InlineAsmOptions::RAW | InlineAsmOptions::ATT_SYNTAX)
-            || !arch.is_some_and(|arch| {
-                file_free_inline_asm(arch, template, operands, &mut saw_frame_pointer_move)
-            })
+            || !file_free_inline_asm(&tcx.sess.opts.target_triple, template, operands, *options, &mut verify_native_link)
     });
     if untracked {
         return RelinkInputs::Rebuild;
@@ -1615,17 +1606,48 @@ pub(crate) fn relink_inputs(tcx: TyCtxt<'_>, (): ()) -> RelinkInputs {
     {
         return RelinkInputs::Rebuild;
     }
-    if saw_frame_pointer_move { RelinkInputs::VerifyNativeLink } else { RelinkInputs::RecheckLink }
+    if verify_native_link { RelinkInputs::VerifyNativeLink } else { RelinkInputs::RecheckLink }
 }
 
 /// Recognize complete instruction lines. Unknown assembly anywhere in the crate still forces a
 /// rebuild: an assembler macro in one block could redefine an instruction used in another.
 fn file_free_inline_asm(
-    arch: InlineAsmArch,
+    target: &TargetTuple,
     template: &[InlineAsmTemplatePiece],
     operands: &[InlineAsmOperand<'_>],
-    saw_frame_pointer_move: &mut bool,
+    options: InlineAsmOptions,
+    verify_native_link: &mut bool,
 ) -> bool {
+    let TargetTuple::TargetTuple(target) = target else { return false };
+    let arch = match target.as_str() {
+        "x86_64-unknown-linux-gnu" => InlineAsmArch::X86_64,
+        "aarch64-unknown-linux-gnu" => {
+            *verify_native_link = true;
+            if let [
+                InlineAsmOperand::In {
+                    reg: InlineAsmRegOrRegClass::RegClass(class),
+                    value: Operand::Copy(_) | Operand::Move(_),
+                },
+            ] = operands
+                && *class == InlineAsmRegClass::AArch64(AArch64InlineAsmRegClass::reg)
+                && options == (InlineAsmOptions::NOMEM | InlineAsmOptions::NOSTACK)
+            {
+                return matches!(template, [
+                    InlineAsmTemplatePiece::String(open),
+                    InlineAsmTemplatePiece::Placeholder { operand_idx: 0, modifier: None, .. },
+                    InlineAsmTemplatePiece::String(close),
+                ] if open == "/* " && close == " */");
+            }
+            return options.is_empty()
+                && matches!(operands, [InlineAsmOperand::InOut {
+                    late: false, in_value: Operand::Copy(input), out_place: Some(output), ..
+                }] if input == output)
+                && aarch64_register_comment(template, operands);
+        }
+        "aarch64-apple-darwin" => InlineAsmArch::AArch64,
+        _ => return false,
+    };
+
     if arch == InlineAsmArch::AArch64
         && let [InlineAsmOperand::InOut { reg: InlineAsmRegOrRegClass::RegClass(reg), .. }] =
             operands
@@ -1683,11 +1705,40 @@ fn file_free_inline_asm(
         }
     }
     text.split('\n').all(|line| {
-        file_free_asm_line(arch, line.trim_matches([' ', '\t']), saw_frame_pointer_move)
+        file_free_asm_line(arch, line.trim_matches([' ', '\t']), verify_native_link)
     })
 }
 
-fn file_free_asm_line(arch: InlineAsmArch, line: &str, saw_frame_pointer_move: &mut bool) -> bool {
+fn aarch64_register_comment(
+    template: &[InlineAsmTemplatePiece],
+    operands: &[InlineAsmOperand<'_>],
+) -> bool {
+    let [
+        InlineAsmOperand::InOut {
+            reg: InlineAsmRegOrRegClass::RegClass(InlineAsmRegClass::AArch64(reg)),
+            ..
+        },
+    ] = operands
+    else {
+        return false;
+    };
+    let [
+        InlineAsmTemplatePiece::String(open),
+        InlineAsmTemplatePiece::Placeholder { operand_idx: 0, modifier, .. },
+        InlineAsmTemplatePiece::String(close),
+    ] = template
+    else {
+        return false;
+    };
+    open == "/*"
+        && close == "*/"
+        && matches!(
+            (reg, modifier),
+            (AArch64InlineAsmRegClass::reg, None) | (AArch64InlineAsmRegClass::vreg, Some('v'))
+        )
+}
+
+fn file_free_asm_line(arch: InlineAsmArch, line: &str, verify_native_link: &mut bool) -> bool {
     if line.is_empty() {
         return true;
     }
@@ -1712,7 +1763,7 @@ fn file_free_asm_line(arch: InlineAsmArch, line: &str, saw_frame_pointer_move: &
             let Some((dst, src)) = args.split_once(',') else { return false };
             let regs = [dst, src].map(|arg| arg.trim_matches([' ', '\t']));
             if regs == ["fp", "fp"] {
-                *saw_frame_pointer_move = true;
+                *verify_native_link = true;
                 return true;
             }
             regs.into_iter().all(|arg| arg == "@" || AArch64InlineAsmReg::parse(arg).is_ok())
