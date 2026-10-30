@@ -77,7 +77,7 @@ def source_sdk(lane,sha,signed):
     assert output('git','rev-parse','HEAD:src/tools/cargo')==signed_cargo
     assert not output('git','status','--porcelain','--untracked-files=no','--ignore-submodules=all')
     build=root/'bootstrap'
-    build_args=[sys.executable,'x.py','--ci','false','--set','build.submodules=false','--set','rust.download-rustc=false','--set','rust.debug-assertions=false','--set','rust.lto=off','build','--build-dir',build,'--stage','1','compiler/rustc','library']
+    build_args=[sys.executable,'x.py','--ci','false','--set','build.submodules=false','--set','rust.download-rustc=false','--set','rust.omit-git-hash=false','--set','rust.debug-assertions=false','--set','rust.lto=off','build','--build-dir',build,'--stage','1','compiler/rustc','library']
     logged('bootstrap-'+lane,build_args,source)
     stage=build/host/'stage1'
     sdk=root/('sdk-'+lane)
