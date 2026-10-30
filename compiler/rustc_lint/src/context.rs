@@ -15,12 +15,14 @@ use rustc_errors::{Diagnostic, LintBuffer, MultiSpan};
 use rustc_feature::Features;
 use rustc_hir as hir;
 use rustc_hir::def::Res;
-use rustc_hir::def_id::{CrateNum, DefId};
+use rustc_hir::def_id::{CrateNum, DefId, LocalDefId};
 use rustc_hir::definitions::{DefPathData, DisambiguatedDefPathData};
 use rustc_hir::{Pat, PatKind};
 use rustc_middle::bug;
 use rustc_middle::lint::{LevelSpec, StableLevelSpec, UnstableLevelSpec};
-use rustc_middle::middle::privacy::EffectiveVisibilities;
+use rustc_middle::middle::privacy::{
+    EffectiveVisibilities, EffectiveVisibility, Level as VisibilityLevel,
+};
 use rustc_middle::ty::layout::{LayoutError, LayoutOfHelpers, TyAndLayout};
 use rustc_middle::ty::print::{PrintError, PrintTraitRefExt as _, Printer, with_no_trimmed_paths};
 use rustc_middle::ty::{
@@ -475,6 +477,46 @@ impl LintStore {
     }
 }
 
+/// Effective visibility inputs for late lints.
+///
+/// Module queries observe individual entries so that an unrelated exported item does not
+/// invalidate every module. Whole-crate passes retain their direct map lookups.
+pub enum LintEffectiveVisibilities<'tcx> {
+    /// Read entries through incremental queries.
+    PerItem(TyCtxt<'tcx>),
+    /// Read the complete map outside incremental module queries.
+    WholeCrate(&'tcx EffectiveVisibilities),
+}
+
+impl<'tcx> LintEffectiveVisibilities<'tcx> {
+    pub fn effective_vis(&self, id: LocalDefId) -> Option<&'tcx EffectiveVisibility> {
+        match self {
+            Self::PerItem(tcx) => tcx.effective_visibility(id),
+            Self::WholeCrate(visibilities) => (*visibilities).effective_vis(id),
+        }
+    }
+
+    pub fn is_public_at_level(&self, id: LocalDefId, level: VisibilityLevel) -> bool {
+        self.effective_vis(id).is_some_and(|visibility| visibility.is_public_at_level(level))
+    }
+
+    pub fn is_reachable(&self, id: LocalDefId) -> bool {
+        self.is_public_at_level(id, VisibilityLevel::Reachable)
+    }
+
+    pub fn is_exported(&self, id: LocalDefId) -> bool {
+        self.is_public_at_level(id, VisibilityLevel::Reexported)
+    }
+
+    pub fn is_directly_public(&self, id: LocalDefId) -> bool {
+        self.is_public_at_level(id, VisibilityLevel::Direct)
+    }
+
+    pub fn public_at_level(&self, id: LocalDefId) -> Option<VisibilityLevel> {
+        self.effective_vis(id).and_then(EffectiveVisibility::public_at_level)
+    }
+}
+
 /// Context for lint checking outside of type inference.
 pub struct LateContext<'tcx> {
     /// Type context we're checking in.
@@ -490,7 +532,7 @@ pub struct LateContext<'tcx> {
     pub param_env: ty::ParamEnv<'tcx>,
 
     /// Items accessible from the crate being checked.
-    pub effective_visibilities: &'tcx EffectiveVisibilities,
+    pub effective_visibilities: LintEffectiveVisibilities<'tcx>,
 
     pub last_node_with_lint_attrs: hir::HirId,
 
