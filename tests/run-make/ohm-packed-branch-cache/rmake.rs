@@ -68,6 +68,23 @@ fn main() {
     switch("a", 17);
     compile("cache", Some(true));
     run("program").assert_stdout_equals("17");
+    let current = sessions().into_iter().find(|dir| dir != b).unwrap();
+    assert!(current.join("ohm-packed-query-cache.bin").is_file());
+    let other_bytes = fs::read(&saved).unwrap();
+    for value in [18, 17] {
+        switch("a", value);
+        compile("cache", Some(true));
+        run("program").assert_stdout_equals(value.to_string());
+        let dirs = sessions();
+        assert_eq!(dirs.len(), 2);
+        assert!(dirs.contains(b));
+        let current = dirs.into_iter().find(|dir| dir != b).unwrap();
+        for table in ["dep-graph.bin", "query-cache.bin"] {
+            assert!(current.join(table).is_file());
+            assert!(!current.join(format!("ohm-packed-{table}")).exists());
+        }
+        assert_eq!(fs::read(&saved).unwrap(), other_bytes);
+    }
     let mut damaged = fs::read(&saved).unwrap();
     damaged.pop().unwrap();
     fs::write(&saved, damaged).unwrap();
