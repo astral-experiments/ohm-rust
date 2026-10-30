@@ -1176,6 +1176,9 @@ pub struct OutputFilenames {
     #[stable_hash(ignore)]
     invocation_temp: Option<String>,
 
+    /// Use stable paths for objects retained for debugging.
+    pub stable_codegen_paths: bool,
+
     explicit_dwo_out_directory: Option<PathBuf>,
     pub outputs: OutputTypes,
 }
@@ -1219,6 +1222,7 @@ impl OutputFilenames {
         single_output_file: Option<OutFileName>,
         temps_directory: Option<PathBuf>,
         invocation_temp: Option<String>,
+        stable_codegen_paths: bool,
         explicit_dwo_out_directory: Option<PathBuf>,
         extra: String,
         outputs: OutputTypes,
@@ -1228,6 +1232,7 @@ impl OutputFilenames {
             single_output_file,
             temps_directory,
             invocation_temp,
+            stable_codegen_paths,
             explicit_dwo_out_directory,
             outputs,
             crate_stem: format!("{out_crate_name}{extra}"),
@@ -1310,6 +1315,15 @@ impl OutputFilenames {
         self.with_directory_and_extension(temps_directory, &ext)
     }
 
+    /// Output paths for retained objects, without the invocation-specific temporary suffix.
+    /// Callers writing to these paths must unlink any existing file first to avoid
+    /// overwriting hard-linked incremental work products.
+    pub fn stable_temp_paths(&self) -> Self {
+        let mut outputs = self.clone();
+        outputs.invocation_temp = None;
+        outputs
+    }
+
     pub fn with_extension(&self, extension: &str) -> PathBuf {
         self.with_directory_and_extension(&self.out_directory, extension)
     }
@@ -1329,8 +1343,15 @@ impl OutputFilenames {
         split_dwarf_kind: SplitDwarfKind,
         cgu_name: &str,
     ) -> Option<PathBuf> {
-        let obj_out = self.temp_path_for_cgu(OutputType::Object, cgu_name);
-        let dwo_out = self.temp_path_dwo_for_cgu(cgu_name);
+        let stable_outputs;
+        let outputs = if self.stable_codegen_paths {
+            stable_outputs = self.stable_temp_paths();
+            &stable_outputs
+        } else {
+            self
+        };
+        let obj_out = outputs.temp_path_for_cgu(OutputType::Object, cgu_name);
+        let dwo_out = outputs.temp_path_dwo_for_cgu(cgu_name);
         match (split_debuginfo_kind, split_dwarf_kind) {
             (SplitDebuginfo::Off, SplitDwarfKind::Single | SplitDwarfKind::Split) => None,
             // Single mode doesn't change how DWARF is emitted, but does add Split DWARF attributes
