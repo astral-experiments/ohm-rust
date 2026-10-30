@@ -124,7 +124,7 @@ use rustc_span::Symbol;
 use rustc_target::spec::SymbolVisibility;
 use tracing::debug;
 
-use crate::collector::{self, MonoItemCollectionStrategy, UsageMap};
+use crate::collector::{self, UsageMap};
 use crate::diagnostics::{CouldntDumpMonoStats, SymbolAlreadyDefined};
 use crate::graph_checks::target_specific_checks;
 
@@ -1174,13 +1174,7 @@ where
 }
 
 fn collect_and_partition_mono_items(tcx: TyCtxt<'_>, (): ()) -> MonoItemPartitions<'_> {
-    let collection_strategy = if tcx.sess.link_dead_code() {
-        MonoItemCollectionStrategy::Eager
-    } else {
-        MonoItemCollectionStrategy::Lazy
-    };
-
-    let (items, usage_map) = collector::collect_crate_mono_items(tcx, collection_strategy);
+    let (items, usage_map) = collector::collect_crate_mono_items(tcx);
     // Perform checks that need to operate on the entire mono item graph
     target_specific_checks(tcx, &items, &usage_map);
 
@@ -1199,17 +1193,6 @@ fn collect_and_partition_mono_items(tcx: TyCtxt<'_>, (): ()) -> MonoItemPartitio
             || assert_symbols_are_distinct(tcx, items.iter()),
         )
     });
-
-    if tcx.prof.enabled() {
-        // Record CGU size estimates for self-profiling.
-        for cgu in codegen_units {
-            tcx.prof.artifact_size(
-                "codegen_unit_size_estimate",
-                cgu.name().as_str(),
-                cgu.size_estimate() as u64,
-            );
-        }
-    }
 
     let mono_items: DefIdSet = items
         .iter()
@@ -1358,7 +1341,42 @@ fn dump_mono_items_stats<'tcx>(
 }
 
 pub(crate) fn provide(providers: &mut Providers) {
-    providers.queries.collect_and_partition_mono_items = collect_and_partition_mono_items;
+    providers.queries.collect_and_partition_mono_items = |tcx, ()| {
+        let partitions = if tcx.dep_graph.is_fully_enabled()
+            && tcx.sess.opts.unstable_opts.public_api_hash
+            && !tcx.sess.opts.unstable_opts.print_mono_items
+            && !tcx.sess.opts.unstable_opts.dump_mono_stats.enabled()
+            && !tcx.sess.opts.unstable_opts.profile_closures
+            && !tcx.sess.opts.unstable_opts.print_type_sizes
+        {
+            tcx.incremental_mono_item_partitions(())
+        } else {
+            collect_and_partition_mono_items(tcx, ())
+        };
+
+        if tcx.prof.enabled() {
+            // Record CGU size estimates even when the partitions were loaded from disk.
+            for cgu in partitions.codegen_units {
+                tcx.prof.artifact_size(
+                    "codegen_unit_size_estimate",
+                    cgu.name().as_str(),
+                    cgu.size_estimate() as u64,
+                );
+            }
+        }
+
+        partitions
+    };
+    providers.queries.incremental_mono_item_partitions = |tcx, ()| {
+        // Codegen-unit options are deliberately excluded from the incremental session hash.
+        // Track them separately so later green checks revalidate them before reusing partitions.
+        let _ = tcx.mono_item_partitioning_config(());
+        collect_and_partition_mono_items(tcx, ())
+    };
+    providers.queries.mono_item_partitioning_config = |tcx, ()| match tcx.sess.codegen_units() {
+        CodegenUnits::User(count) => (count, true),
+        CodegenUnits::Default(count) => (count, false),
+    };
 
     providers.queries.is_codegened_item =
         |tcx, def_id| tcx.collect_and_partition_mono_items(()).all_mono_items.contains(&def_id);
