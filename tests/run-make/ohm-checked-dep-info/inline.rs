@@ -10,7 +10,9 @@ pub fn barrier(mut value: usize) -> usize {
         #[cfg(target_arch = "x86_64")]
         {
             core::arch::asm!(
-                "# {}", in(reg) core::ptr::from_ref(&value), options(readonly, preserves_flags, nostack),
+                "# {}",
+                in(reg) core::ptr::from_ref(&value),
+                options(readonly, preserves_flags, nostack),
             );
             #[cfg(hash_count)]
             core::arch::asm!("# {} {}", in(reg) value, in(reg) value);
