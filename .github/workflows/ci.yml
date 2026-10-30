@@ -70,7 +70,13 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off --warnings deny check compiler
 
-      - name: Install Ninja for distribution tests
+      - name: Install Ninja for Linux distribution tests
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ninja-build
+
+      - name: Install Ninja for macOS distribution tests
         if: runner.os == 'macOS'
         run: brew install ninja
 
