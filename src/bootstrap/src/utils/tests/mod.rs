@@ -7,6 +7,7 @@ use tempfile::TempDir;
 use crate::core::config::Config;
 use crate::core::config::flags::Flags;
 
+mod copy_link_tests;
 pub mod git;
 mod shim_utils_tests;
 
