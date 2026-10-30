@@ -16,7 +16,6 @@ use std::ops::Range;
 use rustc_index::{Idx, IndexSlice, IndexVec};
 use tracing::{debug, instrument, trace};
 
-use crate::fx::FxHashSet;
 use crate::graph::vec_graph::VecGraph;
 use crate::graph::{DirectedGraph, NumEdges, Successors};
 
@@ -232,11 +231,11 @@ where
     /// everything off the stack that was found along the way.
     successors_stack: Vec<A::SccIdx>,
 
-    /// A set used to strip duplicates. As we accumulate successors
-    /// into the successors_stack, we sometimes get duplicate entries.
-    /// We use this set to remove those -- we also keep its storage
-    /// around between successors to amortize memory allocation costs.
-    duplicate_set: FxHashSet<A::SccIdx>,
+    /// For each completed SCC, the last SCC whose successor list included it.
+    /// SCC indices are dense, so these marks remove duplicate successors without
+    /// hashing or clearing a set for every component. A mark is added only when
+    /// its SCC is completed, so storage grows with the number of components.
+    successor_generations: IndexVec<A::SccIdx, usize>,
 
     scc_data: SccData<A::SccIdx>,
 
@@ -316,7 +315,7 @@ where
             node_stack: Vec::with_capacity(num_nodes),
             successors_stack: Vec::new(),
             scc_data: SccData { scc_details: IndexVec::new(), all_successors: Vec::new() },
-            duplicate_set: FxHashSet::default(),
+            successor_generations: IndexVec::new(),
             annotations,
         };
 
@@ -665,16 +664,18 @@ where
                 // Note that successor stack may have duplicates, so we
                 // want to remove those:
                 let deduplicated_successors = {
-                    let duplicate_set = &mut self.duplicate_set;
-                    duplicate_set.clear();
-                    successors_stack
-                        .drain(successors_len..)
-                        .filter(move |&i| duplicate_set.insert(i))
+                    let generation = self.scc_data.len();
+                    let successor_generations = &mut self.successor_generations;
+                    successors_stack.drain(successors_len..).filter(move |&i| {
+                        std::mem::replace(&mut successor_generations[i], generation) != generation
+                    })
                 };
 
                 debug!("Creating SCC rooted in {node:?} with successor {:?}", frame.successor_node);
 
                 let scc_index = self.scc_data.create_scc(deduplicated_successors);
+                let mark_index = self.successor_generations.push(usize::MAX);
+                debug_assert_eq!(scc_index, mark_index);
 
                 self.annotations.annotate_scc(scc_index, current_component_annotation);
 

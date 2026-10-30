@@ -1648,6 +1648,11 @@ rustc_queries! {
         desc { "finding trait impls of `{}`", tcx.def_path_str(trait_id) }
     }
 
+    query trait_impls_by_const_arg(key: (DefId, DefId)) -> &'tcx ty::trait_def::ConstArgImpls<'tcx> {
+        arena_cache
+        desc { "indexing const arguments of `{}` impls for `{}`", tcx.def_path_str(key.0), tcx.def_path_str(key.1) }
+    }
+
     query specialization_graph_of(trait_id: DefId) -> Result<&'tcx specialization_graph::Graph, ErrorGuaranteed> {
         desc { "building specialization graph of trait `{}`", tcx.def_path_str(trait_id) }
         cache_on_disk
