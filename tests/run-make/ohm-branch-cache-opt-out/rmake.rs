@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use run_make_support::{cwd, rfs, run, rustc};
+use run_make_support::{bin_name, cwd, rfs, run, rustc};
 
 fn sessions(dir: &Path) -> Vec<PathBuf> {
     fs::read_dir(dir).unwrap().map(|e| e.unwrap().path()).filter(|p| p.is_dir()).collect()
@@ -31,7 +31,7 @@ fn main() {
             .env("CARGO_MANIFEST_DIR", cwd().join("checkout"))
             .arg("-Zohm-check-relink-inputs")
             .incremental("state")
-            .output("program");
+            .output(bin_name("program"));
         if let Some(enabled) = option {
             cmd.arg(if enabled { "-Zohm-branch-cache=yes" } else { "-Zohm-branch-cache=no" });
         }
