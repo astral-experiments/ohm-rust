@@ -9,6 +9,10 @@ pub unsafe fn compact_copy(x: usize) {
 }
 
 pub unsafe fn barrier(mut x: usize, mut v: core::arch::aarch64::int32x4_t) -> usize {
+    #[cfg(syscall)]
+    core::arch::asm!("svc 0", in("x8") x, inlateout("x0") x, options(nostack, preserves_flags));
+    #[cfg(syscall_file)]
+    core::arch::asm!("svc 0", ".incbin \"payload.bin\"", in("x8") x, inlateout("x0") x);
     #[cfg(not(vector_only))]
     core::arch::asm!("/*{0}*/", inout(reg) x);
     #[cfg(not(general_only))]
