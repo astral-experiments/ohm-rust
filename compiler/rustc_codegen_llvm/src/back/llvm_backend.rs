@@ -259,6 +259,8 @@ impl CodegenBackend for LlvmCodegenBackend {
 
     fn provide(&self, providers: &mut rustc_middle::util::Providers) {
         providers.queries.ohm_relink_inputs = crate::asm::relink_inputs;
+        providers.queries.ohm_can_reuse_asm_free_cgu =
+            rustc_codegen_ssa::base::can_reuse_asm_free_cgu;
     }
 
     fn print(&self, req: &PrintRequest, out: &mut String, sess: &Session) {
