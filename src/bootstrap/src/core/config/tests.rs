@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use build_helper::ci::CiEnv;
 use build_helper::git::PathFreshness;
@@ -253,6 +253,116 @@ fn rust_lld() {
         parse("rust.bootstrap-override-lld = false").bootstrap_override_lld,
         BootstrapOverrideLld::None
     ));
+}
+
+#[test]
+fn pgo_component_profiles_are_independent() {
+    let config = parse(
+        r#"
+        pgo.rustc.generate = "rustc-profiles"
+        pgo.rustdoc.use = "rustdoc.profdata"
+        pgo.cargo.use = "rustc.profdata"
+        pgo.clippy.generate = "clippy-profiles"
+        pgo.rustfmt.generate = "rustfmt-profiles"
+        pgo.llvm.generate = "llvm/prof-%p"
+        "#,
+    );
+
+    assert_eq!(config.rust_pgo.generate_profile, Some(PathBuf::from("rustc-profiles")));
+    assert_eq!(config.rustdoc_pgo.use_profile, Some(PathBuf::from("rustdoc.profdata")));
+    assert_eq!(config.cargo_pgo.use_profile, Some(PathBuf::from("rustc.profdata")));
+    assert_eq!(config.clippy_pgo.generate_profile, Some(PathBuf::from("clippy-profiles")));
+    assert_eq!(config.rustfmt_pgo.generate_profile, Some(PathBuf::from("rustfmt-profiles")));
+    assert!(matches!(
+        config.llvm_pgo.generate_profile,
+        Some(super::LlvmPgoGenerationMode::Directory(path)) if path == Path::new("llvm/prof-%p")
+    ));
+
+    assert!(config.rust_pgo.use_profile.is_none());
+    assert!(config.rustdoc_pgo.generate_profile.is_none());
+    assert!(config.cargo_pgo.generate_profile.is_none());
+    assert!(config.clippy_pgo.use_profile.is_none());
+    assert!(config.rustfmt_pgo.use_profile.is_none());
+    assert!(config.llvm_pgo.use_profile.is_none());
+}
+
+#[test]
+fn pgo_component_profiles_can_be_set_from_the_command_line() {
+    let config = TestCtx::new()
+        .config("check")
+        .with_default_toml_config(r#"pgo.rustfmt.use = "old.profdata""#)
+        .args(&[
+            "--set",
+            r#"pgo.rustfmt.use="rustfmt.profdata""#,
+            "--set",
+            r#"pgo.clippy.generate="clippy-profiles""#,
+            "--set",
+            r#"pgo.llvm.use="llvm.profdata""#,
+        ])
+        .create_config();
+
+    assert_eq!(config.rustfmt_pgo.use_profile, Some(PathBuf::from("rustfmt.profdata")));
+    assert_eq!(config.clippy_pgo.generate_profile, Some(PathBuf::from("clippy-profiles")));
+    assert_eq!(config.llvm_pgo.use_profile, Some(PathBuf::from("llvm.profdata")));
+    assert!(config.rust_pgo.generate_profile.is_none());
+    assert!(config.cargo_pgo.use_profile.is_none());
+}
+
+#[test]
+fn pgo_rejects_simultaneous_generation_and_use_for_every_component() {
+    for component in ["rustc", "rustdoc", "cargo", "clippy", "rustfmt", "llvm"] {
+        let result = std::panic::catch_unwind(|| {
+            parse(&format!(
+                "pgo.{component}.generate = \"profiles\"\npgo.{component}.use = \"profile.profdata\""
+            ))
+        });
+        assert!(result.is_err(), "{component} must reject simultaneous profile generation and use");
+    }
+}
+
+#[test]
+fn pgo_legacy_rust_toml_configuration_remains_supported() {
+    let generating = parse(r#"rust.profile-generate = "legacy-profiles""#);
+    assert_eq!(generating.rust_pgo.generate_profile, Some(PathBuf::from("legacy-profiles")));
+    assert!(generating.rust_pgo.use_profile.is_none());
+
+    let using = parse(r#"rust.profile-use = "legacy.profdata""#);
+    assert_eq!(using.rust_pgo.use_profile, Some(PathBuf::from("legacy.profdata")));
+
+    let modern = parse(
+        r#"
+        rust.profile-use = "legacy.profdata"
+        pgo.rustc.use = "modern.profdata"
+        "#,
+    );
+    assert_eq!(modern.rust_pgo.use_profile, Some(PathBuf::from("modern.profdata")));
+}
+
+#[test]
+fn pgo_legacy_command_line_flags_override_component_configuration() {
+    let rustc = TestCtx::new()
+        .config("check")
+        .with_default_toml_config(r#"pgo.rustc.use = "configured.profdata""#)
+        .args(&["--rust-profile-use", "legacy.profdata"])
+        .create_config();
+    assert_eq!(rustc.rust_pgo.use_profile, Some(PathBuf::from("legacy.profdata")));
+
+    let generating = TestCtx::new()
+        .config("check")
+        .args(&["--rust-profile-generate", "legacy-profiles"])
+        .create_config();
+    assert_eq!(generating.rust_pgo.generate_profile, Some(PathBuf::from("legacy-profiles")));
+
+    let llvm = TestCtx::new()
+        .config("check")
+        .with_default_toml_config(r#"pgo.llvm.use = "configured.profdata""#)
+        .args(&["--llvm-profile-use", "legacy-llvm.profdata"])
+        .create_config();
+    assert_eq!(llvm.llvm_pgo.use_profile, Some(PathBuf::from("legacy-llvm.profdata")));
+
+    let generating_llvm =
+        TestCtx::new().config("check").args(&["--llvm-profile-generate"]).create_config();
+    assert!(generating_llvm.llvm_pgo.generate_profile.is_some());
 }
 
 #[test]

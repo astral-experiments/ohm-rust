@@ -1542,35 +1542,32 @@ pub fn apply_pgo(
     build_compiler: Compiler,
     config: &PgoConfig,
 ) {
-    let is_collecting = if let Some(path) = &config.generate_profile {
-        if build_compiler.stage == 1 {
-            cargo
-                .rustflag(&format!("-Cprofile-generate={}", path.to_str().expect("non-UTF8 path")));
-            // Apparently necessary to avoid overflowing the counters during
-            // a Cargo build profile
-            cargo.rustflag("-Cllvm-args=-vp-counters-per-site=4");
-            true
-        } else {
-            false
-        }
+    if build_compiler.stage != 1 {
+        return;
+    }
+
+    let has_profile = if let Some(path) = &config.generate_profile {
+        cargo.rustflag(&format!("-Cprofile-generate={}", path.display()));
+        // Avoid overflowing the value-profile counters when profiling a Cargo build.
+        cargo.rustflag("-Cllvm-args=-vp-counters-per-site=4");
+        true
     } else if let Some(path) = &config.use_profile {
-        if build_compiler.stage == 1 {
-            cargo.rustflag(&format!("-Cprofile-use={}", path.to_str().expect("non-UTF8 path")));
-            if builder.is_verbose() {
-                cargo.rustflag("-Cllvm-args=-pgo-warn-missing-function");
-            }
-            true
-        } else {
-            false
+        cargo.rustflag(&format!("-Cprofile-use={}", path.display()));
+        if builder.is_verbose() {
+            cargo.rustflag("-Cllvm-args=-pgo-warn-missing-function");
         }
+        true
     } else {
         false
     };
-    if is_collecting {
-        // Ensure paths to Rust sources are relative, not absolute.
+
+    if has_profile {
         cargo.rustflag(&format!(
             "-Cllvm-args=-static-func-strip-dirname-prefix={}",
             builder.config.src.components().count()
         ));
     }
 }
+
+#[cfg(test)]
+mod tests;
