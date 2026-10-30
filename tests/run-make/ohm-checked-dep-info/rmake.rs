@@ -132,6 +132,8 @@ fn main() {
             "separate",
             "compact_input",
             "compact_copy",
+            "syscall",
+            "syscall_file",
             "compact_constant",
             "compact_modifier",
             "compact_options",
@@ -153,7 +155,12 @@ fn main() {
                 .stdout_utf8();
             let accepted = matches!(
                 cfg,
-                "ordinary" | "general_only" | "vector_only" | "compact_input" | "compact_copy"
+                "ordinary"
+                    | "general_only"
+                    | "vector_only"
+                    | "compact_input"
+                    | "compact_copy"
+                    | "syscall"
             );
             assert_eq!(rules.contains(MARKER), !accepted, "{cfg}: {rules}");
             assert_eq!(
