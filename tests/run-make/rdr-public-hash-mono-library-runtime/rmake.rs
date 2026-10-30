@@ -60,21 +60,29 @@ fn main() {
     compile_runner();
     run("main").assert_stdout_equals("1\n");
 
-    rustc()
-        .input("closure_error.rs")
-        .incremental("closure-error")
-        .arg("-Zpublic-api-hash")
-        .arg("-Zincremental-verify-ich")
-        .run();
+    for (incremental_directory, rustflags) in [
+        ("closure-error", ["-Zpublic-api-hash", "-Zohm-incremental-mono-partitions=no"]),
+        (
+            "closure-error-independent-partitions",
+            ["-Zpublic-api-hash=no", "-Zohm-incremental-mono-partitions"],
+        ),
+    ] {
+        rustc()
+            .input("closure_error.rs")
+            .incremental(incremental_directory)
+            .args(rustflags)
+            .arg("-Zincremental-verify-ich")
+            .run();
 
-    rustc()
-        .input("closure_error.rs")
-        .incremental("closure-error")
-        .arg("-Zpublic-api-hash")
-        .arg("-Zincremental-verify-ich")
-        .cfg("fail")
-        .run_fail()
-        .assert_stderr_contains("evaluation panicked: required closure constant")
-        .assert_stderr_contains("the above error was encountered while instantiating `fn")
-        .assert_stderr_contains("trigger::<u8>");
+        rustc()
+            .input("closure_error.rs")
+            .incremental(incremental_directory)
+            .args(rustflags)
+            .arg("-Zincremental-verify-ich")
+            .cfg("fail")
+            .run_fail()
+            .assert_stderr_contains("evaluation panicked: required closure constant")
+            .assert_stderr_contains("the above error was encountered while instantiating `fn")
+            .assert_stderr_contains("trigger::<u8>");
+    }
 }
