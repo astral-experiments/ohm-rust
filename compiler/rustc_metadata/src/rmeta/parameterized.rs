@@ -166,6 +166,7 @@ parameterized_over_tcx! {
     rustc_middle::middle::exported_symbols::ExportedSymbol,
     rustc_middle::mir::Body,
     rustc_middle::mir::CoroutineLayout,
+    rustc_middle::mir::CoroutineRuntimeInfo,
     rustc_middle::mir::interpret::ConstAllocation,
     rustc_middle::ty::Clause,
     rustc_middle::ty::Const,
