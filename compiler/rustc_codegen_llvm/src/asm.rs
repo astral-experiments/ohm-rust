@@ -1622,6 +1622,21 @@ fn file_free_inline_asm(
     template: &[InlineAsmTemplatePiece],
     operands: &[InlineAsmOperand<'_>],
 ) -> bool {
+    if arch == InlineAsmArch::AArch64
+        && let [InlineAsmOperand::InOut { reg: InlineAsmRegOrRegClass::RegClass(reg), .. }] =
+            operands
+        && *reg == InlineAsmRegClass::AArch64(AArch64InlineAsmRegClass::vreg)
+        && let [
+            InlineAsmTemplatePiece::String(open),
+            InlineAsmTemplatePiece::Placeholder { operand_idx: 0, modifier: Some('v'), .. },
+            InlineAsmTemplatePiece::String(close),
+        ] = template
+        && open == "/*"
+        && close == "*/"
+    {
+        return true;
+    }
+
     if !operands.iter().all(|operand| {
         matches!(
             operand,

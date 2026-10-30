@@ -31,6 +31,8 @@ fn main() {
             "div_memory",
             "div_directive",
         ]);
+        let arm_cases =
+            (target() == "aarch64-apple-darwin").then_some(["vector_modifier", "vector_directive"]);
         for cfg in [
             "ordinary",
             "global_macro",
@@ -42,6 +44,7 @@ fn main() {
         ]
         .into_iter()
         .chain(x86_cases.into_iter().flatten())
+        .chain(arm_cases.into_iter().flatten())
         {
             let rules = rustc()
                 .input("inline.rs")
