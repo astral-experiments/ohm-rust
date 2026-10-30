@@ -25,7 +25,9 @@ pub unsafe fn barrier(mut x: usize, mut v: core::arch::aarch64::int32x4_t) -> us
         out("x4") _, out("x5") _, out("x6") _, out("x7") _, options(nostack),
     );
     #[cfg(atomic_file)]
-    core::arch::asm!("ldar {v}, [{v}]", ".incbin \"payload.bin\"", v = inout(reg) x, options(nostack));
+    core::arch::asm!(
+        "ldar {v}, [{v}]", ".incbin \"payload.bin\"", v = inout(reg) x, options(nostack)
+    );
     #[cfg(atomic_other_extension)]
     core::arch::asm!(".arch_extension crc", "ldar {v}, [{v}]", v = inout(reg) x, options(nostack));
     #[cfg(atomic_literal)]
