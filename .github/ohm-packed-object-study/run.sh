@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 parent=b676a640c76193a0e241d2517a64e37e156659b9
-candidate=222d631bd3456aac2dd8b83e16cc4dc34943af3e
+candidate=eb15cd3dc0ab0404f8ad18589569e05a70a4d401
 root="$RUNNER_TEMP/ohm-branch-object-qa"
 host=x86_64-unknown-linux-gnu
 mkdir -p "$root/logs"
-test "$(git rev-parse "$candidate^")" = "$parent"
-test "$(git rev-parse "$candidate:compiler")" = 3799056125a9753734530ecdb538773209478e92
-test "$(git rev-parse HEAD^)" = "$candidate"
+git merge-base --is-ancestor "$parent" "$candidate"
+git merge-base --is-ancestor "$candidate" HEAD
+test "$(git rev-parse "$candidate:compiler")" = b8fa7ed926a6589fb8fd7e913b0eaadc36875611
+git diff --exit-code "$candidate" HEAD -- compiler tests
 cp .github/ohm-packed-object-study/runtime.py "$root/"
 printf '%s\n' "$(git rev-parse HEAD)" > "$root/logs/qa-head.txt"
 git submodule update --init --depth 1 library/backtrace
@@ -20,6 +21,7 @@ for role in C P; do
     git diff --exit-code
     python3 x.py "${flags[@]}" build --stage 1 -j8 compiler/rustc library/std 2>&1 | tee "$root/logs/build-$role.log"
     python3 -IB "$root/runtime.py" freeze "build/$host/stage1" "$role" "$rev"
+    cp "$root/capsule/$role.json" "$root/logs/"
     if [[ "$role" == C ]]; then
         python3 x.py "${flags[@]}" test --stage 1 -j8 compiler/rustc_fs_util compiler/rustc_incremental \
             tests/run-make/incremental-directory-copy tests/run-make/incremental-session-fail \

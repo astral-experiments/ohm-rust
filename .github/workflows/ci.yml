@@ -19,6 +19,14 @@ jobs:
           persist-credentials: false
       - name: Build the enrolled compilers and run native regressions
         run: bash .github/ohm-packed-object-study/run.sh
+      - name: Record the failed regression fixture's inode inventory
+        if: failure()
+        run: |
+          fixture=build/x86_64-unknown-linux-gnu/test/run-make/ohm-packed-branch-cache/rmake_out/cache
+          if test -d "$fixture"; then
+            find "$fixture" -maxdepth 4 -printf '%y\t%i\t%n\t%s\t%b\t%p\n' \
+              > "$RUNNER_TEMP/ohm-branch-object-qa/logs/failed-fixture.tsv"
+          fi
       - name: Save the native test and compiler provenance logs
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
