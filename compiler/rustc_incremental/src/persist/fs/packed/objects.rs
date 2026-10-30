@@ -4,6 +4,7 @@ use std::io::{self, BufRead, BufReader, Read, Seek};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
+use rustc_data_structures::fx::FxHashSet;
 use rustc_session::filesearch::open_regular_file;
 use rustc_span::{SourceFileHash, SourceFileHashAlgorithm};
 
@@ -31,7 +32,12 @@ fn same_file(a: &Metadata, b: &Metadata) -> bool {
 /// Packs private work products before publication. A link to the superseded session
 /// of the same checkout is also eligible. The other checkout and exported links keep
 /// their shared inode if they already have one.
-pub(crate) fn pack(dir: &Path, previous: &Path) {
+pub(crate) fn pack<'a>(dir: &Path, previous: &Path, temporary: impl Iterator<Item = &'a Path>) {
+    let temporary: FxHashSet<_> = temporary
+        .filter(|p| !p.starts_with(dir) && !p.starts_with(previous))
+        .filter_map(|p| fs::symlink_metadata(p).ok().filter(|m| m.is_file()))
+        .map(|m| (m.dev(), m.ino()))
+        .collect();
     let previous = session_checkout(dir)
         .filter(|&key| session_checkout(previous) == Some(key))
         .map(|_| previous);
@@ -39,24 +45,30 @@ pub(crate) fn pack(dir: &Path, previous: &Path) {
     for entry in entries.flatten() {
         let name = entry.file_name();
         if let Some(name) = name.to_str().filter(|name| object_name(name)) {
-            let _ = pack_object(dir, previous, name);
+            let _ = pack_object(dir, previous, &temporary, name);
         }
     }
 }
 
-fn pack_object(dir: &Path, previous: Option<&Path>, name: &str) -> io::Result<()> {
+fn pack_object(
+    dir: &Path,
+    previous: Option<&Path>,
+    temporary: &FxHashSet<(u64, u64)>,
+    name: &str,
+) -> io::Result<()> {
     let path = dir.join(name);
     let meta = fs::symlink_metadata(&path)?;
     if !meta.is_file() || !(MIN_OBJECT_SIZE..=LIMIT).contains(&meta.len()) {
         return Ok(());
     }
-    if meta.nlink() != 1
-        && !(meta.nlink() == 2
-            && previous.is_some_and(|p| {
-                fs::symlink_metadata(p.join(name)).is_ok_and(|other| same_file(&meta, &other))
-            }))
-    {
-        return Ok(());
+    if meta.nlink() > 1 {
+        let previous_link = previous.is_some_and(|p| {
+            fs::symlink_metadata(p.join(name)).is_ok_and(|other| same_file(&meta, &other))
+        });
+        let linker_link = temporary.contains(&(meta.dev(), meta.ino()));
+        if meta.nlink() != 1 + u64::from(previous_link) + u64::from(linker_link) {
+            return Ok(());
+        }
     }
     let mut source = BufReader::new(open_regular_file(&path)?);
     if !same_file(&meta, &source.get_ref().metadata()?) || !is_elf_object(source.fill_buf()?) {

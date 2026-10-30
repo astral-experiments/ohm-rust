@@ -11,6 +11,7 @@ use rustc_middle::dep_graph::{DepGraph, WorkProductMap};
 use rustc_middle::ty::TyCtxt;
 use rustc_session::config::{self, OutputFilenames, OutputType};
 use rustc_session::{IncrCompSession, Session};
+use rustc_target::spec::SplitDebuginfo;
 
 use crate::diagnostics::FailedWritingFile;
 use crate::passes;
@@ -146,7 +147,27 @@ impl Linker {
 
         // Now that we won't touch anything in the incremental compilation directory
         // any more, we can finalize it (which involves renaming it)
-        rustc_incremental::finalize_session_directory(sess, incr_comp_session, self.crate_hash);
+        // The linker still holds one name for each ordinary object when we publish the
+        // incremental cache. Only these temporary names may be discounted when packing it.
+        let temporary_modules =
+            if incr_comp_session.as_ref().is_some_and(|s| s.branch_cache_source.is_some())
+                && !sess.opts.cg.save_temps
+                && !sess.opts.unstable_opts.no_link
+                && !sess.opts.unstable_opts.emit_rlink
+                && sess.opts.output_types.should_link()
+                && !sess.opts.output_types.contains_key(&OutputType::Object)
+                && sess.split_debuginfo() != SplitDebuginfo::Unpacked
+            {
+                &compiled_modules.modules[..]
+            } else {
+                &[]
+            };
+        rustc_incremental::finalize_session_directory(
+            sess,
+            incr_comp_session,
+            self.crate_hash,
+            temporary_modules.iter().filter_map(|module| module.object.as_deref()),
+        );
 
         if !sess
             .opts
