@@ -16,12 +16,12 @@
 //!    new `session` directory within the incremental compilation directory.
 //!    This session directory will have a unique name that ends with the suffix
 //!    "-working" and that contains a creation timestamp.
-//! 2. Next, the compiler looks for a finalized session directory, preferring the latest
-//!    one from the same Git checkout when Cargo is building a local crate. It falls back
-//!    to the newest finalized session. In either case it still validates the dependency graph.
-//!    A session directory is
-//!    considered finalized if the "-working" suffix in the directory name has
-//!    been replaced by the SVH of the crate.
+//! 2. Next, the compiler looks for a finalized session directory. For a local Cargo
+//!    crate, it prefers a session from the same Git branch or detached commit. If no
+//!    session matches, it uses the newest one. The compiler validates the dependency
+//!    graph in either case.
+//!    A directory is finalized when the crate SVH replaces the "-working" suffix
+//!    in its name.
 //! 3. Once the compiler has found a valid, finalized session directory, it will
 //!    clone or hard-link/copy its contents into the new "-working" directory. If all
 //!    goes well, it will have its own, private copy of the source directory and
@@ -35,7 +35,7 @@
 //!    that are consistent with the state of the source code it was compiled
 //!    from, with no need to change them ever again. At this point, the compiler
 //!    finalizes and "publishes" its private session directory by renaming it
-//!    from "s-{timestamp}-{random}-working" to "s-{timestamp}-{SVH}".
+//!    from "s-{timestamp}-{unique}-working" to "s-{timestamp}-{unique}-{SVH}".
 //! 6. At this point the "old" session directory that we copied our data from
 //!    at the beginning of the session has usually become obsolete. When switching Git
 //!    branches the compiler also keeps the most recent session from another checkout.
@@ -49,7 +49,7 @@
 //! incremental compilation mode. Specifically, it will scan the incremental
 //! compilation directory for private session directories that are not in use
 //! any more and will delete those. It will also delete any finalized session
-//! directories for a given crate except for the most recent one.
+//! directories other than the newest and, when available, the newest from another checkout.
 //!
 //! ## Synchronization
 //!
@@ -556,8 +556,8 @@ fn delete_session_dir_lock_file(sess: &Session, lock_file_path: &Path) {
     }
 }
 
-/// Finds the most recent published session directory that is not in the
-/// ignore-list.
+/// Prefers the newest untried session for this checkout, falling back to the
+/// newest untried session overall.
 fn find_source_directory(
     crate_dir: &Path,
     source_directories_already_tried: &FxHashSet<PathBuf>,
@@ -805,8 +805,8 @@ pub(crate) fn garbage_collect_session_directories(
                 // It's not clear that `flock::Lock` can be fixed for this in general, and our own
                 // incremental session directory is the only one which this process may own, so skip
                 // it here and avoid the problem. We know it's not garbage anyway: we're using it.
-                // Once finalized, its lock is released. Include it in collection so we keep only
-                // the newest completed session.
+                // Once finalized, its lock is released. Include it in collection so the newest
+                // session participates in the retention policy.
                 return None;
             }
 
