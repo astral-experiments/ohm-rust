@@ -611,7 +611,8 @@ where
     I: Iterator<Item = PathBuf>,
 {
     let mut best_candidate = ((false, UNIX_EPOCH), None);
-    let mut saw_other_checkout = false;
+    let mut newest_other_checkout = None;
+    let mut newest_same_or_unlabeled = None;
 
     for session_dir in iter {
         debug!("find_source_directory_in_iter - inspecting `{}`", session_dir.display());
@@ -621,10 +622,7 @@ where
             continue;
         };
 
-        if source_directories_already_tried.contains(&session_dir)
-            || !is_session_directory(&directory_name)
-            || !is_finalized(&directory_name)
-        {
+        if !is_session_directory(&directory_name) || !is_finalized(&directory_name) {
             debug!("find_source_directory_in_iter - ignoring");
             continue;
         }
@@ -638,17 +636,26 @@ where
         };
 
         let same_checkout = checkout.is_some_and(|current| {
-            let other = session_checkout(&session_dir);
-            saw_other_checkout |= other.is_some_and(|key| key != current);
-            other == Some(current)
+            let previous = session_checkout(&session_dir);
+            let newest = if previous.is_some_and(|key| key != current) {
+                &mut newest_other_checkout
+            } else {
+                &mut newest_same_or_unlabeled
+            };
+            *newest = (*newest).max(Some(timestamp));
+            previous == Some(current)
         });
+        if source_directories_already_tried.contains(&session_dir) {
+            continue;
+        }
         let rank = (same_checkout, timestamp);
         if rank > best_candidate.0 {
             best_candidate = (rank, Some(session_dir));
         }
     }
 
-    (best_candidate.1, saw_other_checkout)
+    let switched = best_candidate.1.is_some() && newest_other_checkout > newest_same_or_unlabeled;
+    (best_candidate.1, switched)
 }
 
 fn is_finalized(directory_name: &str) -> bool {

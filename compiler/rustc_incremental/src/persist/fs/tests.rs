@@ -129,3 +129,28 @@ fn checkout_sessions_prefer_a_match_and_keep_one_alternate() {
         vec![a, b]
     );
 }
+
+#[test]
+fn pack_only_on_checkout_switch() {
+    let a = "s-1234-_000000000000000a_r-svh";
+    let b = "s-2234-_000000000000000b_r-svh";
+    let next_a = "s-3234-_000000000000000a_r-svh";
+    let tied_a = "s-2234-_000000000000000a_r-svh";
+    let legacy = "s-3234-0000-svh";
+    let select = |paths: &[&str], skipped: &[&str]| {
+        find_source_directory_in_iter(
+            paths.iter().map(PathBuf::from),
+            &skipped.iter().map(PathBuf::from).collect(),
+            Some(10),
+        )
+    };
+
+    assert_eq!(select(&[legacy], &[]), (Some(legacy.into()), false));
+    assert_eq!(select(&[a, b], &[]), (Some(a.into()), true));
+    assert_eq!(select(&[a, b, next_a], &[]), (Some(next_a.into()), false));
+    assert_eq!(select(&[a, b, legacy], &[]), (Some(a.into()), false));
+    assert_eq!(select(&[b, tied_a], &[]), (Some(tied_a.into()), false));
+    assert_eq!(select(&[tied_a, b], &[]), (Some(tied_a.into()), false));
+    assert_eq!(select(&[b, next_a], &[next_a]), (Some(b.into()), false));
+    assert_eq!(select(&[b], &[b]), (None, false));
+}
