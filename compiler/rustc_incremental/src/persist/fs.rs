@@ -39,8 +39,8 @@
 //! 6. At this point the "old" session directory that we copied our data from
 //!    at the beginning of the session has usually become obsolete. With the optional
 //!    branch cache, the compiler also keeps the latest session from another checkout.
-//!    The new session can pack its two largest tables before publication. Readers
-//!    restore these tables only in their private working directory.
+//!    The new session can pack tables and private native objects before publication.
+//!    Readers restore them in their own working directory.
 //!
 //! ## Garbage Collection
 //!
@@ -279,7 +279,7 @@ pub(crate) fn prepare_session_directory(
             return IncrCompSession {
                 session_directory: session_dir,
                 _lock_file: directory_lock,
-                compact_branch_cache,
+                branch_cache_source: None,
             };
         };
 
@@ -296,7 +296,7 @@ pub(crate) fn prepare_session_directory(
             return IncrCompSession {
                 session_directory: session_dir,
                 _lock_file: directory_lock,
-                compact_branch_cache,
+                branch_cache_source: compact_branch_cache.then_some(source_directory),
             };
         } else {
             debug!("copying failed - trying next directory");
@@ -362,8 +362,10 @@ pub fn finalize_session_directory(
     let new_path = incr_comp_session_dir.parent().unwrap().join(&*sub_dir_name);
     debug!("finalize_session_directory() - new path: {}", new_path.display());
 
-    if incr_comp_session.compact_branch_cache {
+    if let Some(_source) = &incr_comp_session.branch_cache_source {
         packed::pack(&incr_comp_session_dir);
+        #[cfg(target_os = "linux")]
+        packed::objects::pack(&incr_comp_session_dir, _source);
     }
 
     match rename_path_with_retry(&*incr_comp_session_dir, &new_path, 3) {
@@ -437,6 +439,10 @@ fn copy_files(sess: &Session, target_dir: &Path, source_dir: &Path) -> Result<bo
                 let file_name = entry.file_name();
                 if let Some(table) = packed::table(&file_name) {
                     packed.push(table);
+                    continue;
+                }
+                #[cfg(target_os = "linux")]
+                if packed::objects::restore(source_dir, target_dir, &file_name).map_err(|_| ())? {
                     continue;
                 }
 

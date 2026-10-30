@@ -13,7 +13,8 @@ fn switch(branch: &str, value: u32) {
     for i in 0..384 {
         src.push_str(&format!("pub fn f{i}(x: u32) -> u32 {{ x.wrapping_add({i}) }}\n"));
     }
-    src.push_str(&format!("fn main() {{ println!(\"{{}}\", f0({value})); }}\n"));
+    src.push_str(&format!("static DATA: [u8; 32768] = [{value}; 32768];\n"));
+    src.push_str("fn main() { println!(\"{}\", f0(std::hint::black_box(&DATA)[0].into())); }\n");
     rfs::write("checkout/main.rs", src);
 }
 
@@ -108,4 +109,27 @@ fn main() {
     assert!(
         !off[0].file_name().unwrap().to_str().unwrap().split('-').nth(2).unwrap().starts_with('_')
     );
+
+    #[cfg(target_os = "linux")]
+    {
+        compile("cache", Some(true));
+        switch("b", 29);
+        compile("cache", Some(true));
+        let saved = sessions()
+            .iter()
+            .flat_map(|dir| fs::read_dir(dir).unwrap())
+            .map(|e| e.unwrap().path())
+            .find(|p| p.file_name().unwrap().as_encoded_bytes().starts_with(b"ohm-packed-object-"))
+            .unwrap();
+        switch("a", 17);
+        compile("cache", Some(true));
+        run("program").assert_stdout_equals("17");
+        fs::write(&saved, b"invalid object stream").unwrap();
+        fs::write(saved.parent().unwrap().join("bad-object-sentinel"), b"discard").unwrap();
+        switch("b", 29);
+        compile("cache", Some(true));
+        run("program").assert_stdout_equals("29");
+        assert!(sessions().iter().all(|dir| !dir.join("bad-object-sentinel").exists()));
+        assert_eq!(fs::read("program").unwrap(), repaired);
+    }
 }
