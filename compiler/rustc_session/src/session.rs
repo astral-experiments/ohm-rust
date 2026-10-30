@@ -1721,6 +1721,8 @@ pub struct IncrCompSession {
     /// session can be read out of it and new data for the current session will
     /// be written into it.
     pub session_directory: PathBuf,
+    /// Whether preparation found a completed session from another checkout.
+    pub compact_branch_cache: bool,
     /// `_lock_file` is never directly used, but its presence
     /// alone has an effect, because the file will unlock when the session is
     /// dropped.

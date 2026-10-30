@@ -4205,6 +4205,7 @@ dependencies = [
 name = "rustc_incremental"
 version = "0.0.0"
 dependencies = [
+ "flate2",
  "rand 0.9.3",
  "rustc_data_structures",
  "rustc_errors",

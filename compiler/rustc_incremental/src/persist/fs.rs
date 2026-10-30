@@ -37,8 +37,10 @@
 //!    finalizes and "publishes" its private session directory by renaming it
 //!    from "s-{timestamp}-{unique}-working" to "s-{timestamp}-{unique}-{SVH}".
 //! 6. At this point the "old" session directory that we copied our data from
-//!    at the beginning of the session has usually become obsolete. With the branch cache
-//!    enabled the compiler also keeps the most recent session from another checkout.
+//!    at the beginning of the session has usually become obsolete. With the optional
+//!    branch cache, the compiler also keeps the latest session from another checkout.
+//!    The new session can pack its two largest tables before publication. Readers
+//!    restore these tables only in their private working directory.
 //!
 //! ## Garbage Collection
 //!
@@ -125,6 +127,7 @@ use tracing::debug;
 
 use crate::diagnostics;
 
+mod packed;
 #[cfg(test)]
 mod tests;
 
@@ -262,7 +265,7 @@ pub(crate) fn prepare_session_directory(
 
         // Find a suitable source directory to copy from. Ignore those that we
         // have already tried before.
-        let source_directory =
+        let (source_directory, compact_branch_cache) =
             find_source_directory(&crate_dir, &source_directories_already_tried, checkout);
 
         let Some(source_directory) = source_directory else {
@@ -273,7 +276,11 @@ pub(crate) fn prepare_session_directory(
                     directory."
             );
 
-            return IncrCompSession { session_directory: session_dir, _lock_file: directory_lock };
+            return IncrCompSession {
+                session_directory: session_dir,
+                _lock_file: directory_lock,
+                compact_branch_cache,
+            };
         };
 
         debug!("attempting to copy data from source: {}", source_directory.display());
@@ -286,7 +293,11 @@ pub(crate) fn prepare_session_directory(
                 sess.dcx().emit_warn(diagnostics::HardLinkFailed { path: &session_dir });
             }
 
-            return IncrCompSession { session_directory: session_dir, _lock_file: directory_lock };
+            return IncrCompSession {
+                session_directory: session_dir,
+                _lock_file: directory_lock,
+                compact_branch_cache,
+            };
         } else {
             debug!("copying failed - trying next directory");
 
@@ -351,6 +362,10 @@ pub fn finalize_session_directory(
     let new_path = incr_comp_session_dir.parent().unwrap().join(&*sub_dir_name);
     debug!("finalize_session_directory() - new path: {}", new_path.display());
 
+    if incr_comp_session.compact_branch_cache {
+        packed::pack(&incr_comp_session_dir);
+    }
+
     match rename_path_with_retry(&*incr_comp_session_dir, &new_path, 3) {
         Ok(_) => {
             debug!("finalize_session_directory() - directory renamed successfully");
@@ -403,6 +418,7 @@ fn copy_files(sess: &Session, target_dir: &Path, source_dir: &Path) -> Result<bo
     // destination absent until cloning has been attempted; its separate lock file is held too.
     #[cfg(target_os = "macos")]
     if rustc_fs_util::clone_directory(source_dir, target_dir).is_ok() {
+        packed::restore_clone(source_dir, target_dir).map_err(|_| ())?;
         if sess.opts.unstable_opts.incremental_info {
             eprintln!("[incremental] session directory cloned with copy-on-write");
         }
@@ -411,6 +427,7 @@ fn copy_files(sess: &Session, target_dir: &Path, source_dir: &Path) -> Result<bo
 
     create_dir(sess, target_dir, "session");
 
+    let mut packed = Vec::new();
     let mut files_linked = 0;
     let mut files_copied = 0;
 
@@ -418,6 +435,10 @@ fn copy_files(sess: &Session, target_dir: &Path, source_dir: &Path) -> Result<bo
         match entry {
             Ok(entry) => {
                 let file_name = entry.file_name();
+                if let Some(table) = packed::table(&file_name) {
+                    packed.push(table);
+                    continue;
+                }
 
                 let target_file_path = target_dir.join(file_name);
                 let source_path = entry.path();
@@ -444,6 +465,7 @@ fn copy_files(sess: &Session, target_dir: &Path, source_dir: &Path) -> Result<bo
         );
     }
 
+    packed::restore(&packed, source_dir, target_dir).map_err(|_| ())?;
     Ok(files_linked > 0 || files_copied == 0)
 }
 
@@ -571,7 +593,7 @@ fn find_source_directory(
     crate_dir: &Path,
     source_directories_already_tried: &FxHashSet<PathBuf>,
     checkout: Option<u64>,
-) -> Option<PathBuf> {
+) -> (Option<PathBuf>, bool) {
     let iter = crate_dir
         .read_dir()
         .unwrap() // FIXME
@@ -584,11 +606,12 @@ fn find_source_directory_in_iter<I>(
     iter: I,
     source_directories_already_tried: &FxHashSet<PathBuf>,
     checkout: Option<u64>,
-) -> Option<PathBuf>
+) -> (Option<PathBuf>, bool)
 where
     I: Iterator<Item = PathBuf>,
 {
     let mut best_candidate = ((false, UNIX_EPOCH), None);
+    let mut saw_other_checkout = false;
 
     for session_dir in iter {
         debug!("find_source_directory_in_iter - inspecting `{}`", session_dir.display());
@@ -614,13 +637,18 @@ where
             }
         };
 
-        let rank = (checkout.is_some() && session_checkout(&session_dir) == checkout, timestamp);
+        let same_checkout = checkout.is_some_and(|current| {
+            let other = session_checkout(&session_dir);
+            saw_other_checkout |= other.is_some_and(|key| key != current);
+            other == Some(current)
+        });
+        let rank = (same_checkout, timestamp);
         if rank > best_candidate.0 {
             best_candidate = (rank, Some(session_dir));
         }
     }
 
-    best_candidate.1
+    (best_candidate.1, saw_other_checkout)
 }
 
 fn is_finalized(directory_name: &str) -> bool {
@@ -908,22 +936,25 @@ pub(crate) fn garbage_collect_session_directories(
             }
             None
         });
-    let obsolete = all_except_most_recent(deletion_candidates.into(), branch_cache_enabled(sess));
+    let deletion_candidates = deletion_candidates.into();
 
-    obsolete.into_items().all(|(path, lock)| {
-        debug!("garbage_collect_session_directories() - deleting `{}`", path.display());
+    // Keep the newest session and at most one other Git checkout.
+    all_except_most_recent(deletion_candidates, branch_cache_enabled(sess)).into_items().all(
+        |(path, lock)| {
+            debug!("garbage_collect_session_directories() - deleting `{}`", path.display());
 
-        if let Err(err) = std_fs::remove_dir_all(&path) {
-            sess.dcx().emit_warn(diagnostics::FinalizedGcFailed { path: &path, err });
-        } else {
-            delete_session_dir_lock_file(sess, &lock_file_path(&path));
-        }
+            if let Err(err) = std_fs::remove_dir_all(&path) {
+                sess.dcx().emit_warn(diagnostics::FinalizedGcFailed { path: &path, err });
+            } else {
+                delete_session_dir_lock_file(sess, &lock_file_path(&path));
+            }
 
-        // Let's make it explicit that the file lock is released at this point,
-        // or rather, that we held on to it until here
-        drop(lock);
-        true
-    });
+            // Let's make it explicit that the file lock is released at this point,
+            // or rather, that we held on to it until here
+            drop(lock);
+            true
+        },
+    );
 
     Ok(())
 }
@@ -942,11 +973,15 @@ fn all_except_most_recent(
     deletion_candidates: UnordMap<(SystemTime, PathBuf), Option<flock::Lock>>,
     keep_other_checkout: bool,
 ) -> UnordMap<PathBuf, Option<flock::Lock>> {
-    let newest =
-        deletion_candidates.items().map(|((time, path), _)| (*time, session_checkout(path))).max();
+    let newest = deletion_candidates
+        .items()
+        .map(|((time, path), _)| {
+            (*time, keep_other_checkout.then(|| session_checkout(path)).flatten())
+        })
+        .max();
 
     if let Some((most_recent, checkout)) = newest {
-        let other_checkout = checkout.filter(|_| keep_other_checkout).and_then(|key| {
+        let other_checkout = checkout.and_then(|key| {
             deletion_candidates
                 .items()
                 .filter_map(|((time, path), _)| {
