@@ -21,7 +21,16 @@ fn main() {
     if matches!(target().as_str(), "x86_64-unknown-linux-gnu" | "aarch64-apple-darwin") {
         rfs::write("payload.bin", [0]);
         // The same crate always emits a register barrier and ordinary instructions.
-        let x86_memory = (target() == "x86_64-unknown-linux-gnu").then_some("float_memory");
+        let x86_cases = (target() == "x86_64-unknown-linux-gnu").then_some([
+            "float_memory",
+            "hash_count",
+            "hash_literal",
+            "hash_symbol",
+            "hash_directive",
+            "div_literal",
+            "div_memory",
+            "div_directive",
+        ]);
         for cfg in [
             "ordinary",
             "global_macro",
@@ -32,7 +41,7 @@ fn main() {
             "raw",
         ]
         .into_iter()
-        .chain(x86_memory)
+        .chain(x86_cases.into_iter().flatten())
         {
             let rules = rustc()
                 .input("inline.rs")
@@ -48,6 +57,19 @@ fn main() {
                 cfg == "ordinary",
                 "{cfg}: {rules}"
             );
+        }
+
+        if target() == "x86_64-unknown-linux-gnu" {
+            for cfg in ["div_immediate", "div_count"] {
+                let failure = rustc()
+                    .input("inline.rs")
+                    .crate_type("rlib")
+                    .arg("-Zohm-check-relink-inputs")
+                    .cfg(cfg)
+                    .emit("link,dep-info=-")
+                    .run_fail();
+                assert!(failure.stdout_utf8().contains(MARKER), "{cfg}");
+            }
         }
 
         let native_archive = |arg| {
