@@ -670,6 +670,7 @@ dependencies = [
  "color-print",
  "declare_clippy_lint",
  "itertools",
+ "libc",
  "pulldown-cmark",
  "regex",
  "rustc_tools_util 0.4.2",

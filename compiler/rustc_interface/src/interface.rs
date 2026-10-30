@@ -334,6 +334,8 @@ pub struct Config {
     /// This is a callback to track otherwise untracked state used by the caller.
     ///
     /// You can write to `sess.env_depinfo` and `sess.file_depinfo` to track env vars and files.
+    /// This records build-system dependencies, not dependencies of incremental queries.
+    /// Drivers caching queries that read this state must also set `opts.incremental_driver_hash`.
     pub track_state: Option<Box<dyn FnOnce(&Session) + Send>>,
 
     /// This is a callback from the driver that is called when we're registering lints;
