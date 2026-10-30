@@ -216,17 +216,34 @@ impl<K: Eq + Hash + Copy> ShardedHashMap<K, ()> {
         K: Borrow<Q>,
         Q: Hash + Eq,
     {
-        let hash = make_hash(value);
+        self.intern_ref_with_hash(make_hash(value), value, make)
+    }
+
+    /// Like [`Self::intern_ref`], using a hash computed by [`make_hash`] from `value`.
+    ///
+    /// `make` must return a key whose borrowed value equals `value`, with the same hash.
+    #[inline]
+    pub fn intern_ref_with_hash<Q: ?Sized>(
+        &self,
+        hash: u64,
+        value: &Q,
+        make: impl FnOnce() -> K,
+    ) -> K
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq,
+    {
         let mut shard = self.lock_shard_by_hash(hash);
 
-        match table_entry(&mut shard, hash, value) {
-            Entry::Occupied(e) => e.get().0,
-            Entry::Vacant(e) => {
-                let v = make();
-                e.insert((v, ()));
-                v
-            }
+        if let Some(&(v, ())) = shard.find(hash, |(k, _)| k.borrow() == value) {
+            return v;
         }
+
+        // Preserve reservation before construction, without reserving for existing keys.
+        shard.reserve(1, |(k, _)| make_hash(k));
+        let v = make();
+        shard.insert_unique(hash, (v, ()), |(k, _)| make_hash(k));
+        v
     }
 
     #[inline]
@@ -235,17 +252,29 @@ impl<K: Eq + Hash + Copy> ShardedHashMap<K, ()> {
         K: Borrow<Q>,
         Q: Hash + Eq,
     {
-        let hash = make_hash(&value);
+        self.intern_with_hash(make_hash(&value), value, make)
+    }
+
+    /// Like [`Self::intern`], using a hash computed by [`make_hash`] from `value`.
+    ///
+    /// `make` must return a key whose borrowed value equals `value`, with the same hash.
+    #[inline]
+    pub fn intern_with_hash<Q>(&self, hash: u64, value: Q, make: impl FnOnce(Q) -> K) -> K
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq,
+    {
         let mut shard = self.lock_shard_by_hash(hash);
 
-        match table_entry(&mut shard, hash, &value) {
-            Entry::Occupied(e) => e.get().0,
-            Entry::Vacant(e) => {
-                let v = make(value);
-                e.insert((v, ()));
-                v
-            }
+        if let Some(&(v, ())) = shard.find(hash, |(k, _)| k.borrow() == &value) {
+            return v;
         }
+
+        // Preserve reservation before construction, without reserving for existing keys.
+        shard.reserve(1, |(k, _)| make_hash(k));
+        let v = make(value);
+        shard.insert_unique(hash, (v, ()), |(k, _)| make_hash(k));
+        v
     }
 }
 
@@ -295,3 +324,6 @@ fn get_shard_hash(hash: u64) -> usize {
     // hashbrown also uses the lowest bits, so we can't use those
     (hash >> (hash_len * 8 - 7 - SHARD_BITS)) as usize
 }
+
+#[cfg(test)]
+mod tests;
