@@ -37,8 +37,8 @@
 //!    finalizes and "publishes" its private session directory by renaming it
 //!    from "s-{timestamp}-{unique}-working" to "s-{timestamp}-{unique}-{SVH}".
 //! 6. At this point the "old" session directory that we copied our data from
-//!    at the beginning of the session has usually become obsolete. When switching Git
-//!    branches the compiler also keeps the most recent session from another checkout.
+//!    at the beginning of the session has usually become obsolete. With the branch cache
+//!    enabled the compiler also keeps the most recent session from another checkout.
 //!
 //! ## Garbage Collection
 //!
@@ -49,7 +49,7 @@
 //! incremental compilation mode. Specifically, it will scan the incremental
 //! compilation directory for private session directories that are not in use
 //! any more and will delete those. It will also delete any finalized session
-//! directories other than the newest and, when available, the newest from another checkout.
+//! directories other than the newest and, with the branch cache enabled, one alternate.
 //!
 //! ## Synchronization
 //!
@@ -242,7 +242,7 @@ pub(crate) fn prepare_session_directory(
 
     // An older object can contain bytes read by the assembler outside the query graph.
     // Only prefer its session when codegen checks for those untracked inputs.
-    let checkout = if sess.opts.unstable_opts.ohm_check_relink_inputs {
+    let checkout = if branch_cache_enabled(sess) {
         std::env::var_os("CARGO_MANIFEST_DIR").and_then(|dir| git_checkout(Path::new(&dir)))
     } else {
         None
@@ -445,6 +445,10 @@ fn copy_files(sess: &Session, target_dir: &Path, source_dir: &Path) -> Result<bo
     }
 
     Ok(files_linked > 0 || files_copied == 0)
+}
+
+fn branch_cache_enabled(sess: &Session) -> bool {
+    sess.opts.unstable_opts.ohm_branch_cache && sess.opts.unstable_opts.ohm_check_relink_inputs
 }
 
 /// Identifies an enclosing Git worktree for the sole purpose of choosing an incremental
@@ -904,10 +908,9 @@ pub(crate) fn garbage_collect_session_directories(
             }
             None
         });
-    let deletion_candidates = deletion_candidates.into();
+    let obsolete = all_except_most_recent(deletion_candidates.into(), branch_cache_enabled(sess));
 
-    // Keep the newest session and at most one other Git checkout.
-    all_except_most_recent(deletion_candidates).into_items().all(|(path, lock)| {
+    obsolete.into_items().all(|(path, lock)| {
         debug!("garbage_collect_session_directories() - deleting `{}`", path.display());
 
         if let Err(err) = std_fs::remove_dir_all(&path) {
@@ -937,12 +940,13 @@ fn delete_old(sess: &Session, path: &Path) {
 
 fn all_except_most_recent(
     deletion_candidates: UnordMap<(SystemTime, PathBuf), Option<flock::Lock>>,
+    keep_other_checkout: bool,
 ) -> UnordMap<PathBuf, Option<flock::Lock>> {
     let newest =
         deletion_candidates.items().map(|((time, path), _)| (*time, session_checkout(path))).max();
 
     if let Some((most_recent, checkout)) = newest {
-        let other_checkout = checkout.and_then(|key| {
+        let other_checkout = checkout.filter(|_| keep_other_checkout).and_then(|key| {
             deletion_candidates
                 .items()
                 .filter_map(|((time, path), _)| {
