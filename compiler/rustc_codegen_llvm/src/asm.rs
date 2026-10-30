@@ -1676,8 +1676,14 @@ fn file_free_asm_line(arch: InlineAsmArch, line: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b' ' | b'\t' | b'_' | b'@'));
     }
     let (opcode, args) = line.split_once([' ', '\t']).unwrap_or((line, ""));
+    let register_operands = |count| {
+        args.split(',').map(|arg| arg.trim_matches([' ', '\t'])).eq(std::iter::repeat_n("@", count))
+    };
     match (arch, opcode) {
         (_, "nop") | (InlineAsmArch::X86_64, "syscall" | "cpuid") => args.is_empty(),
+        (InlineAsmArch::X86_64, "sqrtsd" | "sqrtss") => register_operands(2),
+        (InlineAsmArch::X86_64, "vfmadd213sd" | "vfmadd213ss") => register_operands(3),
+        (InlineAsmArch::X86_64, "vfmaddsd" | "vfmaddss") => register_operands(4),
         (InlineAsmArch::X86_64, _) => file_free_x86_instruction(opcode, args),
         (InlineAsmArch::AArch64, "mov") => {
             let Some((dst, src)) = args.split_once(',') else { return false };
