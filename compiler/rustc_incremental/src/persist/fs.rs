@@ -16,9 +16,10 @@
 //!    new `session` directory within the incremental compilation directory.
 //!    This session directory will have a unique name that ends with the suffix
 //!    "-working" and that contains a creation timestamp.
-//! 2. Next, the compiler looks for the newest finalized session directory,
-//!    that is, a session directory from a previous compilation session that
-//!    has been marked as valid and consistent. A session directory is
+//! 2. Next, the compiler looks for a finalized session directory, preferring the latest
+//!    one from the same Git checkout when Cargo is building a local crate. It falls back
+//!    to the newest finalized session. In either case it still validates the dependency graph.
+//!    A session directory is
 //!    considered finalized if the "-working" suffix in the directory name has
 //!    been replaced by the SVH of the crate.
 //! 3. Once the compiler has found a valid, finalized session directory, it will
@@ -36,8 +37,8 @@
 //!    finalizes and "publishes" its private session directory by renaming it
 //!    from "s-{timestamp}-{random}-working" to "s-{timestamp}-{SVH}".
 //! 6. At this point the "old" session directory that we copied our data from
-//!    at the beginning of the session has become obsolete because we have just
-//!    published a more current version. Thus the compiler will delete it.
+//!    at the beginning of the session has usually become obsolete. When switching Git
+//!    branches the compiler also keeps the most recent session from another checkout.
 //!
 //! ## Garbage Collection
 //!
@@ -104,7 +105,8 @@
 //! implemented.
 
 use std::fs as std_fs;
-use std::io::{self, ErrorKind};
+use std::hash::{DefaultHasher, Hasher};
+use std::io::{self, ErrorKind, Read};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -116,6 +118,7 @@ use rustc_data_structures::unord::{UnordMap, UnordSet};
 use rustc_data_structures::{base_n, flock};
 use rustc_fs_util::{LinkOrCopy, link_or_copy, try_canonicalize};
 use rustc_middle::bug;
+use rustc_session::filesearch::open_regular_file;
 use rustc_session::{IncrCompSession, Session, StableCrateId};
 use rustc_span::Symbol;
 use tracing::debug;
@@ -237,13 +240,15 @@ pub(crate) fn prepare_session_directory(
         }
     };
 
+    let checkout =
+        std::env::var_os("CARGO_MANIFEST_DIR").and_then(|dir| git_checkout(Path::new(&dir)));
     let mut source_directories_already_tried = FxHashSet::default();
 
     loop {
         // Generate a session directory of the form:
         //
         // {incr-comp-dir}/{crate-name-and-disambiguator}/s-{timestamp}-{random}-working
-        let session_dir = generate_session_dir_path(&crate_dir);
+        let session_dir = generate_session_dir_path(&crate_dir, checkout);
         debug!("session-dir: {}", session_dir.display());
 
         // Lock the new session directory. If this fails, return an
@@ -252,7 +257,8 @@ pub(crate) fn prepare_session_directory(
 
         // Find a suitable source directory to copy from. Ignore those that we
         // have already tried before.
-        let source_directory = find_source_directory(&crate_dir, &source_directories_already_tried);
+        let source_directory =
+            find_source_directory(&crate_dir, &source_directories_already_tried, checkout);
 
         let Some(source_directory) = source_directory else {
             create_dir(sess, &session_dir, "session");
@@ -436,9 +442,59 @@ fn copy_files(sess: &Session, target_dir: &Path, source_dir: &Path) -> Result<bo
     Ok(files_linked > 0 || files_copied == 0)
 }
 
+/// Identifies an enclosing Git worktree for the sole purpose of choosing an incremental
+/// starting point. The compiler validates this session exactly as it would the latest one.
+fn git_checkout(directory: &Path) -> Option<u64> {
+    fn small_file(path: &Path) -> Option<Vec<u8>> {
+        let mut bytes = Vec::new();
+        open_regular_file(path).ok()?.take(4097).read_to_end(&mut bytes).ok()?;
+        (bytes.len() <= 4096).then_some(bytes)
+    }
+
+    for ancestor in directory.ancestors() {
+        let dot_git = ancestor.join(".git");
+        let Ok(meta) = std_fs::metadata(&dot_git) else { continue };
+        let git_dir = if meta.is_dir() {
+            dot_git
+        } else {
+            let file = small_file(&dot_git)?;
+            let path = file.strip_prefix(b"gitdir: ")?;
+            let path = path.strip_suffix(b"\n").unwrap_or(path);
+            let path = path.strip_suffix(b"\r").unwrap_or(path);
+            #[cfg(unix)]
+            let path = <std::ffi::OsStr as std::os::unix::ffi::OsStrExt>::from_bytes(path);
+            #[cfg(not(unix))]
+            let path = std::str::from_utf8(path).ok()?;
+            ancestor.join(path)
+        };
+        let head = small_file(&git_dir.join("HEAD"))?;
+        let head = head.trim_ascii_end();
+        let branch = head.strip_prefix(b"ref: refs/heads/").is_some_and(|name| !name.is_empty());
+        let detached = matches!(head.len(), 40 | 64) && head.iter().all(u8::is_ascii_hexdigit);
+        if !branch && !detached {
+            return None;
+        }
+        let mut hasher = DefaultHasher::new();
+        hasher.write(head);
+        return Some(hasher.finish());
+    }
+    None
+}
+
+/// Reads the optional checkout label from the unique component of a session name.
+/// Older session names have only the random number in this component.
+fn session_checkout(path: &Path) -> Option<u64> {
+    let unique = path.file_name()?.to_str()?.split('-').nth(2)?;
+    let (key, _) = unique.strip_prefix('_')?.split_once('_')?;
+    if key.len() != 16 {
+        return None;
+    }
+    u64::from_str_radix(key, 16).ok()
+}
+
 /// Generates unique directory path of the form:
 /// {crate_dir}/s-{timestamp}-{random-number}-working
-fn generate_session_dir_path(crate_dir: &Path) -> PathBuf {
+fn generate_session_dir_path(crate_dir: &Path, checkout: Option<u64>) -> PathBuf {
     let timestamp = timestamp_to_string(SystemTime::now());
     debug!("generate_session_dir_path: timestamp = {}", timestamp);
     let random_number = rng().next_u32();
@@ -447,8 +503,11 @@ fn generate_session_dir_path(crate_dir: &Path) -> PathBuf {
     // Chop the first 3 characters off the timestamp. Those 3 bytes will be zero for a while.
     let (zeroes, timestamp) = timestamp.split_at(3);
     assert_eq!(zeroes, "000");
-    let directory_name =
-        format!("s-{}-{}-working", timestamp, random_number.to_base_fixed_len(CASE_INSENSITIVE));
+    let random = random_number.to_base_fixed_len(CASE_INSENSITIVE);
+    let directory_name = match checkout {
+        Some(key) => format!("s-{timestamp}-_{key:016x}_{random}-working"),
+        None => format!("s-{timestamp}-{random}-working"),
+    };
     debug!("generate_session_dir_path: directory_name = {}", directory_name);
     let directory_path = crate_dir.join(directory_name);
     debug!("generate_session_dir_path: directory_path = {}", directory_path.display());
@@ -502,23 +561,25 @@ fn delete_session_dir_lock_file(sess: &Session, lock_file_path: &Path) {
 fn find_source_directory(
     crate_dir: &Path,
     source_directories_already_tried: &FxHashSet<PathBuf>,
+    checkout: Option<u64>,
 ) -> Option<PathBuf> {
     let iter = crate_dir
         .read_dir()
         .unwrap() // FIXME
         .filter_map(|e| e.ok().map(|e| e.path()));
 
-    find_source_directory_in_iter(iter, source_directories_already_tried)
+    find_source_directory_in_iter(iter, source_directories_already_tried, checkout)
 }
 
 fn find_source_directory_in_iter<I>(
     iter: I,
     source_directories_already_tried: &FxHashSet<PathBuf>,
+    checkout: Option<u64>,
 ) -> Option<PathBuf>
 where
     I: Iterator<Item = PathBuf>,
 {
-    let mut best_candidate = (UNIX_EPOCH, None);
+    let mut best_candidate = ((false, UNIX_EPOCH), None);
 
     for session_dir in iter {
         debug!("find_source_directory_in_iter - inspecting `{}`", session_dir.display());
@@ -544,8 +605,9 @@ where
             }
         };
 
-        if timestamp > best_candidate.0 {
-            best_candidate = (timestamp, Some(session_dir.clone()));
+        let rank = (checkout.is_some() && session_checkout(&session_dir) == checkout, timestamp);
+        if rank > best_candidate.0 {
+            best_candidate = (rank, Some(session_dir));
         }
     }
 
@@ -839,7 +901,7 @@ pub(crate) fn garbage_collect_session_directories(
         });
     let deletion_candidates = deletion_candidates.into();
 
-    // Delete all but the most recent of the candidates
+    // Keep the newest session and at most one other Git checkout.
     all_except_most_recent(deletion_candidates).into_items().all(|(path, lock)| {
         debug!("garbage_collect_session_directories() - deleting `{}`", path.display());
 
@@ -871,12 +933,21 @@ fn delete_old(sess: &Session, path: &Path) {
 fn all_except_most_recent(
     deletion_candidates: UnordMap<(SystemTime, PathBuf), Option<flock::Lock>>,
 ) -> UnordMap<PathBuf, Option<flock::Lock>> {
-    let most_recent = deletion_candidates.items().map(|(&(timestamp, _), _)| timestamp).max();
+    let newest =
+        deletion_candidates.items().map(|((time, path), _)| (*time, session_checkout(path))).max();
 
-    if let Some(most_recent) = most_recent {
+    if let Some((most_recent, checkout)) = newest {
+        let other_checkout = checkout.and_then(|key| {
+            deletion_candidates
+                .items()
+                .filter_map(|((time, path), _)| {
+                    session_checkout(path).filter(|&other| other != key).map(|_| *time)
+                })
+                .max()
+        });
         deletion_candidates
             .into_items()
-            .filter(|&((timestamp, _), _)| timestamp != most_recent)
+            .filter(|&((time, _), _)| time != most_recent && Some(time) != other_checkout)
             .map(|((_, path), lock)| (path, lock))
             .collect()
     } else {
