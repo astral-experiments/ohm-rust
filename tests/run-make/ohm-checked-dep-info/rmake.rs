@@ -34,6 +34,8 @@ fn main() {
         let arm_cases = (target() == "aarch64-apple-darwin").then_some([
             "vector_modifier",
             "vector_directive",
+            "frame_pointer_read",
+            "frame_pointer_directive",
             "crc_literal",
             "crc_directive",
         ]);
