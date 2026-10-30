@@ -1,323 +1,37 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - ohm-1.99.0
-  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  style:
-    name: Formatting and tidy
-    runs-on: depot-ubuntu-24.04-4
-    timeout-minutes: 30
+  packed-objects:
+    name: Build and test both Linux compiler revisions
+    if: github.ref == 'refs/heads/charlie/qa-compact-branch-objects'
+    runs-on: namespace-profile-ubuntu-24-04-16
+    timeout-minutes: 150
     steps:
-      - name: Checkout Rust
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          # Bootstrap must reach the upstream LLVM commit beyond the Ohm stack.
           fetch-depth: 0
-
-      - name: Install the pinned nightly formatter
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+          persist-credentials: false
+      - name: Build the enrolled compilers and run native regressions
+        run: bash .github/ohm-packed-object-study/run.sh
+      - name: Save the native test and compiler provenance logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          toolchain: nightly-2026-07-19
-          components: rustfmt
-
-      - name: Checkout the standard-library backtrace submodule
-        run: git submodule update --init --depth 1 library/backtrace
-
-      - name: Check formatting
-        run: >-
-          python3 x.py --set build.submodules=false
-          --set build.rustfmt=$(rustup which --toolchain nightly-2026-07-19 rustfmt)
-          fmt --check
-
-      - name: Run tidy checks
-        run: >-
-          env -u GITHUB_ACTIONS python3 x.py --ci false --set build.submodules=false
-          --set build.rustfmt=$(rustup which --toolchain nightly-2026-07-19 rustfmt)
-          test tidy
-
-  compiler:
-    name: ${{ matrix.os == 'depot-ubuntu-24.04-16' && 'Compiler and regression tests' || 'Compiler and regression tests (macOS)' }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [depot-ubuntu-24.04-16, namespace-profile-macos-15]
-    steps:
-      - name: Checkout Rust
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+          name: packed-object-linux-logs
+          path: ${{ runner.temp }}/ohm-branch-object-qa/logs
+          retention-days: 4
+          if-no-files-found: warn
+      - name: Save the matched runtime images
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          # Bootstrap must reach the upstream LLVM commit beyond the Ohm stack.
-          fetch-depth: 0
-
-      - name: Checkout the standard-library backtrace submodule
-        run: git submodule update --init --depth 1 library/backtrace
-
-      - name: Check compiler crates
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off --warnings deny check compiler
-
-      - name: Install Ninja for distribution tests
-        if: runner.os == 'macOS'
-        run: brew install ninja
-
-      - name: Run bootstrap and component PGO tests
-        shell: bash
-        run: |
-          stage0_cargo="$(
-            find "$PWD/build" -mindepth 4 -maxdepth 4 \
-              -path '*/stage0/bin/cargo' -type f -print -quit
-          )"
-          if [[ -z "$stage0_cargo" ]]; then
-            echo 'compiler check did not produce its bootstrap Cargo toolchain' >&2
-            exit 1
-          fi
-
-          stage0_rustc="$(dirname -- "$stage0_cargo")/rustc"
-          if [[ ! -x "$stage0_rustc" ]]; then
-            echo "bootstrap Rust compiler is missing: $stage0_rustc" >&2
-            exit 1
-          fi
-
-          export RUSTC="$stage0_rustc"
-          export CARGO="$stage0_cargo"
-          export RUSTC_BOOTSTRAP=1
-          export CARGO_TARGET_DIR="$PWD/build/component-pgo-tests"
-
-          "$stage0_cargo" test --locked --manifest-path src/bootstrap/Cargo.toml pgo_
-          "$stage0_cargo" test --locked --manifest-path src/bootstrap/Cargo.toml copy_link_tests
-          "$stage0_cargo" test --locked --manifest-path src/bootstrap/Cargo.toml allocator_features
-          "$stage0_cargo" test --locked --manifest-path src/bootstrap/Cargo.toml dist_
-          "$stage0_cargo" test --locked -p opt-dist
-
-      - name: Run incremental driver input regression
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1 compiler/rustc_interface
-          --test-args incremental_driver_hash_does_not_change_crate_identity
-
-      - name: Run trait-solver regressions
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1
-          tests/ui/traits/next-solver/rerun-if-any-opaque-or-has-infer-as-hidden-in-codegen.rs
-          tests/ui/traits/object/rerun-impossible-predicates-post-analysis.rs
-          tests/ui/impl-trait/precise-capturing/outlives-pair-isolation.rs
-          tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.rs
-
-      - name: Run metadata UI tests
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1 tests/ui/rmeta
-          tests/ui/privacy/pub-priv-dep/shared_direct_private.rs
-
-      - name: Run LLVM prelink function-merging regression
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1 tests/codegen-llvm/merge-functions-prelink.rs
-
-      - name: Run coroutine runtime layout regression tests
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1
-          tests/ui/coroutine/metadata-sufficient-for-layout.rs
-          tests/ui/coroutine/storage-conflicts-subsets.rs
-          tests/ui/coroutine/storage-conflicts-overlapping-sets.rs
-          tests/ui/coroutine/storage-conflicts-many-locals.rs
-          tests/ui/coroutine/storage-conflicts-resume-and-unwind.rs
-          tests/ui/coroutine/xcrate.rs tests/ui/coroutine/drop-env.rs
-          tests/ui/async-await/async-closures/drop.rs
-          tests/ui/async-await/async-closures/by-move-body-inlined-attrs.rs
-          tests/ui/async-await/async-drop/metadata-only-layout.rs
-          tests/ui/pattern/non-structural-match-types-cycle-err.rs
-          tests/incremental/coroutine-runtime-layout.rs
-          tests/codegen-llvm/async-fn-debug.rs
-          tests/codegen-llvm/coroutine-debug.rs
-          tests/codegen-llvm/async-fn-debug-awaitee-field.rs
-
-      - name: Run external coroutine layout dependency regression
-        if: matrix.os == 'depot-ubuntu-24.04-16'
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 2 tests/ui-fulldeps/coroutine-layout-projection.rs
-
-      - name: Run retained static allocation regression
-        if: matrix.os == 'depot-ubuntu-24.04-16'
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 2 tests/ui-fulldeps/incremental-retained-static.rs
-
-      - name: Inspect coroutine states with GDB
-        if: matrix.os == 'depot-ubuntu-24.04-16'
-        shell: bash
-        run: |
-          if ! command -v gdb >/dev/null; then
-            sudo apt-get update
-            sudo apt-get install --yes --no-install-recommends gdb
-          fi
-          gdb --version
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true \
-            --set rust.lto=off --set build.gdb="$(command -v gdb)" \
-            test --stage 1 tests/debuginfo/coroutine-objects.rs
-
-      - name: Run unused-dependency JSON UI tests
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1 tests/ui/unused-crate-deps
-
-      - name: Run closed associated-type proof regressions
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1
-          tests/ui/associated-types/closed-definition-proofs.rs
-          tests/ui/associated-types/closed-definition-proof-failures.rs
-          tests/ui/associated-types/concrete-impl-bound-normalization.rs
-          tests/incremental/closed-associated-type-proofs.rs
-
-      - name: Run well-formedness obligation regression tests
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1 tests/ui/wf/nominal-inherited-obligations.rs
-          tests/ui/wf/nominal-inherited-obligations-fail.rs
-          tests/incremental/nominal-inherited-obligations.rs
-
-      - name: Run borrow checker dataflow regression tests
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1
-          tests/ui/borrowck/borrowck-lend-flow-loop.rs
-          tests/ui/borrowck/two-phase-cannot-nest-mut-self-calls.rs
-          tests/ui/nll/maybe-initialized-drop.rs
-          tests/ui/nll/match-guards-partially-borrow.rs
-
-      - name: Run cached hygiene unit tests
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1 compiler/rustc_span --test-args hygiene::tests
-
-      - name: Run lint tool prefix unit tests
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1 compiler/rustc_lint --test-args lint_tool_prefix_
-
-      - name: Run tool lint diagnostic tests
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1
-          tests/ui/lint/command-line-register-lint-tool.rs
-          tests/ui/lint/command-line-register-unknown-lint-tool.rs
-          tests/ui/lint/known-tool-in-submodule/root.rs
-          tests/ui/lint/register-tool-lint.rs
-          tests/ui/lint/lint-renamed-cmdline.rs
-          tests/ui/lint/lint-removed-cmdline.rs
-
-      - name: Run cached expansion incremental tests
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1
-          --compiletest-rustc-args=-Zthreads=8
-          --compiletest-rustc-args=-Zincremental-verify-ich
-          tests/incremental/hygiene tests/incremental/derive_macro_expansion
-          tests/incremental/promote-cached-query-value.rs
-          tests/incremental/forward-cached-query-value.rs
-
-      - name: Run retained allocation and check-index tests
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1 compiler/rustc_middle
-          --test-args 'aliases_preserve_allocation_identity check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges lazy_worker_cache recorder_ c_linker_generic_summary_keeps_retention_exceptions'
-
-      - name: Run library search tests
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1 compiler/rustc_session --test-args search
-
-      - name: Run incremental directory and branch cache tests
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1 compiler/rustc_fs_util compiler/rustc_incremental
-          tests/run-make/incremental-directory-copy tests/run-make/incremental-session-fail
-          tests/run-make/ohm-branch-cache-opt-out tests/run-make/ohm-packed-branch-cache
-
-      - name: Run reduced-dependency-rebuild and monomorphization incremental tests
-        if: hashFiles('tests/incremental/rdr/**/*.rs') != ''
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1 tests/incremental/rdr
-          tests/incremental/mono_item_partition_body_change.rs
-          tests/incremental/mono_item_partition_caller_local_body_change.rs
-          tests/incremental/mono_item_partition_library_body_change.rs
-          tests/incremental/mono_item_partition_library_distinct_edges.rs
-          tests/incremental/mono_item_partition_stable_merging.rs
-          tests/incremental/mono_item_partition_test_body_change.rs
-          tests/incremental/mono_item_partition_test_changed_edges.rs
-          tests/incremental/mono_item_partition_test_reordered_edges.rs
-          tests/incremental/mono_item_partition_test_unreachable_const.rs
-          tests/incremental/mono_item_partition_unreachable_const.rs
-          tests/incremental/mono_item_partition_unreachable_const_cached.rs
-
-      - name: Run focused compiler run-make tests
-        shell: bash
-        run: |
-          tests=(
-            tests/run-make/non-unicode-args
-            tests/run-make/public-api-hash*
-            tests/run-make/rdr-public-hash*
-            tests/run-make/ohm-early-metadata
-            tests/run-make/ohm-relink-assembler-inputs
-            tests/run-make/ohm-checked-dep-info
-            tests/run-make/metadata-export-prefetch
-            tests/run-make/c-linker-generic-summary
-            tests/run-make/separate-link
-            tests/run-make/trait-impl-directory
-            tests/run-make/ohm-shared-stages
-            tests/run-make/ohm-thinlto-cache
-            tests/run-make/caller-local-codegen
-            tests/run-make/unused-externs-transparent
-            tests/run-make/reset-codegen-1
-            tests/run-make/stable-cgu-merging
-            tests/run-make/ohm-split-large-cgus
-            tests/run-make/test-harness-exact-filter
-            tests/run-make/parallel-query-depth-limits
-            tests/run-make/incremental-attribute-proc-macro-cache
-            tests/run-make/incremental-proc-macro-native-inputs
-            tests/run-make/incremental-proc-macro-parse-source
-            tests/run-make/incremental-retained-cache-snapshot
-            tests/run-make/incremental-loaded-cache-values
-            tests/run-make/incremental-recomputed-query-spans
-            tests/run-make/incremental-missing-query-cache
-            tests/run-make/ohm-retained-mono-values
-            tests/run-make/incremental-lint-visibilities
-            tests/run-make/split-debuginfo-incremental
-          )
-          selected=()
-
-          for test in "${tests[@]}"; do
-            if [[ -d "$test" ]]; then
-              selected+=("$test")
-            fi
-          done
-
-          if (( ${#selected[@]} > 0 )); then
-            python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true \
-              --set rust.lto=off test --stage 1 "${selected[@]}"
-          fi
-
-      - name: Run mimalloc huge-page defaults regression
-        if: runner.os == 'Linux'
-        run: >-
-          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off --set rust.mimalloc=true test --stage 1 tests/run-make/mimalloc-thp
+          name: packed-object-linux-sdks
+          path: ${{ runner.temp }}/ohm-branch-object-qa/matched-linux-sdks.tar.zst
+          retention-days: 2
+          compression-level: 0
+          if-no-files-found: error
