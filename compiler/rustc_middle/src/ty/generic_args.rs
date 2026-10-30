@@ -444,7 +444,7 @@ impl<'tcx> GenericArgs<'tcx> {
     }
 
     pub fn extend_to<F>(
-        &self,
+        &'tcx self,
         tcx: TyCtxt<'tcx>,
         def_id: DefId,
         mut mk_kind: F,
@@ -452,9 +452,14 @@ impl<'tcx> GenericArgs<'tcx> {
     where
         F: FnMut(&ty::GenericParamDef, &[GenericArg<'tcx>]) -> GenericArg<'tcx>,
     {
-        Self::for_item(tcx, def_id, |param, args| {
+        let defs = tcx.generics_of(def_id);
+        let mut args = SmallVec::with_capacity(defs.count());
+        Self::fill_item(&mut args, tcx, defs, &mut |param, args| {
             self.get(param.index as usize).cloned().unwrap_or_else(|| mk_kind(param, args))
-        })
+        });
+        // Filling checked every parameter index, so equal lengths mean every
+        // argument came from `self`.
+        if args.len() == self.len() { self } else { tcx.mk_args(&args) }
     }
 
     pub fn fill_item<F>(
