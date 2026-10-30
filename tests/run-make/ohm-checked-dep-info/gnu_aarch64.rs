@@ -13,6 +13,23 @@ pub unsafe fn barrier(mut x: usize, mut v: core::arch::aarch64::int32x4_t) -> us
     core::arch::asm!("svc 0", in("x8") x, inlateout("x0") x, options(nostack, preserves_flags));
     #[cfg(syscall_file)]
     core::arch::asm!("svc 0", ".incbin \"payload.bin\"", in("x8") x, inlateout("x0") x);
+    #[cfg(atomic_loop)]
+    core::arch::asm!(
+        "2:", "ldaxp {lo}, {hi}, [{ptr}]", "stlxp {ok:w}, {lo}, {hi}, [{ptr}]", "cbnz {ok:w}, 2b",
+        ptr = in(reg) x, lo = out(reg) _, hi = out(reg) _, ok = out(reg) _,
+        options(nostack, preserves_flags),
+    );
+    #[cfg(atomic_feature)]
+    core::arch::asm!(
+        ".arch_extension lse", "casp x6, x7, x4, x5, [{ptr}]", ptr = in(reg) x,
+        out("x4") _, out("x5") _, out("x6") _, out("x7") _, options(nostack),
+    );
+    #[cfg(atomic_file)]
+    core::arch::asm!("ldar {v}, [{v}]", ".incbin \"payload.bin\"", v = inout(reg) x, options(nostack));
+    #[cfg(atomic_other_extension)]
+    core::arch::asm!(".arch_extension crc", "ldar {v}, [{v}]", v = inout(reg) x, options(nostack));
+    #[cfg(atomic_literal)]
+    core::arch::asm!("ldar x0, [x0]", inout("x0") x, options(nostack));
     #[cfg(not(vector_only))]
     core::arch::asm!("/*{0}*/", inout(reg) x);
     #[cfg(not(general_only))]
