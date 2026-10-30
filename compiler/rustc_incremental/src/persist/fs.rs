@@ -16,10 +16,10 @@
 //!    new `session` directory within the incremental compilation directory.
 //!    This session directory will have a unique name that ends with the suffix
 //!    "-working" and that contains a creation timestamp.
-//! 2. Next, the compiler looks for a finalized session directory. For a local Cargo
-//!    crate, it prefers a session from the same Git branch or detached commit. If no
-//!    session matches, it uses the newest one. The compiler validates the dependency
-//!    graph in either case.
+//! 2. Next, the compiler looks for a finalized session directory. When checking native
+//!    inputs for a local Cargo crate, it prefers a session from the same Git branch or
+//!    detached commit. Otherwise, or if no session matches, it uses the newest one.
+//!    The compiler validates the dependency graph in either case.
 //!    A directory is finalized when the crate SVH replaces the "-working" suffix
 //!    in its name.
 //! 3. Once the compiler has found a valid, finalized session directory, it will
@@ -240,8 +240,13 @@ pub(crate) fn prepare_session_directory(
         }
     };
 
-    let checkout =
-        std::env::var_os("CARGO_MANIFEST_DIR").and_then(|dir| git_checkout(Path::new(&dir)));
+    // An older object can contain bytes read by the assembler outside the query graph.
+    // Only prefer its session when codegen checks for those untracked inputs.
+    let checkout = if sess.opts.unstable_opts.ohm_check_relink_inputs {
+        std::env::var_os("CARGO_MANIFEST_DIR").and_then(|dir| git_checkout(Path::new(&dir)))
+    } else {
+        None
+    };
     let mut source_directories_already_tried = FxHashSet::default();
 
     loop {
