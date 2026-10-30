@@ -2734,6 +2734,8 @@ options! {
         Mandatory setting:
         `=Enable`
         Currently the only option available"),
+    ohm_branch_cache: bool = (false, parse_bool, [UNTRACKED],
+        "retain an incremental session for a second checkout when native input checks are enabled (default: no)"),
     ohm_caller_local_cgus: bool = (false, parse_bool, [TRACKED],
         "place upstream generics containing local closures in caller-local codegen units"),
     ohm_cgu_split_limit: Option<NonZero<usize>> = (None, parse_opt_number, [TRACKED],

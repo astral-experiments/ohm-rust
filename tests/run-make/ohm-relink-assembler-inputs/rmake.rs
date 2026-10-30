@@ -56,6 +56,7 @@ fn check_branch_switch_without_native_input_checks() {
     let compile = || {
         let mut cmd = rustc();
         cmd.input("checkout/main.rs")
+            .arg("-Zohm-branch-cache=yes")
             .env("CARGO_MANIFEST_DIR", cwd().join("checkout"))
             .edition("2021")
             .extern_("engine", "libengine.rlib")
