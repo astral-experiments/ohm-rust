@@ -22,6 +22,7 @@ Start with [`CONTRIBUTING.md`](CONTRIBUTING.md), then route specialized work as 
 [formatting and tidy]: src/doc/rustc-dev-guide/src/conventions.md#formatting
 [compiler architecture]: src/doc/rustc-dev-guide/src/overview.md
 [repository layout]: src/doc/rustc-dev-guide/src/compiler-src.md
+[external repositories]: src/doc/rustc-dev-guide/src/external-repos.md
 [contribution process]: src/doc/rustc-dev-guide/src/contributing.md
 
 [`x.py` is the build tool for this repository][building and running rustc].
