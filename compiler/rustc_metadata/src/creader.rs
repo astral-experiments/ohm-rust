@@ -69,8 +69,8 @@ pub struct CStore {
     /// This crate has a `#[alloc_error_handler]` item.
     has_alloc_error_handler: bool,
 
-    /// Cached map from hash to CrateNum, to avoid scanning metas during crate resolution.
-    public_hash_to_cnum: UnordMap<Svh, CrateNum>,
+    /// Loaded crates indexed by their name and public API hash.
+    crate_nums_by_public_hash: UnordMap<(Symbol, Svh), CrateNum>,
 
     /// Names that were used to load the crates via `extern crate` or paths.
     resolved_externs: UnordMap<Symbol, CrateNum>,
@@ -241,7 +241,13 @@ impl CStore {
 
     fn set_crate_data(&mut self, cnum: CrateNum, data: CrateMetadata) {
         assert!(self.metas[cnum].is_none(), "Overwriting crate metadata entry");
-        self.public_hash_to_cnum.insert(data.public_hash(), cnum);
+        // Crate numbers are reserved before recursively loading dependencies, so
+        // metadata registration can finish out of order. Preserve the first
+        // ascending crate-number match used by the original linear scan.
+        self.crate_nums_by_public_hash
+            .entry((data.name(), data.public_hash()))
+            .and_modify(|existing| *existing = cmp::min(*existing, cnum))
+            .or_insert(cnum);
         self.metas[cnum] = Some(Box::new(data));
     }
 
@@ -551,7 +557,7 @@ impl CStore {
             alloc_error_handler_kind: None,
             has_global_allocator: false,
             has_alloc_error_handler: false,
-            public_hash_to_cnum: UnordMap::default(),
+            crate_nums_by_public_hash: UnordMap::default(),
             resolved_externs: UnordMap::default(),
             unused_externs: Vec::new(),
             used_extern_options: Default::default(),
@@ -559,11 +565,8 @@ impl CStore {
         }
     }
 
-    fn existing_match(&self, name: Symbol, hash: Option<Svh>) -> Option<CrateNum> {
-        let hash = hash?;
-        let cnum = *self.public_hash_to_cnum.get(&hash)?;
-        debug_assert_eq!(self.get_crate_data(cnum).name(), name);
-        Some(cnum)
+    fn existing_match(&self, name: Symbol, public_hash: Option<Svh>) -> Option<CrateNum> {
+        self.crate_nums_by_public_hash.get(&(name, public_hash?)).copied()
     }
 
     /// Determine whether a dependency should be considered private.
