@@ -19,6 +19,11 @@ fn main() {
     };
 
     if matches!(target().as_str(), "x86_64-unknown-linux-gnu" | "aarch64-apple-darwin") {
+        let recheck_rule = if target() == "aarch64-apple-darwin" {
+            "/dev/null/ohm-recheck-dependent-links-v2:"
+        } else {
+            "/dev/null/ohm-recheck-dependent-links:"
+        };
         rfs::write("payload.bin", [0]);
         // The same crate always emits a register barrier and ordinary instructions.
         let x86_cases = (target() == "x86_64-unknown-linux-gnu").then_some([
@@ -62,7 +67,7 @@ fn main() {
                 .stdout_utf8();
             assert_eq!(rules.contains(MARKER), cfg != "ordinary", "{cfg}: {rules}");
             assert_eq!(
-                rules.contains("/dev/null/ohm-recheck-dependent-links"),
+                rules.lines().any(|line| line == recheck_rule),
                 cfg == "ordinary",
                 "{cfg}: {rules}"
             );
@@ -92,7 +97,7 @@ fn main() {
             cmd
         };
         let external = native_archive("-lstatic:-bundle=ohm_missing_archive").run().stdout_utf8();
-        assert!(external.contains("/dev/null/ohm-recheck-dependent-links"), "{external}");
+        assert!(external.lines().any(|line| line == recheck_rule), "{external}");
         let bundled = native_archive("-lstatic=ohm_missing_archive").run_fail();
         bundled.assert_stderr_contains("ohm_missing_archive");
         assert!(bundled.stdout_utf8().contains(MARKER));
