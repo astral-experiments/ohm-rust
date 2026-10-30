@@ -28,13 +28,16 @@ fn packs_only_private_and_superseded_objects_and_restores_exact_bytes() {
     }
     fs::hard_link(dir.join("b.o"), previous.join("b.o")).unwrap();
     fs::hard_link(dir.join("c.o"), tmp.path().join("exported.o")).unwrap();
+    let pending = tmp.path().join("b.rcgu.o");
+    fs::hard_link(dir.join("b.o"), &pending).unwrap();
     symlink(tmp.path().join("exported.o"), dir.join("link.o")).unwrap();
     let original = fs::metadata(dir.join("a.o")).unwrap();
-    objects::pack(&dir, &previous);
+    objects::pack(&dir, &previous, std::iter::once(pending.as_path()));
     for name in ["a.o", "b.o"] {
         assert!(!dir.join(name).exists(), "{name}");
     }
     assert_eq!(fs::read(previous.join("b.o")).unwrap(), bytes);
+    assert_eq!(fs::read(&pending).unwrap(), bytes);
     assert!(fs::symlink_metadata(dir.join("link.o")).unwrap().is_symlink());
     assert_eq!(
         fs::metadata(dir.join("c.o")).unwrap().ino(),
@@ -62,7 +65,7 @@ fn rejects_swapped_object_contents_with_the_same_session_and_filename() {
         let dir = tmp.path().join(root).join("s-2222-_000000000000000a_ab-working");
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("a.o"), object(value)).unwrap();
-        objects::pack(&dir, tmp.path());
+        objects::pack(&dir, tmp.path(), std::iter::empty());
         let saved = fs::read_dir(&dir).unwrap().next().unwrap().unwrap().file_name();
         assert!(saved.to_str().unwrap().starts_with("ohm-packed-object-"));
         (dir, saved)

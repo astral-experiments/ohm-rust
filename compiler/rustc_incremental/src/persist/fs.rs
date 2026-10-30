@@ -322,10 +322,11 @@ pub(crate) fn prepare_session_directory(
 /// This function finalizes and thus 'publishes' the session directory by
 /// renaming it to `s-{timestamp}-{svh}` and releasing the file lock.
 /// This must not be called if there have been any compilation errors.
-pub fn finalize_session_directory(
+pub fn finalize_session_directory<'a>(
     sess: &Session,
     incr_comp_session: Option<IncrCompSession>,
     svh: Option<Svh>,
+    _temporary_objects: impl Iterator<Item = &'a Path>,
 ) {
     assert!(sess.dcx().has_errors_or_delayed_bugs().is_none());
 
@@ -365,7 +366,7 @@ pub fn finalize_session_directory(
     if let Some(_source) = &incr_comp_session.branch_cache_source {
         packed::pack(&incr_comp_session_dir);
         #[cfg(target_os = "linux")]
-        packed::objects::pack(&incr_comp_session_dir, _source);
+        packed::objects::pack(&incr_comp_session_dir, _source, _temporary_objects);
     }
 
     match rename_path_with_retry(&*incr_comp_session_dir, &new_path, 3) {
