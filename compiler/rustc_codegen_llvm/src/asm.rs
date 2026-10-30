@@ -1704,10 +1704,9 @@ fn file_free_asm_line(arch: InlineAsmArch, line: &str) -> bool {
         (InlineAsmArch::AArch64, "crc32b" | "crc32h" | "crc32w" | "crc32x") => register_operands(3),
         (InlineAsmArch::AArch64, "mov") => {
             let Some((dst, src)) = args.split_once(',') else { return false };
-            [dst, src].iter().all(|arg| {
-                let arg = arg.trim_matches([' ', '\t']);
-                arg == "@" || AArch64InlineAsmReg::parse(arg).is_ok()
-            })
+            let regs = [dst, src].map(|arg| arg.trim_matches([' ', '\t']));
+            regs == ["fp", "fp"]
+                || regs.into_iter().all(|arg| arg == "@" || AArch64InlineAsmReg::parse(arg).is_ok())
         }
         _ => false,
     }
