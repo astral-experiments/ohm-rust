@@ -23,12 +23,30 @@ use crate::{self as ty, DebruijnIndex, Interner, Region, UniverseIndex, Unnormal
 ///
 /// See <https://rustc-dev-guide.rust-lang.org/ty_module/instantiating_binders.html>
 /// for more details.
-#[derive_where(Clone, Copy, Hash, PartialEq, Debug; I: Interner, T)]
+#[derive_where(Clone, Copy, Debug; I: Interner, T)]
 #[derive(GenericTypeVisitable, Lift_Generic)]
 #[cfg_attr(feature = "nightly", derive(StableHash_NoContext))]
 pub struct Binder<I: Interner, T> {
     value: T,
     bound_vars: I::BoundVarKinds,
+}
+
+impl<I: Interner, T: Hash> Hash for Binder<I, T> {
+    #[inline(always)]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let Self { value, bound_vars } = self;
+        Hash::hash(value, state);
+        Hash::hash(bound_vars, state);
+    }
+}
+
+impl<I: Interner, T: PartialEq> PartialEq for Binder<I, T> {
+    #[inline(always)]
+    fn eq(&self, other: &Self) -> bool {
+        let Self { value, bound_vars } = self;
+        let Self { value: other_value, bound_vars: other_bound_vars } = other;
+        PartialEq::eq(value, other_value) && PartialEq::eq(bound_vars, other_bound_vars)
+    }
 }
 
 impl<I: Interner, T: Eq> Eq for Binder<I, T> {}
