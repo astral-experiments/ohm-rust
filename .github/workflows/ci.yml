@@ -251,11 +251,12 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 compiler/rustc_session --test-args search
 
-      - name: Run incremental directory copy tests
+      - name: Run incremental directory and branch cache tests
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1 compiler/rustc_fs_util
+          --set rust.lto=off test --stage 1 compiler/rustc_fs_util compiler/rustc_incremental
           tests/run-make/incremental-directory-copy tests/run-make/incremental-session-fail
+          tests/run-make/ohm-branch-cache-opt-out tests/run-make/ohm-packed-branch-cache
 
       - name: Run reduced-dependency-rebuild and monomorphization incremental tests
         if: hashFiles('tests/incremental/rdr/**/*.rs') != ''
