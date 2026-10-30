@@ -31,8 +31,12 @@ fn main() {
             "div_memory",
             "div_directive",
         ]);
-        let arm_cases =
-            (target() == "aarch64-apple-darwin").then_some(["vector_modifier", "vector_directive"]);
+        let arm_cases = (target() == "aarch64-apple-darwin").then_some([
+            "vector_modifier",
+            "vector_directive",
+            "crc_literal",
+            "crc_directive",
+        ]);
         for cfg in [
             "ordinary",
             "global_macro",
