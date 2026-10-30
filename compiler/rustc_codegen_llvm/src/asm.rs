@@ -1619,6 +1619,7 @@ fn file_free_inline_asm(
     verify_native_link: &mut bool,
 ) -> bool {
     let TargetTuple::TargetTuple(target) = target else { return false };
+    let gnu_aarch64 = target.as_str() == "aarch64-unknown-linux-gnu";
     let arch = match target.as_str() {
         "x86_64-unknown-linux-gnu" => InlineAsmArch::X86_64,
         "aarch64-unknown-linux-gnu" => {
@@ -1643,17 +1644,26 @@ fn file_free_inline_asm(
                     InlineAsmTemplatePiece::String(close),
                 ] if open == "/* " && close == " */");
             }
-            return options.is_empty()
+            if options.is_empty()
                 && matches!(operands, [InlineAsmOperand::InOut {
                     late: false, in_value: Operand::Copy(input), out_place: Some(output), ..
                 }] if input == output)
-                && aarch64_register_comment(template, operands);
+                && aarch64_register_comment(template, operands)
+            {
+                return true;
+            }
+            if options != InlineAsmOptions::NOSTACK
+                && options != (InlineAsmOptions::NOSTACK | InlineAsmOptions::PRESERVES_FLAGS)
+            {
+                return false;
+            }
+            InlineAsmArch::AArch64
         }
         "aarch64-apple-darwin" => InlineAsmArch::AArch64,
         _ => return false,
     };
 
-    if arch == InlineAsmArch::AArch64
+    if target.as_str() == "aarch64-apple-darwin"
         && let [InlineAsmOperand::InOut { reg: InlineAsmRegOrRegClass::RegClass(reg), .. }] =
             operands
         && *reg == InlineAsmRegClass::AArch64(AArch64InlineAsmRegClass::vreg)
@@ -1668,13 +1678,14 @@ fn file_free_inline_asm(
         return true;
     }
 
-    if !operands.iter().all(|operand| {
-        matches!(
-            operand,
-            InlineAsmOperand::In { .. }
-                | InlineAsmOperand::Out { .. }
-                | InlineAsmOperand::InOut { .. }
-        )
+    if !operands.iter().all(|operand| match operand {
+        InlineAsmOperand::In { reg, .. }
+        | InlineAsmOperand::Out { reg, .. }
+        | InlineAsmOperand::InOut { reg, .. } => {
+            !gnu_aarch64
+                || reg.reg_class() == InlineAsmRegClass::AArch64(AArch64InlineAsmRegClass::reg)
+        }
+        _ => false,
     }) {
         return false;
     }
@@ -1700,8 +1711,9 @@ fn file_free_inline_asm(
                             | X86InlineAsmRegClass::reg_byte
                             | X86InlineAsmRegClass::xmm_reg
                     ) | InlineAsmRegClass::AArch64(AArch64InlineAsmRegClass::reg)
-                ) || modifier.is_some_and(|m| !reg.valid_modifiers(arch).contains(&m))
-                {
+                ) || modifier.is_some_and(|m| {
+                    !reg.valid_modifiers(arch).contains(&m) || (gnu_aarch64 && m != 'w')
+                }) {
                     return false;
                 }
                 text.push('@');
@@ -1709,9 +1721,45 @@ fn file_free_inline_asm(
             _ => return false,
         }
     }
+    if gnu_aarch64 {
+        return text.contains('@')
+            && text
+                .split('\n')
+                .all(|line| file_free_aarch64_atomic_line(line.trim_matches([' ', '\t'])));
+    }
     text.split('\n').all(|line| {
         file_free_asm_line(arch, line.trim_matches([' ', '\t']), verify_native_link)
     })
+}
+
+/// Each placeholder is one integer register. The literal instructions use only those registers,
+/// fixed registers, barriers, and local numeric labels. These three complete feature directives
+/// only set bits in LLVM's AArch64 subtarget. Other directives can read assembler files.
+fn file_free_aarch64_atomic_line(line: &str) -> bool {
+    let (opcode, args) = line.split_once(' ').unwrap_or((line, ""));
+    matches!(
+        (opcode, args),
+        ("" | "2:" | "3:" | "4:", "")
+            | (".arch_extension", "lse" | "lse128" | "rcpc3")
+            | ("b", "4f")
+            | ("cbnz", "@, 2b")
+            | ("cbz", "@, 3f")
+            | ("cinc", "@, @, ne")
+            | ("csel", "@, @, @, ge" | "@, @, @, hs" | "@, @, @, lo" | "@, @, @, lt")
+            | ("cset", "@, ne")
+            | ("dmb", "ish" | "ishld")
+            | ("cmp" | "mvn" | "negs" | "ngc", "@, @")
+            | ("adc" | "adds" | "and" | "eor" | "orr" | "sbc" | "subs", "@, @, @")
+            | ("sbcs", "xzr, @, @")
+            | ("ldar", "@, [@]")
+            | ("ldaxp" | "ldxp", "xzr, @, [@]" | "@, @, [@]")
+            | (
+                "ldiapp" | "ldp" | "stilp" | "stp" | "swpp" | "swppa" | "swppal" | "swppl",
+                "@, @, [@]"
+            )
+            | ("stlxp" | "stxp", "@, @, @, [@]")
+            | ("casp" | "caspa" | "caspal" | "caspl", "x6, x7, x4, x5, [@]")
+    )
 }
 
 fn aarch64_register_comment(
