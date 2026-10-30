@@ -45,7 +45,7 @@ fn test_find_source_directory_in_iter() {
             &already_visited,
             None,
         ),
-        Some(PathBuf::from("crate-dir/s-3234-0000-svh"))
+        (Some(PathBuf::from("crate-dir/s-3234-0000-svh")), false)
     );
 
     // Filter out "-working"
@@ -60,11 +60,14 @@ fn test_find_source_directory_in_iter() {
             &already_visited,
             None,
         ),
-        Some(PathBuf::from("crate-dir/s-2234-0000-svh"))
+        (Some(PathBuf::from("crate-dir/s-2234-0000-svh")), false)
     );
 
     // Handle empty
-    assert_eq!(find_source_directory_in_iter([].into_iter(), &already_visited, None), None);
+    assert_eq!(
+        find_source_directory_in_iter([].into_iter(), &already_visited, None),
+        (None, false)
+    );
 
     // Handle only working
     assert_eq!(
@@ -78,7 +81,7 @@ fn test_find_source_directory_in_iter() {
             &already_visited,
             None,
         ),
-        None
+        (None, false)
     );
 }
 
@@ -93,11 +96,26 @@ fn checkout_sessions_prefer_a_match_and_keep_one_alternate() {
     let skipped = FxHashSet::default();
     assert_eq!(
         find_source_directory_in_iter(paths.clone().into_iter(), &skipped, Some(11)),
-        Some(b.clone())
+        (Some(b.clone()), true)
     );
     assert_eq!(
         find_source_directory_in_iter(paths.into_iter(), &skipped, Some(13)),
-        Some(c.clone())
+        (Some(c.clone()), true)
+    );
+    assert_eq!(
+        find_source_directory_in_iter([a.clone()].into_iter(), &skipped, Some(10)),
+        (Some(a.clone()), false),
+    );
+    let inactive: UnordMap<_, Option<flock::Lock>> = [a.clone(), b.clone()]
+        .into_iter()
+        .map(|p| ((extract_timestamp_from_session_dir(p.to_str().unwrap()).unwrap(), p), None))
+        .collect();
+    assert_eq!(
+        all_except_most_recent(inactive, false)
+            .into_items()
+            .map(|(p, _)| p)
+            .into_sorted_stable_ord(),
+        vec![a.clone()]
     );
     let candidates: UnordMap<_, Option<flock::Lock>> = [a.clone(), b.clone(), a2, c]
         .into_iter()
