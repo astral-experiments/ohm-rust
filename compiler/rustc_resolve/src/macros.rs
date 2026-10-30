@@ -346,9 +346,12 @@ impl<'ra, 'tcx> ResolverExpand for Resolver<'ra, 'tcx> {
             && !span.is_dummy()
             && span.ctxt().is_root()
             && let Some(&anchor) = self.last_source_adt.get(&invocation_parent.parent_def)
-            && self.tcx.sess.source_map().lookup_source_file(span.lo()).contains(
-                self.tcx.source_span_untracked(anchor).lo(),
-            )
+            && self
+                .tcx
+                .sess
+                .source_map()
+                .lookup_source_file(span.lo())
+                .contains(self.tcx.source_span_untracked(anchor).lo())
         {
             // Keep the original coordinates and hygiene. Incremental span hashing and
             // encoding already support signed offsets to an anchor in the same source file.
