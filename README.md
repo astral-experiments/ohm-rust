@@ -43,3 +43,14 @@ python3 rerun-T3.py --summarize "$FRESH_OUTPUT"
 ```
 
 For the T1 study use `ohm-uv-resolver-repro.py`, with the optimized C SDK as parent and T1 as candidate. The T3 entry selects the two published T3 seeds and runs the same portable code. Each six-triple cohort covers all six arm orders. The study built **two fresh parent target snapshots per arm** across its two held-out cohorts and restored the relevant snapshot before each edited clock. The portable rerun builds **36 independent cold parent targets** across its 12 triples, one for every arm and trial; cold builds and no-ops are outside the edited clocks. The rerunner was checked against the saved native protocol and a controlled fixture. A second-host native replication has not been performed.
+
+## Fresh confirmation on the cache-corrected −22 sources
+
+A separate 12-triple comparison used the published compiler sources with incremental formats 9 and 10. The two rebuilt compilers had no compiler PGO. The median first check after the same uv edit took 6.557 s on shipped −18, 6.570 s with receiver-specific queries alone and 4.914 s with receiver recovery as well. The paired speedups were 1.336× over −18 (1.317–1.350×) and 1.328× over receiver-specific queries alone (1.310–1.353×). Each comparison improved in all 12 triples. No raw timings are shared with the field PGO study above.
+
+The supplement verifies the six cold parent setups, 36 first edits, 72 unchanged checks, both trait solvers and nine same-path compiler installations. All three same-format installations loaded their cache and all six cross-format installations rejected it. Download the two adjacent files and run the verifier with Python 3.11 or later.
+
+```sh
+sha256sum -c records-exact22-T3.sha256
+python3 -ISB records-exact22-T3.zip
+```
