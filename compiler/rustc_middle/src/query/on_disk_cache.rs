@@ -72,6 +72,7 @@ pub struct OnDiskCache {
     generation_count: usize,
     previous_cache: Option<Box<OnDiskCache>>,
     forwarded_query_values: FxHashMap<SerializedDepNodeIndex, SerializedDepNodeIndex>,
+    loaded_query_values: Lock<GrowableBitSet<SerializedDepNodeIndex>>,
     pending_query_values: Lock<Vec<(SerializedDepNodeIndex, SerializedDepNodeIndex)>>,
 
     file_index_to_stable_id: FxHashMap<SourceFileIndex, EncodedSourceFileId>,
@@ -269,6 +270,7 @@ impl OnDiskCache {
             generation_count,
             previous_cache,
             forwarded_query_values: footer.forwarded_query_values.into_iter().collect(),
+            loaded_query_values: Default::default(),
             pending_query_values: Default::default(),
             file_index_to_stable_id: footer.file_index_to_stable_id,
             file_index_to_file: Default::default(),
@@ -291,6 +293,7 @@ impl OnDiskCache {
             generation_count: 0,
             previous_cache: None,
             forwarded_query_values: Default::default(),
+            loaded_query_values: Default::default(),
             pending_query_values: Default::default(),
             file_index_to_stable_id: Default::default(),
             file_index_to_file: Default::default(),
@@ -404,8 +407,15 @@ impl OnDiskCache {
             let mut forwarded_queries = GrowableBitSet::with_capacity(
                 forwarded_query_values.last().map_or(0, |(index, _)| index.as_usize() + 1),
             );
-            for &(index, _) in &forwarded_query_values {
-                forwarded_queries.insert(index);
+            if let Some(cache) = &tcx.query_system.on_disk_cache {
+                let loaded = cache.loaded_query_values.lock();
+                for &(index, previous) in &forwarded_query_values {
+                    // A recomputed query can be green even when its diagnostic spans changed.
+                    // Only skip encoding a live value if we actually decoded its previous bytes.
+                    if loaded.contains(previous) {
+                        forwarded_queries.insert(index);
+                    }
+                }
             }
 
             let mut encoder = CacheEncoder {
@@ -558,10 +568,16 @@ impl OnDiskCache {
     where
         T: for<'a> Decodable<CacheDecoder<'a, 'tcx>>,
     {
-        self.load_indexed(tcx, dep_node_index, &self.query_values_index).or_else(|| {
-            let previous_index = *self.forwarded_query_values.get(&dep_node_index)?;
-            self.previous_cache.as_ref()?.try_load_query_value(tcx, previous_index)
-        })
+        let mut cache = self;
+        let mut index = dep_node_index;
+        loop {
+            if let Some(value) = cache.load_indexed(tcx, index, &cache.query_values_index) {
+                self.loaded_query_values.lock().insert(dep_node_index);
+                return Some(value);
+            }
+            index = *cache.forwarded_query_values.get(&index)?;
+            cache = cache.previous_cache.as_deref()?;
+        }
     }
 
     fn load_indexed<'tcx, T>(
