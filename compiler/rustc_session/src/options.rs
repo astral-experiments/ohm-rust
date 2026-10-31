@@ -835,6 +835,7 @@ mod desc {
     pub(crate) const parse_bool: &str =
         "one of: `y`, `yes`, `on`, `true`, `n`, `no`, `off` or `false`";
     pub(crate) const parse_opt_bool: &str = parse_bool;
+    pub(crate) const parse_cache_proc_macros: &str = parse_bool;
     pub(crate) const parse_string: &str = "a string";
     pub(crate) const parse_opt_string: &str = parse_string;
     pub(crate) const parse_string_push: &str = parse_string;
@@ -980,6 +981,12 @@ pub mod parse {
             }
             _ => false,
         }
+    }
+
+    pub(crate) fn parse_cache_proc_macros(_slot: &mut bool, v: Option<&str>) -> bool {
+        // Native proc-macro inputs are not covered by the Rust crate hash. Leaving the
+        // tracked option off also invalidates old caches created with it on.
+        parse_bool(&mut false, v)
     }
 
     /// Use this for any boolean option that lacks a static default. (The
@@ -2424,8 +2431,8 @@ options! {
         "set options for branch target identification and pointer authentication on AArch64"),
     build_sdylib_interface: bool = (false, parse_bool, [UNTRACKED],
         "whether the stable interface is being built"),
-    cache_proc_macros: bool = (false, parse_bool, [TRACKED],
-        "cache the results of derive and attribute proc macro invocations (potentially unsound!) (default: no)"),
+    cache_proc_macros: bool = (false, parse_cache_proc_macros, [TRACKED],
+        "accepted for compatibility (derive and attribute proc macros run in each compilation)"),
     cf_protection: CFProtection = (CFProtection::None, parse_cfprotection, [TRACKED],
         "instrument control-flow architecture protection"),
     check_cfg_all_expected: bool = (false, parse_bool, [UNTRACKED],

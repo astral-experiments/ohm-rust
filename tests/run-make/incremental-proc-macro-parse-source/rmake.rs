@@ -48,12 +48,9 @@ fn compare(mode: &str, original: &str) {
     rfs::write("parse-input.txt", "379");
 
     let result = producer(&cache, mode).run();
+    result.assert_stderr_contains(executed);
     if mode == "cached" {
-        result
-            .assert_stderr_not_contains("executed attribute")
-            .assert_stderr_not_contains(executed);
-    } else {
-        result.assert_stderr_contains(executed);
+        result.assert_stderr_contains("executed attribute");
     }
     save_bridge(&warm);
     producer(&format!("{mode}-empty"), mode).run().assert_stderr_contains(executed);
