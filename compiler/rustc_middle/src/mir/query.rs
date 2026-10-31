@@ -20,6 +20,8 @@ pub enum RelinkInputs {
     RecheckLink,
     /// The assembler or archiver can read files outside the compiler's dependencies.
     Rebuild,
+    /// The crate can reuse its objects if Cargo verifies the inputs to the final native link.
+    VerifyNativeLink,
 }
 
 rustc_index::newtype_index! {

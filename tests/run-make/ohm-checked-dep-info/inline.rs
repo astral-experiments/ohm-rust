@@ -39,6 +39,15 @@ pub unsafe fn vector_barrier(
     value
 }
 
+#[cfg(all(target_arch = "aarch64", not(without_frame_pointer_move)))]
+pub unsafe fn retain_autoreleased_marker() {
+    core::arch::asm!("mov fp, fp", options(nomem, preserves_flags, nostack));
+    #[cfg(frame_pointer_read)]
+    core::arch::asm!("mov x9, fp", out("x9") _);
+    #[cfg(frame_pointer_directive)]
+    core::arch::asm!("mov fp, fp", ".incbin \"payload.bin\"");
+}
+
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "crc")]
 pub unsafe fn crc32(mut crc: u32, data: u64) -> u32 {
