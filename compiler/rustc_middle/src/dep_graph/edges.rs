@@ -147,10 +147,13 @@ impl ReadsRecorder {
     /// from growing the pool without bound.
     #[inline]
     pub(crate) fn release(self, pool: &Lock<Vec<ReadsRecorder>>) {
-        const MAX_POOLED_RECORDERS: usize = 4;
+        const MAX_POOLED_RECORDERS: usize = 8;
         let mut pool = pool.lock();
         if pool.len() < MAX_POOLED_RECORDERS {
             pool.push(self);
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
