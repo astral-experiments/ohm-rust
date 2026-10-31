@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [namespace-profile-ubuntu-24-04-16, namespace-profile-macos-15]
+        runner: [namespace-profile-ubuntu-24-04-16]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -21,7 +21,8 @@ jobs:
         run: |
           if [[ "$RUNNER_OS" == Linux ]]; then
             sudo apt-get update -qq
-            sudo apt-get install -y --no-install-recommends ninja-build gcc-aarch64-linux-gnu
+            sudo apt-get install -y --no-install-recommends ninja-build g++-aarch64-linux-gnu libc6-dev-arm64-cross
+            test -f /usr/aarch64-linux-gnu/lib/crti.o
           elif ! command -v ninja >/dev/null; then
             HOMEBREW_NO_AUTO_UPDATE=1 brew install ninja
           fi
