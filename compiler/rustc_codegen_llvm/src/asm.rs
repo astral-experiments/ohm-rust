@@ -6,8 +6,9 @@ use rustc_ast::{InlineAsmOptions, InlineAsmTemplatePiece};
 use rustc_codegen_ssa::mir::operand::OperandValue;
 use rustc_codegen_ssa::traits::*;
 use rustc_data_structures::fx::FxHashMap;
+use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::mir::interpret::{PointerArithmetic, Scalar as ConstScalar};
-use rustc_middle::mir::{InlineAsmMacro, InlineAsmOperand, TerminatorKind};
+use rustc_middle::mir::{InlineAsmMacro, InlineAsmOperand, RelinkInputs, TerminatorKind};
 use rustc_middle::ty::layout::TyAndLayout;
 use rustc_middle::ty::{Instance, TyCtxt};
 use rustc_session::Session;
@@ -1710,7 +1711,7 @@ fn llvm_fixup_output_type<'ll, 'tcx>(
 }
 
 /// Cargo can reuse a native object when rustc knows all of its assembler inputs.
-pub(crate) fn has_untracked_relink_inputs(tcx: TyCtxt<'_>, (): ()) -> bool {
+pub(crate) fn relink_inputs(tcx: TyCtxt<'_>, (): ()) -> RelinkInputs {
     let arch = match &tcx.sess.opts.target_triple {
         TargetTuple::TargetTuple(t) if t == "x86_64-unknown-linux-gnu" => {
             Some(InlineAsmArch::X86_64)
@@ -1718,14 +1719,33 @@ pub(crate) fn has_untracked_relink_inputs(tcx: TyCtxt<'_>, (): ()) -> bool {
         TargetTuple::TargetTuple(t) if t == "aarch64-apple-darwin" => Some(InlineAsmArch::AArch64),
         _ => None,
     };
-    rustc_codegen_ssa::base::has_untracked_relink_inputs(tcx, |kind| {
+    let mut saw_asm = false;
+    let untracked = rustc_codegen_ssa::base::has_untracked_relink_inputs(tcx, |kind| {
         let TerminatorKind::InlineAsm { asm_macro, template, operands, options, .. } = kind else {
             return false;
         };
+        saw_asm = true;
         *asm_macro != InlineAsmMacro::Asm
             || options.intersects(InlineAsmOptions::RAW | InlineAsmOptions::ATT_SYNTAX)
             || !arch.is_some_and(|arch| file_free_inline_asm(arch, template, operands))
-    })
+    });
+    if untracked {
+        return RelinkInputs::Rebuild;
+    }
+    if !saw_asm {
+        return RelinkInputs::Tracked;
+    }
+    // A later executable link reads the copy inside the rlib. Rebuilding that
+    // archive is what picks up a replaced or malformed native library.
+    if tcx.crate_types().iter().any(|ty| matches!(ty, CrateType::Rlib | CrateType::StaticLib))
+        && tcx
+            .native_libraries(LOCAL_CRATE)
+            .iter()
+            .any(|lib| matches!(lib.kind, NativeLibKind::Static { bundle: None | Some(true), .. }))
+    {
+        return RelinkInputs::Rebuild;
+    }
+    RelinkInputs::RecheckLink
 }
 
 /// Recognize complete instruction lines. Unknown assembly anywhere in the crate still forces a
