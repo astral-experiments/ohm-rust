@@ -1,0 +1,14 @@
+# Literal uv #21076 on released Ohm −18 and −21
+
+The first `cargo check -p uv-cli --locked --offline -j8` after the complete uncommitted edit took a median **2.998 s on −18 and 1.645 s on −21** across 12 fresh held-out triples. The median within-triple speedup was **1.824×**, with registered order-statistic bounds **[1.796, 1.890]** and one-sided exact sign-test p=1 against 2×. The primary direct 2× gate did not pass. The two independently warmed cohort medians were 1.857× / 1.808×. The two arm-order medians were 1.807× / 1.835×, with −21 before −18 in the first stratum.
+
+| Cohort | Triples | Shipped −18 | Matched #278 on | Shipped −21 | Paired −18/−21 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Excluded discovery | 6 | 3.126 s | 1.845 s | 1.681 s | 1.859× |
+| Held-out | 12 | 2.998 s | 1.822 s | 1.645 s | 1.824× |
+
+All arms used signed −18 Cargo and identical fixed-path environments. The release comparison covers the entire −21 compiler and standard library. The separate earlier matched off/on packet identifies the #278 toggle and reports its own six-triple discovery. Those older clocks do not enter this score. [uv edit](https://github.com/astral-sh/uv/pull/21076) · [Ohm rustc #278](https://github.com/astral-experiments/ohm-rust/pull/278) · [Ohm −21 release](https://github.com/astral-experiments/ohm/releases/tag/ohm-1.99.0-21)
+
+The literal parent is `9f5808695af96f92daf680ded0ebe939869241ed`, and the child is `79ef389e39e3b21a5443b7ab25e890f33b0dadf9`. Each phase warmed a fresh A history for each arm. Each of the six possible arm orders occurred once per phase. All 54 first edits rebuilt only uv-cli and renewed its rmeta. All 108 surrounding A/B no-ops had zero dirty units. Outside the timed commands, the compiler-specific linked parser rejected `uv version --bump foo` with exit 2. The parent emitted the invalid-component diagnostic and the edited parser also emitted usage and help. The signed −21 A/B witness used fresh targets after its discovery worker returned all six timing rows. The signed −18 and matched-on parser records are the literal source/driver observations reverified from the earlier packet.
+
+Run `python3 -ISB verify.py` in this directory with Git on PATH to replay the captured measurements without network access. The verifier checks the original authenticated source pack, release membership and actually loaded image identities, raw Cargo output, metadata renewal, order and seed, parser programs and diagnostics, and exact agreement with the original central score. Full SDK or program payloads are unnecessary for this audit. Raw subject-intake and plan hashes are retained in `provenance.json`; portable plans replace only original private SDK and source directory spellings. The nominal simultaneous coverage of the two direct order-statistic intervals is at least 95% under the registered rule. The two six-triple held-out blocks share this host and workload.

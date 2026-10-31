@@ -11,3 +11,7 @@ echo '86e9a725b263e6c777ff7bfe8738f96bbd81a1af6b584a121af755571c9b8773  literal-
 unzip -q literal-21076-matched278.zip
 python3 -IB matched278/verify.py
 ```
+
+## Held-out comparison with shipped −21
+
+With signed −18 Cargo fixed, the 12 held-out first edits took 2.998 s on −18 and 1.645 s on −21. The median paired speedup was 1.824× (registered interval 1.796–1.890×). All 12 improved, and none reached 2×. This measures every rustc and standard-library change between the releases. [Full comparison and offline verification instructions](RELEASE21.md) · [Raw evidence and verifier](literal-21076-release21.zip)
