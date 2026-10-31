@@ -265,7 +265,7 @@ fn musl_register_comments() {
         cmd
     };
     let compile = |case| compile_on(target, case);
-    let check = |rules: String, accepted| {
+    let check = |rules: String, accepted: bool| {
         for (marker, expected) in [
             ("/dev/null/ohm-recheck-dependent-links-v2:", accepted),
             ("/dev/null/ohm-untracked-relink-inputs:", !accepted),
