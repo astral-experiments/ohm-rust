@@ -219,7 +219,7 @@ jobs:
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 compiler/rustc_middle
-          --test-args 'aliases_preserve_allocation_identity check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges'
+          --test-args 'aliases_preserve_allocation_identity check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges lazy_worker_cache'
 
       - name: Run incremental directory copy tests
         run: >-
