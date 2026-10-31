@@ -383,6 +383,15 @@ rustc_queries! {
         }
     }
 
+    /// Checks item interfaces without running the body-checking pass.
+    query analysis_interfaces(key: ()) {
+        eval_always
+        desc {
+            "checking item interfaces of crate `{}`",
+            tcx.crate_name(LOCAL_CRATE),
+        }
+    }
+
     /// The root query triggering all analysis passes like typeck or borrowck.
     query analysis(key: ()) {
         eval_always
