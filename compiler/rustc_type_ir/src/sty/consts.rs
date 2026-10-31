@@ -148,10 +148,12 @@ impl<I: Interner> Const<I> {
 }
 
 impl<I: Interner> Flags for Const<I> {
+    #[inline]
     fn flags(&self) -> TypeFlags {
         self.0.get().flags
     }
 
+    #[inline]
     fn outer_exclusive_binder(&self) -> DebruijnIndex {
         self.0.get().outer_exclusive_binder
     }
