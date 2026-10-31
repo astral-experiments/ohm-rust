@@ -21,6 +21,7 @@ use rustc_span::{BytePos, FileName, Pos, Span, Symbol, sym};
 use smallvec::{SmallVec, smallvec};
 
 use crate::base::ExtCtxt;
+use crate::proc_macro::invalidate_cached_expansion;
 
 trait FromInternal<T> {
     fn from_internal(x: T) -> Self;
@@ -487,6 +488,7 @@ impl server::Server for Rustc<'_, '_> {
     }
 
     fn track_env_var(&mut self, var: &str, value: Option<&str>) {
+        invalidate_cached_expansion();
         self.ecx
             .sess
             .env_depinfo
@@ -495,6 +497,7 @@ impl server::Server for Rustc<'_, '_> {
     }
 
     fn track_path(&mut self, path: &str) {
+        invalidate_cached_expansion();
         self.ecx.sess.file_depinfo.borrow_mut().insert(Symbol::intern(path));
     }
 
@@ -598,6 +601,7 @@ impl server::Server for Rustc<'_, '_> {
     }
 
     fn ts_expand_expr(&mut self, stream: &Self::TokenStream) -> Result<Self::TokenStream, ()> {
+        invalidate_cached_expansion();
         // Parse the expression from our tokenstream.
         let expr = try {
             let mut p = Parser::new(self.psess(), stream.clone(), Some("proc_macro expand expr"));
@@ -696,6 +700,7 @@ impl server::Server for Rustc<'_, '_> {
     }
 
     fn span_debug(&mut self, span: Self::Span) -> String {
+        invalidate_cached_expansion();
         if self.ecx.ecfg.span_debug {
             format!("{span:?}")
         } else {
@@ -704,6 +709,7 @@ impl server::Server for Rustc<'_, '_> {
     }
 
     fn span_file(&mut self, span: Self::Span) -> String {
+        invalidate_cached_expansion();
         self.psess()
             .source_map()
             .lookup_char_pos(span.lo())
@@ -714,6 +720,7 @@ impl server::Server for Rustc<'_, '_> {
     }
 
     fn span_local_file(&mut self, span: Self::Span) -> Option<String> {
+        invalidate_cached_expansion();
         self.psess()
             .source_map()
             .lookup_char_pos(span.lo())
@@ -737,6 +744,7 @@ impl server::Server for Rustc<'_, '_> {
     }
 
     fn span_byte_range(&mut self, span: Self::Span) -> Range<usize> {
+        invalidate_cached_expansion();
         let source_map = self.psess().source_map();
 
         let relative_start_pos = source_map.lookup_byte_offset(span.lo()).pos;
@@ -753,11 +761,13 @@ impl server::Server for Rustc<'_, '_> {
     }
 
     fn span_line(&mut self, span: Self::Span) -> usize {
+        invalidate_cached_expansion();
         let loc = self.psess().source_map().lookup_char_pos(span.lo());
         loc.line
     }
 
     fn span_column(&mut self, span: Self::Span) -> usize {
+        invalidate_cached_expansion();
         let loc = self.psess().source_map().lookup_char_pos(span.lo());
         loc.col.to_usize() + 1
     }
@@ -814,6 +824,7 @@ impl server::Server for Rustc<'_, '_> {
     }
 
     fn span_source_text(&mut self, span: Self::Span) -> Option<String> {
+        invalidate_cached_expansion();
         self.psess().source_map().span_to_snippet(span).ok()
     }
 
@@ -842,6 +853,7 @@ impl server::Server for Rustc<'_, '_> {
     /// since we've loaded `my_proc_macro` from disk in order to execute it).
     /// In this way, we have obtained a span pointing into `my_proc_macro`
     fn span_save_span(&mut self, span: Self::Span) -> usize {
+        invalidate_cached_expansion();
         self.sess().save_proc_macro_span(span)
     }
 
