@@ -3111,6 +3111,9 @@ impl<'tcx> TyCtxt<'tcx> {
 }
 
 pub fn provide(providers: &mut Providers) {
+    providers.codegen_output_mode = |tcx, ()| {
+        (tcx.sess.opts.output_types.should_codegen(), tcx.sess.opts.output_types.should_link())
+    };
     providers.source_file_hash = |tcx, id| {
         let sm = tcx.sess.source_map();
         let file = sm.source_file_by_stable_id(id).expect("source input must be loaded");

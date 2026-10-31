@@ -428,7 +428,7 @@ impl<'a, 'tcx> TyDecoder<'tcx> for MetadataDecodeContext<'a, 'tcx> {
     {
         let tcx = self.tcx;
 
-        let key = ty::CReaderCacheKey { cnum: Some(self.cdata.cnum), pos: shorthand };
+        let key = ty::CReaderCacheKey { cnum: Some(self.cdata.cnum), cache_id: 0, pos: shorthand };
 
         if let Some(&ty) = tcx.ty_rcache.borrow().get(&key) {
             return ty;

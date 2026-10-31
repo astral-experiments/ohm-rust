@@ -909,7 +909,7 @@ fn provide_cstore_hooks(providers: &mut Providers) {
 }
 
 fn will_have_link_step(tcx: TyCtxt<'_>) -> bool {
-    if !tcx.sess.opts.output_types.should_link() {
+    if !tcx.codegen_output_mode(()).1 {
         return false;
     }
     tcx.crate_types().iter().any(|ct| {
