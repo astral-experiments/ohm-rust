@@ -218,12 +218,12 @@ impl<'tcx> MetadataEncoder<'tcx> for DefPathHashDefIdEncoder<'tcx> {
 
     #[inline]
     fn push_record_mode(&mut self, mode: RecordMode<'tcx>) {
-        self.reachability_graph_builder.record_mode.push(mode);
+        self.reachability_graph_builder.push_record_mode(mode);
     }
 
     #[inline]
     fn pop_record_mode(&mut self) {
-        self.reachability_graph_builder.record_mode.pop();
+        self.reachability_graph_builder.pop_record_mode();
     }
 }
 
