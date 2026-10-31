@@ -45,7 +45,6 @@ use rustc_session::output::{filename_for_input, invalid_output_for_target};
 use rustc_session::search_paths::PathKind;
 use rustc_session::{IncrCompSession, Session};
 use rustc_span::{DUMMY_SP, ErrorGuaranteed, ExpnKind, SourceFileHash, Span, Symbol, sym};
-use rustc_target::spec::TargetTuple;
 use rustc_trait_selection::{solve, traits};
 use tracing::{info, instrument};
 
@@ -712,12 +711,8 @@ pub fn write_dep_info_with_relink_inputs(
 
         let marker_name = match inputs {
             RelinkInputs::Tracked => None,
-            RelinkInputs::RecheckLink => match &sess.opts.target_triple {
-                TargetTuple::TargetTuple(t) if t == "aarch64-apple-darwin" => {
-                    Some("ohm-recheck-dependent-links-v2")
-                }
-                _ => Some("ohm-recheck-dependent-links"),
-            },
+            RelinkInputs::RecheckLink => Some("ohm-recheck-dependent-links"),
+            RelinkInputs::VerifyNativeLink => Some("ohm-recheck-dependent-links-v2"),
             RelinkInputs::Rebuild => Some("ohm-untracked-relink-inputs"),
         };
         let relink_marker = if let Some(name) = marker_name {

@@ -73,6 +73,19 @@ fn main() {
             );
         }
 
+        if target() == "aarch64-apple-darwin" {
+            let rules = rustc()
+                .input("inline.rs")
+                .crate_type("rlib")
+                .arg("-Zohm-check-relink-inputs")
+                .cfg("without_frame_pointer_move")
+                .emit("link,dep-info=-")
+                .run()
+                .stdout_utf8();
+            assert!(rules.lines().any(|line| line == "/dev/null/ohm-recheck-dependent-links:"));
+            assert!(!rules.contains(recheck_rule) && !rules.contains(MARKER), "{rules}");
+        }
+
         if target() == "x86_64-unknown-linux-gnu" {
             for cfg in ["div_immediate", "div_count"] {
                 let failure = rustc()

@@ -39,7 +39,7 @@ pub unsafe fn vector_barrier(
     value
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", not(without_frame_pointer_move)))]
 pub unsafe fn retain_autoreleased_marker() {
     core::arch::asm!("mov fp, fp", options(nomem, preserves_flags, nostack));
     #[cfg(frame_pointer_read)]
