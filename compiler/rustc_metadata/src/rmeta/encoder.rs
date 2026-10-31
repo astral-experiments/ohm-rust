@@ -32,7 +32,7 @@ use rustc_middle::metadata::ModChild;
 use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use rustc_middle::middle::dependency_format::Linkage;
 use rustc_middle::middle::exported_symbols::SymbolExportLevel;
-use rustc_middle::middle::privacy::EffectiveVisibilities;
+use rustc_middle::middle::privacy::{EffectiveVisibilities, Level as VisibilityLevel};
 use rustc_middle::mir::interpret;
 use rustc_middle::query::Providers;
 use rustc_middle::traits::specialization_graph;
@@ -131,21 +131,38 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
                 ecx.record_encoded_index(*trait_id);
             }
         }
+        let tcx = ecx.tcx;
+        let private_impls = Self::HASH_PUBLIC_API && can_isolate_private_trait_impls(tcx);
         let trait_impls: Vec<_> = trait_impls_map
             .iter()
             .map(|(&trait_id, impls)| TraitImpls {
                 trait_id: (trait_id.krate.as_u32(), Self::encoded_def_index(ecx.tcx, trait_id)),
-                impls: ecx.with_record_mode(RecordMode::From(trait_id.into()), |this| {
-                    let hashed = hashed_lazy_array!(this, impls, hcx, |(id, ty): &(
-                        LocalDefId,
-                        Option<SimplifiedType>
-                    )| (
-                        id.local_def_index,
-                        *ty
-                    ));
-                    hcx.add_node_hash(&trait_id.into(), hashed.hash.unwrap_or(Fingerprint::ZERO));
-                    hashed.value
-                }),
+                impls: {
+                    let private_impls =
+                        private_impls && !trait_id.is_local() && !tcx.trait_is_auto(trait_id);
+                    let mut hasher = PublicApiHasher::default();
+                    let array = ecx.lazy_array_with(impls, |ecx, &(id, simplified_ty)| {
+                        // Selection can enumerate all candidates, even without a known self type.
+                        hasher.digest(&(id, simplified_ty), hcx);
+                        let owner = if private_impls
+                            && let Some((self_id, header)) =
+                                private_trait_impl(tcx, id, simplified_ty)
+                        {
+                            // Keep every candidate's full header visible to selection and coherence.
+                            hasher.digest(header, hcx);
+                            ecx.spec_encoder_data.retain_public_hash(self_id.into());
+                            self_id
+                        } else {
+                            trait_id
+                        };
+                        ecx.with_record_mode(RecordMode::From(owner.into()), |ecx| {
+                            (id.local_def_index, simplified_ty).encode(ecx);
+                        });
+                    });
+                    let hash = hasher.finish(hcx).unwrap_or(Fingerprint::ZERO);
+                    hcx.add_node_hash(&trait_id.into(), hash);
+                    array
+                },
             })
             .collect();
         let encoded_trait_impls: LazyArray<TraitImpls<Self::EncodedDefIndex>> =
@@ -160,6 +177,7 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
     ) -> (CrateHashes, Option<ItemPublicHashes>);
 
     fn record_encoded_index(&mut self, _node: Node<'tcx>);
+    fn retain_public_hash(&mut self, _node: Node<'tcx>) {}
 
     /// Encodes nested metadata while applying the given reachability recording policy.
     #[inline(always)]
@@ -179,6 +197,59 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
 
     fn push_record_mode(&mut self, mode: RecordMode<'tcx>);
     fn pop_record_mode(&mut self);
+}
+
+/// Check metadata can isolate a private impl when neither an exported macro nor an opaque
+/// interface can make its self type usable downstream.
+fn can_isolate_private_trait_impls(tcx: TyCtxt<'_>) -> bool {
+    if tcx.codegen_output_mode(()).0
+        || tcx.sess.opts.unstable_opts.always_encode_mir
+        || tcx.sess.opts.actually_rustdoc
+    {
+        return false;
+    }
+    let items = tcx.hir_crate_items(());
+    let visibility = tcx.effective_visibilities(());
+    if items.free_items().any(|id| {
+        matches!(tcx.def_kind(id.owner_id), DefKind::Macro(_))
+            && visibility.public_at_level(id.owner_id.def_id).is_some()
+    }) {
+        return false;
+    }
+    // Privacy marks even a private function's RPIT hidden type as reachable for codegen.
+    // With no other opaque interfaces, the ordinary reachability level suffices for checking.
+    items.opaques().all(|id| {
+        matches!(tcx.hir_node_by_def_id(id).expect_opaque_ty().origin,
+            hir::OpaqueTyOrigin::FnReturn { parent, in_trait_or_impl: None }
+                if !visibility.is_public_at_level(parent, VisibilityLevel::ReachableThroughImplTrait))
+    })
+}
+
+/// A downstream caller can use the payload of a concrete impl only if it can acquire the
+/// nominal self type. Generic, conditional, auto and specialization candidates stay conservative.
+fn private_trait_impl<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    id: LocalDefId,
+    ty: Option<SimplifiedType>,
+) -> Option<(DefId, ty::ImplTraitHeader<'tcx>)> {
+    let SimplifiedType::Adt(self_id) = ty? else { return None };
+    let local = self_id.as_local()?;
+    let visibility = tcx.effective_visibilities(());
+    if visibility.is_reachable(local)
+        || visibility.is_reachable(id)
+        || tcx
+            .generics_of(id)
+            .own_params
+            .iter()
+            .any(|p| !matches!(p.kind, ty::GenericParamDefKind::Lifetime))
+        || tcx.defaultness(id).is_default()
+        || !tcx.explicit_clauses_of(id).clauses.is_empty()
+    {
+        return None;
+    }
+    let header = tcx.impl_trait_header(id);
+    (header.polarity == ty::ImplPolarity::Positive && header.constness == hir::Constness::NotConst)
+        .then_some((self_id, header))
 }
 
 #[derive(Default)]
@@ -217,6 +288,10 @@ impl<'tcx> MetadataEncoder<'tcx> for DefPathHashDefIdEncoder<'tcx> {
     }
 
     #[inline]
+    fn retain_public_hash(&mut self, node: Node<'tcx>) {
+        self.reachability_graph_builder.retain_public_hash(node);
+    }
+
     fn push_record_mode(&mut self, mode: RecordMode<'tcx>) {
         self.reachability_graph_builder.push_record_mode(mode);
     }
@@ -821,11 +896,19 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
     where
         T::Value<'tcx>: Encodable<Self>,
     {
+        self.lazy_array_with(values, |ecx, value| value.borrow().encode(ecx))
+    }
+
+    fn lazy_array_with<T, I: IntoIterator>(
+        &mut self,
+        values: I,
+        mut encode: impl FnMut(&mut Self, I::Item),
+    ) -> LazyArray<T> {
         let pos = NonZero::new(self.position()).unwrap();
 
         assert_eq!(self.lazy_state, LazyState::NoNode);
         self.lazy_state = LazyState::NodeStart(pos);
-        let len = values.into_iter().map(|value| value.borrow().encode(self)).count();
+        let len = values.into_iter().map(|value| encode(self, value)).count();
         self.lazy_state = LazyState::NoNode;
 
         assert!(pos.get() <= self.position());
