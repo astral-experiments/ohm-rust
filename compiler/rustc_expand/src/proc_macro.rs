@@ -69,26 +69,18 @@ impl base::AttrProcMacro for AttrProcMacro {
         annotation: TokenStream,
         annotated: TokenStream,
     ) -> Result<TokenStream, ErrorGuaranteed> {
-        let _timer = record_expand_proc_macro(ecx, "expand_proc_macro", span);
+        let _timer = record_expand_proc_macro(ecx, "expand_attr_proc_macro_outer", span);
 
-        let proc_macro_backtrace = ecx.ecfg.proc_macro_backtrace;
-        let strategy = exec_strategy(ecx.sess);
-        let server = proc_macro_server::Rustc::new(ecx);
-        self.client.run2(&strategy, server, annotation, annotated, proc_macro_backtrace).map_err(
-            |e| {
-                ecx.dcx().emit_err(diagnostics::CustomAttributePanicked {
-                    span,
-                    message: e
-                        .into_string()
-                        .map(|message| diagnostics::CustomAttributePanickedHelp { message }),
-                })
-            },
-        )
+        if ecx.sess.opts.incremental.is_some() && ecx.sess.opts.unstable_opts.cache_proc_macros {
+            (*EXPAND_ATTRIBUTE_MACRO_CACHED)(annotation, annotated, ecx, self.client)
+        } else {
+            expand_attribute_macro(span, annotation, annotated, ecx, self.client)
+        }
     }
 }
 
 pub struct DeriveProcMacro {
-    pub client: DeriveClient,
+    pub client: ProcMacroClient,
 }
 
 impl MultiItemModifier for DeriveProcMacro {
@@ -156,13 +148,35 @@ impl MultiItemModifier for DeriveProcMacro {
     }
 }
 
-type DeriveClient = pm::bridge::client::Client;
+type ProcMacroClient = pm::bridge::client::Client;
+
+/// Execute the attribute client, retaining the ordinary panic diagnostic on a cache miss.
+pub fn expand_attribute_macro(
+    span: Span,
+    annotation: TokenStream,
+    annotated: TokenStream,
+    ecx: &mut ExtCtxt<'_>,
+    client: ProcMacroClient,
+) -> Result<TokenStream, ErrorGuaranteed> {
+    let _timer = record_expand_proc_macro(ecx, "expand_proc_macro", span);
+    let proc_macro_backtrace = ecx.ecfg.proc_macro_backtrace;
+    let strategy = exec_strategy(ecx.sess);
+    let server = proc_macro_server::Rustc::new(ecx);
+    client.run2(&strategy, server, annotation, annotated, proc_macro_backtrace).map_err(|e| {
+        ecx.dcx().emit_err(diagnostics::CustomAttributePanicked {
+            span,
+            message: e
+                .into_string()
+                .map(|message| diagnostics::CustomAttributePanickedHelp { message }),
+        })
+    })
+}
 
 pub fn expand_derive_macro(
     invoc_id: LocalExpnId,
     input: TokenStream,
     ecx: &mut ExtCtxt<'_>,
-    client: DeriveClient,
+    client: ProcMacroClient,
 ) -> Result<TokenStream, ()> {
     let _timer =
         ecx.sess.prof.generic_activity_with_arg_recorder("expand_proc_macro", |recorder| {
@@ -195,7 +209,7 @@ pub fn expand_derive_macro(
 }
 
 pub static EXPAND_DERIVE_MACRO_CACHED: AtomicRef<
-    fn(LocalExpnId, TokenStream, &mut ExtCtxt<'_>, DeriveClient) -> Result<TokenStream, ()>,
+    fn(LocalExpnId, TokenStream, &mut ExtCtxt<'_>, ProcMacroClient) -> Result<TokenStream, ()>,
 > = AtomicRef::new(
     &(|_, _, _: &mut ExtCtxt<'_>, _| -> Result<_, _> {
         panic!(
@@ -203,3 +217,23 @@ pub static EXPAND_DERIVE_MACRO_CACHED: AtomicRef<
         )
     } as _),
 );
+
+/// Runs an attribute expansion through the incremental query system.
+pub static EXPAND_ATTRIBUTE_MACRO_CACHED: AtomicRef<
+    fn(
+        TokenStream,
+        TokenStream,
+        &mut ExtCtxt<'_>,
+        ProcMacroClient,
+    ) -> Result<TokenStream, ErrorGuaranteed>,
+> = AtomicRef::new(
+    &(|_, _, _: &mut ExtCtxt<'_>, _| -> Result<_, _> {
+        panic!("attribute proc macro cache callback was not set up")
+    } as _),
+);
+
+pub static INVALIDATE_CACHED_EXPANSION: AtomicRef<fn()> = AtomicRef::new(&((|| {}) as _));
+
+pub(super) fn invalidate_cached_expansion() {
+    (*INVALIDATE_CACHED_EXPANSION)();
+}
