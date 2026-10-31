@@ -611,8 +611,9 @@ impl<'a, 'tcx> WfPredicates<'a, 'tcx> {
         let mut obligations = PredicateObligations::with_capacity(predicate_count);
         for (origin_def_id, predicates) in ancestors.into_iter().rev() {
             for &(predicate, span) in predicates {
-                let predicate =
-                    ty::EarlyBinder::bind(tcx, predicate).instantiate(tcx, args).skip_norm_wip();
+                let predicate = tcx
+                    .instantiate_clause(ty::EarlyBinder::bind(tcx, predicate), args)
+                    .skip_norm_wip();
                 let cause = self.cause(ObligationCauseCode::WhereClause(origin_def_id, span));
                 let obligation = traits::Obligation::with_depth(
                     tcx,
