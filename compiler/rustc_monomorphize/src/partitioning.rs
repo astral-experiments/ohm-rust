@@ -385,6 +385,23 @@ fn merge_codegen_units<'tcx>(
         codegen_units.extend(buckets.into_iter().flatten());
     }
 
+    let use_block_counts = cx.tcx.sess.opts.incremental.is_none()
+        && max_codegen_units > 1
+        && codegen_units.len() > max_codegen_units;
+    if use_block_counts {
+        // Use MIR blocks to balance backend work, including the cost of duplicated inline bodies.
+        // These estimates are local to the main merge loop and are restored below.
+        for cgu in codegen_units.iter_mut() {
+            for (item, data) in cgu.items_mut() {
+                data.size_estimate = match item {
+                    MonoItem::Fn(instance) => cx.tcx.instance_mir(instance.def).basic_blocks.len(),
+                    MonoItem::Static(_) | MonoItem::GlobalAsm(_) => 1,
+                };
+            }
+            cgu.compute_size_estimate();
+        }
+    }
+
     while codegen_units.len() > max_codegen_units {
         // Sort small CGUs to the back.
         codegen_units.sort_by_key(|cgu| cmp::Reverse(cgu.size_estimate()));
@@ -422,6 +439,16 @@ fn merge_codegen_units<'tcx>(
         // `cgu_src` before.
         let mut consumed_cgu_names = cgu_contents.remove(&cgu_src.name()).unwrap();
         cgu_contents.get_mut(&cgu_dst.name()).unwrap().append(&mut consumed_cgu_names);
+    }
+
+    if use_block_counts {
+        // Keep the minimum-size policy and later consumers in their original statement units.
+        for cgu in codegen_units.iter_mut() {
+            for (item, data) in cgu.items_mut() {
+                data.size_estimate = item.size_estimate(cx.tcx);
+            }
+            cgu.compute_size_estimate();
+        }
     }
 
     // Having multiple CGUs can drastically speed up compilation. But for
