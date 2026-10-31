@@ -27,6 +27,18 @@ pub fn barrier(mut value: usize) -> usize {
     value
 }
 
+#[cfg(target_arch = "aarch64")]
+pub unsafe fn vector_barrier(
+    mut value: core::arch::aarch64::int32x4_t,
+) -> core::arch::aarch64::int32x4_t {
+    core::arch::asm!("/*{:v}*/", inout(vreg) value);
+    #[cfg(vector_modifier)]
+    core::arch::asm!("/*{:q}*/", inout(vreg) value);
+    #[cfg(vector_directive)]
+    core::arch::asm!("/*{:v}*/", ".incbin \"payload.bin\"", inout(vreg) value);
+    value
+}
+
 #[cfg(target_arch = "x86_64")]
 pub unsafe fn divide_wide(lo: usize, hi: usize, divisor: usize) -> (usize, usize) {
     let (quotient, remainder);
