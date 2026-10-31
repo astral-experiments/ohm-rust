@@ -298,6 +298,7 @@ pub(crate) struct CrateRoot {
     stable_order_of_exportable_impls: LazyArray<(DefIndex, usize)>,
     exported_non_generic_symbols: LazyArray<(ExportedSymbol<'static>, SymbolExportInfo)>,
     exported_generic_symbols: LazyArray<(ExportedSymbol<'static>, SymbolExportInfo)>,
+    has_generic_symbols_for_c_linker: bool,
 
     tables: LazyTables,
 
