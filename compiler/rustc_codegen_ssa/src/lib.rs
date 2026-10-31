@@ -348,6 +348,28 @@ const RLINK_VERSION: u32 = 1;
 const RLINK_MAGIC: &[u8] = b"rustlink";
 
 impl CompiledModules {
+    /// Keep writes through the objects named by an `.rlink` out of the incremental cache.
+    fn isolate_relink_objects(&self) -> io::Result<()> {
+        for module in &self.modules {
+            for object in [&module.object, &module.global_asm_object, &module.dwarf_object]
+                .into_iter()
+                .flatten()
+            {
+                #[cfg(unix)]
+                if std::os::unix::fs::MetadataExt::nlink(&object.metadata()?) == 1 {
+                    continue;
+                }
+
+                // Replacing the directory entry leaves every incremental hard link intact.
+                let directory = object.parent().unwrap_or_else(|| Path::new("."));
+                let copy = tempfile::NamedTempFile::new_in(directory)?.into_temp_path();
+                std::fs::copy(object, &copy)?;
+                copy.persist(object)?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn serialize_rlink(
         sess: &Session,
         rlink_file: &Path,
@@ -356,6 +378,11 @@ impl CompiledModules {
         metadata: &EncodedMetadata,
         outputs: &OutputFilenames,
     ) -> Result<usize, io::Error> {
+        if sess.opts.incremental.is_some()
+            && !sess.opts.unstable_opts.disable_incr_comp_backend_caching
+        {
+            compiled_modules.isolate_relink_objects()?;
+        }
         let mut encoder = FileEncoder::new(rlink_file)?;
         encoder.emit_raw_bytes(RLINK_MAGIC);
         // `emit_raw_bytes` is used to make sure that the version representation does not depend on
