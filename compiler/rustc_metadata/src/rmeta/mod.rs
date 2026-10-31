@@ -499,7 +499,9 @@ define_tables! {
     def_kind: Table<RDRHashAll, DefIndex, DefKind>,
     visibility: Table<RDRHashAll, DefIndex, LazyValue<ty::Visibility<DefIndex>>>,
     def_span: Table<RDRHashNone, DefIndex, LazyValue<Span>>,
-    def_ident_span: Table<RDRHashNone, DefIndex, LazyValue<Span>>,
+    // The downstream module_children query reconstructs and hashes each non-reexported Ident
+    // from this span, even when compiling metadata without codegen.
+    def_ident_span: Table<RDRHashAll, DefIndex, LazyValue<Span>>,
     lookup_stability: Table<RDRHashAll, DefIndex, LazyValue<hir::Stability>>,
     lookup_const_stability: Table<RDRHashAll, DefIndex, LazyValue<hir::ConstStability>>,
     lookup_default_body_stability: Table<RDRHashAll, DefIndex, LazyValue<hir::DefaultBodyStability>>,
