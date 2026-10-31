@@ -45,6 +45,17 @@ pub struct SymbolExportInfo {
     pub rustc_std_internal_symbol: bool,
 }
 
+impl SymbolExportInfo {
+    /// Symbols retained even above the consumer's export threshold.
+    pub fn requires_linker_retention(self) -> bool {
+        self.used || self.rustc_std_internal_symbol
+    }
+
+    pub fn is_relevant_for_c_linker(self) -> bool {
+        self.level.is_below_threshold(SymbolExportLevel::C) || self.requires_linker_retention()
+    }
+}
+
 #[derive(Eq, PartialEq, Debug, Copy, Clone, TyEncodable, TyDecodable, StableHash)]
 pub enum ExportedSymbol<'tcx> {
     NonGeneric(DefId),
@@ -90,3 +101,6 @@ pub fn metadata_symbol_name(tcx: TyCtxt<'_>) -> String {
         tcx.stable_crate_id(LOCAL_CRATE),
     )
 }
+
+#[cfg(test)]
+mod tests;
