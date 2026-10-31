@@ -86,12 +86,15 @@ fn rejects_swapped_object_contents_with_the_same_session_and_filename() {
         fs::write(dir.join(&saved), bad).unwrap();
         assert!(objects::restore(&dir, &dst, &saved).is_err());
     }
-    // A complete raw file can coexist with a stream after an interrupted unlink.
-    fs::write(dir.join("a.o"), object(17)).unwrap();
+    fs::write(dir.join(&saved), original).unwrap();
     let dst = tmp.path().join("interrupted");
     fs::create_dir(&dst).unwrap();
-    assert!(objects::restore(&dir, &dst, &saved).unwrap());
-    assert!(!dst.join("a.o").exists());
+    for value in [17, 29] {
+        fs::write(dir.join("a.o"), object(value)).unwrap();
+        let err = objects::restore(&dir, &dst, &saved).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(!dst.join("a.o").exists());
+    }
 }
 
 fn fixture(dir: &Path) -> Vec<Vec<u8>> {

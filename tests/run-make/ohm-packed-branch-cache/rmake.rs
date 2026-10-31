@@ -141,25 +141,34 @@ fn main() {
     );
 
     #[cfg(target_os = "linux")]
-    {
-        compile("cache", Some(true));
+    for cache in ["damaged-object", "conflicting-object"] {
+        switch("a", 17);
+        compile(cache, Some(true));
+        let [a]: [_; 1] = sessions_in(cache).try_into().unwrap();
         switch("b", 29);
-        compile("cache", Some(true));
-        let saved = sessions()
+        compile(cache, Some(true));
+        let saved = sessions_in(cache)
             .iter()
             .flat_map(|dir| fs::read_dir(dir).unwrap())
             .map(|e| e.unwrap().path())
             .find(|p| p.file_name().unwrap().as_encoded_bytes().starts_with(b"ohm-packed-object-"))
             .unwrap();
-        switch("a", 17);
-        compile("cache", Some(true));
-        run("program").assert_stdout_equals("17");
-        fs::write(&saved, b"invalid object stream").unwrap();
+        if cache == "conflicting-object" {
+            let packed = saved.file_name().unwrap().to_str().unwrap();
+            let object = packed.strip_prefix("ohm-packed-object-").unwrap();
+            let (raw, _) = object.split_once('-').unwrap();
+            fs::copy(a.join(raw), saved.with_file_name(raw)).unwrap();
+        } else {
+            fs::write(&saved, b"invalid object stream").unwrap();
+        }
         fs::write(saved.parent().unwrap().join("bad-object-sentinel"), b"discard").unwrap();
+        switch("a", 17);
+        compile(cache, Some(true));
+        run("program").assert_stdout_equals("17");
         switch("b", 29);
-        compile("cache", Some(true));
+        compile(cache, Some(true));
         run("program").assert_stdout_equals("29");
-        assert!(sessions().iter().all(|dir| !dir.join("bad-object-sentinel").exists()));
+        assert!(sessions_in(cache).iter().all(|dir| !dir.join("bad-object-sentinel").exists()));
         assert_eq!(fs::read("program").unwrap(), repaired);
     }
 }

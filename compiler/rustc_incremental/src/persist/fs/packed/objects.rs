@@ -105,9 +105,9 @@ pub(crate) fn restore(source: &Path, target: &Path, file_name: &OsStr) -> io::Re
         .and_then(|n| n.strip_prefix(PREFIX)?.split_once('-'))
         .filter(|(name, _)| object_name(name))
         .ok_or_else(invalid)?;
-    // If publication was interrupted before removing the raw name, copy it normally.
+    // An interrupted unlink or an older compiler can leave both names. The raw
+    // object may belong to a different build, so discard this session.
     match fs::symlink_metadata(source.join(name)) {
-        Ok(meta) if meta.is_file() => return Ok(true),
         Ok(_) => return Err(invalid()),
         Err(err) if err.kind() == io::ErrorKind::NotFound => {}
         Err(err) => return Err(err),
