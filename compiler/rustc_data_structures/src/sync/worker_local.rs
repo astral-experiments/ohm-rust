@@ -99,6 +99,7 @@ impl Registry {
     }
 
     /// Gets the identifier of this registry.
+    #[inline]
     fn id(&self) -> RegistryId {
         RegistryId(&*self.0)
     }
