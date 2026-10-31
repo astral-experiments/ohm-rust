@@ -26,8 +26,8 @@ use crate::diagnostics;
 const FILE_MAGIC: &[u8] = b"RSIC";
 
 /// Change this if the header format changes.
-// Older metadata work products omit the checksums of their serialized source files.
-const HEADER_FORMAT_VERSION: u16 = 2;
+// Older proc-macro queries do not replay their virtual source files.
+const HEADER_FORMAT_VERSION: u16 = 3;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);
