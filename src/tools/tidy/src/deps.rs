@@ -330,6 +330,7 @@ const PERMITTED_RUSTC_DEPENDENCIES: &[&str] = &[
     "cc",
     "cfg-if",
     "cfg_aliases",
+    "cmake",
     "colorchoice",
     "constant_time_eq",
     "cpufeatures",

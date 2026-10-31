@@ -9,6 +9,7 @@ use ignore::DirEntry;
 pub fn filter_dirs(path: &Path) -> bool {
     // bootstrap/etc
     let skip = [
+        "compiler/rustc/mimalloc",
         "tidy-test-file",
         "compiler/rustc_codegen_cranelift",
         "compiler/rustc_codegen_gcc",
