@@ -504,6 +504,7 @@ provide! { tcx, def_id, other, cdata,
     }
     exported_non_generic_symbols => { cdata.exported_non_generic_symbols(tcx) }
     exported_generic_symbols => { cdata.exported_generic_symbols(tcx) }
+    has_generic_symbols_for_c_linker => { cdata.root.has_generic_symbols_for_c_linker }
 
     crate_extern_paths => { cdata.source().paths().cloned().collect() }
     expn_that_defined => { cdata.get_expn_that_defined(tcx, def_id.index) }

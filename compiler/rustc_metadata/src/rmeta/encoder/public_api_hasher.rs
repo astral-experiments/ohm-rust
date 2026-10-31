@@ -567,6 +567,7 @@ pub(crate) struct HashableCrateRoot {
     // therefore belongs in the public hash even when a private body produced an instance.
     pub(crate) exported_generic_symbols:
         Hashed<LazyArray<(ExportedSymbol<'static>, SymbolExportInfo)>>,
+    pub(crate) has_generic_symbols_for_c_linker: bool,
 
     // =========== not needed in the public hash ==============
     // proc macro, ignored. We use the full crate hash as public hash for proc macros
@@ -685,6 +686,7 @@ impl HashableCrateRoot {
             stable_order_of_exportable_impls: self.stable_order_of_exportable_impls.value,
             exported_non_generic_symbols: self.exported_non_generic_symbols.0,
             exported_generic_symbols: self.exported_generic_symbols.value,
+            has_generic_symbols_for_c_linker: self.has_generic_symbols_for_c_linker,
 
             syntax_contexts: self.syntax_contexts.0,
             expn_data: self.expn_data.0,

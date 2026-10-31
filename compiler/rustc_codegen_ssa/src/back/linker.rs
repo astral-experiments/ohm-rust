@@ -1621,6 +1621,7 @@ fn for_each_exported_symbols_include_dep<'tcx>(
 ) {
     let formats = tcx.dependency_formats(());
     let deps = &formats[&crate_type];
+    let export_threshold = symbol_export::crates_export_threshold(&[crate_type]);
 
     for (cnum, dep_format) in deps.iter_enumerated() {
         // For each dependency that we are linking to statically ...
@@ -1628,8 +1629,13 @@ fn for_each_exported_symbols_include_dep<'tcx>(
             for &(symbol, info) in tcx.exported_non_generic_symbols(cnum).iter() {
                 callback(symbol, info, cnum);
             }
-            for &(symbol, info) in tcx.exported_generic_symbols(cnum).iter() {
-                callback(symbol, info, cnum);
+            if export_threshold == SymbolExportLevel::Rust
+                || cnum == LOCAL_CRATE
+                || tcx.has_generic_symbols_for_c_linker(cnum)
+            {
+                for &(symbol, info) in tcx.exported_generic_symbols(cnum).iter() {
+                    callback(symbol, info, cnum);
+                }
             }
         }
     }
@@ -1777,8 +1783,7 @@ pub(crate) fn linked_symbols(
     let export_threshold = symbol_export::crates_export_threshold(&[crate_type]);
     for_each_exported_symbols_include_dep(tcx, crate_type, |symbol, info, cnum| {
         if info.level.is_below_threshold(export_threshold) && !tcx.is_compiler_builtins(cnum)
-            || info.used
-            || info.rustc_std_internal_symbol
+            || info.requires_linker_retention()
         {
             symbols.push((
                 symbol_export::linking_symbol_name_for_instance_in_crate(
