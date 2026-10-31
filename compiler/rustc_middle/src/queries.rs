@@ -2597,6 +2597,11 @@ rustc_queries! {
         desc { "collect_and_partition_mono_items" }
     }
 
+    query ohm_untracked_relink_inputs(_: ()) -> bool {
+        eval_always
+        desc { "checking whether saved codegen may have untracked assembler inputs" }
+    }
+
     query is_codegened_item(def_id: DefId) -> bool {
         desc { "determining whether `{}` needs codegen", tcx.def_path_str(def_id) }
     }

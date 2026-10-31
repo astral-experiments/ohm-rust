@@ -298,7 +298,17 @@ pub fn run_compiler(at_args: &[String], callbacks: &mut (dyn Callbacks + Send)) 
                 return None;
             }
 
-            passes::write_dep_info(tcx);
+            let output_paths = passes::prepare_outputs(tcx);
+            // Checked native outputs need the set of monomorphized items. Other modes
+            // can publish their dependencies as soon as expansion finishes.
+            let check_relink_inputs = sess.opts.unstable_opts.ohm_check_relink_inputs
+                && sess.opts.output_types.contains_key(&OutputType::DepInfo)
+                && sess.opts.output_types.should_codegen()
+                && !sess.opts.unstable_opts.no_codegen
+                && !sess.opts.unstable_opts.no_analysis;
+            if !check_relink_inputs {
+                passes::write_dep_info_for_outputs(tcx, &output_paths, false);
+            }
 
             passes::write_interface(tcx);
 
@@ -313,13 +323,30 @@ pub fn run_compiler(at_args: &[String], callbacks: &mut (dyn Callbacks + Send)) 
             }
 
             let mut early_metadata = rustc_metadata::fs::write_early_metadata(tcx);
-            tcx.ensure_ok().analysis(());
-
-            if let Some(metrics_dir) = &sess.opts.unstable_opts.metrics_dir {
-                dump_feature_usage_metrics(tcx, metrics_dir);
-            }
-
-            if callbacks.after_analysis(compiler, tcx) == Compilation::Stop {
+            let mut analyze = || {
+                tcx.ensure_ok().analysis(());
+                if let Some(metrics_dir) = &sess.opts.unstable_opts.metrics_dir {
+                    dump_feature_usage_metrics(tcx, metrics_dir);
+                }
+                callbacks.after_analysis(compiler, tcx)
+            };
+            let after_analysis = if check_relink_inputs {
+                // If analysis or monomorphization aborts, assembler inputs may be unknown.
+                let mut untracked = true;
+                let result = catch_fatal_errors(|| {
+                    let after_analysis = analyze();
+                    untracked = after_analysis == Compilation::Continue
+                        && (tcx.dcx().has_errors().is_some()
+                            || codegen_backend.name() != "llvm"
+                            || tcx.ohm_untracked_relink_inputs(()));
+                    after_analysis
+                });
+                passes::write_dep_info_for_outputs(tcx, &output_paths, untracked);
+                result.unwrap_or_else(|fatal| fatal.raise())
+            } else {
+                analyze()
+            };
+            if after_analysis == Compilation::Stop {
                 return None;
             }
 

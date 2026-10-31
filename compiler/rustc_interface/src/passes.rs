@@ -581,13 +581,19 @@ fn escape_dep_env(symbol: Symbol) -> String {
     escaped
 }
 
-fn write_out_deps(tcx: TyCtxt<'_>, outputs: &OutputFilenames, out_filenames: &[PathBuf]) {
+/// Writes the dependency rules for the output paths checked by `prepare_outputs`.
+pub fn write_dep_info_for_outputs(
+    tcx: TyCtxt<'_>,
+    out_filenames: &[PathBuf],
+    untracked_relink_inputs: bool,
+) {
     // Write out dependency rules to the dep-info file if requested
     let sess = tcx.sess;
     if !sess.opts.output_types.contains_key(&OutputType::DepInfo) {
         return;
     }
-    let deps_output = outputs.path(OutputType::DepInfo);
+    let _timer = sess.timer("write_dep_info");
+    let deps_output = tcx.output_filenames(()).path(OutputType::DepInfo);
     let deps_filename = deps_output.as_path();
 
     let result = try {
@@ -691,6 +697,22 @@ fn write_out_deps(tcx: TyCtxt<'_>, outputs: &OutputFilenames, out_filenames: &[P
             files.insert(name, (0, None));
         }
 
+        let relink_marker = if untracked_relink_inputs {
+            // A non-directory cannot have children. The Unix null device also avoids
+            // introducing Make metacharacters from the depfile or executable name.
+            let parent = if cfg!(unix) {
+                Cow::Borrowed(Path::new("/dev/null"))
+            } else {
+                match &deps_output {
+                    OutFileName::Real(path) => Cow::Borrowed(path.as_path()),
+                    OutFileName::Stdout => Cow::Owned(env::current_exe()?),
+                }
+            };
+            Some(normalize_path(parent.join("ohm-untracked-relink-inputs")))
+        } else {
+            None
+        };
+
         if sess.proc_macro_observed_foreign_bytes.load(Ordering::Relaxed)
             && CStore::from_tcx(tcx).has_public_api_hash_dependencies()
             && let OutFileName::Real(path) = &deps_output
@@ -715,19 +737,35 @@ fn write_out_deps(tcx: TyCtxt<'_>, outputs: &OutputFilenames, out_filenames: &[P
             {
                 writeln!(file, "# ohm-raw-checksum-paths-v2")?;
             }
+            let inputs = files.keys().map(String::as_str).intersperse(" ").collect::<String>();
+            let mut depfile_target = None;
+            // Make treats spaces as separators and a Unix filename may contain the
+            // colon that Cargo uses to find the first rule's prerequisites.
+            let target = |path: &Path| {
+                let name = escape_dep_filename(&path.to_string_lossy());
+                if cfg!(unix) { name.replace(':', r"\:") } else { name }
+            };
             for path in out_filenames {
-                writeln!(
-                    file,
-                    "{}: {}\n",
-                    path.display(),
-                    files.keys().map(String::as_str).intersperse(" ").collect::<String>()
-                )?;
+                if let Some(marker) = &relink_marker {
+                    if !deps_output.is_stdout() && path == deps_filename {
+                        // Make restarts if it remakes an included depfile. Keep its rule
+                        // after the full input list that Cargo reads from the first rule.
+                        depfile_target = Some(path);
+                        continue;
+                    }
+                    writeln!(file, "{}: {inputs} {marker}\n", target(path))?;
+                } else {
+                    writeln!(file, "{}: {inputs}\n", path.display())?;
+                }
+            }
+            if let Some(path) = depfile_target {
+                writeln!(file, "{}: {inputs}\n", target(path))?;
             }
 
             // Emit a fake target for each input file to the compilation. This
             // prevents `make` from spitting out an error if a file is later
             // deleted. For more info see #28735
-            for path in files.keys() {
+            for path in files.keys().chain(relink_marker.iter()) {
                 writeln!(file, "{path}:")?;
             }
 
@@ -829,13 +867,17 @@ fn resolver_for_lowering_raw<'tcx>(
 }
 
 pub fn write_dep_info(tcx: TyCtxt<'_>) {
+    write_dep_info_for_outputs(tcx, &prepare_outputs(tcx), false);
+}
+
+/// Checks for conflicting output paths and creates the requested output directories.
+pub fn prepare_outputs(tcx: TyCtxt<'_>) -> Vec<PathBuf> {
     // Make sure name resolution and macro expansion is run for
     // the side-effect of providing a complete set of all
     // accessed files and env vars.
     let _ = tcx.resolver_for_lowering();
 
     let sess = tcx.sess;
-    let _timer = sess.timer("write_dep_info");
     let crate_name = tcx.crate_name(LOCAL_CRATE);
 
     let outputs = tcx.output_filenames(());
@@ -864,8 +906,6 @@ pub fn write_dep_info(tcx: TyCtxt<'_>) {
         }
     }
 
-    write_out_deps(tcx, outputs, &output_paths);
-
     let only_dep_info = sess.opts.output_types.contains_key(&OutputType::DepInfo)
         && sess.opts.output_types.len() == 1;
 
@@ -876,6 +916,7 @@ pub fn write_dep_info(tcx: TyCtxt<'_>) {
             }
         }
     }
+    output_paths
 }
 
 pub fn write_interface<'tcx>(tcx: TyCtxt<'tcx>) {
