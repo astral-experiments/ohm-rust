@@ -407,6 +407,12 @@ impl<'tcx> QueryKey for (LocalExpnId, &'tcx TokenStream) {
     }
 }
 
+impl<'tcx> QueryKey for (LocalExpnId, &'tcx TokenStream, &'tcx TokenStream) {
+    fn default_span(&self, _tcx: TyCtxt<'_>) -> Span {
+        self.0.expn_data().call_site
+    }
+}
+
 impl<'tcx> QueryKey for (ValidityRequirement, ty::PseudoCanonicalInput<'tcx, Ty<'tcx>>) {
     // Just forward to `Ty<'tcx>`
 

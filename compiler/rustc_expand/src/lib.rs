@@ -25,5 +25,6 @@ pub mod module;
 pub mod proc_macro;
 
 pub fn provide(providers: &mut rustc_middle::query::Providers) {
+    providers.attribute_macro_expansion = proc_macro::provide_attribute_macro_expansion;
     providers.derive_macro_expansion = proc_macro::provide_derive_macro_expansion;
 }
