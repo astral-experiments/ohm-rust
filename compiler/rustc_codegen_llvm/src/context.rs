@@ -184,6 +184,7 @@ fn to_llvm_tls_model(tls_model: TlsModel) -> llvm::ThreadLocalMode {
 pub(crate) unsafe fn create_module<'ll>(
     tcx: TyCtxt<'_>,
     llcx: &'ll llvm::Context,
+    target_machine: Option<&llvm::TargetMachine>,
     mod_name: &str,
 ) -> &'ll llvm::Module {
     let sess = tcx.sess;
@@ -231,9 +232,17 @@ pub(crate) unsafe fn create_module<'ll>(
 
     // Ensure the data-layout values hardcoded remain the defaults.
     {
-        let tm = crate::back::write::create_informational_target_machine(sess);
+        let informational_target_machine;
+        let target_machine = match target_machine {
+            Some(target_machine) => target_machine,
+            None => {
+                informational_target_machine =
+                    crate::back::write::create_informational_target_machine(sess);
+                informational_target_machine.raw()
+            }
+        };
         unsafe {
-            llvm::LLVMRustSetDataLayoutFromTargetMachine(llmod, tm.raw());
+            llvm::LLVMRustSetDataLayoutFromTargetMachine(llmod, target_machine);
         }
 
         let llvm_data_layout = unsafe { llvm::LLVMGetDataLayoutStr(llmod) };
