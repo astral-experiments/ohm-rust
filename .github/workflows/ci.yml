@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [namespace-profile-ubuntu-24-04-16]
+        runner: [namespace-profile-ubuntu-24-04-16, namespace-profile-macos-15]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -26,7 +26,7 @@ jobs:
           elif ! command -v ninja >/dev/null; then
             HOMEBREW_NO_AUTO_UPDATE=1 brew install ninja
           fi
-      - name: Build both pinned compilers and standard libraries
+      - name: Build the revised compiler and standard library
         run: |
           cp .github/ohm-qa-22/sdk-build.py "$RUNNER_TEMP/build-ohm22.py"
           python3 "$RUNNER_TEMP/build-ohm22.py"
@@ -34,14 +34,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: qa22-sdk-proof-${{ runner.os }}-${{ github.run_attempt }}
+          name: qa22-final-proof-${{ runner.os }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ohm22-sdk/evidence/
           if-no-files-found: warn
           retention-days: 7
-      - name: Upload the two compiler SDKs
+      - name: Upload the revised compiler SDK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: qa22-sdk-${{ runner.os }}-${{ github.run_attempt }}
+          name: qa22-final-${{ runner.os }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ohm22-sdk/sdk.tar.gz
           compression-level: 0
           if-no-files-found: error
