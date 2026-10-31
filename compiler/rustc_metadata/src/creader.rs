@@ -580,6 +580,10 @@ impl CStore {
     /// `private-dep` is none during loading. This is equivalent to the scenario where the
     /// command parameter is set to `public-dependency`
     fn is_private_dep(&self, externs: &Externs, name: Symbol, private_dep: Option<bool>) -> bool {
+        if private_dep == Some(false) {
+            return false;
+        }
+
         let extern_private = externs.get(name.as_str()).map(|e| e.is_private_dep);
         match (extern_private, private_dep) {
             // Explicit non-private via `--extern`, explicit non-private from metadata, or
