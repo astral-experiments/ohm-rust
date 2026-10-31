@@ -5,6 +5,18 @@ fn node(kind: DepKind, first: u64, second: u64) -> DepNode {
 }
 
 #[test]
+fn short_packed_edge_copies_preserve_the_existing_prefix_and_order() {
+    let bytes = [0x80, 3, 0, 0xf0, 5, 1, 6, 255];
+    let mut actual = vec![0x7f];
+    let mut expected = actual.clone();
+    for end in 0..=bytes.len() {
+        append_packed_edges(&mut actual, &bytes[..end]);
+        expected.extend_from_slice(&bytes[..end]);
+        assert_eq!(actual, expected);
+    }
+}
+
+#[test]
 fn edge_targets_stop_at_each_list_boundary() {
     let mut graph = SerializedDepGraph::default();
     let values = [0x0403_0201u32, 0x0807_0605];

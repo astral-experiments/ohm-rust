@@ -323,6 +323,19 @@ fn mask(bits: usize) -> usize {
     usize::MAX >> ((size_of::<usize>() * 8) - bits)
 }
 
+/// Lets the compiler inline the copies used by short dependency lists.
+#[inline]
+fn append_packed_edges(data: &mut Vec<u8>, edges: &[u8]) {
+    match edges {
+        [] => {}
+        &[a] => data.push(a),
+        &[a, b] => data.extend_from_slice(&[a, b]),
+        &[a, b, c] => data.extend_from_slice(&[a, b, c]),
+        &[a, b, c, d] => data.extend_from_slice(&[a, b, c, d]),
+        other => data.extend_from_slice(other),
+    }
+}
+
 impl SerializedDepGraph {
     #[instrument(level = "debug", skip(d, profiler))]
     pub fn decode(d: &mut MemDecoder<'_>, profiler: &SelfProfilerRef) -> Arc<SerializedDepGraph> {
@@ -396,7 +409,7 @@ impl SerializedDepGraph {
             // this node with the offset into the global edge data array.
             let edges_header = node_header.edges_header(&edge_list_data, num_edges);
 
-            edge_list_data.extend(d.read_raw_bytes(edges_len_bytes));
+            append_packed_edges(&mut edge_list_data, d.read_raw_bytes(edges_len_bytes));
 
             edge_list_indices[index] = edges_header;
         }
