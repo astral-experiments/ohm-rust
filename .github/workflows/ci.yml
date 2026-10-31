@@ -269,6 +269,7 @@ jobs:
             tests/run-make/parallel-query-depth-limits
             tests/run-make/incremental-retained-cache-snapshot
             tests/run-make/incremental-loaded-cache-values
+            tests/run-make/incremental-recomputed-query-spans
             tests/run-make/incremental-missing-query-cache
             tests/run-make/ohm-retained-mono-values
             tests/run-make/incremental-lint-visibilities
