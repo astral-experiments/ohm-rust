@@ -229,6 +229,7 @@ jobs:
           tests/ui/lint/register-tool-lint.rs
           tests/ui/lint/lint-renamed-cmdline.rs
           tests/ui/lint/lint-removed-cmdline.rs
+          tests/ui/check-cfg/target-values-from-other-targets.rs
 
       - name: Run cached expansion incremental tests
         run: >-
@@ -246,10 +247,11 @@ jobs:
           --set rust.lto=off test --stage 1 compiler/rustc_middle
           --test-args 'aliases_preserve_allocation_identity check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges lazy_worker_cache recorder_ c_linker_generic_summary_keeps_retention_exceptions'
 
-      - name: Run library search tests
+      - name: Run library search and builtin cfg tests
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1 compiler/rustc_session --test-args search
+          --set rust.lto=off test --stage 1 compiler/rustc_session
+          --test-args 'search builtin_target_values'
 
       - name: Run incremental directory copy tests
         run: >-

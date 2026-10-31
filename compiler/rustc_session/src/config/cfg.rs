@@ -20,8 +20,10 @@
 //!  - Add the cfg in [`disallow_cfgs`] to disallow users from setting it via `--cfg`
 //!  - Add the feature gating in `compiler/rustc_feature/src/builtin_attrs.rs`
 
+#[path = "target_cfg_values.rs"]
+mod target_cfg_values;
+
 use std::hash::Hash;
-use std::iter;
 
 use rustc_abi::Align;
 use rustc_ast::ast;
@@ -444,36 +446,11 @@ impl CheckCfg {
             }
 
             if self.exhaustive_values {
-                // Get all values map at once otherwise it would be costly.
-                // (8 values * 220 targets ~= 1760 times, at the time of writing this comment).
-                let [
-                    Some(values_target_abi),
-                    Some(values_target_arch),
-                    Some(values_target_endian),
-                    Some(values_target_env),
-                    Some(values_target_family),
-                    Some(values_target_object_format),
-                    Some(values_target_os),
-                    Some(values_target_pointer_width),
-                    Some(values_target_vendor),
-                ] = self.expecteds.get_disjoint_mut(VALUES)
-                else {
-                    panic!("unable to get all the check-cfg values buckets");
-                };
-
-                for target in Target::builtins().chain(iter::once(current_target.clone())) {
-                    values_target_abi.insert(target.options.cfg_abi.desc_symbol());
-                    values_target_arch.insert(target.arch.desc_symbol());
-                    values_target_endian.insert(target.options.endian.desc_symbol());
-                    values_target_env.insert(target.options.env.desc_symbol());
-                    values_target_family.extend(
-                        target.options.families.iter().map(|family| Symbol::intern(family)),
-                    );
-                    values_target_object_format.insert(target.options.binary_format.desc_symbol());
-                    values_target_os.insert(target.options.os.desc_symbol());
-                    values_target_pointer_width.insert(sym::integer(target.pointer_width));
-                    values_target_vendor.insert(target.vendor_symbol());
-                }
+                let buckets = self
+                    .expecteds
+                    .get_disjoint_mut(VALUES)
+                    .map(|bucket| bucket.expect("unable to get all the check-cfg values buckets"));
+                target_cfg_values::fill(buckets, current_target);
             }
         }
 
