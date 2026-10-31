@@ -973,7 +973,8 @@ impl ReachabilityGraphHashes {
                 tcx.sess
                     .source_map()
                     .span_to_source(*span, |source, start, end| {
-                        Ok(stable_hash(&mut hcx.borrow_mut(), &source[start..end]))
+                        // Proc-macro subspans can split a UTF-8 character.
+                        Ok(stable_hash(&mut hcx.borrow_mut(), &source.as_bytes()[start..end]))
                     })
                     .ok()
             }),
