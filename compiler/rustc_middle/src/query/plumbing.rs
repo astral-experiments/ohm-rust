@@ -93,8 +93,11 @@ pub struct QueryVTable<'tcx, C: QueryCache> {
     /// Function pointer that tries to load a query value from disk.
     ///
     /// This should only be called after a successful check of [`Self::will_cache_on_disk_for_key`].
-    pub try_load_from_disk_fn:
-        fn(tcx: TyCtxt<'tcx>, prev_index: SerializedDepNodeIndex) -> Option<C::Value>,
+    pub try_load_from_disk_fn: fn(
+        tcx: TyCtxt<'tcx>,
+        cache: &OnDiskCache,
+        prev_index: SerializedDepNodeIndex,
+    ) -> Option<C::Value>,
 
     /// Function pointer that hashes this query's result values.
     ///

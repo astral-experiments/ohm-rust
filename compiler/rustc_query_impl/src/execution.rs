@@ -6,7 +6,7 @@ use rustc_data_structures::hash_table::Entry;
 use rustc_data_structures::{Limit, defer, outline, sharded, sync};
 use rustc_errors::FatalError;
 use rustc_middle::dep_graph::{
-    DepGraphData, DepNode, DepNodeIndex, DepNodeKey, SerializedDepNodeIndex,
+    DepGraphData, DepKind, DepNode, DepNodeIndex, DepNodeKey, SerializedDepNodeIndex,
 };
 use rustc_middle::query::{
     ActiveKeyStatus, Cycle, QueryCache, QueryJob, QueryJobId, QueryLatch, QueryMode, QueryState,
@@ -438,6 +438,23 @@ fn execute_job_incr<'tcx, C: QueryCache>(
         }
     }
 
+    // These frontend results contain types and spans, not MIR allocations. Keep
+    // allocation-bearing query values in the build cache's decoding lineage.
+    if matches!(query.dep_kind, DepKind::typeck_root | DepKind::mir_borrowck)
+        && query.will_cache_on_disk_for_key(key)
+        && let Some(result) = start_query(job_id, false, || {
+            dep_graph_data.try_reuse_latest_check(
+                tcx,
+                dep_node,
+                query.hash_value_fn,
+                should_verify_loaded_value(tcx, dep_graph_data, dep_node.key_fingerprint),
+                |cache, index| (query.try_load_from_disk_fn)(tcx, cache, index),
+            )
+        })
+    {
+        return result;
+    }
+
     let prof_timer = tcx.prof.query_provider();
 
     let (result, dep_node_index) = start_query(job_id, query.depth_limit, || {
@@ -476,7 +493,11 @@ fn load_from_disk_or_invoke_provider_green<'tcx, C: QueryCache>(
     // First try to load the result from the on-disk cache. Some things are never cached on disk.
     let try_value = if query.will_cache_on_disk_for_key(key) {
         let prof_timer = tcx.prof.incr_cache_loading();
-        let value = (query.try_load_from_disk_fn)(tcx, prev_index);
+        let value = (query.try_load_from_disk_fn)(
+            tcx,
+            tcx.query_system.on_disk_cache.as_ref().unwrap(),
+            prev_index,
+        );
         prof_timer.finish_with_query_invocation_id(dep_node_index.into());
         value
     } else {

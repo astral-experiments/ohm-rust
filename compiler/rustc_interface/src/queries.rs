@@ -142,6 +142,8 @@ impl Linker {
         let prof = sess.prof.clone();
         prof.generic_activity("drop_dep_graph").run(move || drop(self.dep_graph));
 
+        rustc_incremental::save_shared_stages_checkpoint(sess, incr_comp_session.as_ref());
+
         // Now that we won't touch anything in the incremental compilation directory
         // any more, we can finalize it (which involves renaming it)
         rustc_incremental::finalize_session_directory(sess, incr_comp_session, self.crate_hash);
