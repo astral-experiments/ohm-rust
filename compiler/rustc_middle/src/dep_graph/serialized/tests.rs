@@ -4,6 +4,30 @@ fn node(kind: DepKind, first: u64, second: u64) -> DepNode {
     DepNode { kind, key_fingerprint: Fingerprint::new(first, second).into() }
 }
 
+#[test]
+fn edge_targets_stop_at_each_list_boundary() {
+    let mut graph = SerializedDepGraph::default();
+    let values = [0x0403_0201u32, 0x0807_0605];
+    for (width, count) in [(1, 0), (1, 2), (2, 1), (3, 1), (4, 1), (1, 1), (1, 0)] {
+        graph.edge_list_indices.push(EdgeHeader {
+            repr: (graph.edge_list_data.len() << DEP_NODE_WIDTH_BITS) | (width - 1),
+            num_edges: count as u32,
+        });
+        for value in &values[..count] {
+            graph.edge_list_data.extend_from_slice(&value.to_le_bytes()[..width]);
+        }
+    }
+    graph.edge_list_data.extend_from_slice(&[0; DEP_NODE_PAD]);
+
+    let expected: &[&[u32]] = &[&[], &[1, 5], &[0x0201], &[0x03_0201], &[0x0403_0201], &[1], &[]];
+    for (source, expected) in graph.edge_list_indices.indices().zip(expected) {
+        assert_eq!(
+            graph.edge_targets_from(source).map(|index| index.as_u32()).collect::<Vec<_>>(),
+            *expected
+        );
+    }
+}
+
 fn graph(nodes: Vec<DepNode>) -> SerializedDepGraph {
     let nodes = IndexVec::from_raw(nodes);
     let mut nodes_by_kind = Vec::new();
