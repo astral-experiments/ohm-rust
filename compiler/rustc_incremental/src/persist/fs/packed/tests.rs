@@ -4,6 +4,96 @@ use rustc_fs_util::TempDirBuilder;
 
 use super::*;
 
+#[cfg(target_os = "linux")]
+fn object(value: u8) -> Vec<u8> {
+    let mut bytes = vec![value; 32 * 1024];
+    bytes[..7].copy_from_slice(b"\x7fELF\x02\x01\x01");
+    bytes[16..18].copy_from_slice(&1u16.to_le_bytes());
+    bytes
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn packs_only_private_and_superseded_objects_and_restores_exact_bytes() {
+    let tmp = TempDirBuilder::new().tempdir_in(std::env::temp_dir()).unwrap();
+    let dir = tmp.path().join("s-2222-_000000000000000a_ab-working");
+    let previous = tmp.path().join("s-1111-_000000000000000a_cd-svh");
+    let target = tmp.path().join("target");
+    for path in [&dir, &previous, &target] {
+        fs::create_dir(path).unwrap();
+    }
+    let bytes = object(17);
+    for name in ["a.o", "b.o", "c.o", "raw.rlink"] {
+        fs::write(dir.join(name), &bytes).unwrap();
+    }
+    fs::hard_link(dir.join("b.o"), previous.join("b.o")).unwrap();
+    fs::hard_link(dir.join("c.o"), tmp.path().join("exported.o")).unwrap();
+    let pending = tmp.path().join("b.rcgu.o");
+    fs::hard_link(dir.join("b.o"), &pending).unwrap();
+    symlink(tmp.path().join("exported.o"), dir.join("link.o")).unwrap();
+    let original = fs::metadata(dir.join("a.o")).unwrap();
+    objects::pack(&dir, &previous, std::iter::once(pending.as_path()));
+    for name in ["a.o", "b.o"] {
+        assert!(!dir.join(name).exists(), "{name}");
+    }
+    assert_eq!(fs::read(previous.join("b.o")).unwrap(), bytes);
+    assert_eq!(fs::read(&pending).unwrap(), bytes);
+    assert!(fs::symlink_metadata(dir.join("link.o")).unwrap().is_symlink());
+    assert_eq!(
+        fs::metadata(dir.join("c.o")).unwrap().ino(),
+        fs::metadata(tmp.path().join("exported.o")).unwrap().ino()
+    );
+    assert_eq!(fs::read(dir.join("raw.rlink")).unwrap(), bytes);
+    let published = dir.with_file_name("s-2222-_000000000000000a_ab-svh");
+    fs::rename(dir, &published).unwrap();
+    for entry in fs::read_dir(&published).unwrap() {
+        let name = entry.unwrap().file_name();
+        objects::restore(&published, &target, &name).unwrap();
+    }
+    assert_eq!(fs::read(target.join("a.o")).unwrap(), bytes);
+    assert_eq!(fs::read(target.join("b.o")).unwrap(), bytes);
+    let restored = fs::metadata(target.join("a.o")).unwrap();
+    assert_eq!(restored.permissions().mode(), original.permissions().mode());
+    assert_eq!(restored.modified().unwrap(), original.modified().unwrap());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn rejects_swapped_object_contents_with_the_same_session_and_filename() {
+    let tmp = TempDirBuilder::new().tempdir_in(std::env::temp_dir()).unwrap();
+    let make = |root: &str, value| {
+        let dir = tmp.path().join(root).join("s-2222-_000000000000000a_ab-working");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("a.o"), object(value)).unwrap();
+        objects::pack(&dir, tmp.path(), std::iter::empty());
+        let saved = fs::read_dir(&dir).unwrap().next().unwrap().unwrap().file_name();
+        assert!(saved.to_str().unwrap().starts_with("ohm-packed-object-"));
+        (dir, saved)
+    };
+    let (dir, saved) = make("first", 17);
+    let (other, alternate) = make("second", 29);
+    let original = fs::read(dir.join(&saved)).unwrap();
+    for (i, bad) in [
+        fs::read(other.join(alternate)).unwrap(),
+        original[..original.len() - 1].to_vec(),
+        [original.as_slice(), b"extra"].concat(),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let dst = tmp.path().join(i.to_string());
+        fs::create_dir(&dst).unwrap();
+        fs::write(dir.join(&saved), bad).unwrap();
+        assert!(objects::restore(&dir, &dst, &saved).is_err());
+    }
+    // A complete raw file can coexist with a stream after an interrupted unlink.
+    fs::write(dir.join("a.o"), object(17)).unwrap();
+    let dst = tmp.path().join("interrupted");
+    fs::create_dir(&dst).unwrap();
+    assert!(objects::restore(&dir, &dst, &saved).unwrap());
+    assert!(!dst.join("a.o").exists());
+}
+
 fn fixture(dir: &Path) -> Vec<Vec<u8>> {
     TABLES
         .iter()

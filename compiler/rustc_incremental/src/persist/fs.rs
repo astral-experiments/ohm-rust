@@ -39,8 +39,8 @@
 //! 6. At this point the "old" session directory that we copied our data from
 //!    at the beginning of the session has usually become obsolete. With the optional
 //!    branch cache, the compiler also keeps the latest session from another checkout.
-//!    The new session can pack its two largest tables before publication. Readers
-//!    restore these tables only in their private working directory.
+//!    The new session can pack tables and private native objects before publication.
+//!    Readers restore them in their own working directory.
 //!
 //! ## Garbage Collection
 //!
@@ -121,7 +121,7 @@ use rustc_data_structures::{base_n, flock};
 use rustc_fs_util::{LinkOrCopy, link_or_copy, try_canonicalize};
 use rustc_middle::bug;
 use rustc_session::filesearch::open_regular_file;
-use rustc_session::{IncrCompSession, Session, StableCrateId};
+use rustc_session::{BranchCachePacking, IncrCompSession, Session, StableCrateId};
 use rustc_span::Symbol;
 use tracing::debug;
 
@@ -279,7 +279,10 @@ pub(crate) fn prepare_session_directory(
             return IncrCompSession {
                 session_directory: session_dir,
                 _lock_file: directory_lock,
-                compact_branch_cache,
+                branch_cache_packing: (cfg!(target_os = "linux")
+                    && checkout.is_some()
+                    && source_directories_already_tried.is_empty())
+                .then_some(BranchCachePacking::FirstCheckout),
             };
         };
 
@@ -296,7 +299,8 @@ pub(crate) fn prepare_session_directory(
             return IncrCompSession {
                 session_directory: session_dir,
                 _lock_file: directory_lock,
-                compact_branch_cache,
+                branch_cache_packing: compact_branch_cache
+                    .then_some(BranchCachePacking::SwitchedFrom(source_directory)),
             };
         } else {
             debug!("copying failed - trying next directory");
@@ -322,10 +326,11 @@ pub(crate) fn prepare_session_directory(
 /// This function finalizes and thus 'publishes' the session directory by
 /// renaming it to `s-{timestamp}-{svh}` and releasing the file lock.
 /// This must not be called if there have been any compilation errors.
-pub fn finalize_session_directory(
+pub fn finalize_session_directory<'a>(
     sess: &Session,
     incr_comp_session: Option<IncrCompSession>,
     svh: Option<Svh>,
+    _temporary_objects: impl Iterator<Item = &'a Path>,
 ) {
     assert!(sess.dcx().has_errors_or_delayed_bugs().is_none());
 
@@ -362,8 +367,12 @@ pub fn finalize_session_directory(
     let new_path = incr_comp_session_dir.parent().unwrap().join(&*sub_dir_name);
     debug!("finalize_session_directory() - new path: {}", new_path.display());
 
-    if incr_comp_session.compact_branch_cache {
+    if let Some(_packing) = &incr_comp_session.branch_cache_packing {
         packed::pack(&incr_comp_session_dir);
+        #[cfg(target_os = "linux")]
+        if let BranchCachePacking::SwitchedFrom(source) = _packing {
+            packed::objects::pack(&incr_comp_session_dir, source, _temporary_objects);
+        }
     }
 
     match rename_path_with_retry(&*incr_comp_session_dir, &new_path, 3) {
@@ -437,6 +446,10 @@ fn copy_files(sess: &Session, target_dir: &Path, source_dir: &Path) -> Result<bo
                 let file_name = entry.file_name();
                 if let Some(table) = packed::table(&file_name) {
                     packed.push(table);
+                    continue;
+                }
+                #[cfg(target_os = "linux")]
+                if packed::objects::restore(source_dir, target_dir, &file_name).map_err(|_| ())? {
                     continue;
                 }
 

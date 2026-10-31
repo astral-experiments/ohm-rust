@@ -15,6 +15,9 @@ use super::{
     QUERY_CACHE_FILENAME,
 };
 
+#[cfg(target_os = "linux")]
+pub(super) mod objects;
+
 const LIMIT: u64 = 512 << 20;
 const MIN_SIZE: u64 = 64 << 10;
 const TABLES: [Table; 2] = [
@@ -134,53 +137,18 @@ impl Table {
         if meta.nlink() != u64::from(aliases.count_ones()) {
             return Ok(None);
         }
-        let path = dir.join(self.packed);
-        let file = File::create_new(&path)?;
-        let encode = || -> io::Result<bool> {
-            let mut zip = ZlibEncoder::new(BufWriter::new(&file), Compression::fast());
+        let smaller = pack_stream(&dir.join(self.packed), source, &meta, |zip| {
             zip.write_all(&[1, self.tag, aliases])?;
             zip.write_all(&meta.len().to_le_bytes())?;
             zip.write_all(session_prefix(dir)?)?;
-            zip.write_all(&[0])?;
-            if io::copy(&mut source.take(meta.len() + 1), &mut zip)? != meta.len() {
-                return Err(invalid());
-            }
-            zip.finish()?.flush()?;
-            if file.metadata()?.blocks() >= meta.blocks() {
-                return Ok(false);
-            }
-            file.set_permissions(meta.permissions())?;
-            file.set_modified(meta.modified()?)?;
-            Ok(true)
-        };
-        if matches!(encode(), Ok(true)) {
-            Ok(Some(aliases))
-        } else {
-            fs::remove_file(path)?;
-            Ok(None)
-        }
+            zip.write_all(&[0])
+        })?;
+        Ok(smaller.then_some(aliases))
     }
 
     fn restore(&self, source: &Path, target: &Path) -> io::Result<()> {
         let path = source.join(self.packed);
-        let meta = fs::symlink_metadata(&path)?;
-        if !meta.is_file() || meta.len() > LIMIT {
-            return Err(invalid());
-        }
-        let file = open_regular_file(&path)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            let opened = file.metadata()?;
-            if (meta.dev(), meta.ino()) != (opened.dev(), opened.ino()) {
-                return Err(invalid());
-            }
-        }
-        let mut decoder = CheckedZlib {
-            input: BufReader::new(file),
-            codec: Decompress::new(true),
-            finished: false,
-        };
+        let (mut decoder, meta) = open_stream(&path)?;
         let mut head = [0; 11];
         decoder.read_exact(&mut head)?;
         let aliases = head[2];
@@ -219,6 +187,57 @@ impl Table {
         }
         Ok(())
     }
+}
+
+#[cfg(unix)]
+fn pack_stream(
+    path: &Path,
+    source: impl Read,
+    meta: &fs::Metadata,
+    write_header: impl FnOnce(&mut dyn Write) -> io::Result<()>,
+) -> io::Result<bool> {
+    use std::os::unix::fs::MetadataExt;
+
+    let file = File::create_new(path)?;
+    let encode = || -> io::Result<bool> {
+        let mut zip = ZlibEncoder::new(BufWriter::new(&file), Compression::fast());
+        write_header(&mut zip)?;
+        if io::copy(&mut source.take(meta.len() + 1), &mut zip)? != meta.len() {
+            return Err(invalid());
+        }
+        zip.finish()?.flush()?;
+        if file.metadata()?.blocks() >= meta.blocks() {
+            return Ok(false);
+        }
+        file.set_permissions(meta.permissions())?;
+        file.set_modified(meta.modified()?)?;
+        Ok(true)
+    };
+    if matches!(encode(), Ok(true)) {
+        Ok(true)
+    } else {
+        fs::remove_file(path)?;
+        Ok(false)
+    }
+}
+
+fn open_stream(path: &Path) -> io::Result<(CheckedZlib<BufReader<File>>, fs::Metadata)> {
+    let meta = fs::symlink_metadata(path)?;
+    if !meta.is_file() || meta.len() > LIMIT {
+        return Err(invalid());
+    }
+    let file = open_regular_file(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let opened = file.metadata()?;
+        if (meta.dev(), meta.ino()) != (opened.dev(), opened.ino()) {
+            return Err(invalid());
+        }
+    }
+    let stream =
+        CheckedZlib { input: BufReader::new(file), codec: Decompress::new(true), finished: false };
+    Ok((stream, meta))
 }
 
 // Reaching the end of the input must also reach the zlib checksum and stream end.

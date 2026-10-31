@@ -1715,14 +1715,21 @@ fn validate_commandline_args_with_session_available(sess: &Session) {
     }
 }
 
+/// A first checkout may become the retained alternate. A checkout switch also has
+/// a previous session whose object files can be shared or packed.
+pub enum BranchCachePacking {
+    FirstCheckout,
+    SwitchedFrom(PathBuf),
+}
+
 /// Holds data on the current incremental compilation session, if there is one.
 pub struct IncrCompSession {
     /// The directory containing all cached data. Cached data from a previous
     /// session can be read out of it and new data for the current session will
     /// be written into it.
     pub session_directory: PathBuf,
-    /// Whether preparation found a completed session from another checkout.
-    pub compact_branch_cache: bool,
+    /// Ordinary edits on the current checkout leave their tables ready for the next edit.
+    pub branch_cache_packing: Option<BranchCachePacking>,
     /// `_lock_file` is never directly used, but its presence
     /// alone has an effect, because the file will unlock when the session is
     /// dropped.

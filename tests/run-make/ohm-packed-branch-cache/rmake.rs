@@ -13,7 +13,8 @@ fn switch(branch: &str, value: u32) {
     for i in 0..384 {
         src.push_str(&format!("pub fn f{i}(x: u32) -> u32 {{ x.wrapping_add({i}) }}\n"));
     }
-    src.push_str(&format!("fn main() {{ println!(\"{{}}\", f0({value})); }}\n"));
+    src.push_str(&format!("static DATA: [u8; 32768] = [{value}; 32768];\n"));
+    src.push_str("fn main() { println!(\"{}\", f0(std::hint::black_box(&DATA)[0].into())); }\n");
     rfs::write("checkout/main.rs", src);
 }
 
@@ -33,16 +34,46 @@ fn compile(cache: &str, option: Option<bool>) {
     cmd.run();
 }
 
-fn sessions() -> Vec<PathBuf> {
-    let mut crates =
-        fs::read_dir("cache").unwrap().map(|e| e.unwrap().path()).filter(|p| p.is_dir());
+fn sessions_in(cache: &str) -> Vec<PathBuf> {
+    let mut crates = fs::read_dir(cache).unwrap().map(|e| e.unwrap().path()).filter(|p| p.is_dir());
     let dir = crates.next().unwrap();
     assert!(crates.next().is_none());
     fs::read_dir(dir).unwrap().map(|e| e.unwrap().path()).filter(|p| p.is_dir()).collect()
 }
 
+fn sessions() -> Vec<PathBuf> {
+    sessions_in("cache")
+}
+
 fn main() {
     rfs::create_dir_all("checkout/.git");
+    #[cfg(target_os = "linux")]
+    for (cache, damage) in [("first-checkout", false), ("damaged-first-checkout", true)] {
+        switch("a", 17);
+        compile(cache, Some(true));
+        run("program").assert_stdout_equals("17");
+        let [first]: [_; 1] = sessions_in(cache).try_into().unwrap();
+        for table in ["dep-graph.bin", "query-cache.bin"] {
+            assert!(first.join(format!("ohm-packed-{table}")).is_file());
+            assert!(!first.join(table).exists());
+        }
+        assert!(!fs::read_dir(&first).unwrap().any(|entry| {
+            entry.unwrap().file_name().as_encoded_bytes().starts_with(b"ohm-packed-object-")
+        }));
+        if damage {
+            fs::write(first.join("ohm-packed-query-cache.bin"), b"damaged").unwrap();
+            fs::write(first.join("rejected-source"), b"do not copy").unwrap();
+        }
+        switch("a", 18);
+        compile(cache, Some(true));
+        run("program").assert_stdout_equals("18");
+        let [edited]: [_; 1] = sessions_in(cache).try_into().unwrap();
+        assert!(!edited.join("rejected-source").exists());
+        for table in ["dep-graph.bin", "query-cache.bin"] {
+            assert!(edited.join(table).is_file());
+            assert!(!edited.join(format!("ohm-packed-{table}")).exists());
+        }
+    }
     switch("a", 17);
     compile("cache", None);
     run("program").assert_stdout_equals("17");
@@ -108,4 +139,27 @@ fn main() {
     assert!(
         !off[0].file_name().unwrap().to_str().unwrap().split('-').nth(2).unwrap().starts_with('_')
     );
+
+    #[cfg(target_os = "linux")]
+    {
+        compile("cache", Some(true));
+        switch("b", 29);
+        compile("cache", Some(true));
+        let saved = sessions()
+            .iter()
+            .flat_map(|dir| fs::read_dir(dir).unwrap())
+            .map(|e| e.unwrap().path())
+            .find(|p| p.file_name().unwrap().as_encoded_bytes().starts_with(b"ohm-packed-object-"))
+            .unwrap();
+        switch("a", 17);
+        compile("cache", Some(true));
+        run("program").assert_stdout_equals("17");
+        fs::write(&saved, b"invalid object stream").unwrap();
+        fs::write(saved.parent().unwrap().join("bad-object-sentinel"), b"discard").unwrap();
+        switch("b", 29);
+        compile("cache", Some(true));
+        run("program").assert_stdout_equals("29");
+        assert!(sessions().iter().all(|dir| !dir.join("bad-object-sentinel").exists()));
+        assert_eq!(fs::read("program").unwrap(), repaired);
+    }
 }
