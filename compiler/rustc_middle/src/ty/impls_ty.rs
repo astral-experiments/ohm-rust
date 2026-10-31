@@ -22,12 +22,13 @@ where
         // without it, compiling `diesel-2.2.10` can be 74% slower, and compiling
         // `deeply-nested-multi` can be ~4,000x slower(!)
         thread_local! {
-            static CACHE: RefCell<FxHashMap<(*const (), StableHashControls), Fingerprint>> =
-                RefCell::new(Default::default());
+            static CACHE: [RefCell<FxHashMap<*const (), Fingerprint>>; 2] = Default::default();
         }
 
         let hash = CACHE.with(|cache| {
-            let key = (ptr::from_ref(*self).cast::<()>(), hcx.stable_hash_controls());
+            let StableHashControls { hash_spans } = hcx.stable_hash_controls();
+            let cache = &cache[usize::from(hash_spans)];
+            let key = ptr::from_ref(*self).cast::<()>();
             if let Some(&hash) = cache.borrow().get(&key) {
                 return hash;
             }
