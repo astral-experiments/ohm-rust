@@ -202,6 +202,7 @@ impl_ref_decodable_into_arena! {
     (rustc_middle::middle::exported_symbols::ExportedSymbol<'tcx>, rustc_middle::middle::exported_symbols::SymbolExportInfo),
     rustc_ast::InlineAsmTemplatePiece,
     rustc_ast::tokenstream::TokenStream,
+    rustc_data_structures::fx::FxIndexMap<rustc_hir::def_id::LocalDefId, rustc_middle::ty::DefinitionSiteHiddenType<'tcx>>,
     rustc_data_structures::unord::UnordMap<rustc_span::def_id::DefId, rustc_middle::ty::EarlyBinder<'tcx, Ty<'tcx>>>,
     rustc_data_structures::unord::UnordSet<rustc_span::def_id::LocalDefId>,
     rustc_hir::Attribute,
