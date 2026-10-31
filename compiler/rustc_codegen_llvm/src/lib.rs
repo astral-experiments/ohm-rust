@@ -249,6 +249,8 @@ impl CodegenBackend for LlvmCodegenBackend {
         providers.queries.global_backend_features =
             |tcx, ()| llvm_util::global_llvm_features(tcx.sess, false);
         providers.queries.ohm_relink_inputs = asm::relink_inputs;
+        providers.queries.ohm_can_reuse_asm_free_cgu =
+            rustc_codegen_ssa::base::can_reuse_asm_free_cgu;
     }
 
     fn print(&self, req: &PrintRequest, out: &mut String, sess: &Session) {
