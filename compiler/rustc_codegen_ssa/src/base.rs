@@ -33,7 +33,7 @@ use rustc_session::Session;
 use rustc_session::config::{self, CrateType, EntryFnType};
 use rustc_span::{DUMMY_SP, Symbol};
 use rustc_symbol_mangling::mangle_internal_symbol;
-use rustc_target::spec::{Arch, Os};
+use rustc_target::spec::{Arch, Os, TargetTuple};
 use rustc_trait_selection::infer::{BoundRegionConversionTime, TyCtxtInferExt};
 use rustc_trait_selection::traits::{ObligationCause, ObligationCtxt};
 use tracing::{debug, info};
@@ -1211,6 +1211,7 @@ impl CrateInfo {
 }
 
 pub(crate) fn provide(providers: &mut Providers) {
+    providers.ohm_can_reuse_asm_free_cgu = |_, _| false;
     providers.ohm_untracked_relink_inputs =
         |tcx, ()| tcx.ohm_relink_inputs(()) == RelinkInputs::Rebuild;
     providers.ohm_relink_inputs = |tcx, ()| {
@@ -1261,35 +1262,69 @@ pub fn has_untracked_relink_inputs<'tcx>(
     tcx: TyCtxt<'tcx>,
     mut asm_has_untracked_inputs: impl FnMut(&TerminatorKind<'tcx>) -> bool,
 ) -> bool {
-    let opts = &tcx.sess.opts;
     if !matches!(tcx.sess.lto(), config::Lto::No | config::Lto::ThinLocal)
-        || opts.cg.linker_plugin_lto.enabled()
+        || has_custom_codegen_inputs(tcx.sess)
+    {
+        return true;
+    }
+    tcx.collect_and_partition_mono_items(())
+        .codegen_units
+        .iter()
+        .any(|cgu| cgu_has_untracked_asm(tcx, cgu, &mut asm_has_untracked_inputs))
+}
+
+fn has_custom_codegen_inputs(sess: &Session) -> bool {
+    let opts = &sess.opts;
+    opts.cg.linker_plugin_lto.enabled()
         || !opts.cg.llvm_args.is_empty()
         || !opts.cg.passes.is_empty()
         || !opts.unstable_opts.llvm_plugins.is_empty()
         || !opts.unstable_opts.offload.is_empty()
         || opts.unstable_opts.codegen_backend.is_some()
-    {
-        return true;
-    }
-    tcx.collect_and_partition_mono_items(()).codegen_units.iter().any(|cgu| {
-        cgu.items().keys().any(|item| match *item {
-            MonoItem::GlobalAsm(..) => true,
-            MonoItem::Fn(instance) => tcx
-                .instance_mir(instance.def)
-                .basic_blocks
-                .iter()
-                .any(|block| asm_has_untracked_inputs(&block.terminator().kind)),
-            MonoItem::Static(_) => false,
-        })
+}
+
+fn cgu_has_untracked_asm<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    cgu: &CodegenUnit<'tcx>,
+    mut asm_has_untracked_inputs: impl FnMut(&TerminatorKind<'tcx>) -> bool,
+) -> bool {
+    cgu.items().keys().any(|item| match *item {
+        MonoItem::GlobalAsm(..) => true,
+        MonoItem::Fn(instance) => tcx
+            .instance_mir(instance.def)
+            .basic_blocks
+            .iter()
+            .any(|block| asm_has_untracked_inputs(&block.terminator().kind)),
+        MonoItem::Static(_) => false,
     })
+}
+
+/// With LTO off, LLVM assembles each module separately. Assembly in another module can still
+/// change its object or the final link, so the crate keeps its untracked-input dep-info marker.
+pub fn can_reuse_asm_free_cgu(tcx: TyCtxt<'_>, name: Symbol) -> bool {
+    let sess = tcx.sess;
+    let TargetTuple::TargetTuple(target) = &sess.opts.target_triple else { return false };
+    matches!(target.as_str(), "x86_64-unknown-linux-gnu" | "aarch64-unknown-linux-gnu")
+        && sess.lto() == config::Lto::No
+        && !has_custom_codegen_inputs(sess)
+        && sess.target.llvm_args.is_empty()
+        // LLVM resolves `native` against the host that produces each object.
+        && sess.opts.cg.target_cpu.as_deref() != Some(config::NATIVE_CPU)
+        && sess.opts.unstable_opts.tune_cpu.as_deref() != Some(config::NATIVE_CPU)
+        // LLVM can read these files when compiling any ordinary module. Tracking their paths
+        // in dep-info lets Cargo rerun rustc, but does not invalidate a green codegen unit.
+        && sess.opts.cg.profile_use.is_none()
+        && sess.opts.unstable_opts.profile_sample_use.is_none()
+        && sess.opts.unstable_opts.sanitizer_dataflow_abilist.is_empty()
+        && tcx.native_libraries(LOCAL_CRATE).is_empty()
+        && !cgu_has_untracked_asm(tcx, tcx.codegen_unit(name), |kind| {
+            matches!(kind, TerminatorKind::InlineAsm { .. })
+        })
 }
 
 pub fn determine_cgu_reuse<'tcx>(tcx: TyCtxt<'tcx>, cgu: &CodegenUnit<'tcx>) -> CguReuse {
     if !tcx.dep_graph.is_fully_enabled()
         || tcx.sess.opts.unstable_opts.disable_incr_comp_backend_caching
-        || (tcx.sess.opts.unstable_opts.ohm_check_relink_inputs
-            && tcx.ohm_untracked_relink_inputs(()))
     {
         return CguReuse::No;
     }
@@ -1298,6 +1333,12 @@ pub fn determine_cgu_reuse<'tcx>(tcx: TyCtxt<'tcx>, cgu: &CodegenUnit<'tcx>) -> 
     if tcx.dep_graph.previous_work_product(work_product_id).is_none() {
         // We don't have anything cached for this CGU. This can happen
         // if the CGU did not exist in the previous session.
+        return CguReuse::No;
+    }
+    if tcx.sess.opts.unstable_opts.ohm_check_relink_inputs
+        && tcx.ohm_untracked_relink_inputs(())
+        && !tcx.ohm_can_reuse_asm_free_cgu(cgu.name())
+    {
         return CguReuse::No;
     }
 

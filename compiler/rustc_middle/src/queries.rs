@@ -2607,6 +2607,11 @@ rustc_queries! {
         desc { "checking whether saved codegen may have untracked assembler inputs" }
     }
 
+    query ohm_can_reuse_asm_free_cgu(name: Symbol) -> bool {
+        eval_always
+        desc { "checking whether codegen unit `{name}` assembles independently of the other units" }
+    }
+
     query is_codegened_item(def_id: DefId) -> bool {
         desc { "determining whether `{}` needs codegen", tcx.def_path_str(def_id) }
     }
