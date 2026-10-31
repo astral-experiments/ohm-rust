@@ -736,6 +736,10 @@ pub(in crate::rmeta) fn provide(providers: &mut Providers) {
         ..providers.queries
     };
     provide_extern(&mut providers.extern_queries);
+    providers.extern_queries.trait_impls_key_hash = |tcx, cnum| {
+        let cstore = CStore::from_tcx(tcx);
+        cstore.get_crate_data(cnum).trait_impls_key_hash(&cstore)
+    };
 }
 
 impl CStore {
@@ -880,6 +884,15 @@ impl CrateStore for CStore {
 }
 
 fn provide_cstore_hooks(providers: &mut Providers) {
+    providers.hooks.has_implementations_of_trait = |tcx, cnum, trait_id, trait_hash| {
+        if tcx.dep_graph.is_fully_enabled() {
+            tcx.ensure_ok().trait_impls_key_hash(cnum);
+        }
+        CStore::from_tcx(tcx)
+            .get_crate_data(cnum)
+            .trait_impls_for(trait_id, || trait_hash)
+            .is_some()
+    };
     providers.hooks.def_path_hash_to_def_id_extern = |tcx, hash, stable_crate_id| {
         // If this is a DefPathHash from an upstream crate, let the CrateStore map
         // it to a DefId.
