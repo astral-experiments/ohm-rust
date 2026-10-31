@@ -78,15 +78,28 @@ pub(crate) fn save_dep_graph(tcx: TyCtxt<'_>) {
                     tcx.dep_graph.exec_cache_promotions(tcx);
                     let promotion = on_disk_cache.take_query_cache_promotion();
 
-                    // Release the cache's mappings. On Unix, promotion retains its
-                    // backing mmap until its bytes have been written to the new file.
+                    // Encoding allocations can load retained queries, such as the codegen
+                    // attributes of a referenced static. Keep the old cache readable until
+                    // serialization finishes, then release its mappings before replacing it.
+                    let staging_query_cache_path = query_cache_path.with_extension("tmp");
+                    file_format::save_in(
+                        sess,
+                        staging_query_cache_path.clone(),
+                        "query cache",
+                        |encoder| {
+                            tcx.sess.time("incr_comp_serialize_result_cache", || {
+                                on_disk_cache::OnDiskCache::serialize(tcx, encoder, promotion)
+                            })
+                        },
+                    );
                     on_disk_cache.close_serialized_data_mmap();
-
-                    file_format::save_in(sess, query_cache_path, "query cache", |encoder| {
-                        tcx.sess.time("incr_comp_serialize_result_cache", || {
-                            on_disk_cache::OnDiskCache::serialize(tcx, encoder, promotion)
-                        })
-                    });
+                    if let Err(err) = fs::rename(&staging_query_cache_path, &query_cache_path) {
+                        sess.dcx().emit_fatal(diagnostics::WriteNew {
+                            name: "query cache",
+                            path: query_cache_path,
+                            err,
+                        });
+                    }
                 });
             },
         );
