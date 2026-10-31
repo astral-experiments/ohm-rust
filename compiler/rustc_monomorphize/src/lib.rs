@@ -4,8 +4,8 @@
 #![feature(once_cell_get_mut)]
 // tidy-alphabetical-end
 
-use rustc_data_structures::fx::FxHashSet;
 use rustc_attr_ir::lang_items::LangItem;
+use rustc_data_structures::fx::FxHashSet;
 use rustc_hir::def::DefKind;
 use rustc_middle::dep_graph::{DepKind, DepNode};
 use rustc_middle::mono::{CollectionMode, MonoItem, NormalizationErrorInMono};
@@ -14,8 +14,8 @@ use rustc_middle::traits;
 use rustc_middle::ty::adjustment::CustomCoerceUnsized;
 use rustc_middle::ty::{self, Instance, Ty, TyCtxt};
 use rustc_middle::util::Providers;
-use rustc_span::{def_id::DefId, bug};
-use rustc_span::{ErrorGuaranteed, Spanned};
+use rustc_span::def_id::DefId;
+use rustc_span::{ErrorGuaranteed, Spanned, bug};
 
 use crate::diagnostics::EncounteredErrorWhileInstantiating;
 
@@ -39,7 +39,7 @@ pub fn prepare_incremental_monomorphization(tcx: TyCtxt<'_>) {
     if !tcx.dep_graph.is_fully_enabled()
         || !(tcx.sess.opts.unstable_opts.public_api_hash
             || tcx.sess.opts.unstable_opts.ohm_incremental_mono_partitions)
-        || !tcx.sess.opts.output_types.should_codegen()
+        || !tcx.codegen_output_mode(()).0
         || tcx.sess.opts.unstable_opts.print_mono_items
         || tcx.sess.opts.unstable_opts.dump_mono_stats.enabled()
         || tcx.sess.opts.unstable_opts.profile_closures
