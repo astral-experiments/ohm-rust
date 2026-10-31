@@ -58,8 +58,8 @@ mod encoder;
 mod parameterized;
 mod table;
 
-/// Distinguishes stable foreign expansion references from legacy positional metadata.
-const OHM_METADATA_EPOCH: u32 = 1;
+/// Distinguishes metadata whose public hashes include the definitions of native exports.
+const OHM_METADATA_EPOCH: u32 = 2;
 
 pub(crate) fn rustc_version(cfg_version: &'static str) -> String {
     format!("rustc {cfg_version} (Ohm metadata {OHM_METADATA_EPOCH})")

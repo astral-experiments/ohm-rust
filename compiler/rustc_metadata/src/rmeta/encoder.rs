@@ -3408,9 +3408,9 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
     ) -> Unhashed<LazyArray<(ExportedSymbol<'static>, SymbolExportInfo)>> {
         empty_proc_macro!(self);
 
-        let array =
-            self.with_record_mode(RecordMode::None, |this| this.lazy_array(exported_symbols));
-        Unhashed(array)
+        // A downstream linker looks up the attributes and ABI of these definitions, even when
+        // they are private Rust items. Record their DefIds as roots like other external inputs.
+        Unhashed(self.lazy_array(exported_symbols))
     }
 
     fn encode_exported_generic_symbols<'h>(
