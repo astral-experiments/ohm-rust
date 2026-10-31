@@ -232,19 +232,17 @@ impl SerializedDepGraph {
         source: SerializedDepNodeIndex,
     ) -> impl Iterator<Item = SerializedDepNodeIndex> + Clone {
         let header = self.edge_list_indices[source];
-        let mut raw = &self.edge_list_data[header.start()..];
-
         let bytes_per_index = header.bytes_per_index();
+        let edge_bytes = header.num_edges as usize * bytes_per_index;
+        // The padding after the last edge is too short to read another index.
+        let mut raw = &self.edge_list_data[header.start()..][..edge_bytes + DEP_NODE_PAD];
 
         // LLVM doesn't hoist EdgeHeader::mask so we do it ourselves.
         let mask = header.mask();
-        (0..header.num_edges).map(move |_| {
-            // Doing this slicing in this order ensures that the first bounds check suffices for
-            // all the others.
-            let index = &raw[..DEP_NODE_SIZE];
+        iter::from_fn(move || {
+            let index = u32::from_le_bytes(*raw.first_chunk::<DEP_NODE_SIZE>()?) & mask;
             raw = &raw[bytes_per_index..];
-            let index = u32::from_le_bytes(index.try_into().unwrap()) & mask;
-            SerializedDepNodeIndex::from_u32(index)
+            Some(SerializedDepNodeIndex::from_u32(index))
         })
     }
 
