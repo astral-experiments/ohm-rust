@@ -259,6 +259,7 @@ jobs:
             tests/run-make/rdr-public-hash*
             tests/run-make/ohm-early-metadata
             tests/run-make/metadata-export-prefetch
+            tests/run-make/trait-impl-directory
             tests/run-make/ohm-shared-stages
             tests/run-make/ohm-thinlto-cache
             tests/run-make/caller-local-codegen
