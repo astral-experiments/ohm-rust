@@ -1701,6 +1701,7 @@ fn file_free_asm_line(arch: InlineAsmArch, line: &str) -> bool {
         (InlineAsmArch::X86_64, "vfmadd213sd" | "vfmadd213ss") => register_operands(3),
         (InlineAsmArch::X86_64, "vfmaddsd" | "vfmaddss") => register_operands(4),
         (InlineAsmArch::X86_64, _) => file_free_x86_instruction(opcode, args),
+        (InlineAsmArch::AArch64, "crc32b" | "crc32h" | "crc32w" | "crc32x") => register_operands(3),
         (InlineAsmArch::AArch64, "mov") => {
             let Some((dst, src)) = args.split_once(',') else { return false };
             [dst, src].iter().all(|arg| {
