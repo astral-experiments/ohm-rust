@@ -1,5 +1,6 @@
 // Decoding metadata from a single crate's metadata
 
+use std::hash::Hash;
 use std::iter::TrustedLen;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
@@ -12,6 +13,7 @@ use rustc_crate_store::{CrateSource, ExternCrate};
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_data_structures::fx::FxIndexMap;
 use rustc_data_structures::owned_slice::OwnedSlice;
+use rustc_data_structures::stable_hash::StableHasher;
 use rustc_data_structures::sync::Lock;
 use rustc_data_structures::unhash::UnhashMap;
 use rustc_expand::base::{SyntaxExtension, SyntaxExtensionKind};
@@ -1553,27 +1555,59 @@ impl CrateMetadata {
         }
     }
 
-    fn get_implementations_of_trait<'tcx>(
+    fn trait_impls_key_hash(&self, cstore: &CStore) -> Fingerprint {
+        let mut hasher = StableHasher::new();
+        match &self.trait_impls {
+            TraitImplsMap::DefIndex(_) => {
+                0u8.hash(&mut hasher);
+                // DefIndex keys can move when private items change.
+                self.private_hash().as_u128().hash(&mut hasher);
+            }
+            TraitImplsMap::DefPathHash(impls) => {
+                1u8.hash(&mut hasher);
+                impls.len().hash(&mut hasher);
+                for &(cnum, local_hash) in impls.keys() {
+                    let cnum = self.cnum_map[CrateNum::from_u32(cnum)];
+                    cstore.get_crate_data(cnum).root.stable_crate_id.hash(&mut hasher);
+                    local_hash.hash(&mut hasher);
+                }
+            }
+        }
+        // Private directory keys can change without changing the public API hash,
+        // so the query recomputes this fingerprint in every compilation session.
+        hasher.finish()
+    }
+
+    fn trait_impls_for(
         &self,
-        tcx: TyCtxt<'tcx>,
         trait_def_id: DefId,
-    ) -> &'tcx [(DefId, Option<SimplifiedType>)] {
+        trait_hash: impl FnOnce() -> DefPathHash,
+    ) -> Option<&LazyArray<(DefIndex, Option<SimplifiedType>)>> {
         if self.trait_impls.is_empty() {
-            return &[];
+            return None;
         }
 
         // Do a reverse lookup beforehand to avoid touching the crate_num
         // hash map in the loop below.
         let key = match self.reverse_translate_def_id(trait_def_id) {
             Some(def_id) => (def_id.krate.as_u32(), def_id.index),
-            None => return &[],
+            None => return None,
         };
-        if let Some(impls) = match &self.trait_impls {
+        match &self.trait_impls {
             TraitImplsMap::DefIndex(trait_impls) => trait_impls.get(&key),
             TraitImplsMap::DefPathHash(trait_impls) => {
-                trait_impls.get(&(key.0, tcx.def_path_hash(trait_def_id).local_hash()))
+                trait_impls.get(&(key.0, trait_hash().local_hash()))
             }
-        } {
+        }
+    }
+
+    fn get_implementations_of_trait<'tcx>(
+        &self,
+        tcx: TyCtxt<'tcx>,
+        trait_def_id: DefId,
+    ) -> &'tcx [(DefId, Option<SimplifiedType>)] {
+        if let Some(impls) = self.trait_impls_for(trait_def_id, || tcx.def_path_hash(trait_def_id))
+        {
             tcx.arena.alloc_from_iter(
                 impls
                     .decode((self, tcx))
