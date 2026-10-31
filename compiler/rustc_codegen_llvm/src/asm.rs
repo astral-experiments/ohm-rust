@@ -1680,6 +1680,7 @@ fn file_free_asm_line(arch: InlineAsmArch, line: &str) -> bool {
         args.split(',').map(|arg| arg.trim_matches([' ', '\t'])).eq(std::iter::repeat_n("@", count))
     };
     match (arch, opcode) {
+        (InlineAsmArch::X86_64, "#" | "div") => args == "@",
         (_, "nop") | (InlineAsmArch::X86_64, "syscall" | "cpuid") => args.is_empty(),
         (InlineAsmArch::X86_64, "sqrtsd" | "sqrtss") => register_operands(2),
         (InlineAsmArch::X86_64, "vfmadd213sd" | "vfmadd213ss") => register_operands(3),

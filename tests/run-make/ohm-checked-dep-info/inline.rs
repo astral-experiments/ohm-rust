@@ -7,8 +7,51 @@ pub fn barrier(mut value: usize) -> usize {
     unsafe {
         core::arch::asm!("/* {0} */", inout(reg) value, options(pure, nomem, nostack));
         core::arch::asm!("nop");
+        #[cfg(target_arch = "x86_64")]
+        {
+            core::arch::asm!(
+                "# {}",
+                in(reg) core::ptr::from_ref(&value),
+                options(readonly, preserves_flags, nostack),
+            );
+            #[cfg(hash_count)]
+            core::arch::asm!("# {} {}", in(reg) value, in(reg) value);
+            #[cfg(hash_literal)]
+            core::arch::asm!("# @");
+            #[cfg(hash_symbol)]
+            core::arch::asm!("# {}", sym barrier);
+            #[cfg(hash_directive)]
+            core::arch::asm!("# {}", ".incbin \"payload.bin\"", in(reg) value);
+        }
     }
     value
+}
+
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn divide_wide(lo: usize, hi: usize, divisor: usize) -> (usize, usize) {
+    let (quotient, remainder);
+    core::arch::asm!(
+        "div {0:r}",
+        in(reg) divisor, inout("ax") lo => quotient, inout("dx") hi => remainder,
+        options(pure, nomem, nostack),
+    );
+    #[cfg(div_literal)]
+    core::arch::asm!("div rcx", in("cx") divisor, inout("ax") lo => _, inout("dx") hi => _);
+    #[cfg(div_memory)]
+    core::arch::asm!(
+        "div qword ptr [{}]",
+        in(reg) core::ptr::from_ref(&divisor), inout("ax") lo => _, inout("dx") hi => _,
+    );
+    #[cfg(div_directive)]
+    core::arch::asm!(
+        "div {0:r}", ".incbin \"payload.bin\"",
+        in(reg) divisor, inout("ax") lo => _, inout("dx") hi => _,
+    );
+    #[cfg(div_immediate)]
+    core::arch::asm!("div 7");
+    #[cfg(div_count)]
+    core::arch::asm!("div {}, {}", in(reg) lo, in(reg) hi);
+    (quotient, remainder)
 }
 
 #[cfg(target_arch = "x86_64")]
