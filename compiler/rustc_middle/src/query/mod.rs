@@ -1,3 +1,6 @@
+use rustc_ast::tokenstream::TokenStream;
+use rustc_span::Symbol;
+
 pub use self::caches::{DefIdCache, DefaultCache, QueryCache, SingleCache, VecCache};
 pub use self::calls::{TyCtxtAt, TyCtxtEnsureDone, TyCtxtEnsureOk, TyCtxtEnsureResult};
 pub use self::into_query_key::IntoQueryKey;
@@ -20,3 +23,6 @@ pub(crate) mod modifiers;
 pub mod on_disk_cache;
 pub(crate) mod query_api;
 mod system;
+
+/// Expanded tokens and the virtual source files allocated by this macro, in parse order.
+pub type ProcMacroExpansion<'tcx, E> = (Result<&'tcx TokenStream, E>, &'tcx [Symbol]);

@@ -8,7 +8,7 @@ use rustc_proc_macro as pm;
 use rustc_session::Session;
 use rustc_session::config::ProcMacroExecutionStrategy;
 use rustc_span::profiling::SpannedEventArgRecorder;
-use rustc_span::{LocalExpnId, Span};
+use rustc_span::{FileName, LocalExpnId, Span};
 
 use crate::base::{self, *};
 use crate::{diagnostics, proc_macro_server};
@@ -236,4 +236,16 @@ pub static INVALIDATE_CACHED_EXPANSION: AtomicRef<fn()> = AtomicRef::new(&((|| {
 
 pub(super) fn invalidate_cached_expansion() {
     (*INVALIDATE_CACHED_EXPANSION)();
+}
+
+pub static PROC_MACRO_SOURCE_CODE: AtomicRef<fn(&str) -> FileName> =
+    AtomicRef::new(&(FileName::proc_macro_source_code as _));
+
+pub(super) fn proc_macro_source_code(src: &str) -> FileName {
+    (*PROC_MACRO_SOURCE_CODE)(src)
+}
+
+/// Intern the same hygiene contexts on a cache hit as a freshly constructed server.
+pub fn prepare_proc_macro_expansion_globals(ecx: &ExtCtxt<'_>) {
+    proc_macro_server::Rustc::expansion_globals(ecx, &ecx.current_expansion.id.expn_data());
 }
