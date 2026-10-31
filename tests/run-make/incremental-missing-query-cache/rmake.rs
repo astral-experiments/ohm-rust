@@ -48,6 +48,23 @@ fn main() {
         compile(damage, "link", "loaded", false);
     }
 
+    compile("retained", "link", "not-loaded", false);
+    let seed = rfs::read(&caches("retained", "query-cache.bin")[0]);
+    compile("retained", "link", "loaded", false);
+    let mut damaged = false;
+    for path in caches("retained", "query-cache.bin") {
+        let mut bytes = rfs::read(&path);
+        if bytes.len() > seed.len() && bytes.starts_with(&seed) {
+            bytes[seed.len() - 1] ^= 1;
+            rfs::remove_file(&path);
+            rfs::write(path, bytes);
+            damaged = true;
+        }
+    }
+    assert!(damaged, "no retained generation found");
+    compile("retained", "link", "not-loaded", false);
+    compile("retained", "link", "loaded", false);
+
     // An incompatible graph must be rejected before decoding its query cache.
     compile("options", "link", "not-loaded", false);
     for path in caches("options", "query-cache.bin") {
@@ -69,5 +86,23 @@ fn main() {
             .run()
             .assert_stderr_contains("unused variable: `unused`");
         run("main").assert_stdout_equals("42\n");
+    }
+
+    for missing in ["ordinary", "checkpoint", "both"] {
+        compile(missing, "link", "not-loaded", true);
+        compile(missing, "metadata", "loaded", true);
+        if missing != "checkpoint" {
+            for path in caches(missing, "query-cache.bin") {
+                rfs::remove_file(path);
+            }
+        }
+        if missing != "ordinary" {
+            for path in caches(missing, "ohm-build-query-cache.bin") {
+                rfs::remove_file(path);
+            }
+        }
+        let state = if missing == "both" { "not-loaded" } else { "loaded" };
+        compile(missing, "link", state, true);
+        compile(missing, "link", "loaded", true);
     }
 }
