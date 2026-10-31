@@ -71,19 +71,19 @@ fn load_dep_graph(
             Decodable::decode(&mut work_product_decoder);
 
         for swp in work_products {
-            let all_files_exist = swp.work_product.saved_files.items().all(|(_, path)| {
-                let exists = in_incr_comp_dir_sess(incr_comp_session, path).exists();
-                if !exists && sess.opts.unstable_opts.incremental_info {
+            let all_files_available = swp.work_product.saved_files.items().all(|(_, path)| {
+                let is_file = in_incr_comp_dir_sess(incr_comp_session, path).is_file();
+                if !is_file && sess.opts.unstable_opts.incremental_info {
                     eprintln!("incremental: could not find file for work product: {path}",);
                 }
-                exists
+                is_file
             });
 
-            if all_files_exist {
+            if all_files_available {
                 debug!("reconcile_work_products: all files for {:?} exist", swp);
                 prev_work_products.insert(swp.id, swp.work_product);
             } else {
-                debug!("reconcile_work_products: some file for {:?} does not exist", swp);
+                debug!("reconcile_work_products: some file for {:?} is unavailable", swp);
                 delete_dirty_work_product(sess, incr_comp_session, swp);
             }
         }
@@ -317,11 +317,10 @@ fn load_metadata_checkpoint(
         let files = std::mem::take(&mut saved.work_product.saved_files);
         for (extension, filename) in files.into_sorted_stable_ord() {
             let canonical = format!("{}.{}", saved.work_product.cgu_name, extension);
-            if rustc_fs_util::link_or_copy(
-                in_incr_comp_dir_sess(session, &filename),
-                in_incr_comp_dir_sess(session, &canonical),
-            )
-            .is_err()
+            let source = in_incr_comp_dir_sess(session, &filename);
+            if !source.is_file()
+                || rustc_fs_util::link_or_copy(source, in_incr_comp_dir_sess(session, &canonical))
+                    .is_err()
             {
                 restored = false;
                 break;
