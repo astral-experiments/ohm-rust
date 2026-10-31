@@ -50,8 +50,6 @@ for lane, revision in (("control", base), ("candidate", candidate)):
     record(lane+"-backtrace", ["git","submodule","update","--init","--depth","1","library/backtrace"])
     cmd = [sys.executable, "x.py", "--ci", "false", "--set", "build.submodules=false", "--set", "rust.download-rustc=false", "--set", "rust.omit-git-hash=false", "--set", "rust.debug-assertions=false", "--set", "rust.lto=off", "build", "--build-dir", str(build), "--stage", "1"]
     record(lane+"-host", cmd+["compiler/rustc","library"])
-    if linux:
-        record(lane+"-cross", cmd+["--target",cross,"library"])
     sdk = products / lane
     def admit(source, destination):
         path = Path(source)
@@ -63,6 +61,11 @@ for lane, revision in (("control", base), ("candidate", candidate)):
             seen[identity] = destination
         return destination
     shutil.copytree(build/host/"stage1", sdk, symlinks=False, copy_function=admit)
+    if linux:
+        # Cross bootstrap replaces its host sysroot after the host SDK has been saved.
+        record(lane+"-cross", cmd+["--target",cross,"library"])
+        cross_tree=Path("lib/rustlib")/cross
+        shutil.copytree(build/host/"stage1"/cross_tree,sdk/cross_tree,symlinks=False,copy_function=admit,dirs_exist_ok=True)
     version = output(sdk/"bin/rustc", "-vV")
     assert "commit-hash: " + revision in version
     for target in ([host,cross] if linux else [host]):
