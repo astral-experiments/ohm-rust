@@ -16,6 +16,7 @@ use rustc_hir::def_id::{
 };
 use rustc_hir::definitions::DefPathHash;
 use rustc_index::IndexVec;
+use rustc_index::bit_set::GrowableBitSet;
 use rustc_macros::{Decodable, Encodable};
 use rustc_serialize::opaque::{FileEncodeResult, FileEncoder, IntEncodedWithFixedSize, MemDecoder};
 use rustc_serialize::{Decodable, Decoder, Encodable, Encoder};
@@ -58,7 +59,7 @@ const SYMBOL_PREDEFINED: u8 = 2;
 /// of a few selected queries (like `typeck` and `mir_optimized`) and
 /// any side effects that have been emitted during a query.
 ///
-/// Unused green values can remain in their original serialized form. Each retained
+/// Green values can remain in their original serialized form. Each retained
 /// generation is a prefix of the file with its own footer and decoding context;
 /// aliases map current dependency-node indices to indices in the previous generation.
 /// Keeping absolute byte positions preserves type and symbol shorthands. After
@@ -135,7 +136,7 @@ struct Footer {
     foreign_expn_data: UnhashMap<ExpnHash, u32>,
 }
 
-/// Serialized values retained without loading them into the current query cache.
+/// Serialized values retained in their original decoding context.
 pub struct QueryCachePromotion {
     data: Arc<Mmap>,
     data_len: usize,
@@ -314,7 +315,7 @@ impl OnDiskCache {
         }
     }
 
-    /// Retains an eligible, green query without decoding its unused value.
+    /// Retains an eligible, green query in its original serialized form.
     pub fn try_forward_query_value(
         &self,
         previous_index: SerializedDepNodeIndex,
@@ -401,6 +402,13 @@ impl OnDiskCache {
                 (file_to_file_index, file_index_to_stable_id)
             };
 
+            let mut forwarded_queries = GrowableBitSet::with_capacity(
+                forwarded_query_values.last().map_or(0, |(index, _)| index.as_usize() + 1),
+            );
+            for &(index, _) in &forwarded_query_values {
+                forwarded_queries.insert(index);
+            }
+
             let mut encoder = CacheEncoder {
                 tcx,
                 encoder,
@@ -412,6 +420,7 @@ impl OnDiskCache {
                 hygiene_context: Default::default(),
                 symbol_index_table: Default::default(),
                 query_values_index: Default::default(),
+                forwarded_queries,
                 side_effects_index: Default::default(),
             };
 
@@ -961,6 +970,7 @@ pub struct CacheEncoder<'tcx> {
     symbol_index_table: FxHashMap<u32, usize>,
 
     query_values_index: Vec<(SerializedDepNodeIndex, AbsoluteBytePos)>,
+    forwarded_queries: GrowableBitSet<SerializedDepNodeIndex>,
     side_effects_index: Vec<(SerializedDepNodeIndex, AbsoluteBytePos)>,
 }
 
@@ -994,6 +1004,9 @@ impl<'tcx> CacheEncoder<'tcx> {
 
     pub fn encode_query_value<V: Encodable<Self>>(&mut self, index: DepNodeIndex, value: &V) {
         let index = SerializedDepNodeIndex::from_curr_for_serialization(index);
+        if self.forwarded_queries.contains(index) {
+            return;
+        }
 
         self.query_values_index.push((index, AbsoluteBytePos::new(self.position())));
         self.encode_tagged(index, value);
