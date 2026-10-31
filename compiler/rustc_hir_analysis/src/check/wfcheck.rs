@@ -44,6 +44,7 @@ use rustc_trait_selection::traits::{
 use tracing::{debug, instrument};
 
 use super::compare_eii::{compare_eii_function_types, compare_eii_statics};
+use super::compare_impl_item::CLOSED_BOUND_DISALLOWED_FLAGS;
 use crate::autoderef::Autoderef;
 use crate::constrained_generic_params::{Parameter, identify_constrained_generic_params};
 use crate::diagnostics;
@@ -909,10 +910,28 @@ pub(crate) fn check_associated_item(
     tcx: TyCtxt<'_>,
     def_id: LocalDefId,
 ) -> Result<(), ErrorGuaranteed> {
+    let item = tcx.associated_item(def_id);
+    if matches!(item.kind, ty::AssocKind::Type { data: ty::AssocTypeData::Normal(_) })
+        && let ty::AssocContainer::TraitImpl(Ok(trait_item)) = item.container
+        && tcx.impl_polarity(item.container_id(tcx)) == ty::ImplPolarity::Positive
+        && tcx.generics_of(def_id).count() == 0
+        && !tcx.is_conditionally_const(def_id)
+        && item.defaultness(tcx).has_value()
+        && tcx.param_env(def_id).caller_bounds().is_empty()
+        && tcx.clauses_of(def_id).clauses.is_empty()
+    {
+        let impl_args = tcx.impl_trait_ref(item.container_id(tcx)).skip_binder().args;
+        let definition = tcx.type_of(def_id).skip_binder();
+        if !(impl_args, definition).has_type_flags(CLOSED_BOUND_DISALLOWED_FLAGS) {
+            tcx.ensure_result().coherent_trait(tcx.parent(trait_item))?;
+            if tcx.closed_associated_type_bounds_hold((trait_item, definition)) {
+                return Ok(());
+            }
+        }
+    }
+
     let loc = Some(WellFormedLoc::Ty(def_id));
     enter_wf_checking_ctxt(tcx, def_id, |wfcx| {
-        let item = tcx.associated_item(def_id);
-
         // Avoid bogus "type annotations needed `Foo: Bar`" errors on `impl Bar for Foo` in case
         // other `Foo` impls are incoherent.
         tcx.ensure_result().coherent_trait(tcx.parent(item.trait_item_or_self()?))?;

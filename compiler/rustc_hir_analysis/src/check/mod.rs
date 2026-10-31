@@ -121,6 +121,7 @@ pub(super) fn provide(providers: &mut Providers) {
         check_potentially_region_dependent_goals: check::check_potentially_region_dependent_goals,
         check_type_wf: wfcheck::check_type_wf,
         check_well_formed: wfcheck::check_well_formed,
+        closed_associated_type_bounds_hold: compare_impl_item::closed_associated_type_bounds_hold,
         ..*providers
     };
 }
