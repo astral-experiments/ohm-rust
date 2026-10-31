@@ -1,0 +1,2 @@
+# Preserve the upstream source formatting when updating this snapshot.
+** linguist-vendored whitespace=-blank-at-eol,-blank-at-eof

@@ -252,6 +252,7 @@ pub struct Config {
     pub targets: Vec<TargetSelection>,
     pub local_rebuild: bool,
     pub allocator: Option<Allocator>,
+    pub mimalloc: bool,
     pub control_flow_guard: bool,
     pub ehcont_guard: bool,
 
@@ -600,6 +601,7 @@ impl Config {
             parallel_frontend_threads: rust_parallel_frontend_threads,
             remap_debuginfo: rust_remap_debuginfo,
             jemalloc: rust_jemalloc,
+            mimalloc: rust_mimalloc,
             test_compare_mode: rust_test_compare_mode,
             llvm_libunwind: rust_llvm_libunwind,
             control_flow_guard: rust_control_flow_guard,
@@ -1530,6 +1532,7 @@ NOTE: Please add `--stage 2` to your command line, or if you're sure you want to
             locked_deps: build_locked_deps.unwrap_or(false),
             low_priority: build_low_priority.unwrap_or(false),
             mandir: install_mandir.map(PathBuf::from),
+            mimalloc: rust_mimalloc.unwrap_or(false),
             miri_info,
             musl_root: rust_musl_root.map(PathBuf::from),
             ninja_in_file: llvm_ninja.unwrap_or(true),

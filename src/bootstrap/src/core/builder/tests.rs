@@ -29,6 +29,62 @@ fn run_build(paths: &[PathBuf], config: Config) -> Cache {
     builder.cache
 }
 
+#[test]
+fn allocator_features_keep_jemalloc_in_other_tools() {
+    let ctx = TestCtx::new();
+    let config = ctx
+        .config("setup")
+        .with_default_toml_config(r#"build.allocator = "jemalloc""#)
+        .create_config();
+    let mut build = Build::new(config);
+    for (name, features) in [
+        ("rustc-main", vec!["jemalloc".into(), "jemalloc-sys".into(), "mimalloc".into()]),
+        ("rustdoc-tool", vec!["jemalloc".into()]),
+    ] {
+        build.crates.insert(
+            name.into(),
+            crate::Crate {
+                name: name.into(),
+                deps: Default::default(),
+                path: Default::default(),
+                features,
+            },
+        );
+    }
+    for (target, mimalloc, jemalloc) in [
+        ("x86_64-unknown-linux-gnu", false, true),
+        ("x86_64-unknown-linux-gnu", true, true),
+        ("x86_64-unknown-linux-gnu", true, false),
+        ("x86_64-unknown-linux-gnu", false, false),
+        ("aarch64-apple-darwin", false, true),
+    ] {
+        let target = TargetSelection::from_user(target);
+        build.config.mimalloc = mimalloc;
+        build.config.allocator = Some(if jemalloc {
+            crate::core::config::Allocator::Jemalloc
+        } else {
+            crate::core::config::Allocator::System
+        });
+        let rustc = build.rustc_features(Kind::Build, target, &["rustc-main".into()]);
+        let rustdoc = build.rustc_features(Kind::Build, target, &["rustdoc-tool".into()]);
+        assert_eq!(rustc.split_whitespace().any(|feature| feature == "mimalloc"), mimalloc);
+        assert_eq!(
+            rustc.split_whitespace().any(|feature| feature == "jemalloc"),
+            jemalloc && !mimalloc
+        );
+        assert_eq!(
+            rustc.split_whitespace().any(|feature| feature == "jemalloc-sys"),
+            jemalloc && mimalloc,
+        );
+        assert_eq!(rustdoc.split_whitespace().any(|feature| feature == "jemalloc"), jemalloc);
+        assert!(!rustdoc.split_whitespace().any(|feature| feature == "mimalloc"));
+        assert_eq!(
+            build.config.allocator(target) == crate::core::config::Allocator::Jemalloc,
+            jemalloc
+        );
+    }
+}
+
 fn check_cli<const N: usize>(paths: [&str; N]) {
     run_build(
         &paths.map(PathBuf::from),

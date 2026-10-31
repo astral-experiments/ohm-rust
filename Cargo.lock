@@ -3558,6 +3558,7 @@ checksum = "bfe6f213fb658c8fb95baabd5420393438cf5a98d707f5dd701d9197c705f71e"
 name = "rustc-main"
 version = "0.0.0"
 dependencies = [
+ "cmake",
  "getrandom 0.3.3",
  "rustc_codegen_ssa",
  "rustc_driver",
