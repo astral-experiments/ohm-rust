@@ -40,8 +40,29 @@ fn main() {
         });
     }
 
-    // The incremental query hash keeps only eight column bits. A native function pointer
-    // to a tracked function exposes its full definition column through a reification shim.
+    for public_hash in ["-Zpublic-api-hash=yes", "-Zpublic-api-hash=no"] {
+        run_in_tmpdir(|| {
+            for indent in ["", "           "] {
+                rfs::write("input.rs", format!("{indent}pub fn answer() -> u8 {{ 17 }}"));
+                rustc()
+                    .input("input.rs")
+                    .crate_type("rlib")
+                    .emit("metadata")
+                    .incremental("producer-cache")
+                    .arg("-Zincremental-ignore-spans")
+                    .arg(public_hash)
+                    .run();
+                rustc()
+                    .input("reader.rs")
+                    .extern_("input", "libinput.rmeta")
+                    .emit("metadata")
+                    .incremental("reader-cache")
+                    .arg("-Zpublic-api-hash")
+                    .run();
+            }
+        });
+    }
+
     run_in_tmpdir(|| {
         let definition = "pub fn location() -> &'static std::panic::Location<'static> { \
                           std::panic::Location::caller() }";
@@ -54,11 +75,18 @@ fn main() {
                 .incremental("producer-cache")
                 .arg("-Zpublic-api-hash")
                 .run();
-            rustc().input("libinput.rlib").arg("-Zls=public_hash").run().stdout_utf8()
+            let hash = rustc().input("libinput.rlib").arg("-Zls=public_hash").run().stdout_utf8();
+            rustc()
+                .input("caller.rs")
+                .extern_("input", "libinput.rlib")
+                .incremental("reader-cache")
+                .arg("-Zpublic-api-hash")
+                .run();
+            (hash, run("caller").stdout_utf8().trim().parse::<u32>().unwrap())
         };
-        assert_ne!(
-            build(format!("{definition}{padding}")),
-            build(format!("{padding}{definition}")),
-        );
+        let (before_hash, before_column) = build(format!("{definition}{padding}"));
+        let (after_hash, after_column) = build(format!("{padding}{definition}"));
+        assert_ne!(before_hash, after_hash);
+        assert_eq!(after_column, before_column + 256);
     });
 }
