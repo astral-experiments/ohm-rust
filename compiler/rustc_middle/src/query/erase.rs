@@ -236,6 +236,7 @@ impl_erasable_for_types_with_no_type_params! {
     rustc_middle::middle::resolve_bound_vars::ObjectLifetimeDefault,
     rustc_middle::mir::ConstQualifs,
     rustc_middle::mir::ConstValue,
+    rustc_middle::mir::RelinkInputs,
     rustc_middle::mir::interpret::AllocId,
     rustc_middle::mir::interpret::EvalStaticInitializerRawResult<'_>,
     rustc_middle::mir::interpret::EvalToValTreeResult<'_>,

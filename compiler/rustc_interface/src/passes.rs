@@ -32,6 +32,7 @@ use rustc_lint::{BufferedEarlyLint, EarlyCheckNode, LintStore, unerased_lint_sto
 use rustc_metadata::EncodedMetadata;
 use rustc_metadata::creader::CStore;
 use rustc_middle::arena::Arena;
+use rustc_middle::mir::RelinkInputs;
 use rustc_middle::ty::{self, RegisteredTools, TyCtxt};
 use rustc_middle::util::Providers;
 use rustc_parse::lexer::StripTokens;
@@ -587,6 +588,17 @@ pub fn write_dep_info_for_outputs(
     out_filenames: &[PathBuf],
     untracked_relink_inputs: bool,
 ) {
+    let inputs =
+        if untracked_relink_inputs { RelinkInputs::Rebuild } else { RelinkInputs::Tracked };
+    write_dep_info_with_relink_inputs(tcx, out_filenames, inputs);
+}
+
+/// Writes checked dep-info without losing the downstream native link's input checks.
+pub fn write_dep_info_with_relink_inputs(
+    tcx: TyCtxt<'_>,
+    out_filenames: &[PathBuf],
+    inputs: RelinkInputs,
+) {
     // Write out dependency rules to the dep-info file if requested
     let sess = tcx.sess;
     if !sess.opts.output_types.contains_key(&OutputType::DepInfo) {
@@ -697,7 +709,12 @@ pub fn write_dep_info_for_outputs(
             files.insert(name, (0, None));
         }
 
-        let relink_marker = if untracked_relink_inputs {
+        let marker_name = match inputs {
+            RelinkInputs::Tracked => None,
+            RelinkInputs::RecheckLink => Some("ohm-recheck-dependent-links"),
+            RelinkInputs::Rebuild => Some("ohm-untracked-relink-inputs"),
+        };
+        let relink_marker = if let Some(name) = marker_name {
             // A non-directory cannot have children. The Unix null device also avoids
             // introducing Make metacharacters from the depfile or executable name.
             let parent = if cfg!(unix) {
@@ -708,7 +725,7 @@ pub fn write_dep_info_for_outputs(
                     OutFileName::Stdout => Cow::Owned(env::current_exe()?),
                 }
             };
-            Some(normalize_path(parent.join("ohm-untracked-relink-inputs")))
+            Some(normalize_path(parent.join(name)))
         } else {
             None
         };
