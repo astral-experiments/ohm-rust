@@ -17,7 +17,7 @@ concurrency:
 jobs:
   style:
     name: Formatting and tidy
-    runs-on: depot-ubuntu-24.04-4
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout Rust
@@ -47,13 +47,13 @@ jobs:
           test tidy
 
   compiler:
-    name: ${{ matrix.os == 'depot-ubuntu-24.04-16' && 'Compiler and regression tests' || 'Compiler and regression tests (macOS)' }}
+    name: ${{ matrix.os == 'namespace-profile-ubuntu-24-04-16' && 'Compiler and regression tests' || 'Compiler and regression tests (macOS)' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        os: [depot-ubuntu-24.04-16, namespace-profile-macos-15]
+        os: [namespace-profile-ubuntu-24-04-16, namespace-profile-macos-15]
     steps:
       - name: Checkout Rust
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
