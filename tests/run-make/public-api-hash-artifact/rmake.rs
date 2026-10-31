@@ -27,6 +27,7 @@ fn compile_and_read_public_api_hash_with_output(
         .crate_type("rlib")
         .emit(output)
         .arg("-Zpublic-api-hash")
+        .arg("-Zincremental-verify-ich")
         .json("artifacts")
         .error_format("json")
         .incremental("incremental")
@@ -162,6 +163,17 @@ fn downstream_exported_macro_column() -> u32 {
         .output("macro-user")
         .run();
     run("macro-user").stdout_utf8().trim().parse().expect("macro token location was not a column")
+}
+
+fn downstream_exported_macro_value() -> u32 {
+    rustc()
+        .input("macro_value_user.rs")
+        .extern_("lib", rust_lib_name("lib"))
+        .extern_("macro_inspector", dynamic_lib_name("macro_inspector"))
+        .arg("-Zpublic-api-hash")
+        .output("macro-value-user")
+        .run();
+    run("macro-value-user").stdout_utf8().trim().parse().unwrap()
 }
 
 fn main() {
@@ -455,20 +467,93 @@ fn main() {
     rfs::write("lib.rs", &macro_source);
     let (macro_hash, _) = compile_and_read_public_api_hash_with_output(false, &[], "metadata,link");
     let original_macro_column = downstream_exported_macro_column();
+    assert_eq!(downstream_exported_macro_value(), 123);
 
     change_private_value(1, 2);
     assert_eq!(
         macro_hash,
-        compile_and_read_public_api_hash_with_output(false, &[], "metadata,link").0,
+        compile_and_read_public_api_hash_with_output(true, &[], "metadata,link").0,
     );
+    assert_eq!(downstream_exported_macro_column(), original_macro_column);
 
     let moved_macro_source = macro_source.replacen(&original_line, &moved_line, 1);
     assert_eq!(macro_source.len(), moved_macro_source.len());
-    rfs::write("lib.rs", moved_macro_source);
+    rfs::write("lib.rs", &moved_macro_source);
     change_private_value(2, 3);
     assert_eq!(
         macro_hash,
         compile_and_read_public_api_hash_with_output(false, &[], "metadata,link").0,
     );
     assert_eq!(downstream_exported_macro_column(), original_macro_column + 256);
+
+    change_private_value(3, 4);
+    assert_eq!(
+        macro_hash,
+        compile_and_read_public_api_hash_with_output(true, &[], "metadata,link").0,
+    );
+    assert_eq!(downstream_exported_macro_column(), original_macro_column + 256);
+
+    let opt_out = ["-Zohm-metadata-macro-reuse=no"];
+    compile_and_read_public_api_hash_with_output(false, &opt_out, "metadata,link");
+    assert!(!metadata_work_product().with_file_name("metadata-prefix-v3.ohm-prefix-v3").exists());
+    change_private_value(4, 5);
+    compile_and_read_public_api_hash_with_output(false, &opt_out, "metadata,link");
+    assert_eq!(downstream_exported_macro_column(), original_macro_column + 256);
+    assert_eq!(downstream_exported_macro_value(), 123);
+
+    change_private_value(5, 6);
+    compile_and_read_public_api_hash_with_output(false, &[], "metadata,link");
+    change_private_value(6, 7);
+    compile_and_read_public_api_hash_with_output(true, &[], "metadata,link");
+
+    let manifest = metadata_work_product().with_file_name("metadata-prefix-v3.ohm-prefix-v3");
+    rfs::write(manifest, b"ohm-metadata-prefix-v3\0");
+    change_private_value(7, 8);
+    compile_and_read_public_api_hash_with_output(false, &[], "metadata,link");
+    assert_eq!(downstream_exported_macro_column(), original_macro_column + 256);
+    let manifest = metadata_work_product().with_file_name("metadata-prefix-v3.ohm-prefix-v3");
+    rfs::remove_file(manifest);
+    change_private_value(8, 9);
+    compile_and_read_public_api_hash_with_output(false, &[], "metadata,link");
+
+    rfs::write("lib.rs", moved_macro_source.replace("$observer!(123)", "$observer!(456)"));
+    change_private_value(9, 1);
+    let (changed_macro_hash, _) =
+        compile_and_read_public_api_hash_with_output(false, &[], "metadata,link");
+    assert_ne!(macro_hash, changed_macro_hash);
+    assert_eq!(downstream_exported_macro_value(), 456);
+    change_private_value(1, 2);
+    assert_eq!(
+        changed_macro_hash,
+        compile_and_read_public_api_hash_with_output(true, &[], "metadata,link").0,
+    );
+    assert_eq!(downstream_exported_macro_value(), 456);
+
+    // A fallback can inherit an old manifest, but must neither replace nor reuse it.
+    let previous_manifest =
+        rfs::read(metadata_work_product().with_file_name("metadata-prefix-v3.ohm-prefix-v3"));
+    let generated = r#"
+macro_rules! generate {
+    () => {
+        #[macro_export]
+        macro_rules! forward { (value) => { 789 }; }
+    };
+}
+generate!();
+"#;
+    rfs::write("lib.rs", format!("{moved_expression_source}\n{generated}"));
+    change_private_value(2, 3);
+    let (generated_hash, _) =
+        compile_and_read_public_api_hash_with_output(false, &[], "metadata,link");
+    assert_eq!(
+        rfs::read(metadata_work_product().with_file_name("metadata-prefix-v3.ohm-prefix-v3")),
+        previous_manifest,
+    );
+    assert_eq!(downstream_exported_macro_value(), 789);
+    change_private_value(3, 4);
+    assert_eq!(
+        generated_hash,
+        compile_and_read_public_api_hash_with_output(false, &[], "metadata,link").0,
+    );
+    assert_eq!(downstream_exported_macro_value(), 789);
 }
