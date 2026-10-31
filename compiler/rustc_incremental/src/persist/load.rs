@@ -126,9 +126,7 @@ fn load_dep_graph(
 
 /// Attempts to load the query result cache from disk
 ///
-/// If we are not in incremental compilation mode, returns `None`.
-/// Otherwise, tries to load the query result cache from disk,
-/// creating an empty cache if it could not be loaded.
+/// Returns `None` outside incremental compilation or if the cache could not be loaded.
 pub fn load_query_result_cache(
     sess: &Session,
     incr_comp_session: Option<&IncrCompSession>,
@@ -142,16 +140,10 @@ pub fn load_query_result_cache(
 
     let path = query_cache_path(incr_comp_session);
     match file_format::open_incremental_file(sess, &path) {
-        Ok(OpenFile { mmap, start_pos }) => {
-            let cache = OnDiskCache::new(sess, mmap, start_pos).unwrap_or_else(|()| {
-                sess.dcx().emit_warn(diagnostics::CorruptFile { path: &path });
-                OnDiskCache::new_empty()
-            });
-            Some(cache)
-        }
-        Err(OpenFileError::NotFoundOrHeaderMismatch | OpenFileError::IoError { .. }) => {
-            Some(OnDiskCache::new_empty())
-        }
+        Ok(OpenFile { mmap, start_pos }) => OnDiskCache::new(sess, mmap, start_pos)
+            .map_err(|()| sess.dcx().emit_warn(diagnostics::CorruptFile { path: &path }))
+            .ok(),
+        Err(OpenFileError::NotFoundOrHeaderMismatch | OpenFileError::IoError { .. }) => None,
     }
 }
 
@@ -210,8 +202,16 @@ pub fn setup_dep_graph(
     let mut checkpoint = checkpoint_files
         .and_then(|(graph, cache)| load_stage_checkpoint(sess, &incr_comp_session, graph, cache));
     // Try to load the previous session's dep graph and work products.
-    let load_result =
+    let mut load_result =
         load_dep_graph(sess, &incr_comp_session, checkpoint.as_ref().map(|(graph, _)| graph));
+    let mut query_cache = None;
+    if matches!(load_result, LoadResult::Ok { .. }) && checkpoint.is_none() {
+        query_cache = load_query_result_cache(sess, Some(&incr_comp_session));
+        if query_cache.is_none() {
+            // Side-effect nodes cannot be reused without their cached payloads.
+            load_result = LoadResult::DataOutOfDate;
+        }
+    }
 
     sess.time("incr_comp_garbage_collect_session_directories", || {
         if let Err(e) =
@@ -230,11 +230,13 @@ pub fn setup_dep_graph(
     let (prev_graph, mut prev_work_products) = match load_result {
         LoadResult::IoError { path, err } => {
             drop(checkpoint.take());
+            drop(query_cache.take());
             sess.dcx().emit_warn(diagnostics::LoadDepGraph { path, err });
             Default::default()
         }
         LoadResult::DataOutOfDate => {
             drop(checkpoint.take());
+            drop(query_cache.take());
             if let Err(err) = delete_all_session_dir_contents(&incr_comp_session) {
                 sess.dcx().emit_err(diagnostics::DeleteIncompatible {
                     path: dep_graph_path(&incr_comp_session),
@@ -268,9 +270,9 @@ pub fn setup_dep_graph(
     } else {
         None
     };
-    let query_cache = checkpoint
-        .map(|(_, cache)| cache)
-        .or_else(|| load_query_result_cache(sess, Some(&incr_comp_session)));
+    let query_cache = Some(
+        checkpoint.map(|(_, cache)| cache).or(query_cache).unwrap_or_else(OnDiskCache::new_empty),
+    );
 
     // Stream the dep-graph to an alternate file, to avoid overwriting anything in case of errors.
     let path_buf = staging_dep_graph_path(&incr_comp_session);
