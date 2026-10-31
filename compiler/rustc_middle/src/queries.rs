@@ -2597,6 +2597,11 @@ rustc_queries! {
         desc { "collect_and_partition_mono_items" }
     }
 
+    query ohm_relink_inputs(_: ()) -> mir::RelinkInputs {
+        eval_always
+        desc { "classifying the assembler and native linker inputs of generated code" }
+    }
+
     query ohm_untracked_relink_inputs(_: ()) -> bool {
         eval_always
         desc { "checking whether saved codegen may have untracked assembler inputs" }
