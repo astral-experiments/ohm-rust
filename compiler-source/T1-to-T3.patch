@@ -1,0 +1,140 @@
+diff --git a/compiler/rustc_middle/src/queries.rs b/compiler/rustc_middle/src/queries.rs
+index cf6b4a7ba78bf802c6b9c20ac7da82c26eec634e..bfce1910def6554d97626729d77b30116ee3afe0 100644
+--- a/compiler/rustc_middle/src/queries.rs
++++ b/compiler/rustc_middle/src/queries.rs
+@@ -1693,6 +1693,11 @@
+         desc { "finding impls of `{}` for `{:?}`", tcx.def_path_str(key.0), key.1 }
+     }
+ 
++    /// Records the nominal receiver of a concrete trait-impl lookup in the dependency graph.
++    query trait_impl_receiver_adt(adt_def_id: DefId) {
++        desc { "recording the receiver of an impl lookup for `{}`", tcx.def_path_str(adt_def_id) }
++    }
++
+     query trait_impls_by_const_arg(key: (DefId, DefId)) -> &'tcx ty::trait_def::ConstArgImpls<'tcx> {
+         arena_cache
+         desc { "indexing const arguments of `{}` impls for `{}`", tcx.def_path_str(key.0), tcx.def_path_str(key.1) }
+diff --git a/compiler/rustc_middle/src/ty/mod.rs b/compiler/rustc_middle/src/ty/mod.rs
+index 13e73da061e8e53d0e287c9a473a19f263d37483..90c4fab89c358bd188bb09a5b43aa6e8558563f5 100644
+--- a/compiler/rustc_middle/src/ty/mod.rs
++++ b/compiler/rustc_middle/src/ty/mod.rs
+@@ -2565,8 +2565,15 @@
+         trait_impls_of: trait_def::trait_impls_of_provider,
+         blanket_trait_impls: |tcx, trait_id| tcx.trait_impls_of(trait_id).blanket_impls(),
+         non_blanket_trait_impls: |tcx, (trait_id, simp)| {
+-            tcx.trait_impls_of(trait_id).non_blanket_impls().get(&simp).map_or(&[], Vec::as_slice)
++            let impls = tcx.trait_impls_of(trait_id);
++            if tcx.dep_graph.is_fully_enabled()
++                && let SimplifiedType::Adt(adt) = simp
++            {
++                let () = tcx.trait_impl_receiver_adt(adt);
++            }
++            impls.non_blanket_impls().get(&simp).map_or(&[], Vec::as_slice)
+         },
++        trait_impl_receiver_adt: |_, _| (),
+         trait_impls_by_const_arg: trait_def::trait_impls_by_const_arg_provider,
+         incoherent_impls: trait_def::incoherent_impls_provider,
+         trait_impls_in_crate: trait_def::trait_impls_in_crate_provider,
+diff --git a/compiler/rustc_middle/src/dep_graph/graph.rs b/compiler/rustc_middle/src/dep_graph/graph.rs
+index e5d07fdcf43601fd735dd731f0570c5678a8e782..97636cdd9f3d4e1b181a8f5248454d028fabcd5a 100644
+--- a/compiler/rustc_middle/src/dep_graph/graph.rs
++++ b/compiler/rustc_middle/src/dep_graph/graph.rs
+@@ -939,6 +939,29 @@
+         self.data()?.try_mark_green(tcx, dep_node)
+     }
+ 
++    /// Recover the two typed, direct inputs previously read for an ADT impl bucket.
++    pub fn previous_trait_impl_adt_inputs(
++        &self,
++        bucket: DepNode,
++        index: SerializedDepNodeIndex,
++    ) -> Option<(DepNode, DepNode)> {
++        let previous = &self.data()?.previous;
++        if bucket.kind != DepKind::non_blanket_trait_impls || *previous.index_to_node(index) != bucket {
++            return None;
++        }
++        let mut inputs = previous.edge_targets_from(index).map(|i| *previous.index_to_node(i));
++        let first = inputs.next()?;
++        let second = inputs.next()?;
++        if inputs.next().is_some() {
++            return None;
++        }
++        match (first.kind, second.kind) {
++            (DepKind::trait_impls_of, DepKind::trait_impl_receiver_adt) => Some((first, second)),
++            (DepKind::trait_impl_receiver_adt, DepKind::trait_impls_of) => Some((second, first)),
++            _ => None,
++        }
++    }
++
+     /// Returns the old edges except those which the caller will read again after rewriting its suffix.
+     ///
+     /// Call this after normal green-marking so all query side effects have
+diff --git a/compiler/rustc_query_impl/src/execution.rs b/compiler/rustc_query_impl/src/execution.rs
+index 428b8e7992a5d2539fcef68039a9ef730d6b3127..026089ebcb046f2ea745ba26ad6153a47c11a223 100644
+--- a/compiler/rustc_query_impl/src/execution.rs
++++ b/compiler/rustc_query_impl/src/execution.rs
+@@ -5,6 +5,7 @@
+ use rustc_data_structures::hash_table::Entry;
+ use rustc_data_structures::{Limit, defer, outline, sharded, sync};
+ use rustc_errors::FatalError;
++use rustc_hir::def::DefKind;
+ use rustc_middle::dep_graph::{
+     DepGraphData, DepKind, DepNode, DepNodeIndex, DepNodeKey, SerializedDepNodeIndex,
+ };
+@@ -13,6 +14,7 @@
+     QueryVTable,
+ };
+ use rustc_middle::ty::TyCtxt;
++use rustc_middle::ty::fast_reject::SimplifiedType;
+ use rustc_middle::ty::tls::{self, ImplicitCtxt};
+ use rustc_middle::verify_ich::incremental_verify_ich;
+ use rustc_span::def_id::LOCAL_CRATE;
+@@ -647,3 +649,26 @@
+     // the caller to check whether the node ended up marked red or green.
+     true
+ }
++
++/// Force an opaque impl bucket only when its old inputs describe a live trait and nominal ADT.
++pub(crate) fn force_trait_impl_adt_bucket(
++    tcx: TyCtxt<'_>,
++    dep_node: DepNode,
++    prev_index: SerializedDepNodeIndex,
++) -> bool {
++    let Some(key) = tcx.dep_graph.with_ignore(|| {
++        let (trait_node, adt_node) = tcx.dep_graph.previous_trait_impl_adt_inputs(dep_node, prev_index)?;
++        let trait_id = trait_node.extract_def_id(tcx)?;
++        let adt = adt_node.extract_def_id(tcx)?;
++        if tcx.def_kind(trait_id) != DefKind::Trait || !tcx.def_kind(adt).is_adt() {
++            return None;
++        }
++        let key = (trait_id, SimplifiedType::Adt(adt));
++        (DepNode::construct(tcx, DepKind::non_blanket_trait_impls, &key) == dep_node).then_some(key)
++    }) else {
++        return false;
++    };
++    let query = &tcx.query_system.query_vtables.non_blanket_trait_impls;
++    try_execute_query::<_, true>(query, tcx, DUMMY_SP, key, Some(dep_node));
++    true
++}
+diff --git a/compiler/rustc_query_impl/src/dep_kind_vtables.rs b/compiler/rustc_query_impl/src/dep_kind_vtables.rs
+index 495524c3f142a4b77a6ec46e1ab99a7b5496e869..a61472bac5f6f1b83cfc0117effa9a0d590b3a4d 100644
+--- a/compiler/rustc_query_impl/src/dep_kind_vtables.rs
++++ b/compiler/rustc_query_impl/src/dep_kind_vtables.rs
+@@ -1,6 +1,6 @@
+ use rustc_middle::arena::Arena;
+ use rustc_middle::bug;
+-use rustc_middle::dep_graph::{DepKindVTable, DepNodeKey, KeyFingerprintStyle};
++use rustc_middle::dep_graph::{DepKind, DepKindVTable, DepNodeKey, KeyFingerprintStyle};
+ use rustc_middle::query::QueryCache;
+ 
+ use crate::incremental::promote_from_disk_inner;
+@@ -185,5 +185,8 @@
+         rustc_middle::queries::rustc_with_all_queries! { define_dep_kind_vtables! };
+ 
+     // Non-query vtables must come before query vtables, to match the order of `DepKind`.
+-    arena.alloc_from_iter(nq_vtables.into_iter().chain(q_vtables.into_iter()))
++    let vtables = arena.alloc_from_iter(nq_vtables.into_iter().chain(q_vtables.into_iter()));
++    vtables[DepKind::non_blanket_trait_impls.as_usize()].force_from_dep_node_fn =
++        Some(crate::execution::force_trait_impl_adt_bucket);
++    vtables
+ }

@@ -1,0 +1,23 @@
+[build]
+profiler = true
+rustc = "/ABSOLUTE/STAGE0/bin/rustc"
+cargo = "/ABSOLUTE/STAGE0/bin/cargo"
+build-dir = "/ABSOLUTE/BUILD_DIR"
+submodules = false
+compiler-docs = false
+[llvm]
+download-ci-llvm = false
+link-shared = true
+[rust]
+channel = "dev"
+optimize = true
+debug-assertions = false
+omit-git-hash = true
+lto = "off"
+llvm-tools = false
+lld = false
+[target.x86_64-unknown-linux-gnu]
+linker = "/ABSOLUTE/LINKER_WRAPPER"
+llvm-filecheck = "/usr/bin/FileCheck-18"
+llvm-config = "/ABSOLUTE/LLVM_DEV/bin/llvm-config"
+llvm-has-rust-patches = true

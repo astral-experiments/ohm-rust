@@ -1,0 +1,56 @@
+{
+  "earlier_format8_T1": {
+    "commit": "2c57d173a7da0d8f41f1582a336d9b99f1294c66",
+    "tree": "434e72a3cc3f4e9e23aa4ed308b5de381a931ea1"
+  },
+  "earlier_format8_T3": {
+    "commit": "b4889f3a1a81e3d32e458ad2143df066f332da66",
+    "tree": "67de93bb7a0b51d18d3b271da0fc4b381d053213"
+  },
+  "measured_T1_tree": "720603b2ebdcf1ddf17cf8d82ece173ae26f9720",
+  "measured_T3_tree": "68ee34a9a8c46081f98091ede4c6529e5d1d0fe5",
+  "measured_field_C": {
+    "commit": "cb06be7edfc264edd87f44f58713e6ae00056c84",
+    "tree": "d99b741c05c4e62e41740fe338a4232bfe3aeb90"
+  },
+  "measured_patches_sha256": {
+    "C-to-T1.patch": "3d5684b269a5db2b8eb331f27470551ba01c2e11ef4e977cf23584b7ef754643",
+    "T1-to-T3.patch": "52aab7435677be227ef8a640dee237af0a48a9b147b41d7e71cb60a747f1769a"
+  },
+  "release_22": "625207d26ce4449c9c95d871c88cfb50e904c09f",
+  "release_22_T1": "6d997cb8c8ebd3cb0e16c28c09d9855d862238a2",
+  "release_22_T1_incremental_format": 9,
+  "release_22_T1_tree": "c23ae897702d63e1ef8e55f2ada9d00c0d010558",
+  "release_22_T3": "3334fcb9306dadf768e58248c4fefb53852fe02d",
+  "release_22_T3_incremental_format": 10,
+  "release_22_T3_tree": "95e8cebdff72ed7658654e8169d4982abbfe03d5",
+  "subsequent_release_22_rebase": {
+    "commits": [
+      {
+        "compiler_tree": "fe04efe2bcbf28820e9c3361d62b299d273e9a24",
+        "current": "556a8364f1485a03be31b1a50c250d63198a943d",
+        "previous": "625207d26ce4449c9c95d871c88cfb50e904c09f",
+        "previous_compiler_tree": "fe04efe2bcbf28820e9c3361d62b299d273e9a24",
+        "role": "base",
+        "tree": "277af1f4d727b2e634696548e3a938e9d518b86f"
+      },
+      {
+        "compiler_tree": "3272b6931ea8648fbac69d098dfa00c78278c77f",
+        "current": "8833a44ae11c06f328141f5b4254729c2d7b27cc",
+        "previous": "6d997cb8c8ebd3cb0e16c28c09d9855d862238a2",
+        "previous_compiler_tree": "3272b6931ea8648fbac69d098dfa00c78278c77f",
+        "role": "T1",
+        "tree": "af054c830d57b0ed66cad4de52400d36957a80ac"
+      },
+      {
+        "compiler_tree": "b8db8f10a2b59aa8c65e859bcb2d07db72317c6a",
+        "current": "a34f2fffdf6f68cb07e89e0a239d30d0e2af38b5",
+        "previous": "3334fcb9306dadf768e58248c4fefb53852fe02d",
+        "previous_compiler_tree": "b8db8f10a2b59aa8c65e859bcb2d07db72317c6a",
+        "role": "T3",
+        "tree": "bc2dcd6e87be5343a7cced9b9a2f3a7f2a1e239c"
+      }
+    ],
+    "only_cross_release_difference": ":160000 160000 2554a1dfaf22474b360a4298883acf41f82bd78f 8269d772aa1ef02e5efaa331dfb40eb55d71f719 M\tsrc/tools/cargo"
+  }
+}
