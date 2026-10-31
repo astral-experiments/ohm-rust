@@ -345,6 +345,15 @@ impl OnDiskCache {
         // with_decoder is infallible, so we can stop here
     }
 
+    /// Dependency nodes with saved query values, in previous-graph order.
+    pub(crate) fn cached_query_indices(&self) -> Vec<SerializedDepNodeIndex> {
+        // Restore the old graph traversal order before promoting query values.
+        #[allow(rustc::potential_query_instability)]
+        let mut indices: Vec<_> = self.query_values_index.keys().copied().collect();
+        indices.sort_unstable_by_key(|index| index.as_u32());
+        indices
+    }
+
     /// Returns the disk-cached query return value for the given node, if there is one.
     pub fn try_load_query_value<'tcx, T>(
         &self,
