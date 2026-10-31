@@ -178,6 +178,8 @@ impl_erasable_for_types_with_no_type_params! {
     &'_ str,
     (&'_ ty::CrateInherentImpls, Result<(), ErrorGuaranteed>),
     (),
+    (Fingerprint, Fingerprint),
+    (bool, bool),
     (traits::solve::QueryResult<'_>, &'_ traits::solve::inspect::Probe<TyCtxt<'_>>, ty::RequiredDepth),
     (usize, bool),
     Fingerprint,
