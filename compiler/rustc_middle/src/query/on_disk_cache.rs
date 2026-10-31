@@ -135,10 +135,7 @@ struct Footer {
 
 /// Serialized values retained without loading them into the current query cache.
 pub struct QueryCachePromotion {
-    #[cfg(unix)]
     data: Arc<Mmap>,
-    #[cfg(not(unix))]
-    data: Vec<u8>,
     data_len: usize,
     start_pos: usize,
     query_values: Vec<(SerializedDepNodeIndex, SerializedDepNodeIndex)>,
@@ -350,12 +347,9 @@ impl OnDiskCache {
             depth += 1;
         }
         let data = self.serialized_data.read();
-        // Unix permits unlinking a mapped file. Keep its immutable contents alive
-        // until serialization has written them to the replacement inode.
-        #[cfg(unix)]
+        // The replacement is written separately, so the old mappings remain valid
+        // until serialization finishes, including queries loaded while encoding.
         let data = Arc::clone(data.as_ref().unwrap());
-        #[cfg(not(unix))]
-        let data = data.as_ref().unwrap()[..self.data_len].to_vec();
         Some(QueryCachePromotion {
             data,
             data_len: self.data_len,
