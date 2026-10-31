@@ -207,7 +207,7 @@ pub fn setup_dep_graph(
     let mut query_cache = None;
     if matches!(load_result, LoadResult::Ok { .. }) && checkpoint.is_none() {
         query_cache = load_query_result_cache(sess, Some(&incr_comp_session));
-        if query_cache.is_none() && !sess.opts.unstable_opts.ohm_shared_stages {
+        if query_cache.is_none() {
             // Side-effect nodes cannot be reused without their cached payloads.
             load_result = LoadResult::DataOutOfDate;
         }
