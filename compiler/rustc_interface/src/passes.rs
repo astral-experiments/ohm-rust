@@ -2,6 +2,7 @@ use std::any::Any;
 use std::ffi::{OsStr, OsString};
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, LazyLock, OnceLock};
 use std::{env, fs, iter};
 
@@ -708,6 +709,20 @@ fn write_out_deps(tcx: TyCtxt<'_>, outputs: &OutputFilenames, out_filenames: &[P
                     ));
                 }
             }
+        }
+
+        if sess.proc_macro_observed_foreign_bytes.load(Ordering::Relaxed)
+            && CStore::from_tcx(tcx).has_public_api_hash_dependencies()
+            && let OutFileName::Real(path) = &deps_output
+        {
+            // Older Cargo can reuse codegen after a dependency rewrites its metadata while
+            // preserving its public hash. A child of this dep-info file cannot exist.
+            let marker = if sess.untrackable_proc_macro_source.load(Ordering::Relaxed) {
+                path.join("ohm-untrackable-foreign-span")
+            } else {
+                path.join("ohm-foreign-span-bytes")
+            };
+            files.insert(normalize_path(marker), (0, None));
         }
 
         let write_deps_to_file = |file: &mut dyn Write| -> io::Result<()> {
