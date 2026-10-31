@@ -137,6 +137,10 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1
           tests/ui/coroutine/metadata-sufficient-for-layout.rs
+          tests/ui/coroutine/storage-conflicts-subsets.rs
+          tests/ui/coroutine/storage-conflicts-overlapping-sets.rs
+          tests/ui/coroutine/storage-conflicts-many-locals.rs
+          tests/ui/coroutine/storage-conflicts-resume-and-unwind.rs
           tests/ui/coroutine/xcrate.rs tests/ui/coroutine/drop-env.rs
           tests/ui/async-await/async-closures/drop.rs
           tests/ui/async-await/async-closures/by-move-body-inlined-attrs.rs
