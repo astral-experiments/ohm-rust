@@ -1566,6 +1566,28 @@ extern "C" LLVMModuleRef LLVMRustParseBitcodeForLTO(LLVMContextRef Context,
   return wrap(std::move(*SrcOrError).release());
 }
 
+extern "C" bool LLVMRustModuleHasInlineAsm(LLVMModuleRef M) {
+  const Module &Mod = *unwrap(M);
+  if (!Mod.getModuleInlineAsm().empty())
+    return true;
+  for (const Function &F : Mod)
+    for (const BasicBlock &BB : F)
+      for (const Instruction &I : BB)
+        if (const auto *Call = dyn_cast<CallBase>(&I); Call && Call->isInlineAsm())
+          return true;
+  return false;
+}
+
+// Cache keys need content hashes for imported modules as well as the primary.
+extern "C" bool LLVMRustThinLTOHasModuleHashes(LLVMRustThinLTOData *Data) {
+  for (const auto &Entry : Data->Index.modulePaths()) {
+    if (llvm::all_of(Data->Index.getModuleHash(Entry.getKey()),
+                     [](uint32_t Word) { return Word == 0; }))
+      return false;
+  }
+  return true;
+}
+
 // Computes the LTO cache key for the provided 'ModId' in the given 'Data',
 // storing the result in 'KeyOut'.
 // Currently, this cache key is a SHA-1 hash of anything that could affect

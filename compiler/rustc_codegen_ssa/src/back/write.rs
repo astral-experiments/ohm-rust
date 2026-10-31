@@ -1,14 +1,18 @@
+use std::hash::Hash;
 use std::marker::PhantomData;
 use std::num::NonZero;
 use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::{assert_matches, fs, io, mem, str, thread};
 
 use rustc_abi::Size;
+use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_data_structures::jobserver::{self, Acquired};
 use rustc_data_structures::profiling::{SelfProfilerRef, VerboseTimingGuard};
+use rustc_data_structures::stable_hash::StableHasher;
 use rustc_errors::emitter::Emitter;
 use rustc_errors::{
     Diag, DiagArgMap, DiagCtxt, DiagCtxtHandle, DiagMessage, ErrCode, FatalError, FatalErrorMarker,
@@ -29,7 +33,7 @@ use rustc_session::config::{
 use rustc_session::{IncrCompSession, Session};
 use rustc_span::source_map::SourceMap;
 use rustc_span::{FileName, InnerSpan, Span, SpanData};
-use rustc_target::spec::{MergeFunctions, SanitizerSet};
+use rustc_target::spec::{MergeFunctions, Os, SanitizerSet};
 use tracing::debug;
 
 use crate::back::link::{ensure_removed, preserve_objects_for_their_debuginfo};
@@ -357,6 +361,7 @@ pub struct CodegenContext {
     /// The incremental compilation session directory, or None if we are not
     /// compiling incrementally
     pub incr_comp_session_dir: Option<PathBuf>,
+    pub thinlto_cache_dir: Option<PathBuf>,
     /// `Some(limit)` if the codegen should be run in parallel.
     ///
     /// Depends on [`WriteBackendMethods::supports_parallel()`] and `--jobs-backend`.
@@ -1310,6 +1315,54 @@ fn start_executing_work<B: WriteBackendMethods>(
         None
     };
 
+    let thinlto_cache_dir = sess.opts.unstable_opts.thinlto_cache.as_ref().and_then(|root| {
+        if sess.target.os != Os::Linux
+            || !matches!(sess.lto(), Lto::Thin | Lto::ThinLocal)
+            || sess.opts.incremental.is_some()
+            || sess.opts.cg.target_cpu.as_deref() == Some("native")
+            || !sess.opts.cg.llvm_args.is_empty()
+            || sess.opts.unstable_opts.codegen_backend.is_some()
+        {
+            return None;
+        }
+        let mut hasher = StableHasher::new();
+        "ohm-thinlto-cache-v2".hash(&mut hasher);
+        let compiler = std::env::current_exe().ok()?;
+        let libdir = compiler.parent()?.parent()?.join("lib");
+        let mut compiler_files = vec![compiler];
+        for entry in std::fs::read_dir(libdir).ok()? {
+            let entry = entry.ok()?;
+            let name = entry.file_name();
+            let name = name.to_str()?;
+            if name.starts_with("librustc_driver")
+                || name.starts_with("librustc_codegen_llvm")
+                || name.starts_with("libLLVM")
+            {
+                compiler_files.push(entry.path());
+            }
+        }
+        compiler_files.sort();
+        for path in compiler_files {
+            let metadata = path.metadata().ok()?;
+            path.hash(&mut hasher);
+            metadata.len().hash(&mut hasher);
+            metadata.modified().ok()?.hash(&mut hasher);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::MetadataExt;
+                metadata.ctime().hash(&mut hasher);
+                metadata.ctime_nsec().hash(&mut hasher);
+            }
+        }
+        sess.cfg_version.hash(&mut hasher);
+        sess.opts.dep_tracking_hash(false).hash(&mut hasher);
+        format!("{:?}", sess.target).hash(&mut hasher);
+        backend_features.hash(&mut hasher);
+        std::env::args_os().collect::<Vec<_>>().hash(&mut hasher);
+        let key: Fingerprint = hasher.finish();
+        Some(root.join(format!("{:032x}", u128::from_le_bytes(key.to_le_bytes()))))
+    });
+
     let cgcx = CodegenContext {
         crate_types: tcx.crate_types().to_vec(),
         lto: sess.lto(),
@@ -1325,6 +1378,7 @@ fn start_executing_work<B: WriteBackendMethods>(
             .incr_comp_session
             .as_ref()
             .map(|incr_comp_session| incr_comp_session.session_directory.clone()),
+        thinlto_cache_dir,
         output_filenames: Arc::clone(tcx.output_filenames(())),
         module_config: regular_config,
         opt_level,
@@ -1993,6 +2047,7 @@ pub struct InlineAsmError {
 #[derive(Clone)]
 pub struct SharedEmitter {
     sender: Sender<SharedEmitterMessage>,
+    diagnostics_emitted: Arc<AtomicUsize>,
 }
 
 pub struct SharedEmitterMain {
@@ -2003,20 +2058,30 @@ impl SharedEmitter {
     fn new() -> (SharedEmitter, SharedEmitterMain) {
         let (sender, receiver) = channel();
 
-        (SharedEmitter { sender }, SharedEmitterMain { receiver })
+        (
+            SharedEmitter { sender, diagnostics_emitted: Arc::new(AtomicUsize::new(0)) },
+            SharedEmitterMain { receiver },
+        )
+    }
+
+    pub fn diagnostic_count(&self) -> usize {
+        self.diagnostics_emitted.load(Ordering::Relaxed)
     }
 
     pub fn inline_asm_error(&self, err: InlineAsmError) {
+        self.diagnostics_emitted.fetch_add(1, Ordering::Relaxed);
         drop(self.sender.send(SharedEmitterMessage::InlineAsmError(err)));
     }
 
     fn fatal(&self, msg: &str) {
+        self.diagnostics_emitted.fetch_add(1, Ordering::Relaxed);
         drop(self.sender.send(SharedEmitterMessage::Fatal(msg.to_string())));
     }
 }
 
 impl Emitter for SharedEmitter {
     fn emit_diagnostic(&mut self, mut diag: rustc_errors::DiagInner) {
+        self.diagnostics_emitted.fetch_add(1, Ordering::Relaxed);
         // Check that we aren't missing anything interesting when converting to
         // the cut-down local `DiagInner`.
         assert!(!diag.span.has_span_labels());
