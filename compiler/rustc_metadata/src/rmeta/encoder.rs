@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rustc_data_structures::fingerprint::Fingerprint;
-use rustc_data_structures::fx::{FxIndexMap, FxIndexSet};
+use rustc_data_structures::fx::{FxHashSet, FxIndexMap, FxIndexSet};
 use rustc_data_structures::memmap::{Mmap, MmapMut};
 use rustc_data_structures::owned_slice::slice_owned;
 use rustc_data_structures::stable_hash::StableHasher;
@@ -67,6 +67,7 @@ use crate::rmeta::encoder::public_api_hasher::{
 };
 use crate::rmeta::*;
 
+pub(crate) mod early;
 mod metadata_prefix;
 pub(super) mod public_api_hasher;
 
@@ -294,6 +295,7 @@ pub(super) struct EncodeContext<'a, 'tcx, M: MetadataEncoder<'tcx>> {
     // Used for both `Symbol`s and `ByteSymbol`s.
     symbol_index_table: FxHashMap<u32, usize>,
     spec_encoder_data: M,
+    early_bodies: Option<FxHashSet<LocalDefId>>,
 }
 
 /// If the current crate is a proc-macro, returns early with `LazyArray::default()`.
@@ -858,7 +860,11 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
     }
 
     fn encode_def_path_table(&mut self) {
-        let definitions = self.tcx.definitions();
+        let definitions = if self.early_bodies.is_some() {
+            self.tcx.definitions_after_interfaces()
+        } else {
+            self.tcx.definitions()
+        };
         self.with_record_mode(RecordMode::None, |this| {
             if this.is_proc_macro {
                 for def_id in std::iter::once(CRATE_DEF_ID)
@@ -1133,7 +1139,11 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             },
             extra_filename: tcx.sess.opts.cg.extra_filename.clone(),
             stable_crate_id: tcx.def_path_hash(LOCAL_CRATE.as_def_id()).stable_crate_id(),
-            required_panic_strategy: tcx.required_panic_strategy(LOCAL_CRATE),
+            required_panic_strategy: if self.early_bodies.is_some() {
+                None
+            } else {
+                tcx.required_panic_strategy(LOCAL_CRATE)
+            },
             panic_in_drop_strategy: tcx.sess.opts.unstable_opts.panic_in_drop,
             edition: tcx.sess.edition(),
             has_global_allocator: tcx.has_global_allocator(LOCAL_CRATE),
@@ -1314,8 +1324,9 @@ fn should_encode_local_definition(tcx: TyCtxt<'_>, def_id: LocalDefId, def_kind:
 fn metadata_definition_span_fingerprint(tcx: TyCtxt<'_>) -> (usize, Fingerprint) {
     let mut count = 0;
     let mut hasher = StableHasher::new();
+    let early_bodies = early::enabled(tcx).then(|| early::interface_bodies(tcx));
 
-    for local_id in tcx.iter_local_def_id() {
+    for local_id in metadata_definitions(tcx, early_bodies.as_ref()) {
         let def_kind = tcx.def_kind(local_id);
         if !should_encode_local_definition(tcx, local_id, def_kind) || !should_encode_span(def_kind)
         {
@@ -1342,6 +1353,23 @@ fn metadata_definition_span_fingerprint(tcx: TyCtxt<'_>) -> (usize, Fingerprint)
     }
 
     (count, hasher.finish())
+}
+
+fn metadata_definitions(
+    tcx: TyCtxt<'_>,
+    early_bodies: Option<&FxHashSet<LocalDefId>>,
+) -> Vec<LocalDefId> {
+    let mut definitions: Vec<_> = if early_bodies.is_some() {
+        tcx.iter_local_def_id_after_interfaces().collect()
+    } else {
+        tcx.iter_local_def_id().collect()
+    };
+    if let Some(bodies) = early_bodies {
+        definitions.retain(|&local_id| {
+            early::enclosing_body(tcx, local_id).is_none_or(|body| bodies.contains(&body))
+        });
+    }
+    definitions
 }
 
 fn should_encode_span(def_kind: DefKind) -> bool {
@@ -1910,7 +1938,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
 
         let tcx = self.tcx;
 
-        for local_id in tcx.iter_local_def_id() {
+        for local_id in metadata_definitions(tcx, self.early_bodies.as_ref()) {
             let def_id = local_id.to_def_id();
             let def_kind = tcx.def_kind(local_id);
             self.tables.def_kind.set_some_local_hashed(local_id, def_kind, hcx);
@@ -2390,19 +2418,34 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         }
 
         let tcx = self.tcx;
-        let reachable_set = tcx.reachable_set(());
+        let empty = LocalDefIdSet::default();
+        let reachable_set = if tcx.sess.opts.output_types.should_codegen() {
+            tcx.reachable_set(())
+        } else {
+            &empty
+        };
 
-        let keys_and_jobs = tcx.mir_keys(()).iter().filter_map(|&def_id| {
-            let (encode_const, encode_opt) = should_encode_mir(tcx, reachable_set, def_id);
-            let encode_coroutine =
-                matches!(tcx.def_kind(def_id), DefKind::Closure | DefKind::SyntheticCoroutineBody)
-                    && tcx.is_coroutine(def_id.to_def_id());
-            if encode_const || encode_opt || encode_coroutine {
-                Some((def_id, encode_const, encode_opt, encode_coroutine))
-            } else {
-                None
-            }
-        });
+        let keys_and_jobs: Vec<_> = tcx
+            .mir_keys(())
+            .iter()
+            .filter_map(|&def_id| {
+                if self.early_bodies.as_ref().is_some_and(|bodies| {
+                    early::enclosing_body(tcx, def_id).is_some_and(|body| !bodies.contains(&body))
+                }) {
+                    return None;
+                }
+                let (encode_const, encode_opt) = should_encode_mir(tcx, reachable_set, def_id);
+                let encode_coroutine = matches!(
+                    tcx.def_kind(def_id),
+                    DefKind::Closure | DefKind::SyntheticCoroutineBody
+                ) && tcx.is_coroutine(def_id.to_def_id());
+                if encode_const || encode_opt || encode_coroutine {
+                    Some((def_id, encode_const, encode_opt, encode_coroutine))
+                } else {
+                    None
+                }
+            })
+            .collect();
         for (def_id, encode_const, encode_opt, encode_coroutine) in keys_and_jobs {
             debug_assert!(encode_const || encode_opt || encode_coroutine);
 
@@ -3542,6 +3585,7 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
         hygiene_ctxt: &hygiene_ctxt,
         symbol_index_table: Default::default(),
         spec_encoder_data: Default::default(),
+        early_bodies: early::enabled(tcx).then(|| early::interface_bodies(tcx)),
     };
 
     // Encode the rustc version string in a predictable location.

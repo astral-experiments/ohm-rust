@@ -1453,6 +1453,19 @@ impl<'tcx> TyCtxt<'tcx> {
         }
     }
 
+    /// Freezes definitions for early metadata. The caller must first create
+    /// synthetic definitions normally added during body checking.
+    pub fn definitions_after_interfaces(self) -> &'tcx rustc_hir::definitions::Definitions {
+        self.ensure_ok().analysis_interfaces(());
+        self.untracked.definitions.freeze()
+    }
+
+    pub fn iter_local_def_id_after_interfaces(self) -> impl Iterator<Item = LocalDefId> {
+        let count = self.definitions_after_interfaces().num_definitions();
+        (0..count)
+            .map(|i| LocalDefId { local_def_index: rustc_span::def_id::DefIndex::from_usize(i) })
+    }
+
     pub fn definitions(self) -> &'tcx rustc_hir::definitions::Definitions {
         // Depend on the `analysis` query to ensure compilation if finished.
         self.ensure_ok().analysis(());
