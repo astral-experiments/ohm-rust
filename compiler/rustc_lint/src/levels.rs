@@ -452,6 +452,10 @@ impl<'s> LintLevelsBuilder<'s, TopDown> {
     /// Don't forget to call `pop`!
     pub(crate) fn push(&mut self, attrs: &[ast::Attribute], is_crate_node: bool) -> BuilderPush {
         let prev = self.provider.cur;
+        if attrs.is_empty() {
+            return BuilderPush { prev };
+        }
+
         self.provider.cur =
             self.provider.sets.list.push(LintSet { specs: FxIndexMap::default(), parent: prev });
 
