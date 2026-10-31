@@ -4,6 +4,7 @@ use std::fs::File;
 use std::hash::Hash;
 use std::io::{Read, Seek, Write};
 use std::num::NonZero;
+use std::ops::Range;
 use std::path::Path;
 
 use rustc_data_structures::fingerprint::Fingerprint;
@@ -20,6 +21,7 @@ use rustc_span::{BytePos, SourceFile, Span, StableSourceFileId, SyntaxContext};
 
 use super::{DefPathHashDefIdEncoder, EncodeContext, EncodedMetadata};
 use crate::rmeta::LazyTable;
+use crate::rmeta::table::FixedSizeEncoding;
 
 const METADATA_PREFIX_MAGIC: &[u8] = b"ohm-metadata-prefix-v3\0";
 
@@ -55,15 +57,15 @@ pub(super) fn metadata_fingerprint(bytes: &[u8]) -> Fingerprint {
     hasher.finish()
 }
 
-pub(super) fn relocate_metadata_table<'tcx, I, T>(
+/// Copies a suffix table whose complete encoding was validated before opening the output file.
+pub(super) fn relocate_metadata_table<'tcx, I, T: FixedSizeEncoding>(
     ecx: &mut EncodeContext<'_, 'tcx, DefPathHashDefIdEncoder<'tcx>>,
     metadata: &[u8],
     table: LazyTable<I, T>,
+    range: Range<usize>,
 ) -> LazyTable<I, T> {
-    let start = table.position.get();
-    let length = table.width * table.len;
     let position = NonZero::new(ecx.position()).expect("metadata preamble is nonempty");
-    ecx.emit_raw_bytes(&metadata[start..start + length]);
+    ecx.emit_raw_bytes(&metadata[range]);
     LazyTable::from_position_and_encoded_size(position, table.width, table.len)
 }
 
