@@ -31,6 +31,10 @@ use crate::ich::StableHashState;
 use crate::ty::TyCtxt;
 use crate::verify_ich::incremental_verify_ich;
 
+mod check;
+use check::CheckCache;
+pub use check::CheckCacheSource;
+
 /// Tracks 'side effects' for a particular query.
 /// This struct is saved to disk along with the query result,
 /// and loaded from disk if we mark the query as green.
@@ -149,6 +153,8 @@ pub struct DepGraphData {
     /// this map. We can later look for and extract that data.
     previous_work_products: WorkProductMap,
 
+    latest_check: Option<CheckCache>,
+
     /// Used by incremental compilation tests to assert that
     /// a particular query result was decoded from disk
     /// (not just marked green)
@@ -177,6 +183,7 @@ impl DepGraph {
         prev_graph: Arc<SerializedDepGraph>,
         prev_work_products: WorkProductMap,
         encoder: FileEncoder<'static>,
+        latest_check: Option<CheckCacheSource>,
     ) -> DepGraph {
         let prev_index_space_len = prev_graph.index_space_len();
 
@@ -212,6 +219,7 @@ impl DepGraph {
         DepGraph {
             data: Some(Arc::new(DepGraphData {
                 previous_work_products: prev_work_products,
+                latest_check: latest_check.map(CheckCache::new),
                 current,
                 previous: prev_graph,
                 colors,
@@ -814,6 +822,7 @@ impl DepGraphData {
                 false
             };
 
+            let computed_fingerprint = value_fingerprint;
             let value_fingerprint = value_fingerprint.unwrap_or(Fingerprint::ZERO);
 
             let dep_node_index = self.current.encoder.send_and_color(
@@ -828,9 +837,21 @@ impl DepGraphData {
             #[cfg(debug_assertions)]
             self.current.record_edge(dep_node_index, key, value_fingerprint);
 
+            if !is_green && let Some(check) = &self.latest_check {
+                check.record(key, computed_fingerprint, dep_node_index);
+            }
+
             dep_node_index
         } else {
-            self.current.alloc_new_node(key, edges, value_fingerprint.unwrap_or(Fingerprint::ZERO))
+            let index = self.current.alloc_new_node(
+                key,
+                edges,
+                value_fingerprint.unwrap_or(Fingerprint::ZERO),
+            );
+            if let Some(check) = &self.latest_check {
+                check.record(key, value_fingerprint, index);
+            }
+            index
         }
     }
 
