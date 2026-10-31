@@ -50,8 +50,7 @@ where
     // truncate and overwrite it, since it might be a shared hard-link, the
     // underlying data of which we don't want to modify.
     //
-    // We have to ensure we have dropped the memory maps to this file
-    // before performing this removal.
+    // On platforms that cannot unlink mapped files, drop the memory maps first.
     match fs::remove_file(&path_buf) {
         Ok(()) => {
             debug!("save: remove old file");
