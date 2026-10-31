@@ -340,7 +340,23 @@ impl<'ra, 'tcx> ResolverExpand for Resolver<'ra, 'tcx> {
             sugg_span,
         )?;
 
-        let span = invoc.span();
+        let mut span = invoc.span();
+        if (kind == MacroKind::Derive
+            || matches!(ext.builtin_name, Some(sym::derive | sym::derive_const)))
+            && !span.is_dummy()
+            && span.ctxt().is_root()
+            && let Some(&anchor) = self.last_source_adt.get(&invocation_parent.parent_def)
+            && self
+                .tcx
+                .sess
+                .source_map()
+                .lookup_source_file(span.lo())
+                .contains(self.tcx.source_span_untracked(anchor).lo())
+        {
+            // Keep the original coordinates and hygiene. Incremental span hashing and
+            // encoding already support signed offsets to an anchor in the same source file.
+            span = span.with_parent(Some(anchor));
+        }
         let def_id = if deleg_impl.is_some() { None } else { res.opt_def_id() };
         self.tcx.with_stable_hashing_context(|hcx| {
             invoc_id.set_expn_data(
