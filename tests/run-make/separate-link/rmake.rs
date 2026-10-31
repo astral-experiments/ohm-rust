@@ -5,7 +5,7 @@
 
 //@ ignore-cross-compile
 
-use run_make_support::{rfs, run, rustc};
+use run_make_support::{build_native_static_lib, rfs, run, rustc};
 
 fn main() {
     rustc().stdin_buf(b"fn main(){}").arg("-Zno-link").arg("-").run();
@@ -35,4 +35,28 @@ fn main() {
         rustc().arg("-Zemit-rlink").arg("-Zlink-only").input("simultaneous.rlink").run();
         run("simultaneous");
     }
+
+    rfs::write("answer.c", "int answer(void) { return 1; }");
+    let native_library = build_native_static_lib("answer");
+    rustc()
+        .stdin_buf(
+            br#"
+            #[link(name = "answer", kind = "static", modifiers = "-bundle")]
+            unsafe extern "C" { fn answer() -> i32; }
+            fn main() { println!("{}", unsafe { answer() }); }
+        "#,
+        )
+        .crate_name("native")
+        .arg("-Lnative=.")
+        .arg("-Zemit-rlink")
+        .arg("-")
+        .run();
+    run("native").assert_stdout_equals("1\n");
+
+    rfs::write("answer.c", "int answer(void) { return 2; }");
+    build_native_static_lib("answer");
+    rustc().arg("-Lnative=.").arg("-Zlink-only").input("native.rlink").run();
+    run("native").assert_stdout_equals("2\n");
+    rfs::remove_file(native_library);
+    rustc().arg("-Lnative=.").arg("-Zlink-only").input("native.rlink").run_fail();
 }
