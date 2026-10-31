@@ -42,13 +42,15 @@
 use std::cell::RefCell;
 use std::cmp::max;
 use std::hash::{BuildHasher, BuildHasherDefault};
+use std::iter;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, OnceLock};
-use std::{iter, mem};
 
+mod index;
 #[cfg(test)]
 mod tests;
-
+pub(super) use index::IndexedDepGraph;
+use index::{SeekIndexBuilder, SeekIndexMetadata};
 use rustc_data_structures::fingerprint::{Fingerprint, PackedFingerprint};
 use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::hash_table::{Entry, HashTable};
@@ -343,7 +345,9 @@ impl SerializedDepGraph {
 
         debug!(?node_count, ?edge_count);
 
-        let graph_bytes = d.len() - (3 * IntEncodedWithFixedSize::ENCODED_SIZE) - d.position();
+        let graph_end = SeekIndexMetadata::decode(d)
+            .map_or(d.len() - 3 * IntEncodedWithFixedSize::ENCODED_SIZE, |index| index.start);
+        let graph_bytes = graph_end - d.position();
 
         let mut nodes = IndexVec::from_elem_n(
             DepNode {
@@ -633,6 +637,8 @@ struct LocalEncoderState {
     encoder: MemEncoder,
     node_count: usize,
     edge_count: usize,
+    seek_offsets: Vec<(DepNodeIndex, usize)>,
+    seek_roots: Vec<(DepNode, DepNodeIndex)>,
 
     /// Stores the number of times we've encoded each dep kind.
     kind_stats: Vec<u32>,
@@ -651,6 +657,7 @@ struct EncoderState {
     next_node_index: AtomicU64,
     previous: Arc<SerializedDepGraph>,
     file: Lock<Option<FileEncoder<'static>>>,
+    seek_index: Option<Lock<SeekIndexBuilder>>,
     local: WorkerLocal<RefCell<LocalEncoderState>>,
     stats: Option<Lock<FxHashMap<DepKind, Stat>>>,
 }
@@ -660,18 +667,22 @@ impl EncoderState {
         encoder: FileEncoder<'static>,
         record_stats: bool,
         previous: Arc<SerializedDepGraph>,
+        index_check: bool,
     ) -> Self {
         Self {
             previous,
             next_node_index: AtomicU64::new(0),
             stats: record_stats.then(|| Lock::new(FxHashMap::default())),
             file: Lock::new(Some(encoder)),
+            seek_index: index_check.then(|| Lock::new(SeekIndexBuilder::default())),
             local: WorkerLocal::new(|_| {
                 RefCell::new(LocalEncoderState {
                     next_node_index: 0,
                     remaining_node_index: 0,
                     edge_count: 0,
                     node_count: 0,
+                    seek_offsets: Vec::new(),
+                    seek_roots: Vec::new(),
                     encoder: MemEncoder::new(),
                     kind_stats: iter::repeat_n(0, DepKind::NUM_VARIANTS).collect(),
                 })
@@ -748,11 +759,14 @@ impl EncoderState {
 
     #[inline]
     fn flush_mem_encoder(&self, local: &mut LocalEncoderState) {
-        let data = &mut local.encoder.data;
-        if data.len() > 64 * 1024 {
-            self.file.lock().as_mut().unwrap().emit_raw_bytes(&data[..]);
-            data.clear();
+        let mut file = self.file.lock();
+        let encoder = file.as_mut().unwrap();
+        let start = encoder.position();
+        encoder.emit_raw_bytes(&local.encoder.data);
+        if let Some(index) = &self.seek_index {
+            index.lock().record_chunk(start, &mut local.seek_offsets, &mut local.seek_roots);
         }
+        local.encoder.data.clear();
     }
 
     /// Encodes a node to the current graph.
@@ -763,8 +777,16 @@ impl EncoderState {
         retained_graph: &Option<Lock<RetainedDepGraph>>,
         local: &mut LocalEncoderState,
     ) {
+        if self.seek_index.is_some() {
+            local.seek_offsets.push((index, local.encoder.data.len()));
+            if matches!(node.node.kind, DepKind::typeck_root | DepKind::mir_borrowck) {
+                local.seek_roots.push((node.node, index));
+            }
+        }
         node.encode(&mut local.encoder, index);
-        self.flush_mem_encoder(&mut *local);
+        if local.encoder.data.len() > 64 * 1024 {
+            self.flush_mem_encoder(&mut *local);
+        }
         self.record(&node.node, index, node.edges.len(), node.edges, retained_graph, &mut *local);
     }
 
@@ -798,8 +820,7 @@ impl EncoderState {
             // Prevent more indices from being allocated on this thread.
             local.remaining_node_index = 0;
 
-            let data = mem::take(&mut local.encoder.data);
-            self.file.lock().as_mut().unwrap().emit_raw_bytes(&data);
+            self.flush_mem_encoder(&mut *local);
 
             LocalEncoderResult {
                 kind_stats: local.kind_stats.clone(),
@@ -832,6 +853,11 @@ impl EncoderState {
         }
 
         self.previous.session_count.checked_add(1).unwrap().encode(&mut encoder);
+
+        if let Some(index) = &self.seek_index {
+            let start = encoder.position();
+            index.lock().encode(&mut encoder, start, node_max);
+        }
 
         debug!(?node_max, ?node_count, ?edge_count);
         debug!("position: {:?}", encoder.position());
@@ -930,7 +956,14 @@ impl GraphEncoder {
             .unstable_opts
             .query_dep_graph
             .then(|| Lock::new(RetainedDepGraph::new(prev_index_space_len)));
-        let status = EncoderState::new(encoder, sess.opts.unstable_opts.incremental_info, previous);
+        let index_check =
+            sess.opts.unstable_opts.ohm_shared_stages && !sess.opts.output_types.should_codegen();
+        let status = EncoderState::new(
+            encoder,
+            sess.opts.unstable_opts.incremental_info,
+            previous,
+            index_check,
+        );
         GraphEncoder { status, retained_graph, profiler: sess.prof.clone() }
     }
 
