@@ -44,9 +44,7 @@ use rustc_session::diagnostics::feature_err;
 use rustc_session::output::{filename_for_input, invalid_output_for_target};
 use rustc_session::search_paths::PathKind;
 use rustc_session::{IncrCompSession, Session};
-use rustc_span::{
-    DUMMY_SP, ErrorGuaranteed, ExpnKind, SourceFileHash, Span, Symbol, sym,
-};
+use rustc_span::{DUMMY_SP, ErrorGuaranteed, ExpnKind, SourceFileHash, Span, Symbol, sym};
 use rustc_structures::{CrateType, Limit};
 use rustc_trait_selection::{solve, traits};
 use tracing::{info, instrument};
@@ -707,6 +705,15 @@ fn write_out_deps(tcx: TyCtxt<'_>, outputs: &OutputFilenames, out_filenames: &[P
         }
 
         let write_deps_to_file = |file: &mut dyn Write| -> io::Result<()> {
+            // Older Cargo recognizes the output prefix to handle a colon in its name.
+            // Preserve that layout when it could mistake the filename for a delimiter.
+            if checksum_hash_algo.is_some()
+                && out_filenames
+                    .first()
+                    .is_some_and(|p| p.to_str().is_some_and(|p| !p.contains(": ")))
+            {
+                writeln!(file, "# ohm-raw-checksum-paths-v2")?;
+            }
             for path in out_filenames {
                 writeln!(
                     file,
