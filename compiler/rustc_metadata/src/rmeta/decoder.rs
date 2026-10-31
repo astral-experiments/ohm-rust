@@ -54,27 +54,34 @@ mod cstore_impl;
 /// A reference to the raw binary version of crate metadata.
 /// This struct applies [`MemDecoder`]'s validation when constructed
 /// so that later constructions are guaranteed to succeed.
-pub(crate) struct MetadataBlob(OwnedSlice);
+pub(crate) struct MetadataBlob {
+    bytes: OwnedSlice,
+    pub(crate) legacy_sysroot: bool,
+}
 
 impl std::ops::Deref for MetadataBlob {
     type Target = [u8];
 
     #[inline]
     fn deref(&self) -> &[u8] {
-        &self.0[..]
+        &self.bytes[..]
     }
 }
 
 impl MetadataBlob {
     /// Runs the [`MemDecoder`] validation and if it passes, constructs a new [`MetadataBlob`].
     pub(crate) fn new(slice: OwnedSlice) -> Result<Self, ()> {
-        if MemDecoder::new(&slice, 0).is_ok() { Ok(Self(slice)) } else { Err(()) }
+        if MemDecoder::new(&slice, 0).is_ok() {
+            Ok(Self { bytes: slice, legacy_sysroot: false })
+        } else {
+            Err(())
+        }
     }
 
     /// Since this has passed the validation of [`MetadataBlob::new`], this returns bytes which are
     /// known to pass the [`MemDecoder`] validation.
     pub(crate) fn bytes(&self) -> &OwnedSlice {
-        &self.0
+        &self.bytes
     }
 }
 
@@ -517,6 +524,12 @@ impl<'a, 'tcx> SpanDecoder for MetadataDecodeContext<'a, 'tcx> {
         let tcx = self.tcx;
         let cnum = CrateNum::decode(self);
         let index = u32::decode(self);
+        if index == 0 && cnum != self.cdata.cnum {
+            let guess = u32::decode(self);
+            let hash = ExpnHash::decode(self);
+            return ExpnId::from_hash(hash)
+                .unwrap_or_else(|| tcx.expn_hash_to_expn_id(cnum, guess, hash));
+        }
 
         let expn_id = rustc_span::hygiene::decode_expn_id(cnum, index, |expn_id| {
             let ExpnId { krate: cnum, local_id: index } = expn_id;
@@ -734,8 +747,9 @@ mod blob {
 
 impl MetadataBlob {
     pub(crate) fn check_compatibility(
-        &self,
+        &mut self,
         cfg_version: &'static str,
+        is_sysroot_library: impl FnOnce() -> bool,
     ) -> Result<(), Option<String>> {
         if !self.starts_with(METADATA_HEADER) {
             if self.starts_with(b"rust") {
@@ -744,14 +758,26 @@ impl MetadataBlob {
             return Err(None);
         }
 
-        let found_version =
-            LazyValue::<String>::from_position(NonZero::new(METADATA_HEADER.len() + 8).unwrap())
-                .decode(self);
+        let found_version = self.encoded_compiler_version();
         if rustc_version(cfg_version) != found_version {
-            return Err(Some(found_version));
+            // Legacy foreign IDs are positional. Only the selected, internally consistent SDK
+            // can use them. User libraries must be rebuilt even when their full hashes match.
+            if found_version != format!("rustc {cfg_version}") || !is_sysroot_library() {
+                return Err(Some(found_version));
+            }
+            let hashes = self.get_header().hashes;
+            if hashes.public_hash != hashes.private_hash {
+                return Err(Some(found_version));
+            }
+            self.legacy_sysroot = true;
         }
 
         Ok(())
+    }
+
+    pub(super) fn encoded_compiler_version(&self) -> String {
+        LazyValue::<String>::from_position(NonZero::new(METADATA_HEADER.len() + 8).unwrap())
+            .decode(self)
     }
 
     fn root_pos(&self) -> NonZero<usize> {
@@ -1043,6 +1069,10 @@ impl CrateRoot {
 }
 
 impl CrateMetadata {
+    pub(crate) fn is_legacy_sysroot(&self) -> bool {
+        self.blob.legacy_sysroot
+    }
+
     pub(super) fn hash_to_def_index(
         &self,
         cnum: CrateNum,

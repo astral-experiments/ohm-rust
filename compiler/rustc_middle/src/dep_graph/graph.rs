@@ -939,7 +939,7 @@ impl DepGraph {
         self.data()?.try_mark_green(tcx, dep_node)
     }
 
-    /// Returns the old edges when exactly one known dependency changed.
+    /// Returns the old edges except those which the caller will read again after rewriting its suffix.
     ///
     /// Call this after normal green-marking so all query side effects have
     /// already been replayed. Unknown edges conservatively prevent reuse.
@@ -947,6 +947,7 @@ impl DepGraph {
         &self,
         dep_node: &DepNode,
         changed_dep_node: &DepNode,
+        refreshed_kind: DepKind,
     ) -> Option<Vec<Option<DepNodeIndex>>> {
         let data = self.data()?;
         let previous_index = data.previous.node_to_index_opt(dep_node)?;
@@ -954,7 +955,11 @@ impl DepGraph {
         let mut found_changed_dependency = false;
 
         for previous_dependency in data.previous.edge_targets_from(previous_index) {
-            if data.previous.index_to_node(previous_dependency) == changed_dep_node {
+            let dependency = data.previous.index_to_node(previous_dependency);
+            if dependency.kind == refreshed_kind {
+                continue;
+            }
+            if dependency == changed_dep_node {
                 if found_changed_dependency
                     || !matches!(data.colors.get(previous_dependency), DepNodeColor::Red)
                 {

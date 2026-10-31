@@ -33,6 +33,15 @@ pub struct FileSearch {
 }
 
 impl FileSearch {
+    /// True only for a library physically inside this target's selected sysroot library directory.
+    pub fn is_sysroot_library(&self, path: &Path) -> bool {
+        let (Ok(path), Ok(directory)) = (path.canonicalize(), self.tlib_path.dir.canonicalize())
+        else {
+            return false;
+        };
+        path.parent() == Some(directory.as_path())
+    }
+
     pub fn cli_search_paths<'b>(&'b self, kind: PathKind) -> impl Iterator<Item = &'b SearchPath> {
         self.cli_search_paths.iter().filter(move |sp| sp.kind.matches(kind))
     }
