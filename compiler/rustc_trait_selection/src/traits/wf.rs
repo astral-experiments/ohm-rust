@@ -620,7 +620,8 @@ impl<'a, 'tcx> WfPredicates<'a, 'tcx> {
 
         // Emit outermost first, as diagnostics rely on that order.
         for &(origin_def_id, clauses) in iter::once(&head).chain(inner_levels.iter().rev()) {
-            for (clause, span) in clauses.instantiate_own(tcx, args) {
+            for &(clause, span) in clauses.clauses {
+                let clause = tcx.instantiate_clause(ty::EarlyBinder::bind(tcx, clause), args);
                 if !clause.has_escaping_bound_vars() {
                     let code = ObligationCauseCode::WhereClause(origin_def_id, span);
                     let cause = self.cause(code);
