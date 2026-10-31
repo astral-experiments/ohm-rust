@@ -1316,6 +1316,9 @@ fn start_executing_work<B: WriteBackendMethods>(
     };
 
     let thinlto_cache_dir = sess.opts.unstable_opts.thinlto_cache.as_ref().and_then(|root| {
+        if sess.opts.unstable_opts.ohm_check_relink_inputs && tcx.ohm_untracked_relink_inputs(()) {
+            return None;
+        }
         if sess.target.os != Os::Linux
             || !matches!(sess.lto(), Lto::Thin | Lto::ThinLocal)
             || sess.opts.incremental.is_some()
