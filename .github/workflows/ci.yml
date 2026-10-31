@@ -253,6 +253,7 @@ jobs:
             tests/run-make/unused-externs-transparent
             tests/run-make/reset-codegen-1
             tests/run-make/stable-cgu-merging
+            tests/run-make/ohm-split-large-cgus
             tests/run-make/test-harness-exact-filter
             tests/run-make/parallel-query-depth-limits
             tests/run-make/incremental-lint-visibilities
