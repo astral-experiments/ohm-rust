@@ -32,6 +32,9 @@ fn measured_width<T>(_: T) -> u64 { std::mem::size_of::<T>() as u64 }
     loaded_from_disk = "typeck_root,mir_borrowck"
 )]
 pub fn value() -> u64 { stage_api::id(BASE + DELTA + measured_width(width())) }
+#[rustc_clean(cfg = "warm_const_generic")]
+pub fn checked_const_generic() -> u64 { constant::<DELTA>() as u64 }
+pub fn constant<const N: WIDTH>() -> WIDTH { N }
 pub fn generic<T>(value: T) -> T { value }
 pub fn opaque() -> impl Fn() -> u64 { || value() }
 pub async fn future() -> u64 { value() }
@@ -140,6 +143,10 @@ fn main() {
 fn main() {
     fn future(_: impl std::future::Future<Output = u64>) {}
     future(stage_dep::future());
+    assert_eq!(
+        stage_dep::checked_const_generic(),
+        stage_dep::value() - stage_dep::BASE - std::mem::size_of_val(&stage_dep::width()) as u64,
+    );
     println!("{}", stage_dep::generic(stage_dep::opaque()()));
 }
 "#,
@@ -161,6 +168,8 @@ fn main() {
     assert_ne!(checked_metadata, built_metadata);
     compile("metadata,link", "latest_check", true, true);
     assert_eq!(rfs::read(latest_session().join("ohm-check-metadata.rmeta")), checked_metadata);
+    consumer(51);
+    compile("metadata,link", "warm_const_generic", true, true);
     consumer(51);
 
     compile("metadata", "check_again", true, true);
