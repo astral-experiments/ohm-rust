@@ -9,7 +9,7 @@ use rustc_middle::ty::{
 
 use crate::infer::outlives::test_type_match;
 use crate::infer::region_constraints::VerifyIfEq;
-use crate::regions::{region_known_to_outlive, ty_known_to_outlive};
+use crate::regions::{RegionOutlivesTest, region_known_to_outlive, ty_known_to_outlive};
 
 /// For a given alias type, this returns the set of (identity) generic args that
 /// are relevant for liveness, that can be inferred from outlives bounds on the
@@ -222,6 +222,11 @@ pub(crate) fn args_known_to_outlive_opaque_params<'tcx>(
     }
     tracing::debug!(?parent_outlives_regions);
 
+    let can_reuse_region_outlives_test = parent_outlives_regions
+        .iter()
+        .all(|(region, _)| matches!(region.kind(), ty::ReEarlyParam(_) | ty::ReLateParam(_)));
+    let mut region_outlives_test = None;
+
     // For every captured region, we want to consider outlived args from two sources:
     // 1) *Types*: These come from *parent* generics (and are not duplicated to the opaque)
     // 2) *Captured Regions*
@@ -254,14 +259,22 @@ pub(crate) fn args_known_to_outlive_opaque_params<'tcx>(
 
         for &(parent_outlives_region, opaque_region) in parent_outlives_regions.iter() {
             let region_outlives = parent_outlives_region == *parent_outlived_region
-                || region_known_to_outlive(
-                    tcx,
-                    def_id,
-                    parent_param_env,
-                    &wf_tys,
-                    parent_outlives_region,
-                    *parent_outlived_region,
-                );
+                || if can_reuse_region_outlives_test && tcx.dcx().has_errors().is_none() {
+                    region_outlives_test
+                        .get_or_insert_with(|| {
+                            RegionOutlivesTest::new(tcx, def_id, parent_param_env, &wf_tys)
+                        })
+                        .known_to_outlive(parent_outlives_region, *parent_outlived_region)
+                } else {
+                    region_known_to_outlive(
+                        tcx,
+                        def_id,
+                        parent_param_env,
+                        &wf_tys,
+                        parent_outlives_region,
+                        *parent_outlived_region,
+                    )
+                };
             if !region_outlives {
                 continue;
             }
