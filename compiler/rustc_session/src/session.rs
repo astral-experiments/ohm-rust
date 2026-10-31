@@ -524,6 +524,12 @@ pub struct Session {
     /// File paths accessed during the build.
     pub file_depinfo: Lock<FxIndexSet<Symbol>>,
 
+    /// A procedural macro read byte positions affected by external crate metadata.
+    pub proc_macro_observed_foreign_bytes: AtomicBool,
+
+    /// An imported span's source text has no physical path representable in dep-info.
+    pub untrackable_proc_macro_source: AtomicBool,
+
     target_filesearch: Arc<FileSearch>,
     host_filesearch: Arc<FileSearch>,
     wasm_proc_macro_filesearch: Option<Arc<FileSearch>>,
@@ -1462,6 +1468,7 @@ pub fn build_session(
             &wasm_proc_macro_tlib_path,
             &wasm_proc_macro_target,
             sopts.unstable_opts.implicit_sysroot_deps,
+            sopts.unstable_opts.link_only,
         )))
     } else {
         None
@@ -1507,6 +1514,8 @@ pub fn build_session(
         using_internal_features,
         env_depinfo: Default::default(),
         file_depinfo: Default::default(),
+        proc_macro_observed_foreign_bytes: AtomicBool::new(false),
+        untrackable_proc_macro_source: AtomicBool::new(false),
         target_filesearch,
         host_filesearch,
         wasm_proc_macro_filesearch,
