@@ -317,11 +317,10 @@ fn load_metadata_checkpoint(
         let files = std::mem::take(&mut saved.work_product.saved_files);
         for (extension, filename) in files.into_sorted_stable_ord() {
             let canonical = format!("{}.{}", saved.work_product.cgu_name, extension);
-            if rustc_fs_util::link_or_copy(
-                in_incr_comp_dir_sess(session, &filename),
-                in_incr_comp_dir_sess(session, &canonical),
-            )
-            .is_err()
+            let source = in_incr_comp_dir_sess(session, &filename);
+            if !source.is_file()
+                || rustc_fs_util::link_or_copy(source, in_incr_comp_dir_sess(session, &canonical))
+                    .is_err()
             {
                 restored = false;
                 break;
