@@ -22,6 +22,27 @@ pub unsafe fn syscall(number: usize) -> usize {
     result ^ core::arch::x86_64::__cpuid_count(0, 0).eax as usize
 }
 
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn atomic_ops(address: *mut u64) {
+    core::arch::asm!(
+        "lock not qword ptr [{address}]",
+        "mov rax, qword ptr [{address} + 8]",
+        "cmp rax, 0",
+        "jne 2f",
+        "vmovdqa {vector}, xmmword ptr [{address}]",
+        "2:",
+        address = in(reg) address,
+        vector = out(xmm_reg) _,
+        out("rax") _,
+        options(nostack),
+    );
+}
+
+#[cfg(label_escape)]
+pub fn label_reads_file() {
+    unsafe { core::arch::asm!("2: .incbin \"payload.bin\"") }
+}
+
 #[cfg(comment_escape)]
 pub fn reads_file() {
     unsafe { core::arch::asm!(concat!("/* first */ .inc", "bin \"payload.bin\" /* last */")) }
