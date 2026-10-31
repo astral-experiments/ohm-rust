@@ -39,6 +39,26 @@ pub unsafe fn vector_barrier(
     value
 }
 
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "crc")]
+pub unsafe fn crc32(mut crc: u32, data: u64) -> u32 {
+    core::arch::asm!(
+        "crc32b {crc:w}, {crc:w}, {data:w}",
+        "crc32h {crc:w}, {crc:w}, {data:w}",
+        "crc32w {crc:w}, {crc:w}, {data:w}",
+        "crc32x {crc:w}, {crc:w}, {data:x}",
+        crc = inout(reg) crc, data = in(reg) data,
+    );
+    #[cfg(crc_literal)]
+    core::arch::asm!("crc32w w0, w0, {data:w}", data = in(reg) data, inout("w0") crc);
+    #[cfg(crc_directive)]
+    core::arch::asm!(
+        "crc32w {crc:w}, {crc:w}, {data:w}", ".incbin \"payload.bin\"",
+        crc = inout(reg) crc, data = in(reg) data,
+    );
+    crc
+}
+
 #[cfg(target_arch = "x86_64")]
 pub unsafe fn divide_wide(lo: usize, hi: usize, divisor: usize) -> (usize, usize) {
     let (quotient, remainder);
