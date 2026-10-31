@@ -1,6 +1,6 @@
 //@ needs-asm-support
 
-use run_make_support::{is_windows, rfs, rustc, target};
+use run_make_support::{is_windows, path, rfs, rustc, rustc_minicore, target};
 
 fn main() {
     const MARKER: &str = "ohm-untracked-relink-inputs";
@@ -179,6 +179,10 @@ fn main() {
         }
     }
 
+    if matches!(target().as_str(), "x86_64-unknown-linux-gnu" | "x86_64-unknown-linux-musl") {
+        musl_register_comments();
+    }
+
     rfs::write("lib.rs", "pub fn ordinary() {}");
     check(&compile("link,dep-info=-").run().stdout_utf8(), false);
     rfs::write("lib.rs", "core::arch::global_asm!(\"\");");
@@ -221,4 +225,64 @@ fn main() {
     let failure = compile("link,dep-info=-").run_fail();
     failure.assert_stderr_contains("evaluation panicked");
     check(&failure.stdout_utf8(), true);
+}
+
+fn musl_register_comments() {
+    let target = "x86_64-unknown-linux-musl";
+    rustc_minicore().target(target).output("libminicore.rlib").run();
+    rfs::write("payload.s", ".byte 7");
+    rfs::write("payload.bin", [7]);
+    let compile_on = |target: &str, case: &str| {
+        let mut cmd = rustc();
+        cmd.target(target)
+            .arg("-Zunstable-options")
+            .input("musl_x86_64.rs")
+            .extern_("minicore", path("libminicore.rlib"))
+            .arg("-Zohm-check-relink-inputs")
+            .cfg(case)
+            .emit("link,dep-info=-");
+        cmd
+    };
+    let compile = |case| compile_on(target, case);
+    let check = |rules: String, accepted: bool| {
+        for (marker, expected) in [
+            ("/dev/null/ohm-recheck-dependent-links-v2:", accepted),
+            ("/dev/null/ohm-untracked-relink-inputs:", !accepted),
+            ("/dev/null/ohm-recheck-dependent-links:", false),
+        ] {
+            assert_eq!(rules.lines().any(|line| line == marker), expected, "{rules}");
+        }
+    };
+    for case in ["spaced", "compact", "both"] {
+        check(compile(case).run().stdout_utf8(), true);
+    }
+    for case in [
+        "instruction",
+        "include",
+        "escape",
+        "modifier",
+        "class",
+        "options",
+        "symbol",
+        "raw",
+        "att",
+        "global",
+    ] {
+        check(compile(case).run().stdout_utf8(), false);
+    }
+    check(compile("both").arg("-lstatic:-bundle=ohm_missing_archive").run().stdout_utf8(), true);
+    let bundled = compile("both").arg("-lstatic=ohm_missing_archive").run_fail();
+    bundled.assert_stderr_contains("ohm_missing_archive");
+    check(bundled.stdout_utf8(), false);
+
+    rfs::write("payload.s", ".ohm_invalid_directive");
+    let invalid = compile("include").run_fail();
+    invalid.assert_stderr_contains(".ohm_invalid_directive");
+    check(invalid.stdout_utf8(), false);
+
+    let custom = "x86_64-unknown-linux-musl.json";
+    let spec = rustc().target(target).arg("-Zunstable-options").print("target-spec-json").run();
+    rfs::write(custom, spec.stdout_utf8());
+    rustc_minicore().target(custom).arg("-Zunstable-options").output("libminicore.rlib").run();
+    check(compile_on(custom, "both").run().stdout_utf8(), false);
 }
