@@ -7,7 +7,7 @@ use rustc_middle::dep_graph::{
     DepGraphData, DepNode, DepNodeIndex, DepNodeKey, SerializedDepNodeIndex,
 };
 use rustc_middle::query::erase::{Erasable, Erased};
-use rustc_middle::query::on_disk_cache::{CacheDecoder, CacheEncoder};
+use rustc_middle::query::on_disk_cache::{CacheDecoder, CacheEncoder, OnDiskCache};
 use rustc_middle::query::{QueryCache, QueryState, QueryVTable, erase};
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::verify_ich::incremental_verify_ich;
@@ -147,7 +147,11 @@ pub(crate) fn promote_from_disk_inner<'tcx, C: QueryCache>(
         tcx.dep_graph.data().expect("should always be present in incremental mode");
 
     let prof_timer = tcx.prof.incr_cache_loading();
-    let value = (query.try_load_from_disk_fn)(tcx, prev_index);
+    let value = (query.try_load_from_disk_fn)(
+        tcx,
+        tcx.query_system.on_disk_cache.as_ref().unwrap(),
+        prev_index,
+    );
     prof_timer.finish_with_query_invocation_id(dep_node_index.into());
 
     let Some(value) = value else {
@@ -173,13 +177,12 @@ pub(crate) fn promote_from_disk_inner<'tcx, C: QueryCache>(
 
 pub(crate) fn try_load_from_disk<'tcx, V>(
     tcx: TyCtxt<'tcx>,
+    on_disk_cache: &OnDiskCache,
     prev_index: SerializedDepNodeIndex,
 ) -> Option<V>
 where
     V: for<'a> Decodable<CacheDecoder<'a, 'tcx>>,
 {
-    let on_disk_cache = tcx.query_system.on_disk_cache.as_ref()?;
-
     // The call to `with_query_deserialization` enforces that no new `DepNodes`
     // are created during deserialization. See the docs of that method for more
     // details.

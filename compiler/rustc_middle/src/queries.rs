@@ -232,6 +232,11 @@ rustc_queries! {
         feedable
     }
 
+    query codegen_output_mode(_: ()) -> (bool, bool) {
+        eval_always
+        desc { "tracking code generation and linking output modes" }
+    }
+
     /// All items in the crate.
     query hir_crate_items(_: ()) -> &'tcx rustc_middle::hir::ModuleItems {
         arena_cache
@@ -1288,6 +1293,7 @@ rustc_queries! {
         ErrorGuaranteed
     > {
         desc { "borrow-checking `{}`", tcx.def_path_str(key) }
+        cache_on_disk
     }
 
     /// Gets a complete map from all types to their inherent impls.

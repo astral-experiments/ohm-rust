@@ -53,7 +53,7 @@ pub fn crates_export_threshold(crate_types: &[CrateType]) -> SymbolExportLevel {
 }
 
 fn reachable_non_generics_provider(tcx: TyCtxt<'_>, _: LocalCrate) -> DefIdMap<SymbolExportInfo> {
-    if !tcx.sess.opts.output_types.should_codegen() && !tcx.is_sdylib_interface_build() {
+    if !tcx.codegen_output_mode(()).0 && !tcx.is_sdylib_interface_build() {
         return Default::default();
     }
 
@@ -190,7 +190,7 @@ fn exported_non_generic_symbols_provider_local<'tcx>(
     tcx: TyCtxt<'tcx>,
     _: LocalCrate,
 ) -> &'tcx [(ExportedSymbol<'tcx>, SymbolExportInfo)] {
-    if !tcx.sess.opts.output_types.should_codegen() && !tcx.is_sdylib_interface_build() {
+    if !tcx.codegen_output_mode(()).0 && !tcx.is_sdylib_interface_build() {
         return &[];
     }
 
@@ -305,7 +305,7 @@ fn exported_generic_symbols_provider_local<'tcx>(
     tcx: TyCtxt<'tcx>,
     _: LocalCrate,
 ) -> &'tcx [(ExportedSymbol<'tcx>, SymbolExportInfo)] {
-    if !tcx.sess.opts.output_types.should_codegen() && !tcx.is_sdylib_interface_build() {
+    if !tcx.codegen_output_mode(()).0 && !tcx.is_sdylib_interface_build() {
         return &[];
     }
 

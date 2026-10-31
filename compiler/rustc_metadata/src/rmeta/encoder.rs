@@ -1580,8 +1580,8 @@ fn should_encode_mir(
     reachable_set: &LocalDefIdSet,
     def_id: LocalDefId,
 ) -> (bool, bool) {
-    let encode_coroutine_mir = tcx.sess.opts.output_types.should_codegen()
-        || tcx.sess.opts.unstable_opts.always_encode_mir;
+    let encode_coroutine_mir =
+        tcx.codegen_output_mode(()).0 || tcx.sess.opts.unstable_opts.always_encode_mir;
     match tcx.def_kind(def_id) {
         // instance_mir uses mir_for_ctfe rather than optimized_mir for constructors
         DefKind::Ctor(_, _) => (true, false),
@@ -1594,7 +1594,7 @@ fn should_encode_mir(
         // Full-fledged functions + closures
         DefKind::AssocFn | DefKind::Fn | DefKind::Closure => {
             let opt = tcx.sess.opts.unstable_opts.always_encode_mir
-                || (tcx.sess.opts.output_types.should_codegen()
+                || (tcx.codegen_output_mode(()).0
                     && reachable_set.contains(&def_id)
                     && (tcx.generics_of(def_id).requires_monomorphization(tcx)
                         || tcx.cross_crate_inlinable(def_id)));
@@ -2419,11 +2419,8 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
 
         let tcx = self.tcx;
         let empty = LocalDefIdSet::default();
-        let reachable_set = if tcx.sess.opts.output_types.should_codegen() {
-            tcx.reachable_set(())
-        } else {
-            &empty
-        };
+        let reachable_set =
+            if tcx.codegen_output_mode(()).0 { tcx.reachable_set(()) } else { &empty };
 
         let keys_and_jobs: Vec<_> = tcx
             .mir_keys(())
@@ -2510,7 +2507,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         // Encode all the deduced parameter attributes for everything that has MIR, even for items
         // that can't be inlined. But don't if we aren't optimizing in non-incremental mode, to
         // save the query traffic.
-        if tcx.sess.opts.output_types.should_codegen()
+        if tcx.codegen_output_mode(()).0
             && tcx.sess.opts.optimize != OptLevel::No
             && tcx.sess.opts.incremental.is_none()
         {
@@ -3118,7 +3115,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
 /// Used to prefetch queries which will be needed later by metadata encoding.
 /// Only a subset of the queries are actually prefetched to keep this code smaller.
 fn prefetch_mir(tcx: TyCtxt<'_>) {
-    if !tcx.sess.opts.output_types.should_codegen() {
+    if !tcx.codegen_output_mode(()).0 {
         // We won't emit MIR, so don't prefetch it.
         return;
     }
