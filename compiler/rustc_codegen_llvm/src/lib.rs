@@ -247,7 +247,8 @@ impl CodegenBackend for LlvmCodegenBackend {
 
     fn provide(&self, providers: &mut Providers) {
         providers.queries.global_backend_features =
-            |tcx, ()| llvm_util::global_llvm_features(tcx.sess, false)
+            |tcx, ()| llvm_util::global_llvm_features(tcx.sess, false);
+        providers.queries.ohm_untracked_relink_inputs = asm::has_untracked_relink_inputs;
     }
 
     fn print(&self, req: &PrintRequest, out: &mut String, sess: &Session) {
