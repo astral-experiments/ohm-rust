@@ -1628,6 +1628,29 @@ fn file_free_inline_asm(
     let gnu_aarch64 = target.as_str() == "aarch64-unknown-linux-gnu";
     let arch = match target.as_str() {
         "x86_64-unknown-linux-gnu" => InlineAsmArch::X86_64,
+        "x86_64-unknown-linux-musl" => {
+            *verify_native_link = true;
+            let (reg, open, close) = match operands {
+                [InlineAsmOperand::In { reg, value: Operand::Copy(_) | Operand::Move(_) }]
+                    if options == (InlineAsmOptions::NOMEM | InlineAsmOptions::NOSTACK) =>
+                {
+                    (reg, "/* ", " */")
+                }
+                [
+                    InlineAsmOperand::InOut {
+                        reg,
+                        late: false,
+                        in_value: Operand::Copy(input),
+                        out_place: Some(output),
+                    },
+                ] if input == output && options.is_empty() => (reg, "/*", "*/"),
+                _ => return false,
+            };
+            return matches!(
+                reg,
+                InlineAsmRegOrRegClass::RegClass(InlineAsmRegClass::X86(X86InlineAsmRegClass::reg))
+            ) && scalar_register_comment(template, open, close);
+        }
         "aarch64-unknown-linux-gnu" => {
             *verify_native_link = true;
             // The kernel reads the syscall arguments at run time. With no template
@@ -1644,11 +1667,7 @@ fn file_free_inline_asm(
                 && *class == InlineAsmRegClass::AArch64(AArch64InlineAsmRegClass::reg)
                 && options == (InlineAsmOptions::NOMEM | InlineAsmOptions::NOSTACK)
             {
-                return matches!(template, [
-                    InlineAsmTemplatePiece::String(open),
-                    InlineAsmTemplatePiece::Placeholder { operand_idx: 0, modifier: None, .. },
-                    InlineAsmTemplatePiece::String(close),
-                ] if open == "/* " && close == " */");
+                return scalar_register_comment(template, "/* ", " */");
             }
             if options.is_empty()
                 && matches!(operands, [InlineAsmOperand::InOut {
@@ -1765,6 +1784,15 @@ fn file_free_aarch64_atomic_line(line: &str) -> bool {
             | ("stlxp" | "stxp", "@, @, @, [@]")
             | ("casp" | "caspa" | "caspal" | "caspl", "x6, x7, x4, x5, [@]")
     )
+}
+
+/// LLVM replaces the sole unmodified register placeholder with a register name.
+fn scalar_register_comment(template: &[InlineAsmTemplatePiece], open: &str, close: &str) -> bool {
+    matches!(template, [
+        InlineAsmTemplatePiece::String(prefix),
+        InlineAsmTemplatePiece::Placeholder { operand_idx: 0, modifier: None, .. },
+        InlineAsmTemplatePiece::String(suffix),
+    ] if prefix == open && suffix == close)
 }
 
 fn aarch64_register_comment(
