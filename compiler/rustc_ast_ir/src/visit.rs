@@ -16,9 +16,13 @@ impl VisitorResult for () {
     #[cfg(not(feature = "nightly"))]
     type Residual = core::convert::Infallible;
 
+    #[inline]
     fn output() -> Self {}
+    #[inline]
     fn from_residual(_: Self::Residual) -> Self {}
+    #[inline]
     fn from_branch(_: ControlFlow<Self::Residual>) -> Self {}
+    #[inline]
     fn branch(self) -> ControlFlow<Self::Residual> {
         ControlFlow::Continue(())
     }
