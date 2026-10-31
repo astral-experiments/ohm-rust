@@ -24,6 +24,7 @@ use rustc_middle::dep_graph::WorkProduct;
 use rustc_session::config;
 use tracing::{debug, info};
 
+use crate::back::thinlto_cache::CacheEntry;
 use crate::back::write::{
     self, CodegenDiagnosticsStage, DiagnosticHandlers, bitcode_section_name, codegen,
     save_temp_bitcode,
@@ -459,7 +460,11 @@ fn thin_lto(
         )
         .unwrap_or_else(|| write::llvm_err(dcx, LlvmError::PrepareThinLtoContext));
 
-        let data = ThinData(data);
+        // Hashless inputs (for example fat-LTO bitcode) cannot invalidate the
+        // cached objects of modules that import their changed bodies.
+        let cacheable =
+            cgcx.thinlto_cache_dir.is_some() && llvm::LLVMRustThinLTOHasModuleHashes(data);
+        let data = ThinData(data, cacheable);
 
         info!("thin LTO data created");
 
@@ -664,7 +669,19 @@ impl Drop for Buffer {
     }
 }
 
-pub struct ThinData(&'static mut llvm::ThinLTOData);
+pub struct ThinData(&'static mut llvm::ThinLTOData, bool);
+
+impl ThinData {
+    pub(super) fn cache_key(&self, module: &CStr) -> Option<String> {
+        if !self.1 {
+            return None;
+        }
+        build_string(|output| unsafe {
+            llvm::LLVMRustComputeLTOCacheKey(output, module.as_ptr(), self.0);
+        })
+        .ok()
+    }
+}
 
 unsafe impl Send for ThinData {}
 unsafe impl Sync for ThinData {}
@@ -703,6 +720,17 @@ pub(crate) fn optimize_and_codegen_thin_module(
     tm_factory: TargetMachineFactoryFn<LlvmCodegenBackend>,
     thin_module: ThinModule<LlvmCodegenBackend>,
 ) -> CompiledModule {
+    let cache_entry = CacheEntry::new(cgcx, &thin_module);
+    let diagnostics_before = shared_emitter.diagnostic_count();
+    if let Some(entry) = &cache_entry
+        && let Some(module) = entry.load()
+    {
+        info!("ohm_thinlto_cache_hit {}", module.name);
+        return module;
+    }
+    if cache_entry.is_some() {
+        info!("ohm_thinlto_cache_miss {}", thin_module.name());
+    }
     let dcx = DiagCtxt::new(Box::new(shared_emitter.clone()));
     let dcx = dcx.handle();
 
@@ -781,7 +809,17 @@ pub(crate) fn optimize_and_codegen_thin_module(
             save_temp_bitcode(cgcx, &module, "thin-lto-after-pm");
         }
     }
-    codegen(cgcx, prof, shared_emitter, module, &cgcx.module_config)
+    // Assembly can read files with .include/.incbin that are absent from LLVM's
+    // cache key. Only publish objects whose assembly has no such hidden inputs.
+    let cache_entry = cache_entry
+        .filter(|_| unsafe { !llvm::LLVMRustModuleHasInlineAsm(module.module_llvm.llmod()) });
+    let compiled = codegen(cgcx, prof, shared_emitter, module, &cgcx.module_config);
+    if let Some(entry) = cache_entry
+        && diagnostics_before == shared_emitter.diagnostic_count()
+    {
+        entry.store(&compiled);
+    }
+    compiled
 }
 
 /// Maps LLVM module identifiers to their corresponding LLVM LTO cache keys
