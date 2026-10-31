@@ -4,13 +4,13 @@ use std::fmt::{self, Debug};
 
 use rustc_abi::{FieldIdx, VariantIdx};
 use rustc_errors::ErrorGuaranteed;
-use rustc_index::IndexVec;
 use rustc_index::bit_set::{BitMatrix, DenseBitSet};
+use rustc_index::{IndexSlice, IndexVec};
 use rustc_macros::{StableHash, TyDecodable, TyEncodable, TypeFoldable, TypeVisitable};
 use rustc_span::{Span, Symbol};
 
 use super::{BasicBlock, ConstValue, Local, SourceInfo};
-use crate::ty::{self, CoroutineArgsExt, Ty};
+use crate::ty::{self, CoroutineArgsExt, Ty, TyCtxt};
 
 rustc_index::newtype_index! {
     #[stable_hash]
@@ -60,6 +60,58 @@ pub struct CoroutineLayout<'tcx> {
 pub struct CoroutineRuntimeInfo<'tcx> {
     pub layout: CoroutineLayout<'tcx>,
     pub has_async_drop: bool,
+}
+
+/// Coroutine state data used to compute an ABI and project its fields.
+///
+/// Unlike `CoroutineLayout`, this query result contains no source locations or
+/// debug names. Its fingerprint can remain unchanged when only those change.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, StableHash)]
+pub struct CoroutineCodegenLayout<'tcx> {
+    pub field_tys: &'tcx IndexSlice<CoroutineSavedLocal, Ty<'tcx>>,
+    pub variant_fields: &'tcx IndexSlice<VariantIdx, IndexVec<FieldIdx, CoroutineSavedLocal>>,
+    pub storage_conflicts: &'tcx BitMatrix<CoroutineSavedLocal, CoroutineSavedLocal>,
+}
+
+impl<'tcx> CoroutineCodegenLayout<'tcx> {
+    pub fn new(tcx: TyCtxt<'tcx>, layout: &'tcx CoroutineLayout<'tcx>) -> Self {
+        Self {
+            field_tys: IndexSlice::from_raw(
+                tcx.arena.alloc_from_iter(layout.field_tys.iter().map(|field| field.ty)),
+            ),
+            variant_fields: &layout.variant_fields,
+            storage_conflicts: &layout.storage_conflicts,
+        }
+    }
+}
+
+/// Names and optional declaration locations used to describe coroutine states.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, StableHash)]
+pub struct CoroutineDebugInfo<'tcx> {
+    pub field_names: &'tcx IndexSlice<CoroutineSavedLocal, Option<Symbol>>,
+    pub variant_spans: &'tcx IndexSlice<VariantIdx, Span>,
+}
+
+impl<'tcx> CoroutineDebugInfo<'tcx> {
+    pub fn new(tcx: TyCtxt<'tcx>, layout: &'tcx CoroutineLayout<'tcx>) -> Self {
+        let emit_locations = tcx.sess.opts.unstable_opts.debug_info_type_line_numbers;
+        Self {
+            field_names: IndexSlice::from_raw(
+                tcx.arena
+                    .alloc_from_iter(layout.field_tys.iter().map(|field| field.debuginfo_name)),
+            ),
+            // Filter before the query result is hashed. Omitting the LLVM
+            // attribute alone would leave a dependency on the original spans.
+            variant_spans: IndexSlice::from_raw(
+                tcx.arena.alloc_from_iter(
+                    layout
+                        .variant_source_info
+                        .iter()
+                        .map(|info| if emit_locations { info.span } else { rustc_span::DUMMY_SP }),
+                ),
+            ),
+        }
+    }
 }
 
 /// State retained between computing a coroutine's layout and lowering its body.

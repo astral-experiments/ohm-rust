@@ -174,7 +174,9 @@ pub(super) fn build_coroutine_di_node<'ll, 'tcx>(
         ),
         |cx, coroutine_type_di_node| {
             let coroutine_layout =
-                cx.tcx.coroutine_layout(coroutine_def_id, coroutine_args).unwrap();
+                cx.tcx.coroutine_codegen_layout(coroutine_def_id, coroutine_args).unwrap();
+            let coroutine_debug_info =
+                cx.tcx.coroutine_debug_info(coroutine_def_id, coroutine_args).unwrap();
 
             let Variants::Multiple { tag_encoding: TagEncoding::Direct, ref variants, .. } =
                 coroutine_type_and_layout.variants
@@ -197,7 +199,7 @@ pub(super) fn build_coroutine_di_node<'ll, 'tcx>(
                     //        with enums?
                     let variant_name = format!("{}", variant_index.as_usize()).into();
 
-                    let span = coroutine_layout.variant_source_info[variant_index].span;
+                    let span = coroutine_debug_info.variant_spans[variant_index];
                     let source_info = if !span.is_dummy() {
                         let loc = cx.lookup_debug_loc(span.lo());
                         Some((file_metadata(cx, &loc.file), loc.line))
@@ -215,6 +217,7 @@ pub(super) fn build_coroutine_di_node<'ll, 'tcx>(
                                 coroutine_type_and_layout,
                                 coroutine_type_di_node,
                                 coroutine_layout,
+                                coroutine_debug_info,
                                 common_upvar_names,
                             ),
                         source_info,
