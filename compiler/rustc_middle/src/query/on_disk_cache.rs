@@ -1014,6 +1014,7 @@ macro_rules! impl_ref_decoder {
 
 impl_ref_decoder! {<'tcx>
     Span,
+    Symbol,
     CodegenUnit<'tcx>,
     rustc_hir::Attribute,
     rustc_span::Ident,
