@@ -2127,6 +2127,13 @@ rustc_queries! {
         separate_provide_extern
     }
 
+    /// The upstream metadata hash visible to this compilation's external query providers.
+    query external_metadata_input_hash(_: CrateNum) -> Svh {
+        eval_always
+        desc { "tracking input to external metadata queries" }
+        separate_provide_extern
+    }
+
     /// Returns the public API hash of a reachable external `DefId`.
     ///
     /// Falls back to the crate public hash for legacy metadata and panics for local or private

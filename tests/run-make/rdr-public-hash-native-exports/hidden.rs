@@ -6,7 +6,8 @@ extern "C" fn initialize() {
 
 #[used]
 #[unsafe(export_name = "native_hook_aaaa")]
-#[unsafe(link_section = ".init_array")]
+#[cfg_attr(target_os = "linux", unsafe(link_section = ".init_array"))]
+#[cfg_attr(target_os = "macos", unsafe(link_section = "__DATA,__mod_init_func,mod_init_funcs"))]
 static REGISTER: extern "C" fn() = initialize;
 
 #[unsafe(export_name = "native_call_scalar")]

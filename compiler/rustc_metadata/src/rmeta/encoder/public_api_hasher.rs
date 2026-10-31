@@ -99,10 +99,9 @@
 //! at link time or only for diagnostics, and including them would couple the public hash to private
 //! implementation details.
 //!  - The non-generic export list is only used during linking, so it lives behind the private
-//!    hash ([`Unhashed`]). Its definitions are graph roots because consumers query their metadata
-//!    to construct native symbols. Exported generic symbols remain in the public hash because
-//!    downstream crates can reuse their monomorphizations; changing the available symbols must
-//!    invalidate those dependents.
+//!    hash ([`Unhashed`]). Definitions needed by a C linker are graph roots because consumers
+//!    query their metadata to construct native symbols. Exported generic symbols remain in the
+//!    public hash because downstream crates can reuse their monomorphizations.
 //!  - `def_path_hash_map` is unhashed (see above).
 //!  - `traits` and `stripped_cfg_items` are only read when a compilation session ends in an error,
 //!    so they are currently dropped from the rmeta when the option is enabled.
@@ -560,7 +559,7 @@ pub(crate) struct HashableCrateRoot {
     pub(crate) exportable_items: GraphHashed<LazyArray<DefIndex>>,
 
     // =========== used during link time ==============
-    // The export list is covered by the private hash. Its DefIds are reachability roots.
+    // The export list is covered by the private hash.
     pub(crate) exported_non_generic_symbols:
         Unhashed<LazyArray<(ExportedSymbol<'static>, SymbolExportInfo)>>,
 
