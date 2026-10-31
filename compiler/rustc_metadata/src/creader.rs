@@ -804,7 +804,15 @@ impl CStore {
         let path_kind = if dep.is_some() { PathKind::Dependency } else { PathKind::Crate };
         let private_dep = origin.private_dep();
 
-        let result = if let Some(cnum) = self.existing_match(name, hash) {
+        // The extern-name map records successful direct resolutions, including
+        // command-line renames. Transitive dependencies must still select by hash.
+        let existing = match origin {
+            CrateOrigin::Extern => self.resolved_extern_crate(name),
+            _ => None,
+        }
+        .or_else(|| self.existing_match(name, hash));
+
+        let result = if let Some(cnum) = existing {
             (LoadResult::Previous(cnum), None)
         } else {
             info!("falling back to a load");
