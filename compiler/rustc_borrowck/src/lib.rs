@@ -612,8 +612,8 @@ fn get_flow_results<'a, 'tcx>(
     borrow_set: &'a BorrowSet<'tcx>,
     regioncx: &RegionInferenceContext<'tcx>,
 ) -> Results<'tcx, Borrowck<'a, 'tcx>> {
-    // We compute these three analyses individually, but them combine them into
-    // a single results so that `mbcx` can visit them all together.
+    // Compute these analyses independently, then combine their results so that `mbcx`
+    // can visit them together.
     let borrows = {
         let _timer = tcx.prof.generic_activity("borrowck_dataflow_borrows");
         Borrows::new(tcx, body, regioncx, borrow_set).iterate_to_fixpoint(
