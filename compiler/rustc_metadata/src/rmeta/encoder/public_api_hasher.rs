@@ -133,10 +133,10 @@ use std::fmt;
 
 use rustc_crate_store::{ForeignModule, LinkagePreference, NativeLib};
 use rustc_data_structures::fingerprint::Fingerprint;
-use rustc_data_structures::fx::{FxHashMap, FxHashSet};
+use rustc_data_structures::fx::{FxHashSet, FxIndexSet};
 use rustc_data_structures::graph::scc::Sccs;
 use rustc_data_structures::graph::{DirectedGraph, Successors};
-use rustc_data_structures::indexmap::map::Entry;
+use rustc_data_structures::sso::SsoHashSet;
 use rustc_data_structures::stable_hash::{StableHash, StableHashCtxt, StableHasher};
 use rustc_data_structures::svh::Svh;
 use rustc_data_structures::unord::UnordMap;
@@ -762,18 +762,24 @@ impl<'tcx> ReachabilityGraph<'tcx> {
 
 /// Collects semantic dependencies encountered while metadata is encoded.
 pub(super) struct ReachabilityGraphBuilder<'tcx> {
-    pub(super) record_mode: Vec<RecordMode<'tcx>>,
-    edges: FxHashMap<Node<'tcx>, FxHashSet<Node<'tcx>>>,
-    roots: FxHashSet<Node<'tcx>>,
+    // `None` suppresses recording; an empty stack records roots.
+    record_mode: Vec<Option<NodeIdx>>,
+    nodes: FxIndexSet<Node<'tcx>>,
+    edges: IndexVec<NodeIdx, SsoHashSet<NodeIdx>>,
+    roots: FxHashSet<NodeIdx>,
 }
 
 impl Default for ReachabilityGraphBuilder<'_> {
     fn default() -> Self {
-        Self {
+        let mut builder = Self {
             record_mode: Default::default(),
+            nodes: Default::default(),
             edges: Default::default(),
-            roots: [Node::DefId(rustc_hir::def_id::CRATE_DEF_ID.into())].into_iter().collect(),
-        }
+            roots: Default::default(),
+        };
+        let crate_root = builder.node_index(CRATE_DEF_ID.into());
+        builder.roots.insert(crate_root);
+        builder
     }
 }
 
@@ -787,64 +793,90 @@ fn stable_hash<'a, T: StableHash + ?Sized, const HASH_SPANS_AS_PARENTLESS: bool>
 }
 
 impl<'tcx> ReachabilityGraphBuilder<'tcx> {
+    /// Interns an edge source once for all nodes encoded under this mode.
+    pub(super) fn push_record_mode(&mut self, mode: RecordMode<'tcx>) {
+        let from = match mode {
+            RecordMode::From(node) => Some(self.node_index(node)),
+            RecordMode::None => None,
+        };
+        self.record_mode.push(from);
+    }
+
+    pub(super) fn pop_record_mode(&mut self) {
+        self.record_mode.pop();
+    }
+
+    /// Interns a semantic node so edges can store compact indices instead of full node values.
+    fn node_index(&mut self, node: Node<'tcx>) -> NodeIdx {
+        let (index, inserted) = self.nodes.insert_full(node);
+        if inserted {
+            let edge_index = self.edges.push(SsoHashSet::default());
+            debug_assert_eq!(index, edge_index);
+        }
+        index
+    }
+
     fn build_graph(mut self, hcx: &mut StableHashState<'_, true>) -> ReachabilityGraph<'tcx> {
         // ExpnId::root() contains CRATE_DEF_ID as its macro_def_id, but that isn't used for
         // anything.
         // FIXME add newtype that ensures it really isn't used
-        self.edges.get_mut(&LocalExpnId::ROOT.into()).unwrap().remove(&CRATE_DEF_ID.into());
+        let root_expansion = self.nodes.get_index_of(&Node::from(LocalExpnId::ROOT)).unwrap();
+        let crate_root = self.nodes.get_index_of(&Node::from(CRATE_DEF_ID)).unwrap();
+        self.edges[root_expansion].remove(&crate_root);
 
         // Node identity hashing can trigger compiler queries, so discard
         // unreachable metadata before hashing nodes or constructing SCCs.
         // Traversal order cannot affect membership in the reachable set, and
         // the retained nodes and edges are stably sorted below.
         #[allow(rustc::potential_query_instability)]
-        {
-            let mut reachable = self.roots.clone();
+        let reachable = {
+            let mut reachable = IndexVec::from_elem_n(false, self.nodes.len());
+            for &root in &self.roots {
+                reachable[root] = true;
+            }
             let mut worklist = self.roots.iter().copied().collect::<Vec<_>>();
             while let Some(node) = worklist.pop() {
-                if let Some(edges) = self.edges.get(&node) {
-                    worklist.extend(edges.iter().copied().filter(|edge| reachable.insert(*edge)));
-                }
+                worklist.extend(
+                    self.edges[node]
+                        .iter()
+                        .copied()
+                        .filter(|&edge| !std::mem::replace(&mut reachable[edge], true)),
+                );
             }
-            self.edges.retain(|node, _| reachable.contains(node));
-        }
+            reachable
+        };
 
-        let mut hashes = IndexMap::default();
-        // iterating over FxHashSet and FxHashMap is fine here, as it is only used to build the
-        // hashes map, which is never returned or iterated
-        #[allow(rustc::potential_query_instability)]
-        for node in self
-            .edges
+        let mut hashes: IndexMap<_, _> = self
+            .nodes
             .iter()
-            .flat_map(|(node, edges)| std::iter::once(*node).chain(edges.iter().copied()))
-            .chain(self.roots.iter().copied())
-        {
-            match hashes.entry(node) {
-                Entry::Vacant(v) => {
-                    let hash = stable_hash(hcx, &node);
-                    v.insert(hash);
-                }
-                Entry::Occupied(_o) => {}
-            }
-        }
+            .enumerate()
+            .filter(|(index, _)| reachable[*index])
+            .map(|(_, &node)| (node, stable_hash(hcx, &node)))
+            .collect();
         hashes.sort_by_key(|_, v| *v);
+
+        // Translate the temporary interning indices into the stable graph order once per node.
+        let mut node_indices = IndexVec::from_elem_n(usize::MAX, self.nodes.len());
+        for (index, node) in hashes.keys().enumerate() {
+            node_indices[self.nodes.get_index_of(node).unwrap()] = index;
+        }
+        drop(self.nodes);
 
         // iterating here is fine, as we stable sort right after
         #[allow(rustc::potential_query_instability)]
-        let mut roots: Vec<_> =
-            self.roots.into_iter().map(|node| hashes.get_index_of(&node).unwrap()).collect();
+        let mut roots: Vec<_> = self.roots.into_iter().map(|node| node_indices[node]).collect();
         roots.sort();
         let mut edges = IndexVec::from_elem_n(Vec::default(), hashes.len());
-        // iterating here is fine, as we stable when saving to `edges`
-        #[allow(rustc::potential_query_instability)]
-        for (node, node_edges) in self.edges {
-            let node_idx = hashes.get_index_of(&node).unwrap();
+        for (node, node_edges) in self.edges.into_iter_enumerated() {
+            if !reachable[node] {
+                continue;
+            }
             // iterating here is fine, as we stable sort right after
             #[allow(rustc::potential_query_instability)]
             let mut node_edges: Vec<_> =
-                node_edges.into_iter().map(|node| hashes.get_index_of(&node).unwrap()).collect();
+                node_edges.into_iter().map(|node| node_indices[node]).collect();
             node_edges.sort();
-            edges[node_idx] = node_edges;
+            edges[node_indices[node]] = node_edges;
         }
 
         ReachabilityGraph { roots, edges, nodes: hashes }
@@ -853,12 +885,14 @@ impl<'tcx> ReachabilityGraphBuilder<'tcx> {
     /// Adds an edge from the active [`RecordMode::From`] node, suppresses the node under
     /// [`RecordMode::None`], or records it as a graph root when no mode is active.
     pub(super) fn record(&mut self, to: Node<'tcx>) {
-        match self.record_mode.last() {
-            Some(RecordMode::From(from)) => {
-                self.edges.entry(*from).or_insert(Default::default()).insert(to);
+        match self.record_mode.last().copied() {
+            Some(Some(from)) => {
+                let to = self.node_index(to);
+                self.edges[from].insert(to);
             }
-            Some(RecordMode::None) => (),
+            Some(None) => (),
             None => {
+                let to = self.node_index(to);
                 self.roots.insert(to);
             }
         }
