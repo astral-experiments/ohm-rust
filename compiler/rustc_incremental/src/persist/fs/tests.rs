@@ -211,3 +211,37 @@ fn resolve_revisions_in_a_linked_git_worktree() {
     assert_ne!(get().branch, branch);
     assert_eq!(get().revision, Some(0x1234567890abcdef));
 }
+
+#[test]
+fn resolve_complete_rows_at_the_start_of_large_packed_refs() {
+    let temp = rustc_fs_util::TempDirBuilder::new().tempdir_in(std::env::temp_dir()).unwrap();
+    let path = temp.path().join("packed-refs");
+    let oid = "abcdef0123456789000000000000000000000000";
+    let row = format!("{oid} refs/heads/work");
+    let get = || branch_revision(temp.path(), b"refs/heads/work");
+    let hint = Some(0xabcdef0123456789);
+    let later = format!("{oid} refs/remotes/origin/work\n");
+    let fill = later.repeat(PACKED_REFS_LIMIT / later.len() + 1);
+    std_fs::write(
+        &path,
+        format!("# pack-refs with: peeled sorted \n{oid} refs/heads/before\n{row}\n^{oid}\n{fill}"),
+    )
+    .unwrap();
+    assert_eq!(get(), hint);
+    assert_eq!(branch_revision(temp.path(), b"refs/heads/between"), None);
+    // Older or unknown traits still work on complete files.
+    for header in ["", "# pack-refs with: peeled\tsorted \n", "# pack-refs with: peeled sorted\r\n"]
+    {
+        std_fs::write(&path, format!("{header}{later}{row}\n{fill}")).unwrap();
+        assert_eq!(get(), None);
+        std_fs::write(&path, format!("{header}{later}{row}\n")).unwrap();
+        assert_eq!(get(), hint);
+    }
+
+    let first = format!("# pack-refs with: sorted \n{oid} refs/heads/");
+    let padding = "a".repeat(PACKED_REFS_LIMIT - first.len() - row.len() - 2);
+    std_fs::write(&path, format!("{first}{padding}\n{row}\nextra")).unwrap();
+    assert_eq!(get(), hint);
+    std_fs::write(&path, format!("{first}{padding}a\n{row}-other\n")).unwrap();
+    assert_eq!(get(), None);
+}

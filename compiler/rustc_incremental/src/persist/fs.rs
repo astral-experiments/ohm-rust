@@ -526,6 +526,42 @@ fn revision_hint(oid: &[u8]) -> Option<u64> {
     u64::from_str_radix(std::str::from_utf8(&oid[..16]).ok()?, 16).ok()
 }
 
+const PACKED_REFS_LIMIT: usize = 64 * 1024;
+
+/// Split a packed ref into its object ID and byte-exact refname.
+fn packed_ref_fields(line: &[u8]) -> Option<(&[u8], &[u8])> {
+    let mut fields = line.trim_ascii_end().splitn(2, |&b| b == b' ');
+    Some((fields.next()?, fields.next()?))
+}
+
+/// Search complete, sorted Git records. A peeled object line belongs to the preceding ref.
+fn sorted_packed_revision(refs: &[u8], reference: &[u8]) -> Option<u64> {
+    let line_start = |at: usize| refs[..at].iter().rposition(|&b| b == b'\n').map_or(0, |n| n + 1);
+    let mut low = 0;
+    let mut high = refs.len();
+    let mut at = 0;
+    while low < high {
+        let end = at + refs[at..].iter().position(|&b| b == b'\n')?;
+        let mut start = line_start(at);
+        let row = if refs[start] == b'^' {
+            let previous_end = start.checked_sub(1)?;
+            start = line_start(previous_end);
+            &refs[start..previous_end]
+        } else {
+            &refs[start..end]
+        };
+        let (oid, name) = packed_ref_fields(row)?;
+        match name.cmp(reference) {
+            std::cmp::Ordering::Equal => return revision_hint(oid),
+            std::cmp::Ordering::Less => low = end + 1,
+            std::cmp::Ordering::Greater => high = start,
+        }
+        // Local heads often come first. Check both ends before bisecting the captured prefix.
+        at = if at == 0 && low < high { high - 1 } else { low.midpoint(high) };
+    }
+    None
+}
+
 /// Branches live in the common Git directory even when this worktree has its own HEAD.
 fn branch_revision(git_dir: &Path, reference: &[u8]) -> Option<u64> {
     let ref_path = git_path(reference)?;
@@ -542,12 +578,26 @@ fn branch_revision(git_dir: &Path, reference: &[u8]) -> Option<u64> {
         Err(e) if e.kind() == ErrorKind::NotFound => {}
         Err(_) => return None,
     }
-    let packed = read_git_file(&common.join("packed-refs"), 64 * 1024).ok()?;
-    packed.split(|&b| b == b'\n').find_map(|line| {
-        let mut fields = line.trim_ascii_end().splitn(2, |&b| b == b' ');
-        let oid = fields.next()?;
-        if fields.next() == Some(reference) { revision_hint(oid) } else { None }
-    })
+    let file = open_regular_file(&common.join("packed-refs")).ok()?;
+    let limit = PACKED_REFS_LIMIT as u64 + 1;
+    let capacity = file.metadata().map_or(0, |m| m.len().min(limit) as usize);
+    let mut packed = Vec::with_capacity(capacity);
+    file.take(limit).read_to_end(&mut packed).ok()?;
+    if packed.len() > PACKED_REFS_LIMIT {
+        let prefix = packed[..PACKED_REFS_LIMIT].strip_prefix(b"# pack-refs with: ")?;
+        let mut sections = prefix.splitn(2, |&b| b == b'\n');
+        if !sections.next()?.split(|&b| b == b' ').any(|word| word == b"sorted") {
+            return None;
+        }
+        // A partial row could end at exactly the requested name but belong to a longer ref.
+        let refs = sections.next()?;
+        let end = refs.iter().rposition(|&b| b == b'\n')?;
+        return sorted_packed_revision(&refs[..=end], reference);
+    }
+    packed
+        .split(|&b| b == b'\n')
+        .filter_map(packed_ref_fields)
+        .find_map(|(oid, name)| if name == reference { revision_hint(oid) } else { None })
 }
 
 /// Identifies an enclosing Git worktree for the sole purpose of choosing an incremental
