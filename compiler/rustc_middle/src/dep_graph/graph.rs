@@ -1438,7 +1438,7 @@ pub(super) struct DepNodeColorMap {
     values: IndexVec<SerializedDepNodeIndex, AtomicU32>,
 }
 
-// All values below `COMPRESSED_RED` are green.
+// Green entries store a current dep-node index.
 const COMPRESSED_RED: u32 = u32::MAX - 1;
 const COMPRESSED_UNKNOWN: u32 = u32::MAX;
 
@@ -1483,15 +1483,14 @@ impl DepNodeColorMap {
     #[inline]
     pub(super) fn get(&self, index: SerializedDepNodeIndex) -> DepNodeColor {
         let value = self.values[index].load(Ordering::Acquire);
-        // Green is by far the most common case. Check for that first so we can succeed with a
-        // single comparison.
-        if value < COMPRESSED_RED {
+        // Checking the index limit also proves that `from_u32` succeeds on the common green path.
+        if value <= DepNodeIndex::MAX_AS_U32 {
             DepNodeColor::Green(DepNodeIndex::from_u32(value))
-        } else if value == COMPRESSED_RED {
-            DepNodeColor::Red
-        } else {
-            debug_assert_eq!(value, COMPRESSED_UNKNOWN);
+        } else if value == COMPRESSED_UNKNOWN {
             DepNodeColor::Unknown
+        } else {
+            assert!(value == COMPRESSED_RED);
+            DepNodeColor::Red
         }
     }
 }
