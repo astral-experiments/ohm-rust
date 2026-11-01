@@ -1685,6 +1685,18 @@ rustc_queries! {
         desc { "finding trait impls of `{}`", tcx.def_path_str(trait_id) }
     }
 
+    query blanket_trait_impls(trait_id: DefId) -> &'tcx [DefId] {
+        desc { "finding blanket impls of `{}`", tcx.def_path_str(trait_id) }
+    }
+
+    query non_blanket_trait_impls(key: (DefId, SimplifiedType)) -> &'tcx [DefId] {
+        desc { "finding impls of `{}` for `{:?}`", tcx.def_path_str(key.0), key.1 }
+    }
+
+    query trait_impl_receiver_adt(adt_def_id: DefId) {
+        desc { "recording the receiver of an impl lookup for `{}`", tcx.def_path_str(adt_def_id) }
+    }
+
     query trait_impls_by_const_arg(key: (DefId, DefId)) -> &'tcx ty::trait_def::ConstArgImpls<'tcx> {
         arena_cache
         desc { "indexing const arguments of `{}` impls for `{}`", tcx.def_path_str(key.0), tcx.def_path_str(key.1) }
