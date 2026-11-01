@@ -939,6 +939,30 @@ impl DepGraph {
         self.data()?.try_mark_green(tcx, dep_node)
     }
 
+    pub fn previous_trait_impl_adt_inputs(
+        &self,
+        bucket: DepNode,
+        index: SerializedDepNodeIndex,
+    ) -> Option<(DepNode, DepNode)> {
+        let previous = &self.data()?.previous;
+        if bucket.kind != DepKind::non_blanket_trait_impls
+            || *previous.index_to_node(index) != bucket
+        {
+            return None;
+        }
+        let mut inputs = previous.edge_targets_from(index).map(|i| *previous.index_to_node(i));
+        let first = inputs.next()?;
+        let second = inputs.next()?;
+        if inputs.next().is_some() {
+            return None;
+        }
+        match (first.kind, second.kind) {
+            (DepKind::trait_impls_of, DepKind::trait_impl_receiver_adt) => Some((first, second)),
+            (DepKind::trait_impl_receiver_adt, DepKind::trait_impls_of) => Some((second, first)),
+            _ => None,
+        }
+    }
+
     /// Returns the old edges except those which the caller will read again after rewriting its suffix.
     ///
     /// Call this after normal green-marking so all query side effects have
