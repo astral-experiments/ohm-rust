@@ -99,6 +99,8 @@ enum AllocDiscriminant {
     VTable,
     Static,
     Type,
+    // Used only in the local query cache. Foreign memory keeps its own identity.
+    DeduplicatedMemory,
 }
 
 pub fn specialized_encode_alloc_id<'tcx, E: TyEncoder<'tcx>>(
@@ -109,7 +111,13 @@ pub fn specialized_encode_alloc_id<'tcx, E: TyEncoder<'tcx>>(
     match tcx.global_alloc(alloc_id) {
         GlobalAlloc::Memory(alloc) => {
             trace!("encoding {:?} with {:#?}", alloc_id, alloc);
-            AllocDiscriminant::Alloc.encode(encoder);
+            let kind =
+                if !E::CLEAR_CROSS_CRATE && tcx.alloc_map.is_deduplicated_memory(alloc_id, alloc) {
+                    AllocDiscriminant::DeduplicatedMemory
+                } else {
+                    AllocDiscriminant::Alloc
+                };
+            kind.encode(encoder);
             alloc.encode(encoder);
         }
         GlobalAlloc::Function { instance } => {
@@ -220,6 +228,9 @@ impl<'s> AllocDecodingSession<'s> {
             let alloc_kind = AllocDiscriminant::decode(decoder);
             (alloc_kind, decoder.position())
         });
+        assert!(
+            !D::CLEAR_CROSS_CRATE || !matches!(alloc_kind, AllocDiscriminant::DeduplicatedMemory)
+        );
 
         // We are going to hold this lock during the entire decoding of this allocation, which may
         // require that we decode other allocations. This cannot deadlock for two reasons:
@@ -242,11 +253,16 @@ impl<'s> AllocDecodingSession<'s> {
 
         // Now decode the actual data.
         let alloc_id = decoder.with_position(pos, |decoder| match alloc_kind {
-            AllocDiscriminant::Alloc => {
+            AllocDiscriminant::Alloc | AllocDiscriminant::DeduplicatedMemory => {
                 trace!("creating memory alloc ID");
                 let alloc = <ConstAllocation<'tcx> as Decodable<_>>::decode(decoder);
                 trace!("decoded alloc {:?}", alloc);
-                decoder.interner().reserve_and_set_memory_alloc(alloc)
+                if let AllocDiscriminant::DeduplicatedMemory = alloc_kind {
+                    assert!(is_immutable_leaf(alloc));
+                    decoder.interner().reserve_and_set_memory_dedup(alloc, CTFE_ALLOC_SALT)
+                } else {
+                    decoder.interner().reserve_and_set_memory_alloc(alloc)
+                }
             }
             AllocDiscriminant::Fn => {
                 trace!("creating fn alloc ID");
@@ -442,6 +458,11 @@ impl<'tcx> GlobalAlloc<'tcx> {
 
 pub const CTFE_ALLOC_SALT: usize = 0;
 
+/// Pointer-bearing memory must retain the identity of its referenced allocations.
+fn is_immutable_leaf(alloc: ConstAllocation<'_>) -> bool {
+    !alloc.inner().mutability.is_mut() && alloc.inner().provenance().ptrs().is_empty()
+}
+
 pub(crate) struct AllocMap<'tcx> {
     /// Maps `AllocId`s to their corresponding allocations.
     // Note that this map on rustc workloads seems to be rather dense, but in miri workloads should
@@ -464,6 +485,13 @@ pub(crate) struct AllocMap<'tcx> {
 }
 
 impl<'tcx> AllocMap<'tcx> {
+    /// Only the original salt-zero ID can rejoin freshly evaluated literals. A distinct ID
+    /// may point at exactly the same interned allocation.
+    fn is_deduplicated_memory(&self, id: AllocId, alloc: ConstAllocation<'tcx>) -> bool {
+        is_immutable_leaf(alloc)
+            && self.dedup.lock().get(&(GlobalAlloc::Memory(alloc), CTFE_ALLOC_SALT)) == Some(&id)
+    }
+
     pub(crate) fn new() -> Self {
         AllocMap {
             to_alloc: Default::default(),

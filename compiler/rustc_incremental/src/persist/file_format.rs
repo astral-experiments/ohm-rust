@@ -26,8 +26,8 @@ use crate::diagnostics;
 const FILE_MAGIC: &[u8] = b"RSIC";
 
 /// Change this if the header format changes.
-// Older work products could have been overwritten through a saved link object.
-const HEADER_FORMAT_VERSION: u16 = 8;
+// Older query caches do not distinguish freshly allocated memory from deduplicated literals.
+const HEADER_FORMAT_VERSION: u16 = 11;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);
