@@ -13,7 +13,9 @@ fi
 host=$("$rustc" --print host-tuple)
 
 # Find out where to look for the pretty printer Python module
-RUSTC_SYSROOT=$("$rustc" --print sysroot)
+# Strip rustc's final newline and the marker, preserving trailing newlines in the path.
+RUSTC_SYSROOT=$("$rustc" --print sysroot && printf .)
+RUSTC_SYSROOT=${RUSTC_SYSROOT%??}
 RUST_LLDB="$RUSTC_SYSROOT/lib/rustlib/$host/bin/lldb"
 
 lldb=lldb
@@ -36,7 +38,7 @@ EOF
     fi
 fi
 
-script_import="command script import \"$RUSTC_SYSROOT/lib/rustlib/etc/lldb_lookup.py\""
-
-# Call LLDB with the commands added to the argument list
-exec "$lldb" --one-line-before-file "$script_import" "$@"
+# Pass the directory as data so LLDB does not parse characters in it as commands.
+_RUST_LLDB_PYTHON_DIR="$RUSTC_SYSROOT/lib/rustlib/etc" exec "$lldb" \
+    --one-line-before-file 'script import os, sys; sys.path.insert(0, os.environ.pop("_RUST_LLDB_PYTHON_DIR"))' \
+    --one-line-before-file 'command script import lldb_lookup' "$@"
