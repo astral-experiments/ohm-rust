@@ -1588,7 +1588,13 @@ pub(crate) fn relink_inputs(tcx: TyCtxt<'_>, (): ()) -> RelinkInputs {
         saw_asm = true;
         *asm_macro != InlineAsmMacro::Asm
             || options.intersects(InlineAsmOptions::RAW | InlineAsmOptions::ATT_SYNTAX)
-            || !file_free_inline_asm(&tcx.sess.opts.target_triple, template, operands, *options, &mut verify_native_link)
+            || !file_free_inline_asm(
+                &tcx.sess.opts.target_triple,
+                template,
+                operands,
+                *options,
+                &mut verify_native_link,
+            )
     });
     if untracked {
         return RelinkInputs::Rebuild;
