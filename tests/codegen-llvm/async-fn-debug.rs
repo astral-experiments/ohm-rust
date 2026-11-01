@@ -1,5 +1,5 @@
 // Verify debuginfo for async fn:
-//  - Each variant points to the file and line of its yield point
+//  - Variant declaration locations are opt-in; states and fields remain available
 //  - The discriminants are marked artificial
 //  - Other fields are not marked artificial
 //
@@ -23,26 +23,31 @@ async fn async_fn_test() {
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: discriminator: [[DISC:![0-9]*]]
 // CHECK:      {{!.*}} = !DIDerivedType(tag: DW_TAG_member, name: "0", scope: [[VARIANT]],
-// CHECK-SAME: file: [[FILE:![0-9]*]], line: 12,
+// locations-SAME: file: [[FILE:![0-9]*]], line: 12,
+// default-NOT: line:
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: )
 // CHECK:      {{!.*}} = !DICompositeType(tag: DW_TAG_structure_type, name: "Unresumed", scope: [[GEN]],
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: )
 // CHECK:      {{!.*}} = !DIDerivedType(tag: DW_TAG_member, name: "1", scope: [[VARIANT]],
-// CHECK-SAME: file: [[FILE]], line: 16,
+// locations-SAME: file: [[FILE]], line: 16,
+// default-NOT: line:
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: )
 // CHECK:      {{!.*}} = !DIDerivedType(tag: DW_TAG_member, name: "2", scope: [[VARIANT]],
-// CHECK-SAME: file: [[FILE]], line: 16,
+// locations-SAME: file: [[FILE]], line: 16,
+// default-NOT: line:
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: )
 // CHECK:      {{!.*}} = !DIDerivedType(tag: DW_TAG_member, name: "3", scope: [[VARIANT]],
-// CHECK-SAME: file: [[FILE]], line: 13,
+// locations-SAME: file: [[FILE]], line: 13,
+// default-NOT: line:
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: )
 // CHECK:      {{!.*}} = !DIDerivedType(tag: DW_TAG_member, name: "4", scope: [[VARIANT]],
-// CHECK-SAME: file: [[FILE]], line: 15,
+// locations-SAME: file: [[FILE]], line: 15,
+// default-NOT: line:
 // CHECK-NOT:  flags: DIFlagArtificial
 // CHECK-SAME: )
 // CHECK:      [[S1:!.*]] = !DICompositeType(tag: DW_TAG_structure_type, name: "Suspend1", scope: [[GEN]],
@@ -57,3 +62,6 @@ async fn async_fn_test() {
 fn main() {
     let _dummy = async_fn_test();
 }
+
+//@ revisions: default locations
+//@[locations] compile-flags: -Zdebug-info-type-line-numbers=true
