@@ -2095,6 +2095,43 @@ fn get_object_file_path(sess: &Session, name: &str, self_contained: bool) -> Pat
     PathBuf::from(name)
 }
 
+/// LLD expands percent signs in the whole temporary output path. Name the same
+/// directory through an open descriptor so its literal components survive.
+#[cfg(target_os = "linux")]
+fn lld_command_for_percent_directory(
+    cmd: &Command,
+    output: &Path,
+    flavor: LinkerFlavor,
+) -> Option<(File, Command)> {
+    use std::os::fd::AsRawFd;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let parent = output.parent()?;
+    if !matches!(flavor, LinkerFlavor::Gnu(_, Lld::Yes))
+        || !parent.as_os_str().as_encoded_bytes().contains(&b'%')
+    {
+        return None;
+    }
+
+    let output_index =
+        cmd.get_args().windows(2).position(|pair| pair[0] == "-o" && pair[1] == output)? + 1;
+    let dir = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_PATH | libc::O_DIRECTORY)
+        .open(parent)
+        .ok()?;
+    let alias = PathBuf::from(format!("/proc/{}/fd/{}", std::process::id(), dir.as_raw_fd()));
+    if !alias.is_dir() {
+        return None;
+    }
+
+    let mut cmd = cmd.clone();
+    let mut args = cmd.take_args();
+    args[output_index] = alias.join(output.file_name()?).into_os_string();
+    cmd.args(args);
+    Some((dir, cmd))
+}
+
 fn exec_linker(
     sess: &Session,
     cmd: &Command,
@@ -2102,6 +2139,11 @@ fn exec_linker(
     flavor: LinkerFlavor,
     tmpdir: &Path,
 ) -> io::Result<Output> {
+    #[cfg(target_os = "linux")]
+    let percent_output = lld_command_for_percent_directory(cmd, out_filename, flavor);
+    #[cfg(target_os = "linux")]
+    let cmd = percent_output.as_ref().map_or(cmd, |(_, cmd)| cmd);
+
     // When attempting to spawn the linker we run a risk of blowing out the
     // size limits for spawning a new process with respect to the arguments
     // we pass on the command line.
