@@ -17,8 +17,8 @@
 //!    This session directory will have a unique name that ends with the suffix
 //!    "-working" and that contains a creation timestamp.
 //! 2. Next, the compiler looks for a finalized session directory. When checking native
-//!    inputs for a local Cargo crate, it prefers a session from the same Git branch or
-//!    detached commit. Otherwise, or if no session matches, it uses the newest one.
+//!    inputs for a local Cargo crate, it prefers the newest session at the same Git
+//!    revision, then the newest on the same branch, then the newest session overall.
 //!    The compiler validates the dependency graph in either case.
 //!    A directory is finalized when the crate SVH replaces the "-working" suffix
 //!    in its name.
@@ -486,59 +486,112 @@ fn branch_cache_enabled(sess: &Session) -> bool {
     sess.opts.unstable_opts.ohm_branch_cache && sess.opts.unstable_opts.ohm_check_relink_inputs
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Checkout {
+    branch: u64,
+    // Optional because older sessions and worktrees with unreadable refs only identify a branch.
+    revision: Option<u64>,
+}
+
+/// Bound the work spent on optional Git hints, including on malformed files or large ref stores.
+fn read_git_file(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    open_regular_file(path)?.take(limit + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > limit {
+        return Err(ErrorKind::InvalidData.into());
+    }
+    Ok(bytes)
+}
+
+/// Git writes the worktree and common directory paths as native bytes followed by a line ending.
+fn git_path(bytes: &[u8]) -> Option<&Path> {
+    let bytes = bytes.strip_suffix(b"\n").unwrap_or(bytes);
+    let bytes = bytes.strip_suffix(b"\r").unwrap_or(bytes);
+    if bytes.is_empty() {
+        return None;
+    }
+    #[cfg(unix)]
+    let path = <std::ffi::OsStr as std::os::unix::ffi::OsStrExt>::from_bytes(bytes);
+    #[cfg(not(unix))]
+    let path = std::str::from_utf8(bytes).ok()?;
+    Some(Path::new(path))
+}
+
+/// A short object ID is sufficient for ranking. A collision still goes through red-green validation.
+fn revision_hint(oid: &[u8]) -> Option<u64> {
+    let oid = oid.trim_ascii_end();
+    if !matches!(oid.len(), 40 | 64) || !oid.iter().all(u8::is_ascii_hexdigit) {
+        return None;
+    }
+    u64::from_str_radix(std::str::from_utf8(&oid[..16]).ok()?, 16).ok()
+}
+
+/// Branches live in the common Git directory even when this worktree has its own HEAD.
+fn branch_revision(git_dir: &Path, reference: &[u8]) -> Option<u64> {
+    let ref_path = git_path(reference)?;
+    if !ref_path.components().all(|part| matches!(part, std::path::Component::Normal(_))) {
+        return None;
+    }
+    let common = match read_git_file(&git_dir.join("commondir"), 4096) {
+        Ok(bytes) => git_dir.join(git_path(&bytes)?),
+        Err(e) if e.kind() == ErrorKind::NotFound => git_dir.to_owned(),
+        Err(_) => return None,
+    };
+    match read_git_file(&common.join(ref_path), 4096) {
+        Ok(oid) => return revision_hint(&oid),
+        Err(e) if e.kind() == ErrorKind::NotFound => {}
+        Err(_) => return None,
+    }
+    let packed = read_git_file(&common.join("packed-refs"), 64 * 1024).ok()?;
+    packed.split(|&b| b == b'\n').find_map(|line| {
+        let mut fields = line.trim_ascii_end().splitn(2, |&b| b == b' ');
+        let oid = fields.next()?;
+        if fields.next() == Some(reference) { revision_hint(oid) } else { None }
+    })
+}
+
 /// Identifies an enclosing Git worktree for the sole purpose of choosing an incremental
 /// starting point. The compiler validates this session exactly as it would the latest one.
-fn git_checkout(directory: &Path) -> Option<u64> {
-    fn small_file(path: &Path) -> Option<Vec<u8>> {
-        let mut bytes = Vec::new();
-        open_regular_file(path).ok()?.take(4097).read_to_end(&mut bytes).ok()?;
-        (bytes.len() <= 4096).then_some(bytes)
-    }
-
+fn git_checkout(directory: &Path) -> Option<Checkout> {
     for ancestor in directory.ancestors() {
         let dot_git = ancestor.join(".git");
         let Ok(meta) = std_fs::metadata(&dot_git) else { continue };
         let git_dir = if meta.is_dir() {
             dot_git
         } else {
-            let file = small_file(&dot_git)?;
-            let path = file.strip_prefix(b"gitdir: ")?;
-            let path = path.strip_suffix(b"\n").unwrap_or(path);
-            let path = path.strip_suffix(b"\r").unwrap_or(path);
-            #[cfg(unix)]
-            let path = <std::ffi::OsStr as std::os::unix::ffi::OsStrExt>::from_bytes(path);
-            #[cfg(not(unix))]
-            let path = std::str::from_utf8(path).ok()?;
-            ancestor.join(path)
+            let file = read_git_file(&dot_git, 4096).ok()?;
+            ancestor.join(git_path(file.strip_prefix(b"gitdir: ")?)?)
         };
-        let head = small_file(&git_dir.join("HEAD"))?;
+        let head = read_git_file(&git_dir.join("HEAD"), 4096).ok()?;
         let head = head.trim_ascii_end();
-        let branch = head.strip_prefix(b"ref: refs/heads/").is_some_and(|name| !name.is_empty());
-        let detached = matches!(head.len(), 40 | 64) && head.iter().all(u8::is_ascii_hexdigit);
-        if !branch && !detached {
-            return None;
-        }
+        let revision = if let Some(reference) = head.strip_prefix(b"ref: ") {
+            if reference.strip_prefix(b"refs/heads/")?.is_empty() {
+                return None;
+            }
+            branch_revision(&git_dir, reference)
+        } else {
+            Some(revision_hint(head)?)
+        };
         let mut hasher = DefaultHasher::new();
         hasher.write(head);
-        return Some(hasher.finish());
+        return Some(Checkout { branch: hasher.finish(), revision });
     }
     None
 }
 
 /// Reads the optional checkout label from the unique component of a session name.
 /// Older session names have only the random number in this component.
-fn session_checkout(path: &Path) -> Option<u64> {
+fn session_checkout(path: &Path) -> Option<Checkout> {
     let unique = path.file_name()?.to_str()?.split('-').nth(2)?;
-    let (key, _) = unique.strip_prefix('_')?.split_once('_')?;
-    if key.len() != 16 {
-        return None;
-    }
-    u64::from_str_radix(key, 16).ok()
+    let (key, tail) = unique.strip_prefix('_')?.split_once('_')?;
+    let parse = |s: &str| if s.len() == 16 { u64::from_str_radix(s, 16).ok() } else { None };
+    let revision = tail.split_once('_').and_then(|(r, _)| r.strip_prefix('r')).and_then(parse);
+    Some(Checkout { branch: parse(key)?, revision })
 }
 
 /// Generates unique directory path of the form:
 /// {crate_dir}/s-{timestamp}-{random-number}-working
-fn generate_session_dir_path(crate_dir: &Path, checkout: Option<u64>) -> PathBuf {
+fn generate_session_dir_path(crate_dir: &Path, checkout: Option<Checkout>) -> PathBuf {
     let timestamp = timestamp_to_string(SystemTime::now());
     debug!("generate_session_dir_path: timestamp = {}", timestamp);
     let random_number = rng().next_u32();
@@ -549,7 +602,12 @@ fn generate_session_dir_path(crate_dir: &Path, checkout: Option<u64>) -> PathBuf
     assert_eq!(zeroes, "000");
     let random = random_number.to_base_fixed_len(CASE_INSENSITIVE);
     let directory_name = match checkout {
-        Some(key) => format!("s-{timestamp}-_{key:016x}_{random}-working"),
+        Some(Checkout { branch, revision: Some(rev) }) => {
+            format!("s-{timestamp}-_{branch:016x}_r{rev:016x}_{random}-working")
+        }
+        Some(Checkout { branch, revision: None }) => {
+            format!("s-{timestamp}-_{branch:016x}_{random}-working")
+        }
         None => format!("s-{timestamp}-{random}-working"),
     };
     debug!("generate_session_dir_path: directory_name = {}", directory_name);
@@ -600,12 +658,11 @@ fn delete_session_dir_lock_file(sess: &Session, lock_file_path: &Path) {
     }
 }
 
-/// Prefers the newest untried session for this checkout, falling back to the
-/// newest untried session overall.
+/// Prefers the newest untried session at the current revision, then one from the current branch.
 fn find_source_directory(
     crate_dir: &Path,
     source_directories_already_tried: &FxHashSet<PathBuf>,
-    checkout: Option<u64>,
+    checkout: Option<Checkout>,
 ) -> (Option<PathBuf>, bool) {
     let iter = crate_dir
         .read_dir()
@@ -618,12 +675,12 @@ fn find_source_directory(
 fn find_source_directory_in_iter<I>(
     iter: I,
     source_directories_already_tried: &FxHashSet<PathBuf>,
-    checkout: Option<u64>,
+    checkout: Option<Checkout>,
 ) -> (Option<PathBuf>, bool)
 where
     I: Iterator<Item = PathBuf>,
 {
-    let mut best_candidate = ((false, UNIX_EPOCH), None);
+    let mut best_candidate = ((0, UNIX_EPOCH), None);
     let mut newest_other_checkout = None;
     let mut newest_same_or_unlabeled = None;
 
@@ -648,20 +705,25 @@ where
             }
         };
 
-        let same_checkout = checkout.is_some_and(|current| {
+        let preference = checkout.map_or(0, |current| {
             let previous = session_checkout(&session_dir);
-            let newest = if previous.is_some_and(|key| key != current) {
+            let same_branch = previous.is_some_and(|p| p.branch == current.branch);
+            let newest = if previous.is_some() && !same_branch {
                 &mut newest_other_checkout
             } else {
                 &mut newest_same_or_unlabeled
             };
             *newest = (*newest).max(Some(timestamp));
-            previous == Some(current)
+            if current.revision.is_some() && previous.and_then(|p| p.revision) == current.revision {
+                2
+            } else {
+                u8::from(same_branch)
+            }
         });
         if source_directories_already_tried.contains(&session_dir) {
             continue;
         }
-        let rank = (same_checkout, timestamp);
+        let rank = (preference, timestamp);
         if rank > best_candidate.0 {
             best_candidate = (rank, Some(session_dir));
         }
@@ -996,7 +1058,7 @@ fn all_except_most_recent(
     let newest = deletion_candidates
         .items()
         .map(|((time, path), _)| {
-            (*time, keep_other_checkout.then(|| session_checkout(path)).flatten())
+            (*time, keep_other_checkout.then(|| session_checkout(path)).flatten().map(|c| c.branch))
         })
         .max();
 
@@ -1005,7 +1067,7 @@ fn all_except_most_recent(
             deletion_candidates
                 .items()
                 .filter_map(|((time, path), _)| {
-                    session_checkout(path).filter(|&other| other != key).map(|_| *time)
+                    session_checkout(path).filter(|other| other.branch != key).map(|_| *time)
                 })
                 .max()
         });

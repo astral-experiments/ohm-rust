@@ -1,5 +1,9 @@
 use super::*;
 
+fn branch_only(branch: u64) -> Option<Checkout> {
+    Some(Checkout { branch, revision: None })
+}
+
 #[test]
 fn test_all_except_most_recent() {
     let input: UnordMap<_, Option<flock::Lock>> = UnordMap::from_iter([
@@ -95,15 +99,15 @@ fn checkout_sessions_prefer_a_match_and_keep_one_alternate() {
     let paths = [a.clone(), b.clone(), a2.clone(), c.clone(), working];
     let skipped = FxHashSet::default();
     assert_eq!(
-        find_source_directory_in_iter(paths.clone().into_iter(), &skipped, Some(11)),
+        find_source_directory_in_iter(paths.clone().into_iter(), &skipped, branch_only(11)),
         (Some(b.clone()), true)
     );
     assert_eq!(
-        find_source_directory_in_iter(paths.into_iter(), &skipped, Some(13)),
+        find_source_directory_in_iter(paths.into_iter(), &skipped, branch_only(13)),
         (Some(c.clone()), true)
     );
     assert_eq!(
-        find_source_directory_in_iter([a.clone()].into_iter(), &skipped, Some(10)),
+        find_source_directory_in_iter([a.clone()].into_iter(), &skipped, branch_only(10)),
         (Some(a.clone()), false),
     );
     let inactive: UnordMap<_, Option<flock::Lock>> = [a.clone(), b.clone()]
@@ -141,7 +145,7 @@ fn pack_only_on_checkout_switch() {
         find_source_directory_in_iter(
             paths.iter().map(PathBuf::from),
             &skipped.iter().map(PathBuf::from).collect(),
-            Some(10),
+            branch_only(10),
         )
     };
 
@@ -153,4 +157,57 @@ fn pack_only_on_checkout_switch() {
     assert_eq!(select(&[tied_a, b], &[]), (Some(tied_a.into()), false));
     assert_eq!(select(&[b, next_a], &[next_a]), (Some(b.into()), false));
     assert_eq!(select(&[b], &[b]), (None, false));
+}
+
+#[test]
+fn prefer_the_newest_session_at_the_same_revision() {
+    let old_y = PathBuf::from("s-1234-_000000000000000a_r0000000000000001_a-svh");
+    let x = PathBuf::from("s-2234-_000000000000000b_r0000000000000001_b-svh");
+    let other_y = PathBuf::from("s-3234-_000000000000000a_r0000000000000002_c-svh");
+    let paths = [old_y.clone(), x.clone(), other_y.clone()];
+    let select = |revision, tried| {
+        find_source_directory_in_iter(
+            paths.clone().into_iter(),
+            &tried,
+            Some(Checkout { branch: 10, revision }),
+        )
+    };
+    assert_eq!(select(Some(1), FxHashSet::default()), (Some(x.clone()), false));
+    assert_eq!(select(Some(1), [x.clone()].into_iter().collect()), (Some(old_y.clone()), false));
+    assert_eq!(select(None, FxHashSet::default()), (Some(other_y.clone()), false));
+    assert_eq!(select(Some(3), FxHashSet::default()), (Some(other_y), false));
+    let candidates = paths
+        .into_iter()
+        .map(|p| ((extract_timestamp_from_session_dir(p.to_str().unwrap()).unwrap(), p), None))
+        .collect();
+    let evicted = all_except_most_recent(candidates, true).into_items().map(|(p, _)| p);
+    assert_eq!(evicted.into_sorted_stable_ord(), vec![old_y]);
+}
+
+#[test]
+fn resolve_revisions_in_a_linked_git_worktree() {
+    let temp = rustc_fs_util::TempDirBuilder::new().tempdir_in(std::env::temp_dir()).unwrap();
+    let tree = temp.path().join("worktree");
+    let common = temp.path().join("common");
+    let private = common.join("worktrees/test");
+    std_fs::create_dir(&tree).unwrap();
+    std_fs::create_dir_all(&private).unwrap();
+    std_fs::create_dir_all(common.join("refs/heads")).unwrap();
+    std_fs::write(tree.join(".git"), "gitdir: ../common/worktrees/test\r\n").unwrap();
+    std_fs::write(private.join("commondir"), "../..\n").unwrap();
+    std_fs::write(private.join("HEAD"), "ref: refs/heads/work\n").unwrap();
+    let branch = git_checkout(&tree).unwrap().branch;
+    let get = || git_checkout(&tree).unwrap();
+    let sha1 = "abcdef0123456789000000000000000000000000";
+    let sha256 = "1234567890abcdef".repeat(4);
+    std_fs::write(common.join("packed-refs"), format!("# pack-refs\n{sha1} refs/heads/work\n"))
+        .unwrap();
+    assert_eq!(get(), Checkout { branch, revision: Some(0xabcdef0123456789) });
+    std_fs::write(common.join("refs/heads/work"), &sha256).unwrap();
+    assert_eq!(get(), Checkout { branch, revision: Some(0x1234567890abcdef) });
+    std_fs::write(common.join("refs/heads/work"), "invalid").unwrap();
+    assert_eq!(get(), Checkout { branch, revision: None });
+    std_fs::write(private.join("HEAD"), &sha256).unwrap();
+    assert_ne!(get().branch, branch);
+    assert_eq!(get().revision, Some(0x1234567890abcdef));
 }
