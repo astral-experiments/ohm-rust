@@ -90,7 +90,7 @@ impl CommandLineStep for Docs {
         // FIXME: explicitly enumerate the steps that should be executed here, and gather their
         // documentation, rather than running all default steps and then read their output
         // from a shared directory.
-        builder.run_default_doc_steps();
+        builder.run_default_doc_steps_for_target(host);
 
         // In case no default doc steps are run for host, it is possible that `<host>/doc` directory
         // is never created.
@@ -190,7 +190,7 @@ impl CommandLineStep for RustcDocs {
 
     fn run(self, builder: &Builder<'_>) -> Self::Output {
         let target = self.target;
-        builder.run_default_doc_steps();
+        builder.run_default_doc_steps_for_target(target);
 
         let mut tarball = Tarball::new(builder, "rustc-docs", &target.triple);
         tarball.set_product_name("Rustc Documentation");
@@ -1917,6 +1917,18 @@ impl CommandLineStep for Extended {
         // before rust-std in the list below.
         tarballs.push(builder.ensure(Rustc { target_compiler }));
         tarballs.push(builder.ensure(Std { build_compiler, target }).expect("missing std"));
+        // Custom toolchains cannot install additional targets through rustup.
+        for &extra_target in &builder.config.targets {
+            if extra_target != target {
+                tarballs.push(
+                    builder
+                        .ensure(Std { build_compiler, target: extra_target })
+                        .expect("missing std"),
+                );
+            }
+        }
+        // Custom toolchains cannot install rust-src through rustup.
+        tarballs.push(builder.ensure(Src));
 
         if target.is_windows_gnu() || target.is_windows_gnullvm() {
             tarballs.push(builder.ensure(Mingw { target }).expect("missing mingw"));
