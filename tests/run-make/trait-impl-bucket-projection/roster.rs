@@ -37,3 +37,24 @@ impl Score for Target {
         7
     }
 }
+
+#[cfg(finite)]
+impl Score for u16 {
+    fn score() -> u8 {
+        11
+    }
+}
+
+#[cfg(finite)]
+impl Score for (u8, u16) {
+    fn score() -> u8 {
+        13
+    }
+}
+
+#[cfg(finite)]
+impl Score for (u8, u16, u32, u64) {
+    fn score() -> u8 {
+        17
+    }
+}
