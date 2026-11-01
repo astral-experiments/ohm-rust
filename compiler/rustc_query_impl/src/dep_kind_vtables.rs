@@ -1,5 +1,5 @@
 use rustc_middle::arena::Arena;
-use rustc_middle::dep_graph::{DepKindVTable, DepNodeKey, KeyFingerprintStyle};
+use rustc_middle::dep_graph::{DepKind, DepKindVTable, DepNodeKey, KeyFingerprintStyle};
 use rustc_middle::query::QueryCache;
 use rustc_span::bug;
 
@@ -188,5 +188,8 @@ pub(crate) fn make_dep_kind_vtables<'tcx>(arena: &'tcx Arena<'tcx>) -> &'tcx [De
         rustc_middle::queries::rustc_with_all_queries! { define_dep_kind_vtables! };
 
     // Non-query vtables must come before query vtables, to match the order of `DepKind`.
-    arena.alloc_from_iter(nq_vtables.into_iter().chain(q_vtables.into_iter()))
+    let vtables = arena.alloc_from_iter(nq_vtables.into_iter().chain(q_vtables.into_iter()));
+    vtables[DepKind::non_blanket_trait_impls.as_usize()].force_from_dep_node_fn =
+        Some(crate::execution::force_trait_impl_adt_bucket);
+    vtables
 }

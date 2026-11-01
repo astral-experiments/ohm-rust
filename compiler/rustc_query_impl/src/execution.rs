@@ -7,6 +7,7 @@ use parking_lot::{Condvar, Mutex};
 use rustc_data_structures::hash_table::Entry;
 use rustc_data_structures::{defer, outline, sharded, sync};
 use rustc_errors::FatalError;
+use rustc_hir::def::DefKind;
 use rustc_middle::dep_graph::{
     DepGraphData, DepKind, DepNode, DepNodeIndex, DepNodeKey, SerializedDepNodeIndex,
 };
@@ -15,6 +16,7 @@ use rustc_middle::query::{
     QueryState, QueryVTable, QueryWaiter,
 };
 use rustc_middle::ty::TyCtxt;
+use rustc_middle::ty::fast_reject::SimplifiedType;
 use rustc_middle::ty::tls::{self, ImplicitCtxt};
 use rustc_middle::verify_ich::incremental_verify_ich;
 use rustc_span::def_id::LOCAL_CRATE;
@@ -707,5 +709,28 @@ pub(crate) fn force_query_dep_node<'tcx, C: QueryCache>(
 
     // We did manage to recover a key and force the node, though it's up to
     // the caller to check whether the node ended up marked red or green.
+    true
+}
+
+pub(crate) fn force_trait_impl_adt_bucket(
+    tcx: TyCtxt<'_>,
+    dep_node: DepNode,
+    prev_index: SerializedDepNodeIndex,
+) -> bool {
+    let Some(key) = tcx.dep_graph.with_ignore(|| {
+        let (trait_node, adt_node) =
+            tcx.dep_graph.previous_trait_impl_adt_inputs(dep_node, prev_index)?;
+        let trait_id = trait_node.extract_def_id(tcx)?;
+        let adt = adt_node.extract_def_id(tcx)?;
+        if tcx.def_kind(trait_id) != DefKind::Trait || !tcx.def_kind(adt).is_adt() {
+            return None;
+        }
+        let key = (trait_id, SimplifiedType::Adt(adt));
+        (DepNode::construct(tcx, DepKind::non_blanket_trait_impls, &key) == dep_node).then_some(key)
+    }) else {
+        return false;
+    };
+    let query = &tcx.query_system.query_vtables.non_blanket_trait_impls;
+    try_execute_query::<_, true>(query, tcx, DUMMY_SP, key, Some(dep_node));
     true
 }
