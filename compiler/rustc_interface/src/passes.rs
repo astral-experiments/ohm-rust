@@ -560,10 +560,25 @@ fn output_conflicts_with_dir(output_paths: &[PathBuf]) -> Option<&PathBuf> {
     output_paths.iter().find(|output_path| output_path.is_dir())
 }
 
+// Cargo's original dep-info and checksum records only escape spaces.
 fn escape_dep_filename(filename: &str) -> String {
-    // Apparently clang and gcc *only* escape spaces:
-    // https://llvm.org/klaus/clang/commit/9d50634cfc268ecc9a7250226dd5ca0e945240d4
     filename.replace(' ', "\\ ")
+}
+
+/// Quotes a filename for a Make rule, including backslashes before quoted separators.
+fn make_dep_path(path: &str) -> String {
+    let mut word = String::with_capacity(path.len());
+    let mut backslashes = 0;
+    for c in path.chars() {
+        match c {
+            ' ' | '\t' | '#' | ':' => word.extend(std::iter::repeat_n('\\', backslashes + 1)),
+            '$' => word.push('$'),
+            _ => {}
+        }
+        word.push(c);
+        backslashes = if c == '\\' { backslashes + 1 } else { 0 };
+    }
+    word
 }
 
 // Makefile comments only need escaping newlines and `\`.
@@ -721,7 +736,7 @@ pub fn write_dep_info_with_relink_inputs(
             RelinkInputs::VerifyNativeLink => Some("ohm-recheck-dependent-links-v2"),
             RelinkInputs::Rebuild => Some("ohm-untracked-relink-inputs"),
         };
-        let rebuild_marker = if let Some(name) = marker_name {
+        let marker_path = |name: &str| -> io::Result<String> {
             // A non-directory cannot have children. The Unix null device also avoids
             // introducing Make metacharacters from the depfile or executable name.
             let parent = if cfg!(unix) {
@@ -732,10 +747,9 @@ pub fn write_dep_info_with_relink_inputs(
                     OutFileName::Stdout => Cow::Owned(env::current_exe()?),
                 }
             };
-            Some(normalize_path(parent.join(name)))
-        } else {
-            None
+            Ok(normalize_path(parent.join(name)))
         };
+        let rebuild_marker = marker_name.map(marker_path).transpose()?;
 
         if sess.proc_macro_observed_foreign_bytes.load(Ordering::Relaxed)
             && CStore::from_tcx(tcx).has_public_api_hash_dependencies()
@@ -761,16 +775,61 @@ pub fn write_dep_info_with_relink_inputs(
             {
                 writeln!(file, "# ohm-raw-checksum-paths-v2")?;
             }
-            let inputs = files.keys().map(String::as_str).intersperse(" ").collect::<String>();
+            let paths = files.keys().chain(rebuild_marker.iter());
+            // Cargo's two copies of each path can represent literal newlines, which Make cannot.
+            let multiline = paths.clone().any(|p| p.contains(['\r', '\n']))
+                || out_filenames.iter().any(|p| p.to_string_lossy().contains(['\r', '\n']));
+            let legacy_inputs =
+                paths.clone().any(|p| p.contains(['$', '#', ':', '\t']) || p.contains(r"\\ "));
+            let make_paths = !multiline
+                && (legacy_inputs
+                    || out_filenames.iter().any(|p| {
+                        let path = p.to_string_lossy();
+                        path.contains(['$', '#', '\t']) || path.contains(r"\ ")
+                    }));
+            if make_paths && sess.opts.json_artifact_notifications {
+                write!(file, "# ohm-make-paths-v1")?;
+                // Cargo requests artifact notifications. Its older readers split the first
+                // ": " list on whitespace. A plain Make or Ninja depfile needs no second list.
+                if legacy_inputs {
+                    write!(file, ":")?;
+                    if paths.clone().all(|p| {
+                        !p.ends_with([' ', '\\'])
+                            && !p.chars().any(|c| c != ' ' && c.is_whitespace())
+                    }) {
+                        for path in paths.clone() {
+                            write!(file, " {path}")?;
+                        }
+                    } else {
+                        write!(file, " {}", marker_path("ohm-make-paths-v1")?)?;
+                    }
+                }
+                writeln!(file)?;
+            }
+            let words: Vec<_> = paths
+                .map(|p| {
+                    if make_paths {
+                        Cow::Owned(make_dep_path(&p.replace("\\ ", " ")))
+                    } else {
+                        Cow::Borrowed(p.as_str())
+                    }
+                })
+                .collect();
+            let inputs = words[..files.len()].join(" ");
             let mut depfile_target = None;
-            // Make treats spaces as separators and a Unix filename may contain the
-            // colon that Cargo uses to find the first rule's prerequisites.
             let target = |path: &Path| {
-                let name = escape_dep_filename(&path.to_string_lossy());
-                if cfg!(unix) { name.replace(':', r"\:") } else { name }
+                let name = path.to_string_lossy();
+                if !multiline {
+                    make_dep_path(&name)
+                } else if rebuild_marker.is_some() {
+                    let name = escape_dep_filename(&name);
+                    if cfg!(unix) { name.replace(':', r"\:") } else { name }
+                } else {
+                    name.into_owned()
+                }
             };
             for path in out_filenames {
-                if let Some(marker) = &rebuild_marker {
+                if let Some(marker) = words.get(files.len()) {
                     if !deps_output.is_stdout() && path == deps_filename {
                         // Make restarts if it remakes an included depfile. Keep its rule
                         // after the full input list that Cargo reads from the first rule.
@@ -779,7 +838,7 @@ pub fn write_dep_info_with_relink_inputs(
                     }
                     writeln!(file, "{}: {inputs} {marker}\n", target(path))?;
                 } else {
-                    writeln!(file, "{}: {inputs}\n", path.display())?;
+                    writeln!(file, "{}: {inputs}\n", target(path))?;
                 }
             }
             if let Some(path) = depfile_target {
@@ -789,7 +848,7 @@ pub fn write_dep_info_with_relink_inputs(
             // Emit a fake target for each input file to the compilation. This
             // prevents `make` from spitting out an error if a file is later
             // deleted. For more info see #28735
-            for path in files.keys().chain(rebuild_marker.iter()) {
+            for path in words {
                 writeln!(file, "{path}:")?;
             }
 
