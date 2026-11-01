@@ -710,12 +710,18 @@ pub fn write_dep_info_with_relink_inputs(
         }
 
         let marker_name = match inputs {
+            // Expansion errors can leave inputs out of the rules for previously built artifacts.
+            RelinkInputs::Tracked
+                if sess.opts.output_types.len() > 1 && sess.dcx().has_errors().is_some() =>
+            {
+                Some("ohm-incomplete-dep-info")
+            }
             RelinkInputs::Tracked => None,
             RelinkInputs::RecheckLink => Some("ohm-recheck-dependent-links"),
             RelinkInputs::VerifyNativeLink => Some("ohm-recheck-dependent-links-v2"),
             RelinkInputs::Rebuild => Some("ohm-untracked-relink-inputs"),
         };
-        let relink_marker = if let Some(name) = marker_name {
+        let rebuild_marker = if let Some(name) = marker_name {
             // A non-directory cannot have children. The Unix null device also avoids
             // introducing Make metacharacters from the depfile or executable name.
             let parent = if cfg!(unix) {
@@ -764,7 +770,7 @@ pub fn write_dep_info_with_relink_inputs(
                 if cfg!(unix) { name.replace(':', r"\:") } else { name }
             };
             for path in out_filenames {
-                if let Some(marker) = &relink_marker {
+                if let Some(marker) = &rebuild_marker {
                     if !deps_output.is_stdout() && path == deps_filename {
                         // Make restarts if it remakes an included depfile. Keep its rule
                         // after the full input list that Cargo reads from the first rule.
@@ -783,7 +789,7 @@ pub fn write_dep_info_with_relink_inputs(
             // Emit a fake target for each input file to the compilation. This
             // prevents `make` from spitting out an error if a file is later
             // deleted. For more info see #28735
-            for path in files.keys().chain(relink_marker.iter()) {
+            for path in files.keys().chain(rebuild_marker.iter()) {
                 writeln!(file, "{path}:")?;
             }
 
