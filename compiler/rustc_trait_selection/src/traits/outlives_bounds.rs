@@ -7,6 +7,7 @@ use rustc_middle::infer::canonical::{OriginalQueryValues, QueryRegionConstraints
 pub use rustc_middle::traits::query::OutlivesBound;
 use rustc_middle::ty::{self, ParamEnv, Ty, TypeFolder, TypeVisitableExt};
 use rustc_span::def_id::LocalDefId;
+use rustc_span::sym;
 use tracing::instrument;
 
 use crate::infer::InferCtxt;
@@ -49,6 +50,40 @@ fn implied_outlives_bounds<'a, 'tcx>(
     // See `ui/implied-bounds/implied-bounds-unconstrained-2.rs` for
     // an example.
     assert!(!ty.has_non_region_infer());
+
+    // A fieldless struct with only concrete `usize` const arguments and no
+    // other bounds cannot imply any lifetime relationships. In particular,
+    // there is nothing to normalize or relate to the caller's environment.
+    let tcx = infcx.tcx;
+    if param_env.caller_bounds().is_empty()
+        && let ty::Adt(adt, args) = ty.kind()
+        && adt.is_struct()
+        && adt.non_enum_variant().fields.is_empty()
+        && adt.did().is_local()
+        && args.iter().all(|arg| {
+            matches!(arg.kind(), ty::GenericArgKind::Const(ct)
+                if matches!(ct.kind(), ty::ConstKind::Value(value) if value.ty == tcx.types.usize))
+        })
+        && let generics = tcx.generics_of(adt.did())
+        && generics.parent_count == 0
+        && generics.own_params.len() == args.len()
+        && generics.own_params.iter().all(|p| {
+            matches!(p.kind, ty::GenericParamDefKind::Const { has_default: false })
+        })
+        && let clauses = tcx.clauses_of(adt.did())
+        && clauses.parent.is_none()
+        && clauses.clauses.len() == args.len()
+        && clauses.clauses.iter().all(|(clause, _)| {
+            matches!(clause.kind().no_bound_vars(),
+                Some(ty::ClauseKind::ConstArgHasType(ct, t))
+                    if matches!(ct.kind(), ty::ConstKind::Param(_)) && t == tcx.types.usize)
+        })
+        // Preserve the compatibility hack for `bevy_ecs::ParamSet`.
+        && !(tcx.item_name(adt.did()) == sym::ParamSet
+            && tcx.crate_name(adt.did().krate) == sym::bevy_ecs)
+    {
+        return vec![];
+    }
 
     let mut canonical_var_values = OriginalQueryValues::default();
     let input = ImpliedOutlivesBounds { ty };
