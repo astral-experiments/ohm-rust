@@ -939,11 +939,11 @@ impl DepGraph {
         self.data()?.try_mark_green(tcx, dep_node)
     }
 
-    pub fn previous_trait_impl_adt_inputs(
+    pub fn previous_trait_impl_inputs(
         &self,
         bucket: DepNode,
         index: SerializedDepNodeIndex,
-    ) -> Option<(DepNode, DepNode)> {
+    ) -> Option<(DepNode, Option<DepNode>)> {
         let previous = &self.data()?.previous;
         if bucket.kind != DepKind::non_blanket_trait_impls
             || *previous.index_to_node(index) != bucket
@@ -952,13 +952,20 @@ impl DepGraph {
         }
         let mut inputs = previous.edge_targets_from(index).map(|i| *previous.index_to_node(i));
         let first = inputs.next()?;
-        let second = inputs.next()?;
+        let second = inputs.next();
         if inputs.next().is_some() {
             return None;
         }
-        match (first.kind, second.kind) {
-            (DepKind::trait_impls_of, DepKind::trait_impl_receiver_adt) => Some((first, second)),
-            (DepKind::trait_impl_receiver_adt, DepKind::trait_impls_of) => Some((second, first)),
+        match (first.kind, second) {
+            (DepKind::trait_impls_of, None) => Some((first, None)),
+            (DepKind::trait_impls_of, Some(adt))
+                if adt.kind == DepKind::trait_impl_receiver_adt =>
+            {
+                Some((first, Some(adt)))
+            }
+            (DepKind::trait_impl_receiver_adt, Some(tr)) if tr.kind == DepKind::trait_impls_of => {
+                Some((tr, Some(first)))
+            }
             _ => None,
         }
     }
