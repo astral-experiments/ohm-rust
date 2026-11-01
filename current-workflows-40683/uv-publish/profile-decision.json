@@ -1,0 +1,25 @@
+{
+ "accepted_batch_cost_optimistic_sum_overseparate_schedules_ns": 0,
+ "accepted_batches": [],
+ "all_batches_complete": true,
+ "conclusion": "historical-upper-remains-inconclusive",
+ "cumulative_optimistic_screen_ns": 8441001138,
+ "largest_single_accepted_batch_adverse_equal_ns": 0,
+ "required_from_ordinary_ns": 4096064759.5,
+ "scope": "A common-schedule union is measured only within each batch. The cross-batch sum can overcount and is only a screen under the stated observer model. No demonstrated speedup.",
+ "scored_rows": 0,
+ "unpriced_roles": [
+  "uv_cache-2cnxaicrmvcdg",
+  "uv_client-3ecr7hwd8ybvv",
+  "uv_configuration-3brsgfqj2gwxl",
+  "uv_distribution_types-2cjf8txbh2jo2",
+  "uv_extract-3u457ycb9rb6j",
+  "uv_git-1799owwqfgj1b",
+  "uv_install_wheel-24yep1wfco9ob",
+  "uv_metadata-2tspwk91dz95f",
+  "uv_publish-054lygulkgz1a",
+  "uv_pypi_types-0kxnoq8aezhdc",
+  "uv_torch-3k9bc5e7vhlvc"
+ ],
+ "unpriced_roles_whole_ordinary_envelope_ns": 8441001138
+}

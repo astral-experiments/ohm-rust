@@ -1,0 +1,10 @@
+{
+ "archive_sha256": "98f93393a9f6bdb027cb7c17f56b08c1651410c0e520e93132fa10ece73e90f1",
+ "dependencies": "Python stdlib + zstd",
+ "exit": 0,
+ "included_files": 485,
+ "independently_reconstructed_sha256": "4d0d28c709d9394a0e4e775110ba01f6cb937ac18093cec82aed8cf5545fa9dd",
+ "ordinary_scoring_rows": 0,
+ "replayed_from_unpacked_directory": true,
+ "unpacked_bytes": 85408135
+}

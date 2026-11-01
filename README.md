@@ -1,4 +1,12 @@
-# First edit in uv-resolver after uv #20988
+# Rust compiler measurements after real uv edits
+
+The first `cargo check -p uv-resolver --locked --offline -j8` after uv #20988 took 6.868 s on shipped Ohm −18, 3.417 s on #296 and 3.191 s on #306. The median paired speedup was **2.147×** over −18 (interval 2.095–2.213×). All 36 parent targets were built from empty. A separate 12-trio confirmation using restored, independently warmed parents gave **2.122×** (2.037–2.253×). All 12 pairs in each study exceeded 2×. Relative to #296, the paired speedups were 1.068× and 1.073×. Both current compilers used release PGO before BOLT, and every arm used the same signed −18 Cargo. [Current sources, raw times and reproduction](prebolt-format-40683/README.md) · [#296](https://github.com/astral-experiments/ohm-rust/pull/296) · [#306](https://github.com/astral-experiments/ohm-rust/pull/306)
+
+Adding `--all-targets --all-features` to the resolver check gave a 2.095× median. Ten of 12 exceeded 2×, below the registered confirmation threshold. On the separate GitUrl edit, the ordinary resolver check gave 1.206× in six discovery trios. A full workspace test build on that edit traced 92 test executables. [All-targets confirmation](current-workflows-40683/alltargets-004/README.md) · [GitUrl check](current-workflows-40683/giturl/README.md) · [Workspace test products](current-workflows-40683/workspace-004/README.md)
+
+For the same GitUrl edit, the per-instance monomorphization query already in Ohm Rust #138 reduced ordinary `cargo test -p uv-publish --lib --features test --no-run` from 10.601 to 9.698 s and from 10.600 to 9.548 s in two independent matched −18 stage2 pairs. Both histories saw 315 fewer byte-identical objects replaced. The geometric mean was 1.102×. This exploratory screen missed its threshold for release training. [Complete comparison, raw observations and verifier](uv-22833-pr138-stage2/README.md) · [Compiler profiles on #306](current-workflows-40683/uv-publish/README.md)
+
+## Earlier compiler builds for uv #20988
 
 The release-flags compiler with #296 took 3.317 s on the first resolver check after the edit, versus 6.605 s on signed −18. The median paired speedup was 1.982× across 12 fresh triples. [Report, raw measurements and offline verifier](prebolt-007/README.md)
 

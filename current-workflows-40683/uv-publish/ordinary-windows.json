@@ -1,0 +1,104 @@
+{
+ "admit_profile": true,
+ "all_equal_or_unresolved_scope_upper_ns": 8441001138,
+ "eligible_scopes": [
+  "uv_cache-2cnxaicrmvcdg",
+  "uv_client-3ecr7hwd8ybvv",
+  "uv_configuration-3brsgfqj2gwxl",
+  "uv_distribution_types-2cjf8txbh2jo2",
+  "uv_extract-3u457ycb9rb6j",
+  "uv_git-1799owwqfgj1b",
+  "uv_install_wheel-24yep1wfco9ob",
+  "uv_metadata-2tspwk91dz95f",
+  "uv_publish-054lygulkgz1a",
+  "uv_pypi_types-0kxnoq8aezhdc",
+  "uv_torch-3k9bc5e7vhlvc"
+ ],
+ "observed_bounds_by_scope": {
+  "uv_cache-2cnxaicrmvcdg": [
+   [
+    482912869999038,
+    482913606359900
+   ]
+  ],
+  "uv_client-3ecr7hwd8ybvv": [
+   [
+    482914169998697,
+    482916110799754
+   ]
+  ],
+  "uv_configuration-3brsgfqj2gwxl": [
+   [
+    482913409998717,
+    482914552988357
+   ]
+  ],
+  "uv_distribution_types-2cjf8txbh2jo2": [
+   [
+    482911689999099,
+    482913643974868
+   ]
+  ],
+  "uv_extract-3u457ycb9rb6j": [
+   [
+    482911289999479,
+    482912841210737
+   ]
+  ],
+  "uv_git-1799owwqfgj1b": [
+   [
+    482910569998617,
+    482911219574712
+   ]
+  ],
+  "uv_install_wheel-24yep1wfco9ob": [
+   [
+    482911279999019,
+    482911928324666
+   ]
+  ],
+  "uv_metadata-2tspwk91dz95f": [
+   [
+    482912879999479,
+    482913374514251
+   ]
+  ],
+  "uv_publish-054lygulkgz1a": [
+   [
+    482916169999038,
+    482919070199039
+   ]
+  ],
+  "uv_pypi_types-0kxnoq8aezhdc": [
+   [
+    482910569999038,
+    482911697262555
+   ]
+  ],
+  "uv_torch-3k9bc5e7vhlvc": [
+   [
+    482912869999258,
+    482913400209799
+   ]
+  ]
+ },
+ "observed_only": true,
+ "projection": {
+  "05f1bf0d1a6bc32df282c1a140ac1c7793d3ef39bf13bf19f24b946b16861fe6": "uv_publish-054lygulkgz1a",
+  "13c26b2c71611fa6f872bbb8bdf7c5fb719009a95ccbdd4bb22cf8620efe9dbd": "uv_pypi_types-0kxnoq8aezhdc",
+  "199aaf903e44da9ba565038aed8625993d9ad0d8ad6a4aa3adcc6fbf9329e203": "uv_install_wheel-24yep1wfco9ob",
+  "20d50b645fc77fa4b548fffe38b4d1add90b1017c96c5b62a8f1e10edbcf4957": "uv_configuration-3brsgfqj2gwxl",
+  "6ce4d3244593b119beabb9053dca071acbc1fcb3f723a47f9b8a0f66b1b40253": "uv_distribution_types-2cjf8txbh2jo2",
+  "d1f60a08eacd69e981de0ec959411e183ef81919f4da63456ce8d019ebee49e5": "uv_cache-2cnxaicrmvcdg",
+  "e49d6f543cb363dcfe2d1737d070262bd2ca2979cfd331d24babb1dbcdc970c8": "uv_client-3ecr7hwd8ybvv",
+  "ec6bafc62368f718c3a572532dd4ec5cb39681baa60d94a828dcfb77d107ddb3": "uv_extract-3u457ycb9rb6j"
+ },
+ "required_saving_ns": 4096064759.5,
+ "scored_rows": 0,
+ "terminal_role_only_upper_ns": 2900200001,
+ "unattributed_scopes": [],
+ "whole_ns": {
+  "candidate": 9094546096,
+  "stock": 9996962673
+ }
+}

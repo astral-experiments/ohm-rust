@@ -1,0 +1,187 @@
+{
+ "batches": {
+  "front-and-leaf": {
+   "observed_equal_ns": 2117846150,
+   "optimistic_ns": 2119078762,
+   "qualified": false,
+   "roles": {
+    "uv_client-3ecr7hwd8ybvv": {
+     "copies": 110,
+     "elapsed_equal_backend_ns": 351804368,
+     "fresh": 68,
+     "fresh_equal": 64,
+     "ratio": 1.1569215581893617
+    },
+    "uv_extract-3u457ycb9rb6j": {
+     "copies": 122,
+     "elapsed_equal_backend_ns": 646371312,
+     "fresh": 58,
+     "fresh_equal": 58,
+     "ratio": 1.106153550749952
+    },
+    "uv_publish-054lygulkgz1a": {
+     "copies": 112,
+     "elapsed_equal_backend_ns": 898187806,
+     "fresh": 129,
+     "fresh_equal": 119,
+     "ratio": 1.0438472646562833
+    },
+    "uv_pypi_types-0kxnoq8aezhdc": {
+     "copies": 202,
+     "elapsed_equal_backend_ns": 221482664,
+     "fresh": 49,
+     "fresh_equal": 35,
+     "ratio": 1.123801410136473
+    }
+   },
+   "whole_ratio": 1.0825524958667492
+  },
+  "middle": {
+   "observed_equal_ns": 769015411,
+   "optimistic_ns": 769015411,
+   "qualified": false,
+   "roles": {
+    "uv_cache-2cnxaicrmvcdg": {
+     "copies": 86,
+     "elapsed_equal_backend_ns": 106077506,
+     "fresh": 29,
+     "fresh_equal": 19,
+     "ratio": 1.0582814516831287
+    },
+    "uv_configuration-3brsgfqj2gwxl": {
+     "copies": 156,
+     "elapsed_equal_backend_ns": 198065599,
+     "fresh": 78,
+     "fresh_equal": 39,
+     "ratio": 1.1616535500706726
+    },
+    "uv_distribution_types-2cjf8txbh2jo2": {
+     "copies": 118,
+     "elapsed_equal_backend_ns": 341478153,
+     "fresh": 83,
+     "fresh_equal": 55,
+     "ratio": 1.0449170037788733
+    },
+    "uv_install_wheel-24yep1wfco9ob": {
+     "copies": 177,
+     "elapsed_equal_backend_ns": 127994060,
+     "fresh": 31,
+     "fresh_equal": 31,
+     "ratio": 1.0591664577477373
+    }
+   },
+   "whole_ratio": 1.0550899109984564
+  }
+ },
+ "decision": {
+  "accepted_batch_cost_optimistic_sum_overseparate_schedules_ns": 0,
+  "accepted_batches": [],
+  "all_batches_complete": true,
+  "conclusion": "historical-upper-remains-inconclusive",
+  "cumulative_optimistic_screen_ns": 8441001138,
+  "largest_single_accepted_batch_adverse_equal_ns": 0,
+  "required_from_ordinary_ns": 4096064759.5,
+  "scope": "A common-schedule union is measured only within each batch. The cross-batch sum can overcount and is only a screen under the stated observer model. No demonstrated speedup.",
+  "scored_rows": 0,
+  "unpriced_roles": [
+   "uv_cache-2cnxaicrmvcdg",
+   "uv_client-3ecr7hwd8ybvv",
+   "uv_configuration-3brsgfqj2gwxl",
+   "uv_distribution_types-2cjf8txbh2jo2",
+   "uv_extract-3u457ycb9rb6j",
+   "uv_git-1799owwqfgj1b",
+   "uv_install_wheel-24yep1wfco9ob",
+   "uv_metadata-2tspwk91dz95f",
+   "uv_publish-054lygulkgz1a",
+   "uv_pypi_types-0kxnoq8aezhdc",
+   "uv_torch-3k9bc5e7vhlvc"
+  ],
+  "unpriced_roles_whole_ordinary_envelope_ns": 8441001138
+ },
+ "discarded_four_role_002_extern_file_identities_relative_to_ordinary": {
+  "A": {
+   "uv_git_types": {
+    ".rlib": false,
+    ".rmeta": true
+   },
+   "uv_pypi_types": {
+    ".rlib": false,
+    ".rmeta": true
+   }
+  },
+  "B": {
+   "uv_git_types": {
+    ".rlib": false,
+    ".rmeta": true
+   },
+   "uv_pypi_types": {
+    ".rlib": false,
+    ".rmeta": true
+   }
+  }
+ },
+ "ordinary_seconds": {
+  "candidate": 9.094546096,
+  "stock": 9.996962673
+ },
+ "original_119_fresh_equal": 119,
+ "original_observed_failure": 1,
+ "saved_edge_categories": {
+  "front-and-leaf": {
+   "native_graphs_from_this_actual_visit": "unavailable; four authentic native event streams replayed"
+  },
+  "middle": {
+   "a_different_comparable_input_also_changes": {
+    "objects": 16,
+    "same_schedule_observed_ns": 95548356
+   },
+   "all_fresh_equal": {
+    "objects": 144,
+    "same_schedule_observed_ns": 769015411
+   },
+   "coarse_value_differs_anywhere": {
+    "objects": 106,
+    "same_schedule_observed_ns": 730902653
+   },
+   "coarse_value_is_first_comparable_change": {
+    "objects": 104,
+    "same_schedule_observed_ns": 729850546
+   },
+   "coarse_value_is_only_comparable_changed_query_kind": {
+    "objects": 103,
+    "same_schedule_observed_ns": 729844926
+   },
+   "has_unresolved_inputs": {
+    "objects": 46,
+    "same_schedule_observed_ns": 528200063
+   }
+  },
+  "original_eight_role_failure_leaf_only": {
+   "a_different_comparable_input_also_changes": {
+    "objects": 6,
+    "same_schedule_observed_ns": 126897388
+   },
+   "all_fresh_equal": {
+    "objects": 119,
+    "same_schedule_observed_ns": 981391052
+   },
+   "coarse_value_differs_anywhere": {
+    "objects": 109,
+    "same_schedule_observed_ns": 981187611
+   },
+   "coarse_value_is_first_comparable_change": {
+    "objects": 106,
+    "same_schedule_observed_ns": 981187611
+   },
+   "coarse_value_is_only_comparable_changed_query_kind": {
+    "objects": 105,
+    "same_schedule_observed_ns": 980068268
+   },
+   "has_unresolved_inputs": {
+    "objects": 66,
+    "same_schedule_observed_ns": 928155175
+   }
+  }
+ },
+ "source_overlap": "https://github.com/astral-experiments/ohm-rust/pull/138"
+}
