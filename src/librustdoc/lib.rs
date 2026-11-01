@@ -553,7 +553,7 @@ fn opts() -> Vec<RustcOptGroup> {
         ),
         opt(
             Unstable,
-            Opt,
+            Multi,
             "",
             "remap-path-scope",
             "Defines which scopes of paths should be remapped by `--remap-path-prefix`",

@@ -4,6 +4,7 @@
 //!  - `=` sign in FROM path
 //!  - multiple path remappings
 //!  - multiple conflicting path remappings
+//!  - multiple remapping scopes
 
 //@ ignore-windows (does not support directories with = sign)
 
@@ -22,20 +23,23 @@ fn main() {
         rfs::create_dir_all(&eq_dir);
 
         let src_path = eq_dir.join("lib.rs");
-        rfs::write(&src_path, "pub fn broken_func() { ");
+        rfs::write(&src_path, "compile_error!(file!());");
 
         // Use multiple remap args and conflicting remappings
         let remap_args = [
             format!("--remap-path-prefix={}={}", eq_dir.display(), "REMAPPED_DIR"),
             format!("--remap-path-prefix={}={}", eq_dir.display(), "REMAPPED_DIR2"),
+            "--remap-path-scope=macro,debuginfo".to_owned(),
+            "--remap-path-scope=diagnostics".to_owned(),
         ];
 
         fn run_test(cmd: impl FnOnce() -> CompletedProcess) {
             let output = cmd();
             let stderr = output.stderr_utf8();
 
-            // Checks the diagnostic output
-            assert_contains(&stderr, "REMAPPED_DIR2/lib.rs");
+            // Both the file!() expansion and its diagnostic location must use the last prefix.
+            assert_contains(&stderr, "error: REMAPPED_DIR2/lib.rs");
+            assert_contains(&stderr, "--> REMAPPED_DIR2/lib.rs:1:1");
             assert_not_contains(&stderr, "REMAPPED_DIR/");
             assert_not_contains(&stderr, "path=with=equal");
         };
