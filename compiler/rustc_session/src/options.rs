@@ -2915,6 +2915,8 @@ written to standard error output)"),
     #[rustc_lint_opt_deny_field_access("use `Session::lto` instead of this field")]
     thinlto: Option<bool> = (None, parse_opt_bool, [TRACKED],
         "enable ThinLTO when possible"),
+    thinlto_cache: Option<PathBuf> = (None, parse_opt_pathbuf, [UNTRACKED],
+        "cache native ThinLTO objects without changing optimization settings"),
     threads: Option<String> = (None, parse_opt_string, [UNTRACKED],
         "use `--jobs-frontend` instead"),
     time_llvm_passes: bool = (false, parse_bool, [UNTRACKED],
