@@ -27,10 +27,21 @@ RUST_GDB="${RUST_GDB:-gdb}"
 # Run GDB with the additional arguments that load the pretty printers
 # Prepend base GDB flags ahead of any arguments passed by the user
 set -- \
-  --directory="$GDB_PYTHON_MODULE_DIRECTORY" \
-  -iex "add-auto-load-safe-path $GDB_PYTHON_MODULE_DIRECTORY" \
   -iex "set substitute-path /rustc/$RUSTC_COMMIT_HASH \"$GDB_SOURCE_DIRECTORY\"" \
   "$@"
+
+case "$GDB_PYTHON_MODULE_DIRECTORY" in
+  /*:*)
+    # GDB splits Unix source and safe paths on colons even when the argument is quoted.
+    export _RUST_GDB_CONFIGURE_DIRECTORY=1
+    set -- -ix "$GDB_PYTHON_MODULE_DIRECTORY/gdb_load_rust_pretty_printers.py" "$@"
+    ;;
+  *)
+    set -- --directory="$GDB_PYTHON_MODULE_DIRECTORY" \
+      -iex "add-auto-load-safe-path $GDB_PYTHON_MODULE_DIRECTORY" "$@"
+    export PYTHONPATH="$PYTHONPATH:$GDB_PYTHON_MODULE_DIRECTORY"
+    ;;
+esac
 
 # Unstable (nightly-only) trim-paths feature, activated only if
 #  - RUST_GDB_TRIM_PATHS=unstable is set
@@ -40,4 +51,4 @@ if [ "${RUST_GDB_TRIM_PATHS:-}" = "unstable" ] && [ -f "$GDB_TRIM_PATHS" ]; then
   set -- -x "$GDB_TRIM_PATHS" "$@"
 fi
 
-PYTHONPATH="$PYTHONPATH:$GDB_PYTHON_MODULE_DIRECTORY" exec ${RUST_GDB} "$@"
+exec ${RUST_GDB} "$@"
