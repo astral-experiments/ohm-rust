@@ -1,5 +1,7 @@
 # First edit in uv-resolver after uv #20988
 
+The release-flags compiler with #296 took 3.317 s on the first resolver check after the edit, versus 6.605 s on signed −18. The median paired speedup was 1.982× across 12 fresh triples. [Report, raw measurements and offline verifier](prebolt-007/README.md)
+
 Twelve held-out triples measured ordinary `cargo check -p uv-resolver --locked --offline -j8` after applying the complete uv #20988 edit. The checkout stayed at parent `b60da7ad468d5bb8a6b3dee7d7e54a47981f23c7`; the unstaged working tree matched child `1979349b68dbaa936b98c0f409c1df0598fa72f1`. All three compilers used the same signed Ohm −18 Cargo. Each invocation checked `uv-workspace`, `uv-types`, `uv-distribution`, and `uv-resolver`.
 
 | T3 comparison | Median first-edit wall | Median paired speedup | Exact median interval | One-sided p for >1× |
