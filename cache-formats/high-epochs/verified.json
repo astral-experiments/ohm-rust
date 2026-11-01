@@ -1,0 +1,254 @@
+{
+  "actual_old_v11": {
+    "forced": {
+      "directions": {
+        "CTFE-to-retired11": {
+          "assertion": "rustc explicitly reported loaded",
+          "edited_matches_fresh": false,
+          "invalid_matches_fresh_E0277": false,
+          "outcomes": {
+            "assert_loaded": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            },
+            "assert_not_loaded": {
+              "classification": "compiler rejected input",
+              "compiler_exit": 1,
+              "native_stdout": null
+            },
+            "info_B": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            },
+            "negative": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            },
+            "no_edit": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            },
+            "positive": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            }
+          },
+          "unedited_matches_expected": false
+        },
+        "retired11-to-CTFE": {
+          "assertion": "no decisive cache-state report",
+          "edited_matches_fresh": false,
+          "invalid_matches_fresh_E0277": false,
+          "outcomes": {
+            "assert_loaded": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            },
+            "assert_not_loaded": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            },
+            "info_B": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            },
+            "negative": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            },
+            "no_edit": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            },
+            "positive": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            }
+          },
+          "unedited_matches_expected": false
+        }
+      },
+      "edited_diagnostic_markers": {
+        "CTFE-to-retired11": [
+          "uninterned StableCrateId: StableCrateId(0)",
+          "cstore_impl.rs:911:32"
+        ],
+        "retired11-to-CTFE": [
+          "Invalid DepKind 360",
+          "dep_node.rs:70:13"
+        ]
+      },
+      "genuine_misinterpretable_nodes": {
+        "CTFE": 1097,
+        "retired11": 1133
+      },
+      "same_header": "525349430b000a72757374632d70657266"
+    },
+    "unforced": {
+      "directions": {
+        "CTFE-to-retired11": {
+          "assertion": "rustc explicitly reported loaded",
+          "edited_matches_fresh": false,
+          "invalid_matches_fresh_E0277": false,
+          "outcomes": {
+            "assert_loaded": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            },
+            "assert_not_loaded": {
+              "classification": "compiler rejected input",
+              "compiler_exit": 1,
+              "native_stdout": null
+            },
+            "info_B": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            },
+            "negative": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            },
+            "no_edit": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            },
+            "positive": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            }
+          },
+          "unedited_matches_expected": false
+        },
+        "retired11-to-CTFE": {
+          "assertion": "no decisive cache-state report",
+          "edited_matches_fresh": false,
+          "invalid_matches_fresh_E0277": false,
+          "outcomes": {
+            "assert_loaded": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            },
+            "assert_not_loaded": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            },
+            "info_B": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            },
+            "negative": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            },
+            "no_edit": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            },
+            "positive": {
+              "classification": "compiler error with ICE/panic marker",
+              "compiler_exit": 101,
+              "native_stdout": null
+            }
+          },
+          "unedited_matches_expected": false
+        }
+      },
+      "edited_diagnostic_markers": {
+        "CTFE-to-retired11": [
+          "uninterned StableCrateId: StableCrateId(0)",
+          "cstore_impl.rs:911:32"
+        ],
+        "retired11-to-CTFE": [
+          "Invalid DepKind 360",
+          "dep_node.rs:70:13"
+        ]
+      },
+      "genuine_misinterpretable_nodes": {
+        "CTFE": 1097,
+        "retired11": 1133
+      },
+      "same_header": "525349430b000a312e39392e302d646576"
+    }
+  },
+  "native_timing_rows": 0,
+  "rejected_controls": [
+    "wrong physical repaired dispatcher",
+    "wrong complementary diagnostic",
+    "stale repaired native answer",
+    "invented old observation",
+    "changed genuine conflicting-kind count",
+    "wrong restored writer",
+    "different launcher",
+    "invented historical header"
+  ],
+  "repaired": {
+    "ctfe/forced": {
+      "actual_transitions": 16,
+      "loaded": 6,
+      "own": 4,
+      "reciprocal_T3_T4": 2,
+      "rejected": 10
+    },
+    "ctfe/unforced": {
+      "actual_transitions": 16,
+      "loaded": 6,
+      "own": 4,
+      "reciprocal_T3_T4": 2,
+      "rejected": 10
+    },
+    "legacy/forced": {
+      "actual_transitions": 44,
+      "loaded": 10,
+      "own": 8,
+      "reciprocal_T3_T4": 2,
+      "rejected": 34
+    },
+    "legacy/unforced": {
+      "actual_transitions": 44,
+      "loaded": 10,
+      "own": 8,
+      "reciprocal_T3_T4": 2,
+      "rejected": 34
+    }
+  },
+  "source_census": {
+    "distinct_tips": 550,
+    "historical_header_literals": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "missing_tips": 0,
+    "resolvable_tips_with_history": 547,
+    "same_named_queries_reindexed": 172
+  }
+}
