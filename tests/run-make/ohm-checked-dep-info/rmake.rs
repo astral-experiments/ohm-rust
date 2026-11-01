@@ -116,6 +116,55 @@ fn main() {
         assert!(bundled.stdout_utf8().contains(MARKER));
     }
 
+    if target() == "aarch64-unknown-linux-gnu" {
+        rfs::write("payload.bin", [0; 4]);
+        for cfg in [
+            "ordinary",
+            "general_only",
+            "vector_only",
+            "scalar_modifier",
+            "vector_modifier",
+            "spaced",
+            "input_only",
+            "late",
+            "discarded",
+            "options",
+            "separate",
+            "compact_input",
+            "compact_copy",
+            "compact_constant",
+            "compact_modifier",
+            "compact_options",
+            "compact_output",
+            "compact_two_operands",
+            "compact_file",
+            "instruction",
+            "file",
+            "escape",
+            "raw",
+            "global",
+        ] {
+            let rules = rustc()
+                .input("gnu_aarch64.rs")
+                .arg("-Zohm-check-relink-inputs")
+                .cfg(cfg)
+                .emit("link,dep-info=-")
+                .run()
+                .stdout_utf8();
+            let accepted = matches!(
+                cfg,
+                "ordinary" | "general_only" | "vector_only" | "compact_input" | "compact_copy"
+            );
+            assert_eq!(rules.contains(MARKER), !accepted, "{cfg}: {rules}");
+            assert_eq!(
+                rules.lines().any(|line| line == "/dev/null/ohm-recheck-dependent-links-v2:"),
+                accepted,
+                "{cfg}: {rules}"
+            );
+            assert!(!rules.lines().any(|line| line == "/dev/null/ohm-recheck-dependent-links:"));
+        }
+    }
+
     rfs::write("lib.rs", "pub fn ordinary() {}");
     check(&compile("link,dep-info=-").run().stdout_utf8(), false);
     rfs::write("lib.rs", "core::arch::global_asm!(\"\");");
