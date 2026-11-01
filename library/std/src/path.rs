@@ -1068,6 +1068,34 @@ impl Ord for Components<'_> {
     }
 }
 
+// Returns None when one path is a byte prefix of the other.
+fn first_byte_mismatch(left: &[u8], right: &[u8]) -> Option<usize> {
+    const WORD: usize = size_of::<usize>();
+    let len = left.len().min(right.len());
+    if len < WORD {
+        for (i, (a, b)) in left.iter().zip(right).enumerate() {
+            if a != b {
+                return Some(i);
+            }
+        }
+        return None;
+    }
+    if left[0] != right[0] {
+        return Some(0);
+    }
+    let (left_words, left_tail) = left[..len].as_chunks::<WORD>();
+    let (right_words, right_tail) = right[..len].as_chunks::<WORD>();
+    for (i, (a, b)) in left_words.iter().zip(right_words).enumerate() {
+        // Little-endian words place the first path byte in the least significant bits.
+        let different = usize::from_le_bytes(*a) ^ usize::from_le_bytes(*b);
+        if different != 0 {
+            return Some(i * WORD + different.trailing_zeros() as usize / 8);
+        }
+    }
+    let tail_start = len - left_tail.len();
+    left_tail.iter().zip(right_tail).position(|(a, b)| a != b).map(|i| tail_start + i)
+}
+
 fn compare_components(mut left: Components<'_>, mut right: Components<'_>) -> cmp::Ordering {
     // Fast path for long shared prefixes
     //
@@ -1079,8 +1107,7 @@ fn compare_components(mut left: Components<'_>, mut right: Components<'_>) -> cm
     // The fast path isn't taken for paths with a PrefixComponent to avoid backtracking into
     // the middle of one
     if left.prefix.is_none() && right.prefix.is_none() && left.front == right.front {
-        // possible future improvement: a [u8]::first_mismatch simd implementation
-        let first_difference = match left.path.iter().zip(right.path).position(|(&a, &b)| a != b) {
+        let first_difference = match first_byte_mismatch(left.path, right.path) {
             None if left.path.len() == right.path.len() => return cmp::Ordering::Equal,
             None => left.path.len().min(right.path.len()),
             Some(diff) => diff,

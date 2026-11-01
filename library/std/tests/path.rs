@@ -2361,6 +2361,15 @@ fn test_ord() {
     ord!(Equal, "foo/bar", "foo/bar/");
     ord!(Equal, "foo/bar", "foo/bar/.");
     ord!(Equal, "foo/bar", "foo/bar//");
+
+    for prefix_len in 0..=2 * size_of::<usize>() {
+        let prefix = "p".repeat(prefix_len);
+        let left = format!("root/{prefix}a/z");
+        let right = format!("root/{prefix}b/a");
+        let normalized = format!("root/{prefix}a/./z");
+        ord!(Less, &left, &right);
+        ord!(Equal, &left, &normalized);
+    }
 }
 
 #[test]
