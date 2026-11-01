@@ -2,7 +2,7 @@
 //
 // This is a simple smoke test for rustc's `--emit dep-info` feature. It prints out
 // information about dependencies in a Makefile-compatible format, as a `.d` file.
-// Note that this test does not check that the `.d` file is Makefile-compatible.
+// On Unix it also checks that Make recognizes a source file with literal metacharacters.
 
 // This test first checks that emitting dep-info disables static analysis, preventing
 // compilation of `erroneous.rs` from causing a compilation failure.
@@ -12,7 +12,7 @@
 // Finally, it removes one dependency and checks that compilation is still successful.
 // See https://github.com/rust-lang/rust/pull/10698
 
-use run_make_support::{rfs, rustc};
+use run_make_support::{cmd, is_windows, rfs, rustc};
 
 fn main() {
     // We're only emitting dep info, so we shouldn't be running static analysis to
@@ -36,4 +36,24 @@ fn main() {
     // also loses this source file dependency.
     rfs::remove_file("bar.rs");
     rustc().input("lib2.rs").emit("dep-info,link").crate_type("lib").run();
+
+    if !is_windows() {
+        let input = "cash$X #tag.txt";
+        let output = "lib #$X.rmeta";
+        rfs::write(input, "tracked");
+        rfs::write(
+            "make_paths.rs",
+            r##"pub const VALUE: &str = include_str!("cash$X #tag.txt");"##,
+        );
+        rustc()
+            .input("make_paths.rs")
+            .crate_type("lib")
+            .emit(format!("dep-info=paths.d,metadata={output}"))
+            .run();
+        rfs::write("Makefile", "X :=\nlib\\ \\#$$X.rmeta:\n\t@echo rebuild\ninclude paths.d\n");
+        let probe =
+            |changed: &str| cmd("make").args(&["-s", "-W", changed, output]).run().stdout_utf8();
+        assert_eq!(probe(input).trim(), "rebuild");
+        assert!(probe("unrelated.txt").is_empty());
+    }
 }
