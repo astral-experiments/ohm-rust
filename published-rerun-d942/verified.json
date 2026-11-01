@@ -1,0 +1,116 @@
+{
+  "cold_dirty_counts": {
+    "candidate": [
+      447
+    ],
+    "parent": [
+      447
+    ],
+    "stock": [
+      447
+    ]
+  },
+  "comparisons": {
+    "optimized_T3_over_T4": {
+      "alpha": 0.01,
+      "coverage": 0.99365234375,
+      "interval": [
+        0.9630838761792472,
+        1.0861186835491845
+      ],
+      "median": 1.0480553074603747,
+      "one_sided_sign_p": 0.019287109375,
+      "order_medians": [
+        1.052852285147488,
+        1.043675116072249
+      ],
+      "paired": [
+        0.9254259686782983,
+        0.9630838761792472,
+        1.006558895749572,
+        1.0396663748752104,
+        1.0344326205745442,
+        1.0484267576514612,
+        1.0633631190584907,
+        1.0931035773761795,
+        1.047683857269288,
+        1.0568158192968533,
+        1.0572778126435147,
+        1.0861186835491845
+      ],
+      "passed": false,
+      "seed_medians": [
+        1.020495758162058,
+        1.0603204658510026
+      ],
+      "threshold": 1
+    },
+    "signed18_over_T4": {
+      "alpha": 0.01,
+      "coverage": 0.99365234375,
+      "interval": [
+        1.9638814591508695,
+        2.159693993333516
+      ],
+      "median": 2.1301882135857433,
+      "one_sided_sign_p": 0.019287109375,
+      "order_medians": [
+        2.1359040519321812,
+        2.088203850006122
+      ],
+      "paired": [
+        2.0736582222649496,
+        1.8322362248185433,
+        1.9638814591508695,
+        2.1394389696221796,
+        2.159693993333516,
+        2.1402883862719704,
+        2.1315197175923926,
+        2.1478463297263715,
+        2.030271857473893,
+        2.1027494777472944,
+        2.1288567095790936,
+        2.225996604026752
+      ],
+      "passed": false,
+      "seed_medians": [
+        2.106548595943565,
+        2.1301882135857433
+      ],
+      "threshold": 2
+    }
+  },
+  "fresh_triples": 12,
+  "medians_ns": {
+    "candidate": {
+      "cold-A": 48680636092.5,
+      "edit": 3220229589.5,
+      "noop-A": 384778150.0,
+      "noop-B": 384990764.5
+    },
+    "parent": {
+      "cold-A": 48992904641.0,
+      "edit": 3405853002.5,
+      "noop-A": 369506279.0,
+      "noop-B": 371739479.5
+    },
+    "stock": {
+      "cold-A": 48081186372.0,
+      "edit": 6787567798.5,
+      "noop-A": 378795336.0,
+      "noop-B": 374149327.5
+    }
+  },
+  "nonempty_stdout_observations": 0,
+  "ordinary_Cargo_invocations": 144,
+  "rejected_controls": [
+    "first edit replaced by zero-dirty check",
+    "monotonic elapsed altered",
+    "confirmation order swapped",
+    "published ratio altered",
+    "rehashed zero-dirty parent misrepresented as a fresh cold start",
+    "incomplete last triple",
+    "swapped candidate driver"
+  ],
+  "separate_cold_parents": 36
+}

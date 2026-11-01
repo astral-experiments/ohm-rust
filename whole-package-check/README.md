@@ -1,0 +1,9 @@
+# Checking the whole uv package after the workspace glob edit
+
+Across six counterbalanced trios, the first `cargo check -p uv --locked --offline -j8` took **13.922 s** on shipped Ohm −18, **9.508 s** on the optimized #296 parent, and **9.326 s** on #306. The median paired speedup over −18 was **1.501×** (range 1.431–1.511×). The median improvement over #296 was **1.034×**, with #306 faster in five trios. The direct result fell below the 1.80× threshold for opening fresh confirmation runs. All six trios are discovery observations.
+
+The narrower resolver check on this same edit qualified at 2.098× in a separate 12-trio study. Both studies used the same signed −18 Cargo and the same Linux pre-BOLT compiler SDKs with separately trained profiles. The measured parent was `26f57475` and the child was `fd96f141`, both with format 12. [Matched resolver study](../finite-format12-prebolt/README.md)
+
+Each compiler built the real parent once. Those three setup commands took 66.628 s, 67.292 s and 68.621 s, respectively. Each first edit starts from a separate copy of that compiler’s settled parent. The complete uncommitted patch changed workspace glob exclusions. All eighteen edited commands rebuilt the same thirteen packages, refreshed the same fifteen target products, and had clean no-ops immediately before and afterwards. Each compiler read back the parent and edited metadata for the `uv` and `uv_workspace` libraries outside the clocks. [uv source change](https://github.com/astral-sh/uv/pull/20988)
+
+Run `python3 verify.py raw.zip` to reproduce [the six trios and measurements](verified.json). The ZIP includes the original Cargo logs, artifact timestamps, compiler-produced metadata listings, the fixed order, the exact compiler and Cargo identities, and the registered decision. SHA-256 of `raw.zip` is `f29b87f4de6ce8e6c653082fb90ec0ba0ab031c947618352563a0e3a5b44a348`.

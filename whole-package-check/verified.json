@@ -1,0 +1,55 @@
+{
+  "delta_to_2x_seconds": 2.3134851584999994,
+  "dirty_packages_per_edit": 13,
+  "discovery_trios": 6,
+  "faster_than_parent": 5,
+  "first_edit_seconds": [
+    {
+      "candidate": 9.737806155,
+      "parent": 9.257044006,
+      "stock": 13.930969731
+    },
+    {
+      "candidate": 9.394944035,
+      "parent": 10.440104046,
+      "stock": 14.087793117
+    },
+    {
+      "candidate": 9.142963763,
+      "parent": 9.468918777,
+      "stock": 13.734081845
+    },
+    {
+      "candidate": 9.20597689,
+      "parent": 9.978360745,
+      "stock": 13.913411515
+    },
+    {
+      "candidate": 9.256634601,
+      "parent": 9.547724045,
+      "stock": 13.989449482
+    },
+    {
+      "candidate": 9.424529542,
+      "parent": 9.467913594,
+      "stock": 13.508982676
+    }
+  ],
+  "first_edits": 18,
+  "heldout_trios": 0,
+  "individual_range": [
+    1.430606597549384,
+    1.511345474928734
+  ],
+  "median_seconds": {
+    "candidate": 9.325789318,
+    "parent": 9.508321411,
+    "stock": 13.922190622999999
+  },
+  "native_metadata_listings": 12,
+  "opens_confirmation": false,
+  "parent_over_candidate": 1.033548743902701,
+  "stock_over_candidate": 1.500827809034167,
+  "target_products_per_edit": 15,
+  "unchanged_commands": 36
+}
