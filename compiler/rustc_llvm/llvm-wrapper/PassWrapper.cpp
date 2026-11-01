@@ -40,6 +40,7 @@
 #include "llvm/Transforms/IPO/FunctionImport.h"
 #include "llvm/Transforms/IPO/Internalize.h"
 #include "llvm/Transforms/IPO/LowerTypeTests.h"
+#include "llvm/Transforms/IPO/MergeFunctions.h"
 #include "llvm/Transforms/IPO/ThinLTOBitcodeWriter.h"
 #include "llvm/Transforms/Instrumentation/AddressSanitizer.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
@@ -787,6 +788,30 @@ extern "C" LLVMRustResult LLVMRustOptimize(
           // so use atomics for coverage counters
           Options.Atomic = true;
           MPM.addPass(InstrProfilingLoweringPass(Options, false));
+        });
+  }
+
+  bool IsPreLink = OptStage == LLVMRustOptStage::PreLinkNoLTO ||
+                   OptStage == LLVMRustOptStage::PreLinkThinLTO ||
+                   OptStage == LLVMRustOptStage::PreLinkFatLTO;
+  bool HasSanitizer =
+      SanitizerOptions &&
+      (SanitizerOptions->SanitizeAddress || SanitizerOptions->SanitizeCFI ||
+       SanitizerOptions->SanitizeDataFlow || SanitizerOptions->SanitizeKCFI ||
+       SanitizerOptions->SanitizeMemory || SanitizerOptions->SanitizerRealtime ||
+       SanitizerOptions->SanitizeThread || SanitizerOptions->SanitizeHWAddress ||
+       SanitizerOptions->SanitizeKernelAddress ||
+       SanitizerOptions->SanitizeKernelHWAddress);
+  if (MergeFunctions && IsPreLink && !NoPrepopulatePasses && !PGOOpt &&
+      !InstrumentCoverage && !HasSanitizer && LLVMPluginsLen == 0) {
+    // Merge canonicalized bodies before global cleanup and CGSCC optimization.
+    // Instrumented and plugin-defined pipelines retain their existing ordering.
+    PB.registerPipelineEarlySimplificationEPCallback(
+        [](ModulePassManager &MPM, OptimizationLevel Level,
+           ThinOrFullLTOPhase Phase) {
+          if (Level != OptimizationLevel::O0 &&
+              Phase == ThinOrFullLTOPhase::ThinLTOPreLink)
+            MPM.addPass(MergeFunctionsPass());
         });
   }
 
