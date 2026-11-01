@@ -324,8 +324,9 @@ fn mask(bits: usize) -> usize {
 }
 
 impl SerializedDepGraph {
+    /// Returns `None` if a saved node has a null kind or lacks a unique, in-bounds destination.
     #[instrument(level = "debug", skip(d, profiler))]
-    pub fn decode(d: &mut MemDecoder<'_>, profiler: &SelfProfilerRef) -> Arc<SerializedDepGraph> {
+    pub fn try_decode(d: &mut MemDecoder<'_>, profiler: &SelfProfilerRef) -> Option<Arc<Self>> {
         // The last 16 bytes are the node count and edge count.
         debug!("position: {:?}", d.position());
 
@@ -377,10 +378,12 @@ impl SerializedDepGraph {
 
             let index = node_header.index();
 
-            let node = &mut nodes[index];
-            // Make sure there's no duplicate indices in the dep graph.
-            assert!(node_header.node().kind != DepKind::Null && node.kind == DepKind::Null);
-            *node = node_header.node();
+            let node = nodes.get_mut(index)?;
+            let decoded = node_header.node();
+            if decoded.kind == DepKind::Null || node.kind != DepKind::Null {
+                return None;
+            }
+            *node = decoded;
 
             value_fingerprints[index] = node_header.value_fingerprint();
 
@@ -439,7 +442,7 @@ impl SerializedDepGraph {
         debug_assert!(kinds.iter().zip(&fill).all(|(k, &f)| f == k.start + k.len));
         let reverse_index = LazyNodeIndex { nodes_by_kind, kinds };
 
-        Arc::new(SerializedDepGraph {
+        Some(Arc::new(Self {
             nodes,
             value_fingerprints,
             edge_list_indices,
@@ -448,7 +451,7 @@ impl SerializedDepGraph {
             live_node_count: node_count,
             session_count,
             profiler: Some(profiler.clone()),
-        })
+        }))
     }
 }
 

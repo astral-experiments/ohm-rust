@@ -1,7 +1,7 @@
 //! Code to load the dep-graph from files.
 
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rustc_data_structures::unord::UnordMap;
@@ -26,7 +26,7 @@ use crate::persist::file_format::{OpenFile, OpenFileError};
 enum LoadResult {
     /// Loading was successful.
     Ok { prev_graph: Arc<SerializedDepGraph>, prev_work_products: WorkProductMap },
-    /// The file either didn't exist or was produced by an incompatible compiler version.
+    /// No usable previous session was found.
     DataOutOfDate,
     /// Loading failed due to an unexpected I/O error.
     IoError { path: PathBuf, err: io::Error },
@@ -39,6 +39,18 @@ fn delete_dirty_work_product(
 ) {
     debug!("delete_dirty_work_product({:?})", swp);
     work_product::delete_workproduct_files(sess, incr_comp_session, &swp.work_product);
+}
+
+fn decode_dep_graph(
+    sess: &Session,
+    path: &Path,
+    decoder: &mut MemDecoder<'_>,
+) -> Option<Arc<SerializedDepGraph>> {
+    let graph = SerializedDepGraph::try_decode(decoder, &sess.prof);
+    if graph.is_none() {
+        sess.dcx().emit_warn(diagnostics::CorruptFile { path });
+    }
+    graph
 }
 
 fn load_dep_graph(
@@ -115,9 +127,11 @@ fn load_dep_graph(
                 return LoadResult::DataOutOfDate;
             }
 
-            let prev_graph = stage_graph
-                .cloned()
-                .unwrap_or_else(|| SerializedDepGraph::decode(&mut decoder, &sess.prof));
+            let Some(prev_graph) =
+                stage_graph.cloned().or_else(|| decode_dep_graph(sess, &path, &mut decoder))
+            else {
+                return LoadResult::DataOutOfDate;
+            };
 
             LoadResult::Ok { prev_graph, prev_work_products }
         }
@@ -359,7 +373,7 @@ fn load_stage_checkpoint(
     if Hash64::decode(&mut decoder) != sess.opts.dep_tracking_hash(false) {
         return None;
     }
-    let graph = SerializedDepGraph::decode(&mut decoder, &sess.prof);
+    let graph = decode_dep_graph(sess, &path, &mut decoder)?;
     let path = in_incr_comp_dir_sess(session, cache_filename);
     let OpenFile { mmap, start_pos } = file_format::open_incremental_file(sess, &path).ok()?;
     let cache = OnDiskCache::new(sess, mmap, start_pos).ok()?;
