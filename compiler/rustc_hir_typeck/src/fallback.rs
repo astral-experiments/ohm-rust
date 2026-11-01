@@ -218,6 +218,12 @@ impl<'tcx> FnCtxt<'_, 'tcx> {
             }
         };
 
+        // Without a diverging type variable, no unresolved type can need
+        // never type fallback or its associated lints.
+        if self.diverging_type_vars.borrow().is_empty() {
+            return (UnordSet::new(), diverging_fallback_ty);
+        }
+
         // Compute the diverging root vids D -- that is, the root vid of
         // those type variables that (a) are the target of a coercion from
         // a `!` type and (b) have not yet been solved.
