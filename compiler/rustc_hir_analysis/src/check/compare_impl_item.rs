@@ -15,8 +15,8 @@ use rustc_infer::traits::{TraitErrors, util};
 use rustc_middle::ty::error::{ExpectedFound, TypeError};
 use rustc_middle::ty::{
     self, BottomUpFolder, GenericArgs, GenericParamDefKind, Generics, RegionExt, Ty, TyCtxt,
-    TypeFoldable, TypeFolder, TypeSuperFoldable, TypeVisitable, TypeVisitableExt, TypeVisitor,
-    TypingMode, Unnormalized, Upcast,
+    TypeFlags, TypeFoldable, TypeFolder, TypeSuperFoldable, TypeVisitable, TypeVisitableExt,
+    TypeVisitor, TypingMode, Unnormalized, Upcast,
 };
 use rustc_middle::{bug, span_bug};
 use rustc_span::{BytePos, DUMMY_SP, Span};
@@ -24,6 +24,7 @@ use rustc_trait_selection::error_reporting::InferCtxtErrorExt;
 use rustc_trait_selection::infer::InferCtxtExt;
 use rustc_trait_selection::regions::InferCtxtRegionExt;
 use rustc_trait_selection::solve::NextSolverError;
+use rustc_trait_selection::traits::query::evaluate_obligation::InferCtxtExt as _;
 use rustc_trait_selection::traits::{
     self, FromSolverError, FulfillmentError, ObligationCause, ObligationCauseCode, ObligationCtxt,
 };
@@ -2469,6 +2470,21 @@ pub(super) fn check_type_bounds<'tcx>(
     let param_env = tcx.param_env(impl_ty.def_id);
     debug!(?param_env);
 
+    if param_env.caller_bounds().is_empty()
+        && matches!(impl_ty.container, ty::AssocContainer::TraitImpl(Ok(_)))
+        && !impl_ty.is_impl_trait_in_trait()
+        && tcx.generics_of(impl_ty.def_id).own_params.is_empty()
+        && !tcx.is_conditionally_const(impl_ty.def_id)
+        && !impl_trait_ref.args.has_type_flags(CLOSED_BOUND_DISALLOWED_FLAGS)
+    {
+        let definition = tcx.type_of(impl_ty.def_id).skip_binder();
+        if !definition.has_type_flags(CLOSED_BOUND_DISALLOWED_FLAGS)
+            && tcx.closed_associated_type_bounds_hold((trait_ty.def_id, definition))
+        {
+            return Ok(());
+        }
+    }
+
     let container_id = impl_ty.container_id(tcx);
     let impl_ty_def_id = impl_ty.def_id.expect_local();
     let impl_ty_args = GenericArgs::identity_for_item(tcx, impl_ty.def_id);
@@ -2571,6 +2587,116 @@ pub(super) fn check_type_bounds<'tcx>(
     // Finally, resolve all regions. This catches wily misuses of
     // lifetime parameters.
     ocx.resolve_regions_and_report_errors(impl_ty_def_id, param_env, assumed_wf_types)
+}
+
+// These bounds must be independent of an impl's inference context and require
+// no normalization after replacing its associated type with its definition.
+pub(super) const CLOSED_BOUND_DISALLOWED_FLAGS: TypeFlags = TypeFlags::from_bits(
+    TypeFlags::HAS_ALIAS.bits()
+        | TypeFlags::HAS_FREE_LOCAL_NAMES.bits()
+        | TypeFlags::HAS_REGIONS.bits()
+        | TypeFlags::HAS_BOUND_VARS.bits()
+        | TypeFlags::HAS_ERROR.bits(),
+)
+.unwrap();
+
+/// Proves bounds for a structurally well-formed concrete definition.
+/// Other bounds, failed proofs, and proofs requiring region constraints use the
+/// caller's original checking path so that diagnostics retain the impl's context.
+pub(super) fn closed_associated_type_bounds_hold<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    (trait_item, definition): (DefId, Ty<'tcx>),
+) -> bool {
+    let item = tcx.associated_item(trait_item);
+    // An associated type's own where clauses can depend on the impl's Self;
+    // they are not included in `explicit_item_bounds` below.
+    // The next solver may defer type-outlives constraints during evaluation.
+    if tcx.next_trait_solver_globally()
+        || tcx.assumptions_on_binders()
+        || tcx.lang_items().sized_trait().is_none()
+        || !matches!(item.container, ty::AssocContainer::Trait)
+        || item.is_impl_trait_in_trait()
+        || tcx.generics_of(trait_item).count() != 1
+        || !tcx.clauses_of(trait_item).clauses.is_empty()
+        || definition.has_type_flags(CLOSED_BOUND_DISALLOWED_FLAGS)
+    {
+        return false;
+    }
+
+    // Scalars, tuples, and arrays of them are structurally well-formed when
+    // their lengths are evaluated `usize` values. Nominal types can introduce
+    // further WF obligations even when their arguments are entirely concrete.
+    if !definition.walk().all(|arg| match arg.kind() {
+        ty::GenericArgKind::Type(ty) => matches!(
+            ty.kind(),
+            ty::Bool
+                | ty::Char
+                | ty::Int(_)
+                | ty::Uint(_)
+                | ty::Float(_)
+                | ty::Array(..)
+                | ty::Tuple(_)
+        ),
+        ty::GenericArgKind::Const(ct) => {
+            matches!(ct.kind(), ty::ConstKind::Value(value) if value.ty == tcx.types.usize)
+        }
+        ty::GenericArgKind::Lifetime(_) => false,
+    }) {
+        return false;
+    }
+
+    let bounds = tcx.explicit_item_bounds(trait_item).skip_binder();
+    if bounds.is_empty() {
+        return false;
+    }
+    let projection = Ty::new_projection_from_args(
+        tcx,
+        ty::IsRigid::No,
+        trait_item,
+        GenericArgs::identity_for_item(tcx, trait_item),
+    );
+    let mut folder = BottomUpFolder {
+        tcx,
+        ty_op: |ty| if ty == projection { definition } else { ty },
+        lt_op: |region| region,
+        ct_op: |ct| ct,
+    };
+    let obligations: Vec<_> = util::elaborate(
+        tcx,
+        bounds.iter().map(|&(bound, _)| {
+            traits::Obligation::new(
+                tcx,
+                ObligationCause::dummy(),
+                ty::ParamEnv::empty(),
+                bound.fold_with(&mut folder),
+            )
+        }),
+    )
+    .collect();
+
+    // A remaining parameter includes any use of `Self` outside the exact own
+    // projection. Check all bounds before performing any speculative proofs.
+    if obligations.iter().any(|obligation| {
+        obligation.predicate.has_type_flags(CLOSED_BOUND_DISALLOWED_FLAGS)
+            || !matches!(
+                obligation.predicate.kind().skip_binder(),
+                ty::PredicateKind::Clause(ty::ClauseKind::Trait(ty::TraitPredicate {
+                    polarity: ty::PredicatePolarity::Positive,
+                    ..
+                }))
+            )
+    }) {
+        return false;
+    }
+
+    let infcx = tcx.infer_ctxt().build(TypingMode::non_body_analysis());
+    obligations.iter().all(|obligation| {
+        // The fallible evaluator returns canonical overflows without diagnosing
+        // them. Only unconditional success, including regions, permits reuse.
+        infcx
+            .evaluate_obligation(obligation)
+            .is_ok_and(|result| result.must_apply_considering_regions())
+    })
 }
 
 /// Install projection predicates that allow GATs to project to their own
