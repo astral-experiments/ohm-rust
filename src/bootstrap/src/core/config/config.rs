@@ -972,6 +972,7 @@ impl Config {
                     default_linker: target_default_linker,
                     default_linker_linux_override: target_default_linker_linux_override,
                     linker: target_linker,
+                    ohm_wild_linker: target_ohm_wild_linker,
                     split_debuginfo: target_split_debuginfo,
                     llvm_config: target_llvm_config,
                     llvm_has_rust_patches: target_llvm_has_rust_patches,
@@ -1054,6 +1055,10 @@ impl Config {
                 target.ar = target_ar.map(PathBuf::from);
                 target.ranlib = target_ranlib.map(PathBuf::from);
                 target.linker = target_linker.map(PathBuf::from);
+                if target_ohm_wild_linker.is_some() && triple != "x86_64-unknown-linux-gnu" {
+                    panic!("`ohm-wild-linker` is only supported for x86_64-unknown-linux-gnu");
+                }
+                target.ohm_wild_linker = target_ohm_wild_linker.map(|path| src.join(path));
                 target.crt_static = target_crt_static;
                 target.default_linker = target_default_linker;
                 target.default_linker_linux_override = default_linker_linux_override;
