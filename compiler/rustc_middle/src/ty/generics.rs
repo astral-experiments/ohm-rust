@@ -407,9 +407,8 @@ impl<'tcx> GenericClauses<'tcx> {
     + DoubleEndedIterator
     + ExactSizeIterator
     + Clone {
-        EarlyBinder::bind_iter(self.clauses).iter_instantiated_copied(tcx, args).map(|u| {
-            let (clause, span) = u.unzip();
-            (clause, span.skip_normalization())
+        self.clauses.iter().map(move |&(clause, span)| {
+            (tcx.instantiate_clause(EarlyBinder::bind_no_rigid_aliases(clause), args), span)
         })
     }
 
@@ -436,7 +435,9 @@ impl<'tcx> GenericClauses<'tcx> {
             tcx.clauses_of(def_id).instantiate_into(tcx, instantiated, args);
         }
         instantiated.clauses.extend(
-            self.clauses.iter().map(|(p, _)| EarlyBinder::bind(tcx, *p).instantiate(tcx, args)),
+            self.clauses
+                .iter()
+                .map(|(p, _)| tcx.instantiate_clause(EarlyBinder::bind(tcx, *p), args)),
         );
         instantiated.spans.extend(self.clauses.iter().map(|(_, sp)| *sp));
     }
