@@ -26,6 +26,16 @@ const STR_SENTINEL: u8 = 0xC1;
 /// for badness is lower than in the `STR_SENTINEL` case.
 const BYTE_STR_SENTINEL: u8 = 0xC2;
 
+/// Checks the string sentinel shared by string and path decoders before borrowing UTF-8.
+#[inline]
+fn str_from_record(record: &[u8]) -> &str {
+    let (&sentinel, bytes) = record.split_last().unwrap();
+    assert_eq!(sentinel, STR_SENTINEL);
+    // SAFETY: the string sentinel gives high confidence that the decoder is aligned
+    // with a string emitted by the encoder.
+    unsafe { std::str::from_utf8_unchecked(bytes) }
+}
+
 /// A note about error handling.
 ///
 /// Encoders may be fallible, but in practice failure is rare and there are so
@@ -132,11 +142,7 @@ pub trait Decoder {
     #[inline]
     fn read_str(&mut self) -> &str {
         let len = self.read_usize();
-        let bytes = self.read_raw_bytes(len + 1);
-        assert!(bytes[len] == STR_SENTINEL);
-        // SAFETY: the presence of `STR_SENTINEL` gives us high (but not
-        // perfect) confidence that the bytes we just read truly are UTF-8.
-        unsafe { std::str::from_utf8_unchecked(&bytes[..len]) }
+        str_from_record(self.read_raw_bytes(len + 1))
     }
 
     #[inline]
@@ -456,7 +462,27 @@ tuple! { T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, }
 
 impl<S: Encoder> Encodable<S> for path::Path {
     fn encode(&self, e: &mut S) {
-        self.to_str().unwrap().encode(e);
+        if let Some(path) = self.to_str() {
+            e.emit_str(path);
+            return;
+        }
+
+        // The byte-string sentinel distinguishes native paths from existing UTF-8 records.
+        let bytes = self.as_os_str().as_encoded_bytes();
+        e.emit_byte_str(bytes);
+        // Metadata can be consumed on a different host. Carry wide units independently
+        // of OsStr's platform-specific byte encoding.
+        #[cfg(windows)]
+        let units = std::os::windows::ffi::OsStrExt::encode_wide(self.as_os_str());
+        #[cfg(not(windows))]
+        let units = bytes.utf8_chunks().flat_map(|chunk| {
+            // Unpaired low surrogates preserve Unix bytes outside valid UTF-8 sequences.
+            chunk
+                .valid()
+                .encode_utf16()
+                .chain(chunk.invalid().iter().map(|&b| 0xdc00 | u16::from(b)))
+        });
+        e.emit_byte_str(&units.flat_map(u16::to_le_bytes).collect::<Vec<_>>());
     }
 }
 
@@ -468,8 +494,37 @@ impl<S: Encoder> Encodable<S> for path::PathBuf {
 
 impl<D: Decoder> Decodable<D> for path::PathBuf {
     fn decode(d: &mut D) -> path::PathBuf {
-        let bytes: String = Decodable::decode(d);
-        path::PathBuf::from(bytes)
+        let len = d.read_usize();
+        let record = d.read_raw_bytes(len + 1);
+        if record[len] != BYTE_STR_SENTINEL {
+            return path::PathBuf::from(str_from_record(record));
+        }
+
+        #[cfg(any(unix, target_os = "wasi"))]
+        {
+            #[cfg(unix)]
+            use std::os::unix::ffi::OsStrExt;
+            #[cfg(target_os = "wasi")]
+            use std::os::wasi::ffi::OsStrExt;
+            let path = path::PathBuf::from(std::ffi::OsStr::from_bytes(&record[..len]));
+            d.read_byte_str();
+            path
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::ffi::OsStringExt;
+            let wide = d.read_byte_str().as_chunks::<2>();
+            assert!(wide.1.is_empty());
+            let units: Vec<_> = wide.0.iter().copied().map(u16::from_le_bytes).collect();
+            std::ffi::OsString::from_wide(&units).into()
+        }
+        #[cfg(not(any(unix, windows, target_os = "wasi")))]
+        {
+            // A Unicode-only host can still distinguish foreign paths in diagnostics.
+            let escaped = record[..len].escape_ascii().to_string();
+            d.read_byte_str();
+            path::PathBuf::from(escaped)
+        }
     }
 }
 
