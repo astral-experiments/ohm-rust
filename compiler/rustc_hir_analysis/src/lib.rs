@@ -147,7 +147,12 @@ pub fn provide(providers: &mut Providers) {
 
 pub fn check_crate(tcx: TyCtxt<'_>) {
     let _prof_timer = tcx.sess.timer("type_check_crate");
+    check_crate_interfaces(tcx);
+    check_crate_bodies(tcx);
+}
 
+/// Checks item well-formedness and coherence without running the body-checking pass.
+pub fn check_crate_interfaces(tcx: TyCtxt<'_>) {
     tcx.sess.time("coherence_checking", || {
         // When discarding query call results, use an explicit type to indicate
         // what we are intending to discard, to help future type-based refactoring.
@@ -162,7 +167,10 @@ pub fn check_crate(tcx: TyCtxt<'_>) {
         let _: R = tcx.ensure_result().crate_inherent_impls_validity_check(());
         let _: R = tcx.ensure_result().crate_inherent_impls_overlap_check(());
     });
+}
 
+/// Evaluates statics and consts, and type-checks every body.
+pub fn check_crate_bodies(tcx: TyCtxt<'_>) {
     tcx.par_hir_body_owners(|item_def_id| {
         let def_kind = tcx.def_kind(item_def_id);
         // Make sure we evaluate all static and (non-associated) const items, even if unused.

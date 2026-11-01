@@ -22,6 +22,38 @@ use crate::{EncodedMetadata, METADATA_HEADER, encode_metadata};
 // FIXME(eddyb) maybe include the crate name in this?
 pub const METADATA_FILENAME: &str = "lib.rmeta";
 
+pub struct EarlyMetadata {
+    metadata: Option<EncodedMetadata>,
+    path: Option<PathBuf>,
+}
+
+impl EarlyMetadata {
+    pub fn take(&mut self) -> Option<EncodedMetadata> {
+        self.path = None;
+        self.metadata.take()
+    }
+}
+
+impl Drop for EarlyMetadata {
+    fn drop(&mut self) {
+        drop(self.metadata.take());
+        if let Some(path) = &self.path {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+pub fn write_early_metadata(tcx: TyCtxt<'_>) -> EarlyMetadata {
+    let none = EarlyMetadata { metadata: None, path: None };
+    let OutFileName::Real(path) = filename_for_metadata(tcx.sess, tcx.output_filenames(())) else {
+        return none;
+    };
+    if !crate::rmeta::prepare_early_metadata(tcx) {
+        return none;
+    }
+    EarlyMetadata { metadata: Some(encode_and_write_metadata(tcx)), path: Some(path) }
+}
+
 /// We use a temp directory here to avoid races between concurrent rustc processes,
 /// such as builds in the same directory using the same filename for metadata while
 /// building an `.rlib` (stomping over one another), or writing an `.rmeta` into a
