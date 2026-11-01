@@ -736,7 +736,7 @@ pub fn write_dep_info_with_relink_inputs(
             RelinkInputs::VerifyNativeLink => Some("ohm-recheck-dependent-links-v2"),
             RelinkInputs::Rebuild => Some("ohm-untracked-relink-inputs"),
         };
-        let marker_path = |name: &str| -> io::Result<String> {
+        let marker_path = |name: &str| -> io::Result<PathBuf> {
             // A non-directory cannot have children. The Unix null device also avoids
             // introducing Make metacharacters from the depfile or executable name.
             let parent = if cfg!(unix) {
@@ -747,9 +747,9 @@ pub fn write_dep_info_with_relink_inputs(
                     OutFileName::Stdout => Cow::Owned(env::current_exe()?),
                 }
             };
-            Ok(normalize_path(parent.join(name)))
+            Ok(parent.join(name))
         };
-        let rebuild_marker = marker_name.map(marker_path).transpose()?;
+        let rebuild_marker = marker_name.map(marker_path).transpose()?.map(normalize_path);
 
         if sess.proc_macro_observed_foreign_bytes.load(Ordering::Relaxed)
             && CStore::from_tcx(tcx).has_public_api_hash_dependencies()
@@ -801,7 +801,7 @@ pub fn write_dep_info_with_relink_inputs(
                             write!(file, " {path}")?;
                         }
                     } else {
-                        write!(file, " {}", marker_path("ohm-make-paths-v1")?)?;
+                        write!(file, " {}", normalize_path(marker_path("ohm-make-paths-v1")?))?;
                     }
                 }
                 writeln!(file)?;
@@ -840,6 +840,19 @@ pub fn write_dep_info_with_relink_inputs(
                 } else {
                     writeln!(file, "{}: {inputs}\n", target(path))?;
                 }
+            }
+            // GCC-style depfile readers flatten prerequisites and disagree with Make about
+            // quoting tabs or backslashes before '#' and ':'. Make's order-only prerequisite
+            // leaves a current output fresh, while a flat reader always rechecks it.
+            if make_paths
+                && rebuild_marker.is_none()
+                && files.keys().any(|p| p.contains('\t') || p.contains(r"\#") || p.contains(r"\:"))
+                && let Some(path) = out_filenames.first()
+            {
+                let marker =
+                    make_dep_path(&marker_path("ohm-ambiguous-gcc-path")?.to_string_lossy());
+                writeln!(file, "{}: | {marker}\n", target(path))?;
+                writeln!(file, "{marker}:\n")?;
             }
             if let Some(path) = depfile_target {
                 writeln!(file, "{}: {inputs}\n", target(path))?;
