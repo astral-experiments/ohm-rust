@@ -1,0 +1,121 @@
+{
+  "admission": "7cad63dea8a2e49c197cba4fcf1f6a52e05a9320d536b8de98d2e70ad7fd1c47",
+  "archive": "7d42e08ef7dfac579d1645256033ca95667667822163ee470f22772d7f4ef3d0",
+  "archive_bytes": 505897127,
+  "archive_manifest": "f86871e19db7a779c14c6e85faa3f4d57f337a743b89938472e0346883a449c3",
+  "blocked_drivers": [
+    "02dce4f3bff6c0221d3ff88afc6648a2990f21ff4a248327871245277f2e1837",
+    "2ffe2d3402f8b87bcdde560a5920e2aa33a58ccdb4ebf9969ecd5466ccb29dfd",
+    "62e6dcf4febdcf50d4a214ab140a339a82be47461a7c7d56c734510b371bf30c",
+    "a4a0dd6c0a1c423ebdf50aa30ea06697f573fa6121f86b94d475034ebb8248b2",
+    "f10dcce341a10cd09646bdd778952f6ad32631854d3197f917da8ae47d06d642"
+  ],
+  "blocked_profiles": [
+    "2fc5ae8ff82814328637a40961bfbba33d9f69664e15a380a977f7a449e59c37",
+    "70892579bb848a9eb268d1d74538e53b849f3de4c0df6a05a504f071bdb869ea",
+    "ad75321505ddba72dbfede005c3928184ae5f8aca56630e68723abe16e395ce3"
+  ],
+  "bundled_cargo": "9fb29f6abecad05acb6015990615c5fbb435a5907543f0bd33cf88cada4f5826",
+  "configs": {
+    "confirm-1": "6f533c89d82789bf3981e2b255af618bd86f6232197cf33f5f806d7b01a146d7",
+    "confirm-2": "c795961ff0aa378e03279b6fdb604205bed2f4bc1f7f724089739029a92cfb76",
+    "discovery": "40680450fe13a5cef11a258caf07a514e2869855343b6c42061883390a5ee38c"
+  },
+  "core_sources": {
+    "base007.py": "e04f7342044b6732cde2c673d0dac841d477a8f8f71b00a0f3387ef65b1869cb",
+    "d942.py": "cf7a09d6cfd9344439c5bcab88051dde9c0b018d1a2eb4d59a152618a62861f8"
+  },
+  "decision": "2dc3945d6e4f497b75058ad6857a737fa66b5bebe77c31bb4535fbfb4f302c99",
+  "deep_issuance": "7c3675b28f19ada774898840f2be76f5cb4334f13a5944aa9285199bb602eb81",
+  "enrolled": "f1a3e901f0906268b70f5218d0db3999f1d734107e794820c3b00bccb3dff527",
+  "fresh_registration": "f4ef681eb54e79dcb2a62afc740f3ed038eba9e6d6f0317ccb20cd1246244672",
+  "heads": {
+    "candidate": {
+      "compiler_tree": "fe4f91dcc7a435cf97a074e1ec7dc9a1997b4928",
+      "new_commit": "9a5c767f83959802f6d6634deec4aba99b820bc1",
+      "new_header_blob": "ef5b94cc9dc0f93ccfad67bff1af04d514d53c65",
+      "new_version": 40683,
+      "parent": "41a6785c10b9176c2f65255fb376cc2d5d494362",
+      "query_count": 364,
+      "roster_sha256": "9eeb2a8b3fd445ea399c0a1bb8d609e15f66e045b575a37286f960e127e386bd",
+      "tree": "4b6096d8c7ce58a3a3754ba598728d6d322b9b02"
+    },
+    "parent": {
+      "compiler_tree": "a96fdb46fdd20ab832bc31b83311d841aefef028",
+      "new_commit": "b3d745e44826c2d1e4b5ca89222ddbab7af5cc35",
+      "new_header_blob": "ef5b94cc9dc0f93ccfad67bff1af04d514d53c65",
+      "new_version": 40683,
+      "parent": "97e8a2bfd3a488a39e203676a3f1900116ba49bc",
+      "query_count": 364,
+      "roster_sha256": "9eeb2a8b3fd445ea399c0a1bb8d609e15f66e045b575a37286f960e127e386bd",
+      "tree": "0cafe2805c922b6084ba21f82a8f5428a80eeea3"
+    }
+  },
+  "host_dispatch": "bf712103f1754054be6b199af306835c464cc5b172d1ede64be1d096c3245c52",
+  "interruption": {
+    "records.zip": "e24eddcc7404b6d23b5e22103fbac98e0627c4158f64fa7b0103857ca46361a6",
+    "verify.py": "d157f48a9273a554fcdcc4e0e0deb1ebf18b573fcb38413166a3b207281d349d"
+  },
+  "llvm": "43bac9749e539cd5988a4d5452b64582cf07ac9e7c059fde29c7bee76e106c51",
+  "matrix_dispatch": "3a1bf211812111332500c6d3b163fe678271472172f72c20f1140924125bf8bd",
+  "migration": "c1acd341bf6a906a433fdf455d1de73fe1a11e5db77509a5b3c051f80483da98",
+  "native_inputs": "bf12183d43b3b1e073fabfedf624113c32e2ffcdd1f1f5d0bb99562787a83d12",
+  "optimized_drivers": {
+    "candidate": "77946e23b33a3a7a5cadec9737bbed36d09fd2c8fc8ef52d42bc0bc66143bf79",
+    "parent": "0d3fb19078786e868260e3b0c437437211aa03e27e7db527da36a29c91198d5f"
+  },
+  "optimized_profiles": {
+    "candidate": "f9880853960d9d258d92d5467ab322d9359c976e34aba9aa12382dbff2b07a58",
+    "parent": "be54a6441b917696343c0c6afc5cb4ed1dbac7ffcfaa1268d9511c6c20af9679"
+  },
+  "primary_worker": "fb730e0478d1466b83aa17e5e892a67c776a5010fb1cdea3f33f79e69c877867",
+  "prior_host_log": "33352eb27903d7c8e1f87e76b486474cb29e4c83f1f64980200e909c87c264ac",
+  "producers": {
+    "candidate": "3c8a09f4ccb0f572e93b3f41afc3da670302bdb7793298c8b789d01f837db511",
+    "parent": "732ed18db49258ab8eeae6a63be8f9b91fe63b0f2c854627dc9640ad880cb756"
+  },
+  "qualified_subjects": "b1e47da593d5eabce599967667b42bde63db9d493e4607f70c84a8ab941bedee",
+  "recovery": "5d8cb8bb9fddee9fdb1fd19d319870b6fe45372692b443f3bd94173b63cb9ce5",
+  "restore": "587f447fec6690d50abcdd636d900d0fee5d7006e823bcb6f36111451750b2a2",
+  "restored_registration": "af7492609245b643e40749fb9cc3ea499a7e4d03b3789dbf28c6840594dbf060",
+  "signed": {
+    "archive_sha256": "629abab6a87c84bb4d910549ca96a31e437e3dc9de3039fedcbb7b50d198a5e8",
+    "driver_relative": "lib/librustc_driver-b03bf00bec23bb9a.so",
+    "driver_sha256": "a7648053cbad025c1bb0bebb7009ce9e1515bdb02e8c30bef29b52a881e5b8de",
+    "launcher_sha256": "c6ab483d6698f68eebb49d74b27361f3e02ede55452dc0416c3fdec9a45b7f60",
+    "release": {
+      "bundled_tools": {
+        "wild": {
+          "sha256": "25012a78de164686f552b7703b5d0223adab4829c79cd1fb351108221d61c7d8",
+          "version": "0.11.0"
+        }
+      },
+      "coordinator": {
+        "repository": "astral-sh/ohm",
+        "revision": "885faf0af725074adc31080a1c732c60965d8bbe"
+      },
+      "manifest": {
+        "path": "toolchains/1.99.0/18.json",
+        "sha256": "0a87f72c20bce32b898be3752a9f00c2e2e95ef1d10850de4f3dded1d8d624f3"
+      },
+      "schema_version": 1,
+      "sources": {
+        "cargo": {
+          "revision": "7caf39914da1e28a67744ecbc963a5f26361474d"
+        },
+        "clippy": {
+          "revision": "0d76dc1f4fe7ffb86ee5e1a8a9cc4d6bef1d1bf6"
+        },
+        "rust": {
+          "revision": "a4fa11bcd38280639cb94daacc125472657db6c3"
+        },
+        "rustfmt": {
+          "revision": "3c9620c92b01e6c393324729c4861823cc3676e2"
+        }
+      },
+      "target": "x86_64-unknown-linux-gnu",
+      "toolchain": "ohm-1.99.0-18"
+    }
+  },
+  "supervisor": "747356ed8c7f09d85c2978b9c50cffb59cf01a8e6ad5ea12987d9bb09f4f409f"
+}

@@ -1,0 +1,64 @@
+phase,seed,round,order,role,cold_parent_s,settled_parent_s,first_edit_s,settled_edit_s,cold_dirty,parent_noop_dirty,edit_dirty,edit_noop_dirty
+discovery,3040683011,0,setup,stock,47.237950558,0.38126715,,,447,0,,
+discovery,3040683011,0,setup,parent,48.59433461,0.38260196,,,447,0,,
+discovery,3040683011,0,setup,candidate,48.619977832,0.385946329,,,447,0,,
+discovery,3040683011,1,candidate parent stock,candidate,,0.37775772,3.036315074,0.380339206,,0,4,0
+discovery,3040683011,1,candidate parent stock,parent,,0.371503282,3.245374248,0.37954739,,0,4,0
+discovery,3040683011,1,candidate parent stock,stock,,0.376516282,6.403146855,0.387991675,,0,4,0
+discovery,3040683011,2,parent stock candidate,parent,,0.369435306,3.243747608,0.375490001,,0,4,0
+discovery,3040683011,2,parent stock candidate,stock,,0.378920313,6.328569285,0.379030037,,0,4,0
+discovery,3040683011,2,parent stock candidate,candidate,,0.374212113,3.036966602,0.369818535,,0,4,0
+discovery,3040683011,3,parent candidate stock,parent,,0.367870342,3.245890969,0.382922747,,0,4,0
+discovery,3040683011,3,parent candidate stock,candidate,,0.376181591,3.020888504,0.383914498,,0,4,0
+discovery,3040683011,3,parent candidate stock,stock,,0.371323194,6.386142905,0.37568099,,0,4,0
+discovery,3040683011,4,stock parent candidate,stock,,0.368235875,6.334699494,0.3788784,,0,4,0
+discovery,3040683011,4,stock parent candidate,parent,,0.371972992,3.28368869,0.383709928,,0,4,0
+discovery,3040683011,4,stock parent candidate,candidate,,0.367084178,3.023871193,0.392445388,,0,4,0
+discovery,3040683011,5,stock candidate parent,stock,,0.375872306,6.494539029,0.383605427,,0,4,0
+discovery,3040683011,5,stock candidate parent,candidate,,0.373861275,3.09461309,0.379560471,,0,4,0
+discovery,3040683011,5,stock candidate parent,parent,,0.387901576,3.342586236,0.378627354,,0,4,0
+discovery,3040683011,6,candidate stock parent,candidate,,0.377497464,3.046224806,0.396445683,,0,4,0
+discovery,3040683011,6,candidate stock parent,stock,,0.373517202,6.607947668,0.392195483,,0,4,0
+discovery,3040683011,6,candidate stock parent,parent,,0.392573431,3.303807014,0.382297046,,0,4,0
+confirm-1,3040683012,0,setup,stock,47.695987998,0.395554217,,,447,0,,
+confirm-1,3040683012,0,setup,parent,48.177538665,0.387476624,,,447,0,,
+confirm-1,3040683012,0,setup,candidate,49.127935083,0.396213076,,,447,0,,
+confirm-1,3040683012,1,candidate parent stock,candidate,,0.37377504,3.102022982,0.377229071,,0,4,0
+confirm-1,3040683012,1,candidate parent stock,parent,,0.375700411,3.324789067,0.385764865,,0,4,0
+confirm-1,3040683012,1,candidate parent stock,stock,,0.383468256,6.477522116,0.385576,,0,4,0
+confirm-1,3040683012,2,stock candidate parent,stock,,0.371299625,6.513697812,0.384611072,,0,4,0
+confirm-1,3040683012,2,stock candidate parent,candidate,,0.374371128,3.09483474,0.382961232,,0,4,0
+confirm-1,3040683012,2,stock candidate parent,parent,,0.372037152,3.243304268,0.385799893,,0,4,0
+confirm-1,3040683012,3,stock parent candidate,stock,,0.383921092,6.570247849,0.377863443,,0,4,0
+confirm-1,3040683012,3,stock parent candidate,parent,,0.374391278,3.253494005,0.387045184,,0,4,0
+confirm-1,3040683012,3,stock parent candidate,candidate,,0.378184991,3.093109155,0.397969865,,0,4,0
+confirm-1,3040683012,4,parent candidate stock,parent,,0.375114913,3.385940581,0.383649854,,0,4,0
+confirm-1,3040683012,4,parent candidate stock,candidate,,0.378105702,3.134675944,0.39044228,,0,4,0
+confirm-1,3040683012,4,parent candidate stock,stock,,0.376330863,6.574979794,0.398360987,,0,4,0
+confirm-1,3040683012,5,candidate stock parent,candidate,,0.377868917,3.049103771,0.379300687,,0,4,0
+confirm-1,3040683012,5,candidate stock parent,stock,,0.378367036,6.463334611,0.384027229,,0,4,0
+confirm-1,3040683012,5,candidate stock parent,parent,,0.370810152,3.33959864,0.383166997,,0,4,0
+confirm-1,3040683012,6,parent stock candidate,parent,,0.403939157,3.338460394,0.383531555,,0,4,0
+confirm-1,3040683012,6,parent stock candidate,stock,,0.407518016,6.85884382,0.392897853,,0,4,0
+confirm-1,3040683012,6,parent stock candidate,candidate,,0.378712721,3.109240941,0.379438009,,0,4,0
+confirm-2,3040683013,0,setup,stock,47.921374226,0.405400831,,,447,0,,
+confirm-2,3040683013,0,setup,parent,48.341472352,0.382736361,,,447,0,,
+confirm-2,3040683013,0,setup,candidate,48.624629457,0.387456194,,,447,0,,
+confirm-2,3040683013,1,parent candidate stock,parent,,0.40031919,3.428394104,0.380350145,,0,4,0
+confirm-2,3040683013,1,parent candidate stock,candidate,,0.386185395,3.059338712,0.380751301,,0,4,0
+confirm-2,3040683013,1,parent candidate stock,stock,,0.375001712,6.379435637,0.387319664,,0,4,0
+confirm-2,3040683013,2,stock parent candidate,stock,,0.375332506,6.988235189,0.51847504,,0,4,0
+confirm-2,3040683013,2,stock parent candidate,parent,,0.379534689,3.276214188,0.394903402,,0,4,0
+confirm-2,3040683013,2,stock parent candidate,candidate,,0.371301538,3.102025505,0.410079394,,0,4,0
+confirm-2,3040683013,3,candidate stock parent,candidate,,0.661094826,3.194429769,0.375146616,,0,4,0
+confirm-2,3040683013,3,candidate stock parent,stock,,0.372382225,6.507992249,0.381732854,,0,4,0
+confirm-2,3040683013,3,candidate stock parent,parent,,0.376911729,3.231391323,0.386029134,,0,4,0
+confirm-2,3040683013,4,candidate parent stock,candidate,,0.377031151,3.035092934,0.387271617,,0,4,0
+confirm-2,3040683013,4,candidate parent stock,parent,,0.371558805,3.251038171,0.37935915,,0,4,0
+confirm-2,3040683013,4,candidate parent stock,stock,,0.3756196,6.554794199,0.398843718,,0,4,0
+confirm-2,3040683013,5,parent stock candidate,parent,,0.38855721,3.463382448,0.392881905,,0,4,0
+confirm-2,3040683013,5,parent stock candidate,stock,,0.388175852,6.668506268,0.379986544,,0,4,0
+confirm-2,3040683013,5,parent stock candidate,candidate,,0.377468316,3.055279286,0.369701804,,0,4,0
+confirm-2,3040683013,6,stock candidate parent,stock,,0.377669256,6.512931265,0.381068174,,0,4,0
+confirm-2,3040683013,6,stock candidate parent,candidate,,0.383264135,3.042379066,0.374705049,,0,4,0
+confirm-2,3040683013,6,stock candidate parent,parent,,0.368834932,3.322973149,0.39305875,,0,4,0
