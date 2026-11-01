@@ -1588,7 +1588,13 @@ pub(crate) fn relink_inputs(tcx: TyCtxt<'_>, (): ()) -> RelinkInputs {
         saw_asm = true;
         *asm_macro != InlineAsmMacro::Asm
             || options.intersects(InlineAsmOptions::RAW | InlineAsmOptions::ATT_SYNTAX)
-            || !file_free_inline_asm(&tcx.sess.opts.target_triple, template, operands, *options, &mut verify_native_link)
+            || !file_free_inline_asm(
+                &tcx.sess.opts.target_triple,
+                template,
+                operands,
+                *options,
+                &mut verify_native_link,
+            )
     });
     if untracked {
         return RelinkInputs::Rebuild;
@@ -1704,9 +1710,8 @@ fn file_free_inline_asm(
             _ => return false,
         }
     }
-    text.split('\n').all(|line| {
-        file_free_asm_line(arch, line.trim_matches([' ', '\t']), verify_native_link)
-    })
+    text.split('\n')
+        .all(|line| file_free_asm_line(arch, line.trim_matches([' ', '\t']), verify_native_link))
 }
 
 fn aarch64_register_comment(
