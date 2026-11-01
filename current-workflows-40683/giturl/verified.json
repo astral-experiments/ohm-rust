@@ -1,0 +1,100 @@
+{
+  "case": "giturl",
+  "cold_seconds": {
+    "discovery": {
+      "candidate": 46.004460986,
+      "parent": 45.643683722,
+      "stock": 44.518923519
+    }
+  },
+  "command": [
+    "check",
+    "-p",
+    "uv-resolver",
+    "--locked",
+    "--offline",
+    "-j8"
+  ],
+  "direct_discovery": 1.2056717087198396,
+  "dirty_roster": {
+    "candidate": [
+      "uv-build-backend",
+      "uv-cache",
+      "uv-client",
+      "uv-configuration",
+      "uv-distribution",
+      "uv-distribution-types",
+      "uv-extract",
+      "uv-git",
+      "uv-git-types",
+      "uv-install-wheel",
+      "uv-metadata",
+      "uv-pypi-types",
+      "uv-python-interpreter",
+      "uv-requirements-txt",
+      "uv-resolver",
+      "uv-resolver-types",
+      "uv-torch",
+      "uv-types",
+      "uv-workspace"
+    ],
+    "parent": [
+      "uv-build-backend",
+      "uv-cache",
+      "uv-client",
+      "uv-configuration",
+      "uv-distribution",
+      "uv-distribution-types",
+      "uv-extract",
+      "uv-git",
+      "uv-git-types",
+      "uv-install-wheel",
+      "uv-metadata",
+      "uv-pypi-types",
+      "uv-python-interpreter",
+      "uv-requirements-txt",
+      "uv-resolver",
+      "uv-resolver-types",
+      "uv-torch",
+      "uv-types",
+      "uv-workspace"
+    ],
+    "stock": [
+      "uv-build-backend",
+      "uv-cache",
+      "uv-client",
+      "uv-configuration",
+      "uv-distribution",
+      "uv-distribution-types",
+      "uv-extract",
+      "uv-git",
+      "uv-git-types",
+      "uv-install-wheel",
+      "uv-metadata",
+      "uv-pypi-types",
+      "uv-python-interpreter",
+      "uv-requirements-txt",
+      "uv-resolver",
+      "uv-resolver-types",
+      "uv-torch",
+      "uv-types",
+      "uv-workspace"
+    ]
+  },
+  "excluded_triples": 6,
+  "first_edit_median_seconds": {
+    "discovery": {
+      "candidate": 5.961620268,
+      "parent": 6.143999619500001,
+      "stock": 7.198533166500001
+    }
+  },
+  "heldout": {},
+  "heldout_triples": 0,
+  "joint": false,
+  "matched_discovery": 1.029502759892801,
+  "source": [
+    "4954c25a16b246c1b88aef6c3798a76d675c5cd0",
+    "0bbcf757fdf19d43f52c38a5fc2e32a291c262ee"
+  ]
+}
