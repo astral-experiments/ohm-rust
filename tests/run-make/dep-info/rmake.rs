@@ -38,12 +38,12 @@ fn main() {
     rustc().input("lib2.rs").emit("dep-info,link").crate_type("lib").run();
 
     if !is_windows() {
-        let input = "cash$X #tag.txt";
+        let input = "cash$X #tag\t.txt";
         let output = "lib #$X.rmeta";
         rfs::write(input, "tracked");
         rfs::write(
             "make_paths.rs",
-            r##"pub const VALUE: &str = include_str!("cash$X #tag.txt");"##,
+            r##"pub const VALUE: &str = include_str!("cash$X #tag\t.txt");"##,
         );
         rustc()
             .input("make_paths.rs")
@@ -51,6 +51,10 @@ fn main() {
             .emit(format!("dep-info=paths.d,metadata={output}"))
             .run();
         rfs::write("Makefile", "X :=\nlib\\ \\#$$X.rmeta:\n\t@echo rebuild\ninclude paths.d\n");
+        let rules = rfs::read_to_string("paths.d");
+        let marker = "/dev/null/ohm-ambiguous-gcc-path";
+        assert!(rules.lines().any(|line| line.ends_with(&format!(": | {marker}"))), "{rules}");
+        assert!(rules.lines().any(|line| line == format!("{marker}:")), "{rules}");
         let probe =
             |changed: &str| cmd("make").args(&["-s", "-W", changed, output]).run().stdout_utf8();
         assert_eq!(probe(input).trim(), "rebuild");
