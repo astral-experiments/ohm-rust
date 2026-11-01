@@ -870,6 +870,10 @@
 # (`rust` or `target.[target]`)
 #rust.jemalloc = false
 
+# Link rustc and its LLVM library against mimalloc on Linux GNU hosts.
+# Takes precedence over jemalloc for rustc only; other tools still use build.allocator.
+#rust.mimalloc = false
+
 # Run tests in various test suites with the "nll compare mode" in addition to
 # running the tests in normal mode. Largely only used on CI and during local
 # development of NLL

@@ -39,7 +39,9 @@ use crate::core::build_steps::format::InternalRustfmt;
 use crate::core::build_steps::vendor::VENDOR_DIR;
 use crate::core::builder::{self, Kind};
 use crate::core::config::flags::{self, Subcommand};
-use crate::core::config::{BootstrapOverrideLld, Config, DryRun, LlvmLibunwind, TargetSelection};
+use crate::core::config::{
+    Allocator, BootstrapOverrideLld, Config, DryRun, LlvmLibunwind, TargetSelection,
+};
 use crate::utils::build_stamp::BuildStamp;
 use crate::utils::channel::GitInfo;
 use crate::utils::exec::{BootstrapCommand, ExecutionContext, command};
@@ -861,8 +863,17 @@ impl Build {
             crates.is_empty() || possible_features_by_crates.contains(feature)
         };
         let mut features = vec![];
-
-        if let Some(allocator_feature_name) = self.config.allocator(target).feature_name()
+        if self.config.mimalloc && check("mimalloc") {
+            assert!(
+                target.contains("linux") && target.contains("gnu"),
+                "rust.mimalloc currently supports Linux GNU hosts only"
+            );
+            features.push("mimalloc");
+            // rustdoc and Clippy load jemalloc from the compiler's sysroot.
+            if self.config.allocator(target) == Allocator::Jemalloc && check("jemalloc-sys") {
+                features.push("jemalloc-sys");
+            }
+        } else if let Some(allocator_feature_name) = self.config.allocator(target).feature_name()
             && check(allocator_feature_name)
         {
             features.push(allocator_feature_name);
