@@ -137,6 +137,7 @@ struct LazyTable<I, T> {
     position: NonZero<usize>,
     /// The encoded size of the elements of a table is selected at runtime to drop
     /// trailing zeroes. This is the number of bytes used for each table element.
+    /// Bit 7 selects a sparse bitmap index followed by the nonzero elements.
     width: usize,
     /// How many elements are in the table.
     len: usize,
@@ -148,8 +149,13 @@ impl<I, T> LazyTable<I, T> {
         position: NonZero<usize>,
         width: usize,
         len: usize,
-    ) -> LazyTable<I, T> {
-        LazyTable { position, width, len, _marker: PhantomData }
+    ) -> LazyTable<I, T>
+    where
+        T: table::FixedSizeEncoding,
+    {
+        let table = LazyTable { position, width, len, _marker: PhantomData };
+        assert!(table.checked_layout().is_some(), "invalid metadata table layout");
+        table
     }
 }
 
