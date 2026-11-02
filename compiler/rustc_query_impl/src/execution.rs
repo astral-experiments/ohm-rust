@@ -13,9 +13,9 @@ use rustc_middle::query::{
     ActiveKeyStatus, Cycle, QueryCache, QueryJob, QueryJobId, QueryLatch, QueryMode, QueryState,
     QueryVTable,
 };
-use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::fast_reject::SimplifiedType;
 use rustc_middle::ty::tls::{self, ImplicitCtxt};
+use rustc_middle::ty::{FloatTy, IntTy, Mutability, TyCtxt, UintTy};
 use rustc_middle::verify_ich::incremental_verify_ich;
 use rustc_span::def_id::LOCAL_CRATE;
 use rustc_span::{DUMMY_SP, Span};
@@ -650,21 +650,67 @@ pub(crate) fn force_query_dep_node<'tcx, C: QueryCache>(
     true
 }
 
-pub(crate) fn force_trait_impl_adt_bucket(
+const FINITE_IMPL_RECEIVERS: &[SimplifiedType] = &[
+    SimplifiedType::Bool,
+    SimplifiedType::Char,
+    SimplifiedType::Str,
+    SimplifiedType::Array,
+    SimplifiedType::Slice,
+    SimplifiedType::Never,
+    SimplifiedType::Int(IntTy::Isize),
+    SimplifiedType::Int(IntTy::I8),
+    SimplifiedType::Int(IntTy::I16),
+    SimplifiedType::Int(IntTy::I32),
+    SimplifiedType::Int(IntTy::I64),
+    SimplifiedType::Int(IntTy::I128),
+    SimplifiedType::Uint(UintTy::Usize),
+    SimplifiedType::Uint(UintTy::U8),
+    SimplifiedType::Uint(UintTy::U16),
+    SimplifiedType::Uint(UintTy::U32),
+    SimplifiedType::Uint(UintTy::U64),
+    SimplifiedType::Uint(UintTy::U128),
+    SimplifiedType::Float(FloatTy::F16),
+    SimplifiedType::Float(FloatTy::F32),
+    SimplifiedType::Float(FloatTy::F64),
+    SimplifiedType::Float(FloatTy::F128),
+    SimplifiedType::Ref(Mutability::Not),
+    SimplifiedType::Ref(Mutability::Mut),
+    SimplifiedType::Ptr(Mutability::Not),
+    SimplifiedType::Ptr(Mutability::Mut),
+    SimplifiedType::Tuple(0),
+    SimplifiedType::Tuple(1),
+    SimplifiedType::Tuple(2),
+    SimplifiedType::Tuple(3),
+];
+
+pub(crate) fn force_trait_impl_bucket(
     tcx: TyCtxt<'_>,
     dep_node: DepNode,
     prev_index: SerializedDepNodeIndex,
 ) -> bool {
     let Some(key) = tcx.dep_graph.with_ignore(|| {
         let (trait_node, adt_node) =
-            tcx.dep_graph.previous_trait_impl_adt_inputs(dep_node, prev_index)?;
+            tcx.dep_graph.previous_trait_impl_inputs(dep_node, prev_index)?;
         let trait_id = trait_node.extract_def_id(tcx)?;
-        let adt = adt_node.extract_def_id(tcx)?;
-        if tcx.def_kind(trait_id) != DefKind::Trait || !tcx.def_kind(adt).is_adt() {
+        if tcx.def_kind(trait_id) != DefKind::Trait {
             return None;
         }
-        let key = (trait_id, SimplifiedType::Adt(adt));
-        (DepNode::construct(tcx, DepKind::non_blanket_trait_impls, &key) == dep_node).then_some(key)
+        let matching_key = |receiver: SimplifiedType| {
+            let key = (trait_id, receiver);
+            (DepNode::construct(tcx, DepKind::non_blanket_trait_impls, &key) == dep_node)
+                .then_some(key)
+        };
+        if let Some(adt_node) = adt_node {
+            let adt = adt_node.extract_def_id(tcx)?;
+            if !tcx.def_kind(adt).is_adt() {
+                return None;
+            }
+            matching_key(SimplifiedType::Adt(adt))
+        } else {
+            let mut matches = FINITE_IMPL_RECEIVERS.iter().copied().filter_map(matching_key);
+            let key = matches.next()?;
+            matches.next().is_none().then_some(key)
+        }
     }) else {
         return false;
     };
