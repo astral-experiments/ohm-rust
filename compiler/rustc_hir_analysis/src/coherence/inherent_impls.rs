@@ -40,7 +40,7 @@ pub(crate) fn crate_inherent_impls_validity_check(
     tcx.crate_inherent_impls(()).1
 }
 
-pub(crate) fn crate_incoherent_impls(tcx: TyCtxt<'_>, simp: SimplifiedType) -> &[DefId] {
+pub(crate) fn local_incoherent_impls(tcx: TyCtxt<'_>, simp: SimplifiedType) -> &[DefId] {
     let (crate_map, _) = tcx.crate_inherent_impls(());
     tcx.arena.alloc_from_iter(
         crate_map.incoherent_impls.get(&simp).unwrap_or(&Vec::new()).iter().map(|d| d.to_def_id()),

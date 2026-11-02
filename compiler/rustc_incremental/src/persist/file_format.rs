@@ -27,7 +27,8 @@ const FILE_MAGIC: &[u8] = b"RSIC";
 
 /// Change this if the header format changes.
 // The trait impl receiver marker adds a query to the on-disk dep graph.
-const HEADER_FORMAT_VERSION: u16 = 26655;
+// The foreign incoherent-impl query now has a crate key and a different value.
+const HEADER_FORMAT_VERSION: u16 = 43317;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);

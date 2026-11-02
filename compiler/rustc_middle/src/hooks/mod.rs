@@ -10,6 +10,7 @@ use rustc_span::{ExpnHash, ExpnId};
 
 use crate::mir;
 use crate::query::on_disk_cache::CacheEncoder;
+use crate::ty::fast_reject::SimplifiedType;
 use crate::ty::{Ty, TyCtxt};
 
 macro_rules! declare_hooks {
@@ -72,6 +73,8 @@ declare_hooks! {
 
     /// Records a dependency on the directory before checking for an external trait's impls.
     hook has_implementations_of_trait(cnum: CrateNum, trait_id: DefId, trait_hash: DefPathHash) -> bool;
+
+    hook append_external_incoherent_impls(cnum: CrateNum, ty: SimplifiedType, impls: &mut Vec<DefId>) -> ();
 
     hook expn_hash_to_expn_id(
         cnum: CrateNum,
