@@ -39,8 +39,18 @@ enum BadNode {
 fn invalidate_node(incremental: &str, graph: &str, damage: BadNode) {
     for path in caches(incremental, graph) {
         let mut bytes = rfs::read(&path);
-        assert_eq!(&bytes[..4], b"RSIC");
-        let first = 7 + usize::from(bytes[6]) + size_of::<u64>();
+        let payload = 7 + usize::from(bytes[6]) + size_of::<u64>();
+        let first = if &bytes[..4] == b"RSIG" {
+            // The indexed check graph starts with its marker and a 16-byte block header.
+            // Node indices are implicit in this format. Only the Null test changes a check graph.
+            assert!(matches!(damage, BadNode::Null));
+            assert_eq!(&bytes[payload..payload + 8], b"\0\0OHMF11");
+            payload + 8 + 16
+        } else {
+            assert_eq!(&bytes[..4], b"RSIC");
+            payload
+        };
+        assert_ne!(&bytes[first..first + 2], &[0, 0], "fixture must corrupt a live node");
         let index = &mut bytes[first + 2..first + 6];
         match damage {
             BadNode::Null => bytes[first..first + 2].fill(0),
@@ -142,6 +152,23 @@ fn invalid_nodes() {
 
 fn main() {
     invalid_nodes();
+
+    // Damage the reserved bytes in the fixed check marker, without changing any row.
+    let dir = "bad-check-prefix";
+    compile(dir, "metadata", "not-loaded", true);
+    for path in
+        caches(dir, "dep-graph.bin").into_iter().chain(caches(dir, "ohm-check-dep-graph.bin"))
+    {
+        let mut bytes = rfs::read(&path);
+        assert_eq!(&bytes[..4], b"RSIG");
+        let payload = 7 + usize::from(bytes[6]) + size_of::<u64>();
+        assert_eq!(&bytes[payload..payload + 8], b"\0\0OHMF11");
+        bytes[payload] = 1;
+        rfs::remove_file(&path);
+        rfs::write(path, bytes);
+    }
+    compile(dir, "metadata", "not-loaded", true);
+    compile(dir, "metadata", "loaded", true);
 
     for damage in ["missing", "header", "short-header", "trailer"] {
         compile(damage, "link", "not-loaded", false);
