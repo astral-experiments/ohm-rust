@@ -46,11 +46,14 @@ use std::iter;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, OnceLock};
 
+mod fixed;
 mod index;
 #[cfg(test)]
 mod tests;
 pub(super) use index::IndexedDepGraph;
-use index::{SeekIndexBuilder, SeekIndexMetadata};
+#[cfg(test)]
+use index::SeekIndexBuilder;
+use index::SeekIndexMetadata;
 use rustc_data_structures::fingerprint::{Fingerprint, PackedFingerprint};
 use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::hash_table::{Entry, HashTable};
@@ -119,6 +122,8 @@ pub struct SerializedDepGraph {
     /// A flattened list of all edge targets in the graph, stored in the same
     /// varint encoding that we use on disk. Edge sources are implicit in edge_list_indices.
     edge_list_data: Vec<u8>,
+    /// Only fixed-index blocks guarantee that unused node indices are contiguous worker tails.
+    fixed_blocks: bool,
     /// The lazily-built inverse of `nodes`: maps a [`DepNode`] back to its
     /// [`SerializedDepNodeIndex`] via the node's key fingerprint. See
     /// [`LazyNodeIndex`].
@@ -142,6 +147,7 @@ impl std::fmt::Debug for SerializedDepGraph {
             .field("value_fingerprints", &self.value_fingerprints)
             .field("edge_list_indices", &self.edge_list_indices)
             .field("edge_list_data", &self.edge_list_data)
+            .field("fixed_blocks", &self.fixed_blocks)
             .field("reverse_index", &self.reverse_index)
             .field("live_node_count", &self.live_node_count)
             .field("session_count", &self.session_count)
@@ -246,6 +252,21 @@ impl SerializedDepGraph {
         })
     }
 
+    /// Fixed-width blocks only leave unused slots at their end. A malformed edge to one
+    /// of those slots must make its dependent red, even when the edge is discovered lazily.
+    pub(super) fn fixed_unused_slots(&self, mut mark: impl FnMut(std::ops::Range<usize>)) {
+        if !self.fixed_blocks {
+            return;
+        }
+        for (index, block) in self.nodes.raw.chunks(fixed::BLOCK_ROWS as usize).enumerate() {
+            if block.last().is_some_and(|node| node.kind == DepKind::Null) {
+                let first = index * fixed::BLOCK_ROWS as usize;
+                let live = block.partition_point(|node| node.kind != DepKind::Null);
+                mark(first + live..first + block.len());
+            }
+        }
+    }
+
     #[inline]
     pub fn index_to_node(&self, dep_node_index: SerializedDepNodeIndex) -> &DepNode {
         &self.nodes[dep_node_index]
@@ -324,6 +345,16 @@ fn mask(bits: usize) -> usize {
 }
 
 impl SerializedDepGraph {
+    pub fn writes_indexed_check(sess: &Session) -> bool {
+        sess.opts.unstable_opts.ohm_shared_stages && !sess.opts.output_types.should_codegen()
+    }
+
+    /// The separate header version lets older compilers discard fixed-width check graphs.
+    /// The payload marker also distinguishes the two encodings for in-memory graph readers.
+    pub fn has_fixed_check_marker(data: &[u8], graph_start: usize) -> bool {
+        data.get(graph_start..).is_some_and(|bytes| bytes.starts_with(fixed::MAGIC))
+    }
+
     /// Returns `None` if a saved node has a null kind or lacks a unique, in-bounds destination.
     #[instrument(level = "debug", skip(d, profiler))]
     pub fn try_decode(d: &mut MemDecoder<'_>, profiler: &SelfProfilerRef) -> Option<Arc<Self>> {
@@ -333,7 +364,7 @@ impl SerializedDepGraph {
         // `node_max` is the number of indices including empty nodes while `node_count`
         // is the number of actually encoded nodes.
         let (node_max, node_count, edge_count) =
-            d.with_position(d.len() - 3 * IntEncodedWithFixedSize::ENCODED_SIZE, |d| {
+            d.with_position(d.len().checked_sub(3 * IntEncodedWithFixedSize::ENCODED_SIZE)?, |d| {
                 debug!("position: {:?}", d.position());
                 let node_max = IntEncodedWithFixedSize::decode(d).0 as usize;
                 let node_count = IntEncodedWithFixedSize::decode(d).0 as usize;
@@ -344,10 +375,15 @@ impl SerializedDepGraph {
 
         debug!(?node_count, ?edge_count);
 
-        let graph_end = SeekIndexMetadata::decode(d)
-            .map_or(d.len() - 3 * IntEncodedWithFixedSize::ENCODED_SIZE, |index| index.start);
-        let graph_bytes = graph_end - d.position();
-
+        let graph_start = d.position();
+        let mut all = d.split_at(0);
+        let data = all.read_raw_bytes(all.len());
+        let fixed = if Self::has_fixed_check_marker(data, graph_start) {
+            Some(fixed::Directory::new(data, graph_start)?)
+        } else {
+            None
+        };
+        let live_rows = if let Some(d) = fixed { d.live_rows()? } else { Vec::new() };
         let mut nodes = IndexVec::from_elem_n(
             DepNode {
                 kind: DepKind::Null,
@@ -356,58 +392,70 @@ impl SerializedDepGraph {
             node_max,
         );
         let mut value_fingerprints = IndexVec::from_elem_n(Fingerprint::ZERO, node_max);
-        let mut edge_list_indices =
-            IndexVec::from_elem_n(EdgeHeader { repr: 0, num_edges: 0 }, node_max);
+        let (edge_list_indices, edge_list_data) = if let Some(directory) = fixed {
+            let edges = directory.read(&mut nodes.raw, &mut value_fingerprints.raw, &live_rows)?;
+            d.read_raw_bytes(directory.stats - graph_start);
+            (IndexVec::from_raw(edges.headers), edges.targets)
+        } else {
+            let graph_end = SeekIndexMetadata::decode(d)
+                .map_or(d.len() - 3 * IntEncodedWithFixedSize::ENCODED_SIZE, |index| index.start);
+            let graph_bytes = graph_end - d.position();
 
-        // This estimation assumes that all of the encoded bytes are for the edge lists or for the
-        // fixed-size node headers. But that's not necessarily true; if any edge list has a length
-        // that spills out of the size we can bit-pack into SerializedNodeHeader then some of the
-        // total serialized size is also used by leb128-encoded edge list lengths. Neglecting that
-        // contribution to graph_bytes means our estimation of the bytes needed for edge_list_data
-        // slightly overshoots. But it cannot overshoot by much; consider that the worse case is
-        // for a node with length 64, which means the spilled 1-byte leb128 length is 1 byte of at
-        // least (34 byte header + 1 byte len + 64 bytes edge data), which is ~1%. A 2-byte leb128
-        // length is about the same fractional overhead and it amortizes for yet greater lengths.
-        let mut edge_list_data =
-            Vec::with_capacity(graph_bytes - node_count * size_of::<SerializedNodeHeader>());
+            let mut edge_list_indices =
+                IndexVec::from_elem_n(EdgeHeader { repr: 0, num_edges: 0 }, node_max);
 
-        for _ in 0..node_count {
-            // Decode the header for this edge; the header packs together as many of the fixed-size
-            // fields as possible to limit the number of times we update decoder state.
-            let node_header = SerializedNodeHeader { bytes: d.read_array() };
+            // This estimation assumes that all of the encoded bytes are for the edge lists or for the
+            // fixed-size node headers. But that's not necessarily true; if any edge list has a length
+            // that spills out of the size we can bit-pack into SerializedNodeHeader then some of the
+            // total serialized size is also used by leb128-encoded edge list lengths. Neglecting that
+            // contribution to graph_bytes means our estimation of the bytes needed for edge_list_data
+            // slightly overshoots. But it cannot overshoot by much; consider that the worse case is
+            // for a node with length 64, which means the spilled 1-byte leb128 length is 1 byte of at
+            // least (34 byte header + 1 byte len + 64 bytes edge data), which is ~1%. A 2-byte leb128
+            // length is about the same fractional overhead and it amortizes for yet greater lengths.
+            let mut edge_list_data =
+                Vec::with_capacity(graph_bytes - node_count * size_of::<SerializedNodeHeader>());
 
-            let index = node_header.index();
+            for _ in 0..node_count {
+                // Decode the header for this edge; the header packs together as many of the fixed-size
+                // fields as possible to limit the number of times we update decoder state.
+                let node_header = SerializedNodeHeader { bytes: d.read_array() };
 
-            let node = nodes.get_mut(index)?;
-            let decoded = node_header.node();
-            if decoded.kind == DepKind::Null || node.kind != DepKind::Null {
-                return None;
+                let index = node_header.index();
+
+                let node = nodes.get_mut(index)?;
+                let decoded = node_header.node();
+                if decoded.kind == DepKind::Null || node.kind != DepKind::Null {
+                    return None;
+                }
+                *node = decoded;
+
+                value_fingerprints[index] = node_header.value_fingerprint();
+
+                // If the length of this node's edge list is small, the length is stored in the header.
+                // If it is not, we fall back to another decoder call.
+                let num_edges = node_header.len().unwrap_or_else(|| d.read_u32());
+
+                // The edges index list uses the same varint strategy as rmeta tables; we select the
+                // number of byte elements per-array not per-element. This lets us read the whole edge
+                // list for a node with one decoder call and also use the on-disk format in memory.
+                let edges_len_bytes = node_header.bytes_per_index() * (num_edges as usize);
+                // The in-memory structure for the edges list stores the byte width of the edges on
+                // this node with the offset into the global edge data array.
+                let edges_header = node_header.edges_header(&edge_list_data, num_edges);
+
+                edge_list_data.extend(d.read_raw_bytes(edges_len_bytes));
+
+                edge_list_indices[index] = edges_header;
             }
-            *node = decoded;
 
-            value_fingerprints[index] = node_header.value_fingerprint();
+            // When we access the edge list data, we do a fixed-size read from the edge list data then
+            // mask off the bytes that aren't for that edge index, so the last read may dangle off the
+            // end of the array. This padding ensure it doesn't.
+            edge_list_data.extend(&[0u8; DEP_NODE_PAD]);
 
-            // If the length of this node's edge list is small, the length is stored in the header.
-            // If it is not, we fall back to another decoder call.
-            let num_edges = node_header.len().unwrap_or_else(|| d.read_u32());
-
-            // The edges index list uses the same varint strategy as rmeta tables; we select the
-            // number of byte elements per-array not per-element. This lets us read the whole edge
-            // list for a node with one decoder call and also use the on-disk format in memory.
-            let edges_len_bytes = node_header.bytes_per_index() * (num_edges as usize);
-            // The in-memory structure for the edges list stores the byte width of the edges on
-            // this node with the offset into the global edge data array.
-            let edges_header = node_header.edges_header(&edge_list_data, num_edges);
-
-            edge_list_data.extend(d.read_raw_bytes(edges_len_bytes));
-
-            edge_list_indices[index] = edges_header;
-        }
-
-        // When we access the edge list data, we do a fixed-size read from the edge list data then
-        // mask off the bytes that aren't for that edge index, so the last read may dangle off the
-        // end of the array. This padding ensure it doesn't.
-        edge_list_data.extend(&[0u8; DEP_NODE_PAD]);
+            (edge_list_indices, edge_list_data)
+        };
 
         // Read the number of nodes of each dep kind, and perform
         // counting sort for `LazyNodeIndex`.
@@ -416,11 +464,16 @@ impl SerializedDepGraph {
         for _ in 0..(DepKind::NUM_VARIANTS) {
             let len = d.read_u32();
             kinds.push(LazyKindIndex { start: offset, len, map: OnceLock::new() });
-            offset += len;
+            offset = offset.checked_add(len)?;
         }
-        debug_assert_eq!(offset as usize, node_count);
+        if offset as usize != node_count {
+            return None;
+        }
 
         let session_count = d.read_u64();
+        if fixed.is_some_and(|index| d.position() != index.start) {
+            return None;
+        }
 
         // Counting sort: place each node index into its kind's range. `fill[k]`
         // points at the next free slot in kind `k`'s range, so a kind's nodes end
@@ -435,11 +488,14 @@ impl SerializedDepGraph {
                 continue;
             }
             let k = node.kind.as_usize();
-            nodes_by_kind[fill[k] as usize] = Some(idx);
+            *nodes_by_kind.get_mut(fill[k] as usize)? = Some(idx);
             fill[k] += 1;
         }
-        // Each kind's range was filled exactly to its end.
-        debug_assert!(kinds.iter().zip(&fill).all(|(k, &f)| f == k.start + k.len));
+        // Check every declared range before exposing the reverse index. Checking the final
+        // cursors once per kind also detects writes that temporarily overlapped another range.
+        if !kinds.iter().zip(&fill).all(|(k, &f)| f == k.start + k.len) {
+            return None;
+        }
         let reverse_index = LazyNodeIndex { nodes_by_kind, kinds };
 
         Some(Arc::new(Self {
@@ -447,6 +503,7 @@ impl SerializedDepGraph {
             value_fingerprints,
             edge_list_indices,
             edge_list_data,
+            fixed_blocks: fixed.is_some(),
             reverse_index,
             live_node_count: node_count,
             session_count,
@@ -638,8 +695,7 @@ struct LocalEncoderState {
     encoder: MemEncoder,
     node_count: usize,
     edge_count: usize,
-    seek_offsets: Vec<(DepNodeIndex, usize)>,
-    seek_roots: Vec<(DepNode, DepNodeIndex)>,
+    fixed: fixed::BlockWriter,
 
     /// Stores the number of times we've encoded each dep kind.
     kind_stats: Vec<u32>,
@@ -658,32 +714,34 @@ struct EncoderState {
     next_node_index: AtomicU64,
     previous: Arc<SerializedDepGraph>,
     file: Lock<Option<FileEncoder<'static>>>,
-    seek_index: Option<Lock<SeekIndexBuilder>>,
+    seek_index: Option<Lock<fixed::DirectoryWriter>>,
     local: WorkerLocal<RefCell<LocalEncoderState>>,
     stats: Option<Lock<FxHashMap<DepKind, Stat>>>,
 }
 
 impl EncoderState {
     fn new(
-        encoder: FileEncoder<'static>,
+        mut encoder: FileEncoder<'static>,
         record_stats: bool,
         previous: Arc<SerializedDepGraph>,
         index_check: bool,
     ) -> Self {
+        if index_check {
+            encoder.emit_raw_bytes(fixed::MAGIC);
+        }
         Self {
             previous,
             next_node_index: AtomicU64::new(0),
             stats: record_stats.then(|| Lock::new(FxHashMap::default())),
             file: Lock::new(Some(encoder)),
-            seek_index: index_check.then(|| Lock::new(SeekIndexBuilder::default())),
+            seek_index: index_check.then(|| Lock::new(fixed::DirectoryWriter::default())),
             local: WorkerLocal::new(|_| {
                 RefCell::new(LocalEncoderState {
                     next_node_index: 0,
                     remaining_node_index: 0,
                     edge_count: 0,
                     node_count: 0,
-                    seek_offsets: Vec::new(),
-                    seek_roots: Vec::new(),
+                    fixed: fixed::BlockWriter::default(),
                     encoder: MemEncoder::new(),
                     kind_stats: iter::repeat_n(0, DepKind::NUM_VARIANTS).collect(),
                 })
@@ -694,7 +752,7 @@ impl EncoderState {
     #[inline]
     fn next_index(&self, local: &mut LocalEncoderState) -> DepNodeIndex {
         if local.remaining_node_index == 0 {
-            const COUNT: u32 = 256;
+            const COUNT: u32 = fixed::BLOCK_ROWS;
 
             // We assume that there won't be enough active threads to overflow `u64` from `u32::MAX` here.
             // This can exceed u32::MAX by at most `N` * `COUNT` where `N` is the thread pool count since
@@ -762,12 +820,13 @@ impl EncoderState {
     fn flush_mem_encoder(&self, local: &mut LocalEncoderState) {
         let mut file = self.file.lock();
         let encoder = file.as_mut().unwrap();
-        let start = encoder.position();
-        encoder.emit_raw_bytes(&local.encoder.data);
         if let Some(index) = &self.seek_index {
-            index.lock().record_chunk(start, &mut local.seek_offsets, &mut local.seek_roots);
+            let position = encoder.position();
+            local.fixed.flush(encoder, position, &mut index.lock());
+        } else {
+            encoder.emit_raw_bytes(&local.encoder.data);
+            local.encoder.data.clear();
         }
-        local.encoder.data.clear();
     }
 
     /// Encodes a node to the current graph.
@@ -778,14 +837,13 @@ impl EncoderState {
         retained_graph: &Option<Lock<RetainedDepGraph>>,
         local: &mut LocalEncoderState,
     ) {
-        if self.seek_index.is_some() {
-            local.seek_offsets.push((index, local.encoder.data.len()));
-            if matches!(node.node.kind, DepKind::typeck_root | DepKind::mir_borrowck) {
-                local.seek_roots.push((node.node, index));
-            }
-        }
-        node.encode(&mut local.encoder, index);
-        if local.encoder.data.len() > 64 * 1024 {
+        let full = if self.seek_index.is_some() {
+            local.fixed.push(index, node)
+        } else {
+            node.encode(&mut local.encoder, index);
+            local.encoder.data.len() > 64 * 1024
+        };
+        if full {
             self.flush_mem_encoder(&mut *local);
         }
         self.record(&node.node, index, node.edges.len(), node.edges, retained_graph, &mut *local);
@@ -848,6 +906,7 @@ impl EncoderState {
             }
         }
 
+        let stats_start = encoder.position();
         // Encode the number of each dep kind encountered
         for count in kind_stats.iter() {
             count.encode(&mut encoder);
@@ -857,7 +916,7 @@ impl EncoderState {
 
         if let Some(index) = &self.seek_index {
             let start = encoder.position();
-            index.lock().encode(&mut encoder, start, node_max);
+            index.lock().encode(&mut encoder, stats_start, start, node_max);
         }
 
         debug!(?node_max, ?node_count, ?edge_count);
@@ -957,8 +1016,7 @@ impl GraphEncoder {
             .unstable_opts
             .query_dep_graph
             .then(|| Lock::new(RetainedDepGraph::new(prev_index_space_len)));
-        let index_check =
-            sess.opts.unstable_opts.ohm_shared_stages && !sess.opts.output_types.should_codegen();
+        let index_check = SerializedDepGraph::writes_indexed_check(sess);
         let status = EncoderState::new(
             encoder,
             sess.opts.unstable_opts.incremental_info,
