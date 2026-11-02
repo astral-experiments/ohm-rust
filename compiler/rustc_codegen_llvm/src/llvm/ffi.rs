@@ -1632,7 +1632,10 @@ unsafe extern "C" {
     pub(crate) fn LLVMWriteBitcodeToFile(M: &Module, Path: *const c_char) -> c_int;
 
     /// Creates a legacy pass manager -- only used for final codegen.
-    pub(crate) fn LLVMCreatePassManager<'a>() -> &'a mut PassManager<'a>;
+    pub(crate) fn LLVMRustCreateCoalescingPassManager<'a>(
+        target: &'a TargetMachine,
+        allow_ohm_coalescer: bool,
+    ) -> &'a mut PassManager<'a>;
 
     pub(crate) fn LLVMAddAnalysisPasses<'a>(T: &'a TargetMachine, PM: &PassManager<'a>);
 

@@ -1424,6 +1424,11 @@ fn rustc_llvm_env(builder: &Builder<'_>, cargo: &mut Cargo, target: TargetSelect
         cargo.env("LLVM_ENZYME", "1");
     }
     let llvm_output = builder.ensure(llvm::Llvm { target });
+    if &*target.triple == "x86_64-unknown-linux-gnu"
+        && let Some(sources) = builder.config.ohm_coalescer_sources(llvm_output.root_dir())
+    {
+        cargo.env("LLVM_RUSTC_OHM_COALESCER_SOURCE", sources);
+    }
     if builder.config.llvm_offload {
         builder.ensure(llvm::OmpOffload { target });
         cargo.env("LLVM_OFFLOAD", "1");

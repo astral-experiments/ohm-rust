@@ -1,10 +1,10 @@
 use std::borrow::Cow;
-use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::str::SplitWhitespace;
+use std::{env, fs, io};
 
 use shlex::Shlex;
 
@@ -70,6 +70,27 @@ fn restore_library_path() {
 fn tracked_env_var_os<K: AsRef<OsStr> + Display>(key: K) -> Option<OsString> {
     println!("cargo:rerun-if-env-changed={key}");
     env::var_os(key)
+}
+
+/// Apply the coalescer patch to bootstrap's verified sources in this build's private output.
+fn prepare_ohm_coalescer(cfg: &mut cc::Build, sources: &Path) -> io::Result<()> {
+    let out = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("ohm-register-coalescer");
+    fs::create_dir_all(&out)?;
+    for name in ["RegisterCoalescer.cpp", "RegisterCoalescer.h"] {
+        println!("cargo:rerun-if-changed={}", sources.join(name).display());
+    }
+    let patch = fs::File::open("llvm-wrapper/ohm-register-coalescer/RegisterCoalescer.patch")?;
+    let status = Command::new("patch")
+        .args(["--batch", "--fuzz=0", "--quiet", "--output=-", "--reject-file=-"])
+        .arg(sources.join("RegisterCoalescer.cpp"))
+        .stdin(patch)
+        .stdout(fs::File::create(out.join("RegisterCoalescer.cpp"))?)
+        .status()?;
+    if !status.success() {
+        return Err(io::Error::other(format!("could not apply the LLVM patch ({status})")));
+    }
+    cfg.include(out).include(sources).define("LLVM_RUSTC_OHM_COALESCER", None);
+    Ok(())
 }
 
 fn rerun_if_changed_anything_in_dir(dir: &Path) {
@@ -322,7 +343,13 @@ fn main() {
     }
 
     rerun_if_changed_anything_in_dir(Path::new("llvm-wrapper"));
+    if let Some(sources) = tracked_env_var_os("LLVM_RUSTC_OHM_COALESCER_SOURCE")
+        && let Err(err) = prepare_ohm_coalescer(&mut cfg, Path::new(&sources))
+    {
+        println!("cargo:warning=using LLVM's original register coalescer: {err}");
+    }
     cfg.file("llvm-wrapper/PassWrapper.cpp")
+        .file("llvm-wrapper/OhmRegisterCoalescer.cpp")
         .file("llvm-wrapper/RustWrapper.cpp")
         .file("llvm-wrapper/CoverageMappingWrapper.cpp")
         .file("llvm-wrapper/SymbolWrapper.cpp")
