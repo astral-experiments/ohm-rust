@@ -1374,30 +1374,30 @@ pub fn parse_remap_path_scope(
     matches: &getopts::Matches,
     unstable_opts: &UnstableOptions,
 ) -> RemapPathScopeComponents {
-    if let Some(v) = matches.opt_str("remap-path-scope") {
-        let mut slot = RemapPathScopeComponents::empty();
-        for s in v.split(',') {
-            slot |= match s {
-                "macro" => RemapPathScopeComponents::MACRO,
-                "diagnostics" => RemapPathScopeComponents::DIAGNOSTICS,
-                "documentation" => {
-                    if !unstable_opts.unstable_options {
-                        early_dcx.early_fatal("remapping `documentation` path scope requested but `-Zunstable-options` not specified");
-                    }
-
-                    RemapPathScopeComponents::DOCUMENTATION
-                },
-                "debuginfo" => RemapPathScopeComponents::DEBUGINFO,
-                "coverage" => RemapPathScopeComponents::COVERAGE,
-                "object" => RemapPathScopeComponents::OBJECT,
-                "all" => RemapPathScopeComponents::all(),
-                _ => early_dcx.early_fatal("argument for `--remap-path-scope` must be a comma separated list of scopes: `macro`, `diagnostics`, `documentation`, `debuginfo`, `coverage`, `object`, `all`"),
-            }
-        }
-        slot
-    } else {
-        RemapPathScopeComponents::all()
+    let values = matches.opt_strs("remap-path-scope");
+    if values.is_empty() {
+        return RemapPathScopeComponents::all();
     }
+    let mut scopes = RemapPathScopeComponents::empty();
+    for scope in values.iter().flat_map(|value| value.split(',')) {
+        scopes |= match scope {
+            "macro" => RemapPathScopeComponents::MACRO,
+            "diagnostics" => RemapPathScopeComponents::DIAGNOSTICS,
+            "documentation" => {
+                if !unstable_opts.unstable_options {
+                    early_dcx.early_fatal("remapping `documentation` path scope requested but `-Zunstable-options` not specified");
+                }
+
+                RemapPathScopeComponents::DOCUMENTATION
+            },
+            "debuginfo" => RemapPathScopeComponents::DEBUGINFO,
+            "coverage" => RemapPathScopeComponents::COVERAGE,
+            "object" => RemapPathScopeComponents::OBJECT,
+            "all" => RemapPathScopeComponents::all(),
+            _ => early_dcx.early_fatal("argument for `--remap-path-scope` must be a comma separated list of scopes: `macro`, `diagnostics`, `documentation`, `debuginfo`, `coverage`, `object`, `all`"),
+        }
+    }
+    scopes
 }
 
 #[derive(Clone, Debug)]
@@ -2126,7 +2126,7 @@ pub fn rustc_optgroups() -> Vec<RustcOptGroup> {
         ),
         opt(
             Stable,
-            Opt,
+            Multi,
             "",
             "remap-path-scope",
             "Defines which scopes of paths should be remapped by `--remap-path-prefix`",

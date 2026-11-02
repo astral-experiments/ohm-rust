@@ -279,6 +279,7 @@ jobs:
         run: |
           tests=(
             tests/run-make/non-unicode-args
+            tests/run-make/remap-path-prefix-edge-cases
             tests/run-make/public-api-hash*
             tests/run-make/rdr-public-hash*
             tests/run-make/ohm-early-metadata
