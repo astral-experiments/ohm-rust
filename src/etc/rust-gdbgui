@@ -40,7 +40,8 @@ else
 fi
 
 # Find out where the pretty printer Python module is
-RUSTC_SYSROOT="$("$RUSTC" --print=sysroot)"
+RUSTC_SYSROOT=$("$RUSTC" --print=sysroot && printf .)
+RUSTC_SYSROOT=${RUSTC_SYSROOT%??}
 GDB_PYTHON_MODULE_DIRECTORY="$RUSTC_SYSROOT/lib/rustlib/etc"
 # Get the commit hash for path remapping
 RUSTC_COMMIT_HASH="$("$RUSTC" -vV | sed -n 's/commit-hash: \([a-zA-Z0-9_]*\)/\1/p')"
@@ -53,15 +54,32 @@ RUST_GDB="${RUST_GDB:-gdb}"
 # different/specific command (defaults to `gdbgui`).
 RUST_GDBGUI="${RUST_GDBGUI:-gdbgui}"
 
-# These arguments get passed through to GDB and make it load the
-# Rust pretty printers.
-GDB_ARGS="--directory=\"$GDB_PYTHON_MODULE_DIRECTORY\" \
-   -iex \"add-auto-load-safe-path $GDB_PYTHON_MODULE_DIRECTORY\" \
-   -iex \"set substitute-path /rustc/$RUSTC_COMMIT_HASH $RUSTC_SYSROOT/lib/rustlib/src/rust\""
+# gdbgui parses --gdb-cmd with shlex.split. Keep the user's command prefix and
+# encode each argument we append as a separate quoted word.
+GDB_COMMAND=$RUST_GDB
+append_gdb_args() {
+    for arg in "$@"; do
+        escaped=$(printf '%s.' "$arg" | LC_ALL=C sed 's/[\\"]/\\&/g')
+        GDB_COMMAND="$GDB_COMMAND \"${escaped%.}\""
+    done
+}
 
-# Finally we execute gdbgui.
-PYTHONPATH="$PYTHONPATH:$GDB_PYTHON_MODULE_DIRECTORY" \
-  exec ${RUST_GDBGUI} \
-  --gdb-cmd "${RUST_GDB} ${GDB_ARGS}" \
-  "${@}"
+case "$GDB_PYTHON_MODULE_DIRECTORY" in
+    /*:*)
+        # Use the same separator-free GDB search directory as rust-gdb.
+        export _RUST_GDB_CONFIGURE_DIRECTORY=1
+        append_gdb_args -ix "$GDB_PYTHON_MODULE_DIRECTORY/gdb_load_rust_pretty_printers.py"
+        ;;
+    *)
+        export PYTHONPATH="$PYTHONPATH:$GDB_PYTHON_MODULE_DIRECTORY"
+        append_gdb_args "--directory=$GDB_PYTHON_MODULE_DIRECTORY" \
+            -iex "add-auto-load-safe-path $GDB_PYTHON_MODULE_DIRECTORY"
+        ;;
+esac
+
+# GDB parses the source substitution itself after gdbgui has split the command.
+source_dir=$(printf '%s' "$RUSTC_SYSROOT/lib/rustlib/src/rust" | LC_ALL=C sed 's/[\\"]/\\&/g')
+append_gdb_args -iex "set substitute-path /rustc/$RUSTC_COMMIT_HASH \"$source_dir\""
+
+exec ${RUST_GDBGUI} --gdb-cmd "$GDB_COMMAND" "$@"
 
