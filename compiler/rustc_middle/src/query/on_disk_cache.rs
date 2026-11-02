@@ -135,7 +135,11 @@ struct Footer {
 
 /// Serialized values retained without loading them into the current query cache.
 pub struct QueryCachePromotion {
+    #[cfg(unix)]
+    data: Arc<Mmap>,
+    #[cfg(not(unix))]
     data: Vec<u8>,
+    data_len: usize,
     start_pos: usize,
     query_values: Vec<(SerializedDepNodeIndex, SerializedDepNodeIndex)>,
     allocation_origins: FxHashMap<interpret::AllocId, (usize, usize)>,
@@ -328,7 +332,7 @@ impl OnDiskCache {
         true
     }
 
-    /// Copies retained data before releasing every mmap and replacing the cache file.
+    /// Retains serialized data while replacing the cache file.
     pub fn take_query_cache_promotion(&self) -> Option<QueryCachePromotion> {
         let mut query_values = mem::take(&mut *self.pending_query_values.lock());
         if query_values.is_empty() {
@@ -346,9 +350,15 @@ impl OnDiskCache {
             depth += 1;
         }
         let data = self.serialized_data.read();
+        // Unix permits unlinking a mapped file. Keep its immutable contents alive
+        // until serialization has written them to the replacement inode.
+        #[cfg(unix)]
+        let data = Arc::clone(data.as_ref().unwrap());
+        #[cfg(not(unix))]
         let data = data.as_ref().unwrap()[..self.data_len].to_vec();
         Some(QueryCachePromotion {
             data,
+            data_len: self.data_len,
             start_pos: self.start_pos,
             query_values,
             allocation_origins,
@@ -369,12 +379,9 @@ impl OnDiskCache {
                     // Preserve every old byte position, including type and symbol shorthands.
                     // The already-written header belongs to the same compiler version.
                     assert_eq!(encoder.position(), promotion.start_pos);
-                    encoder.emit_raw_bytes(&promotion.data[promotion.start_pos..]);
-                    (
-                        Some(promotion.data.len()),
-                        promotion.query_values,
-                        promotion.allocation_origins,
-                    )
+                    encoder
+                        .emit_raw_bytes(&promotion.data[promotion.start_pos..promotion.data_len]);
+                    (Some(promotion.data_len), promotion.query_values, promotion.allocation_origins)
                 } else {
                     (None, Vec::new(), FxHashMap::default())
                 };

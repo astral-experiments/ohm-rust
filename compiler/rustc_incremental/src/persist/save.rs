@@ -78,7 +78,8 @@ pub(crate) fn save_dep_graph(tcx: TyCtxt<'_>) {
                     tcx.dep_graph.exec_cache_promotions(tcx);
                     let promotion = on_disk_cache.take_query_cache_promotion();
 
-                    // Drop the memory map so that we can remove the file and write to it.
+                    // Release the cache's mappings. On Unix, promotion retains its
+                    // backing mmap until its bytes have been written to the new file.
                     on_disk_cache.close_serialized_data_mmap();
 
                     file_format::save_in(sess, query_cache_path, "query cache", |encoder| {
