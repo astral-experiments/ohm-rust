@@ -18,11 +18,11 @@ use rustc_proc_macro::{Delimiter, Level};
 use rustc_session::Session;
 use rustc_session::parse::ParseSess;
 use rustc_span::def_id::CrateNum;
-use rustc_span::{BytePos, FileName, Pos, Span, Symbol, sym};
+use rustc_span::{BytePos, ExpnData, Pos, Span, Symbol, sym};
 use smallvec::{SmallVec, smallvec};
 
 use crate::base::ExtCtxt;
-use crate::proc_macro::invalidate_cached_expansion;
+use crate::proc_macro::{invalidate_cached_expansion, proc_macro_source_code};
 
 trait FromInternal<T> {
     fn from_internal(x: T) -> Self;
@@ -433,12 +433,22 @@ pub(crate) struct Rustc<'a, 'b> {
 }
 
 impl<'a, 'b> Rustc<'a, 'b> {
+    pub(super) fn expansion_globals(ecx: &ExtCtxt<'_>, data: &ExpnData) -> ExpnGlobals<Span> {
+        ExpnGlobals {
+            def_site: ecx.with_def_site_ctxt(data.def_site),
+            call_site: ecx.with_call_site_ctxt(data.call_site),
+            mixed_site: ecx.with_mixed_site_ctxt(data.call_site),
+        }
+    }
+
     pub(crate) fn new(ecx: &'a mut ExtCtxt<'b>) -> Self {
         let expn_data = ecx.current_expansion.id.expn_data();
+        let ExpnGlobals { def_site, call_site, mixed_site } =
+            Self::expansion_globals(ecx, &expn_data);
         Rustc {
-            def_site: ecx.with_def_site_ctxt(expn_data.def_site),
-            call_site: ecx.with_call_site_ctxt(expn_data.call_site),
-            mixed_site: ecx.with_mixed_site_ctxt(expn_data.call_site),
+            def_site,
+            call_site,
+            mixed_site,
             krate: expn_data.macro_def_id.unwrap().krate,
             rebased_spans: FxHashMap::default(),
             ecx,
@@ -501,7 +511,7 @@ impl server::Server for Rustc<'_, '_> {
     }
 
     fn literal_from_str(&mut self, s: &str) -> Result<Literal<Self::Span, Self::Symbol>, String> {
-        let name = FileName::proc_macro_source_code(s);
+        let name = proc_macro_source_code(s);
 
         let mut parser = rustc_errors::catch_fatal_errors(|| {
             new_parser_from_source_str(self.psess(), name, s.to_owned(), StripTokens::Nothing)
@@ -587,7 +597,7 @@ impl server::Server for Rustc<'_, '_> {
         rustc_errors::catch_fatal_errors(|| {
             source_str_to_stream(
                 self.psess(),
-                FileName::proc_macro_source_code(src),
+                proc_macro_source_code(src),
                 src.to_string(),
                 Some(self.call_site),
             )

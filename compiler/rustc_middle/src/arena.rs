@@ -217,6 +217,7 @@ impl_ref_decodable_into_arena! {
     rustc_middle::ty::Variance,
     rustc_span::Ident,
     rustc_span::Span,
+    rustc_span::Symbol,
     rustc_span::def_id::DefId,
     rustc_span::def_id::LocalDefId,
     // tidy-alphabetical-end

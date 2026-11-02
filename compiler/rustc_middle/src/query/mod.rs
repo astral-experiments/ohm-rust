@@ -1,4 +1,6 @@
+use rustc_ast::tokenstream::TokenStream;
 use rustc_hir::def_id::LocalDefId;
+use rustc_span::Symbol;
 
 pub use self::caches::{DefIdCache, DefaultCache, QueryCache, SingleCache, VecCache};
 pub use self::into_query_key::IntoQueryKey;
@@ -23,6 +25,9 @@ pub(crate) mod modifiers;
 pub mod on_disk_cache;
 pub(crate) mod plumbing;
 mod stack;
+
+/// Expanded tokens and the virtual source files allocated by this macro, in parse order.
+pub type ProcMacroExpansion<'tcx, E> = (Result<&'tcx TokenStream, E>, &'tcx [Symbol]);
 
 pub fn describe_as_module(def_id: impl Into<LocalDefId>, tcx: TyCtxt<'_>) -> String {
     let def_id = def_id.into();
