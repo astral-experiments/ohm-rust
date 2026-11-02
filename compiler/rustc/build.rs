@@ -25,6 +25,7 @@ fn mimalloc() {
         .profile("Release")
         // Keep Rust's target baseline instead of requiring ARMv8.1 atomics.
         .define("MI_OPT_ARCH", "OFF")
+        .define("MI_ALLOW_THP", "OFF")
         .define("MI_BUILD_SHARED", "OFF")
         .define("MI_BUILD_OBJECT", "OFF")
         .define("MI_BUILD_TESTS", "OFF")

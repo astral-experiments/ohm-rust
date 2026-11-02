@@ -282,3 +282,9 @@ jobs:
             python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true \
               --set rust.lto=off test --stage 1 "${selected[@]}"
           fi
+
+      - name: Run mimalloc huge-page defaults regression
+        if: runner.os == 'Linux'
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off --set rust.mimalloc=true test --stage 1 tests/run-make/mimalloc-thp
