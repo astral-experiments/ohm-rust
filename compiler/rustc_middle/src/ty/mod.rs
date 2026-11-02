@@ -646,6 +646,8 @@ pub struct CrateVariancesMap<'tcx> {
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct CReaderCacheKey {
     pub cnum: Option<CrateNum>,
+    /// Distinguishes independent incremental caches; zero for crate metadata.
+    pub cache_id: u32,
     pub pos: usize,
 }
 

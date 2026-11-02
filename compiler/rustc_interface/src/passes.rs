@@ -959,7 +959,8 @@ pub fn create_and_enter_global_ctxt<T, F: for<'tcx> FnOnce(TyCtxt<'tcx>) -> T>(
 
     let outputs = util::build_output_filenames(&pre_configured_attrs, sess);
 
-    let (dep_graph, incr_comp_session) = setup_dep_graph(sess, crate_name, stable_crate_id);
+    let (dep_graph, incr_comp_session, query_result_on_disk_cache) =
+        setup_dep_graph(sess, crate_name, stable_crate_id);
 
     let cstore =
         FreezeLock::new(Box::new(CStore::new(compiler.codegen_backend.metadata_loader())) as _);
@@ -973,9 +974,6 @@ pub fn create_and_enter_global_ctxt<T, F: for<'tcx> FnOnce(TyCtxt<'tcx>) -> T>(
     // read, since we haven't even constructed the *input* to
     // incr. comp. yet.
     dep_graph.assert_ignored();
-
-    let query_result_on_disk_cache =
-        rustc_incremental::load_query_result_cache(sess, incr_comp_session.as_ref());
 
     let codegen_backend = &compiler.codegen_backend;
     let mut providers = *DEFAULT_QUERY_PROVIDERS;
@@ -1185,9 +1183,7 @@ fn run_required_analyses(tcx: TyCtxt<'_>) {
             // If we need to codegen, ensure that we emit all errors from
             // `mir_drops_elaborated_and_const_checked` now, to avoid discovering
             // them later during codegen.
-            if tcx.sess.opts.output_types.should_codegen()
-                || tcx.hir_body_const_context(def_id).is_some()
-            {
+            if tcx.codegen_output_mode(()).0 || tcx.hir_body_const_context(def_id).is_some() {
                 tcx.ensure_ok().mir_drops_elaborated_and_const_checked(def_id);
             }
             if tcx.is_coroutine(def_id.to_def_id())
@@ -1310,7 +1306,7 @@ pub(crate) fn start_codegen<'tcx>(
 
     // Don't run this test assertions when not doing codegen. Compiletest tries to build
     // build-fail tests in check mode first and expects it to not give an error in that case.
-    if tcx.sess.opts.output_types.should_codegen() {
+    if tcx.codegen_output_mode(()).0 {
         rustc_symbol_mangling::test::dump_symbol_names_and_def_paths(tcx);
     }
 
@@ -1339,7 +1335,7 @@ pub(crate) fn start_codegen<'tcx>(
 
     let codegen = tcx.sess.time("codegen_crate", || {
         if tcx.sess.opts.unstable_opts.no_codegen
-            || !tcx.sess.opts.output_types.should_codegen()
+            || !tcx.codegen_output_mode(()).0
             || is_host_metadata
         {
             tcx.sess.dcx().abort_if_errors();

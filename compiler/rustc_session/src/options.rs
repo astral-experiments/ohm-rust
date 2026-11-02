@@ -260,6 +260,23 @@ macro_rules! top_level_options {
 
         impl Options {
             pub fn dep_tracking_hash(&self, for_crate_hash: bool) -> Hash64 {
+                if !for_crate_hash
+                    && self.unstable_opts.ohm_shared_stages
+                    && self.unstable_opts.codegen_backend.is_none()
+                    && self.output_types.keys().all(|kind| matches!(
+                        kind, OutputType::Metadata | OutputType::DepInfo | OutputType::Exe
+                    ))
+                    && (self.output_types.contains_key(&OutputType::Metadata)
+                        || self.output_types.contains_key(&OutputType::Exe))
+                {
+                    let mut options = self.clone();
+                    options.output_types = OutputTypes::new(&[(OutputType::Metadata, None)]);
+                    return options.dep_tracking_hash_raw(false);
+                }
+                self.dep_tracking_hash_raw(for_crate_hash)
+            }
+
+            fn dep_tracking_hash_raw(&self, for_crate_hash: bool) -> Hash64 {
                 let mut sub_hashes = BTreeMap::new();
                 $(
                     hash_opt!(
@@ -2716,6 +2733,8 @@ options! {
         "pipeline metadata-only checks before checking all function bodies (default: no)"),
     ohm_incremental_mono_partitions: bool = (false, parse_bool, [TRACKED],
         "reuse unchanged incremental monomorphization partitions without public API hashing"),
+    ohm_shared_stages: bool = (false, parse_bool, [TRACKED],
+        "reuse frontend incremental queries between metadata and link emission"),
     ohm_stable_cgu_merging: bool = (false, parse_bool, [TRACKED],
         "merge incremental codegen units into stable, name-based buckets"),
     on_broken_pipe: OnBrokenPipe = (OnBrokenPipe::Default, parse_on_broken_pipe, [TRACKED],
