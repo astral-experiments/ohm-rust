@@ -1151,6 +1151,11 @@ impl DepGraph {
         let data = self.data.as_ref().unwrap();
         let previous_node_count = data.colors.values.len();
         let on_disk_cache = tcx.query_system.on_disk_cache.as_ref().unwrap();
+        let retain_mono = std::env::var("OHM_RETAIN_MONO_QUERY_VALUES").as_deref() != Ok("0");
+        let trace_mono = std::env::var("OHM_MONO_GRAPH_TRACE").as_deref() == Ok("1");
+        let mut retained_mono = 0usize;
+        let mut retained_items = 0usize;
+        let mut unpromoted_mono = 0usize;
 
         // Only nodes with saved query values can need promotion. Avoid scanning the entire old
         // graph and recovering keys for queries that never had a disk-cached value.
@@ -1166,7 +1171,28 @@ impl DepGraph {
             let dep_node = data.previous.index_to_node(prev_index);
             if let Some(promote_fn) = tcx.dep_kind_vtable(dep_node.kind).promote_from_disk_fn {
                 promote_fn(tcx, *dep_node, prev_index, dep_node_index)
+            } else if (retain_mono || trace_mono)
+                && matches!(dep_node.kind, DepKind::items_of_instance | DepKind::size_estimate)
+            {
+                // Forwarding validated bytes does not require recovering the opaque query key.
+                let forwarded = retain_mono
+                    && on_disk_cache.try_forward_query_value(prev_index, dep_node_index);
+                if trace_mono {
+                    if forwarded {
+                        retained_mono += 1;
+                        retained_items += usize::from(dep_node.kind == DepKind::items_of_instance);
+                    } else {
+                        unpromoted_mono += 1;
+                    }
+                }
             }
+        }
+        if trace_mono {
+            let crate_name = tcx.crate_name(rustc_hir::def_id::LOCAL_CRATE);
+            eprintln!(
+                "ohm-mono-graph: crate={crate_name} retained={retained_mono} \
+                 retained_items={retained_items} unpromoted={unpromoted_mono}"
+            );
         }
     }
 
