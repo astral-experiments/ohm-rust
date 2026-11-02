@@ -828,7 +828,7 @@ fn main_args(early_dcx: &mut EarlyDiagCtxt, at_args: &[String]) {
 
     // Note that we discard any distinction between different non-zero exit
     // codes from `from_matches` here.
-    let (input, options, render_options, loaded_paths) =
+    let (input, options, render_options, external_files) =
         match config::Options::from_matches(early_dcx, &matches, args) {
             Some(opts) => opts,
             None => return,
@@ -904,12 +904,7 @@ fn main_args(early_dcx: &mut EarlyDiagCtxt, at_args: &[String]) {
                                 markdown::render_and_write(file, render_options, edition)?;
                             }
                             if has_dep_info {
-                                // Register the loaded external files in the source map so they show up in depinfo.
-                                // We can't load them via the source map because it gets created after we process the options.
-                                for external_path in &loaded_paths {
-                                    let _ =
-                                        compiler.sess.source_map().load_binary_file(external_path);
-                                }
+                                external_files.register(compiler.sess.source_map());
                                 rustc_interface::passes::write_dep_info(tcx);
                             }
                             Ok(())
@@ -946,11 +941,7 @@ fn main_args(early_dcx: &mut EarlyDiagCtxt, at_args: &[String]) {
     interface::run_compiler(config, |compiler| {
         let sess = &compiler.sess;
 
-        // Register the loaded external files in the source map so they show up in depinfo.
-        // We can't load them via the source map because it gets created after we process the options.
-        for external_path in &loaded_paths {
-            let _ = sess.source_map().load_binary_file(external_path);
-        }
+        external_files.register(sess.source_map());
 
         if sess.opts.describe_lints {
             rustc_driver::describe_lints(sess, registered_lints);

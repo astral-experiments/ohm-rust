@@ -1,11 +1,33 @@
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::{fs, str};
 
 use rustc_errors::DiagCtxtHandle;
+use rustc_span::FileName;
 use rustc_span::edition::Edition;
+use rustc_span::source_map::SourceMap;
 use serde::Serialize;
 
 use crate::html::markdown::{ErrorCodes, HeadingOffset, IdMap, Markdown, Playground};
+
+pub(crate) struct ExternalFiles {
+    pub(crate) paths: Vec<PathBuf>,
+    /// Keep the original fragment text when emitting dep-info. The source map is created later.
+    pub(crate) fragments: Option<Vec<(PathBuf, String)>>,
+}
+
+impl ExternalFiles {
+    /// Register dependencies with the compiler using the fragment contents that rustdoc rendered.
+    pub(crate) fn register(self, source_map: &SourceMap) {
+        let Some(fragments) = self.fragments else { return };
+        for path in self.paths {
+            let _ = source_map.load_binary_file(&path);
+        }
+        for (path, contents) in fragments {
+            let name = source_map.path_mapping().to_real_filename(source_map.working_dir(), path);
+            source_map.new_source_file(FileName::Real(name), contents);
+        }
+    }
+}
 
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct ExternalHtml {
@@ -32,13 +54,13 @@ impl ExternalHtml {
         id_map: &mut IdMap,
         edition: Edition,
         playground: &Option<Playground>,
-        loaded_paths: &mut Vec<PathBuf>,
+        fragments: &mut Option<Vec<(PathBuf, String)>>,
     ) -> Option<ExternalHtml> {
         let codes = ErrorCodes::from(nightly_build);
-        let ih = load_external_files(in_header, dcx, loaded_paths)?;
+        let ih = load_external_files(in_header, dcx, fragments)?;
         let bc = {
-            let mut bc = load_external_files(before_content, dcx, loaded_paths)?;
-            let m_bc = load_external_files(md_before_content, dcx, loaded_paths)?;
+            let mut bc = load_external_files(before_content, dcx, fragments)?;
+            let m_bc = load_external_files(md_before_content, dcx, fragments)?;
             Markdown {
                 content: &m_bc,
                 links: &[],
@@ -53,8 +75,8 @@ impl ExternalHtml {
             bc
         };
         let ac = {
-            let mut ac = load_external_files(after_content, dcx, loaded_paths)?;
-            let m_ac = load_external_files(md_after_content, dcx, loaded_paths)?;
+            let mut ac = load_external_files(after_content, dcx, fragments)?;
+            let m_ac = load_external_files(md_after_content, dcx, fragments)?;
             Markdown {
                 content: &m_ac,
                 links: &[],
@@ -80,10 +102,8 @@ pub(crate) enum LoadStringError {
 pub(crate) fn load_string<P: AsRef<Path>>(
     file_path: P,
     dcx: DiagCtxtHandle<'_>,
-    loaded_paths: &mut Vec<PathBuf>,
 ) -> Result<String, LoadStringError> {
     let file_path = file_path.as_ref();
-    loaded_paths.push(file_path.to_owned());
     let contents = match fs::read(file_path) {
         Ok(bytes) => bytes,
         Err(e) => {
@@ -95,8 +115,8 @@ pub(crate) fn load_string<P: AsRef<Path>>(
             return Err(LoadStringError::ReadFail);
         }
     };
-    match str::from_utf8(&contents) {
-        Ok(s) => Ok(s.to_string()),
+    match String::from_utf8(contents) {
+        Ok(s) => Ok(s),
         Err(_) => {
             dcx.err(format!("error reading `{}`: not UTF-8", file_path.display()));
             Err(LoadStringError::BadUtf8)
@@ -107,13 +127,16 @@ pub(crate) fn load_string<P: AsRef<Path>>(
 fn load_external_files(
     names: &[String],
     dcx: DiagCtxtHandle<'_>,
-    loaded_paths: &mut Vec<PathBuf>,
+    fragments: &mut Option<Vec<(PathBuf, String)>>,
 ) -> Option<String> {
     let mut out = String::new();
     for name in names {
-        let Ok(s) = load_string(name, dcx, loaded_paths) else { return None };
+        let Ok(s) = load_string(name, dcx) else { return None };
         out.push_str(&s);
         out.push('\n');
+        if let Some(fragments) = fragments {
+            fragments.push((PathBuf::from(name), s));
+        }
     }
     Some(out)
 }
