@@ -2511,7 +2511,17 @@ impl<'tcx> TyCtxt<'tcx> {
     #[allow(rustc::usage_of_ty_tykind)]
     #[inline]
     pub fn mk_ty_from_kind(self, st: TyKind<'tcx>) -> Ty<'tcx> {
-        self.interners.intern_ty(st)
+        match st {
+            ty::Bool => self.types.bool,
+            ty::Char => self.types.char,
+            ty::Int(kind) => Ty::new_int(self, kind),
+            ty::Uint(kind) => Ty::new_uint(self, kind),
+            ty::Float(kind) => Ty::new_float(self, kind),
+            ty::Str => self.types.str_,
+            ty::Never => self.types.never,
+            ty::Tuple(fields) if fields.is_empty() => self.types.unit,
+            kind => self.interners.intern_ty(kind),
+        }
     }
 
     pub fn mk_param_from_def(self, param: &ty::GenericParamDef) -> GenericArg<'tcx> {
