@@ -158,4 +158,25 @@ fn main() {
     let failure = compile("link,dep-info=-").run_fail();
     failure.assert_stderr_contains("evaluation panicked");
     check(&failure.stdout_utf8(), true);
+
+    let plain = || {
+        let mut cmd = rustc();
+        cmd.input("lib.rs").crate_name("probe").crate_type("rlib").emit("link,dep-info=recover.d");
+        cmd
+    };
+    rfs::write("lib.rs", r#"pub const INPUT: &[u8] = include_bytes!("input");"#);
+    rfs::write("input", b"old");
+    plain().run();
+    rfs::remove_file("input");
+    plain().run_fail().assert_stderr_contains("couldn't read");
+    let rules = rfs::read_to_string("recover.d");
+    let output = rules.lines().find(|line| line.starts_with("libprobe.rlib: ")).unwrap();
+    assert!(output.contains("ohm-incomplete-dep-info"), "{rules}");
+    assert!(rules.lines().any(|line| line == "recover.d: lib.rs"), "{rules}");
+
+    rfs::write("input", b"new");
+    plain().run();
+    let rules = rfs::read_to_string("recover.d");
+    assert!(rules.lines().any(|line| line == "input:"), "{rules}");
+    assert!(!rules.contains("ohm-incomplete-dep-info"), "{rules}");
 }
