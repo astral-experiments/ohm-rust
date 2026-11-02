@@ -274,10 +274,11 @@ jobs:
           tests/incremental/mono_item_partition_unreachable_const.rs
           tests/incremental/mono_item_partition_unreachable_const_cached.rs
 
-      - name: Run focused compiler run-make tests
+      - name: Run focused compiler unit and run-make tests
         shell: bash
         run: |
           tests=(
+            compiler/rustc_hir_id
             tests/run-make/non-unicode-args
             tests/run-make/remap-path-prefix-edge-cases
             tests/run-make/public-api-hash*
@@ -301,6 +302,7 @@ jobs:
             tests/run-make/test-harness-exact-filter
             tests/run-make/parallel-query-depth-limits
             tests/run-make/incremental-derive-call-site
+            tests/run-make/proc-derive-impl-identity
             tests/run-make/incremental-attribute-proc-macro-cache
             tests/run-make/incremental-proc-macro-native-inputs
             tests/run-make/incremental-proc-macro-parse-source
