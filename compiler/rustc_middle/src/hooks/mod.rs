@@ -70,6 +70,9 @@ declare_hooks! {
     /// to trigger this manually when decoding a foreign `Span`
     hook import_source_files(key: CrateNum) -> ();
 
+    /// Records a dependency on the directory before checking for an external trait's impls.
+    hook has_implementations_of_trait(cnum: CrateNum, trait_id: DefId, trait_hash: DefPathHash) -> bool;
+
     hook expn_hash_to_expn_id(
         cnum: CrateNum,
         index_guess: u32,
