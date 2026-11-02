@@ -31,7 +31,28 @@ fn main() {
                 .run()
                 .stdout_utf8();
             assert_eq!(rules.contains(MARKER), cfg != "ordinary", "{cfg}: {rules}");
+            assert_eq!(
+                rules.contains("/dev/null/ohm-recheck-dependent-links"),
+                cfg == "ordinary",
+                "{cfg}: {rules}"
+            );
         }
+
+        let native_archive = |arg| {
+            let mut cmd = rustc();
+            cmd.input("inline.rs")
+                .crate_type("rlib")
+                .arg("-Zohm-check-relink-inputs")
+                .cfg("ordinary")
+                .arg(arg)
+                .emit("link,dep-info=-");
+            cmd
+        };
+        let external = native_archive("-lstatic:-bundle=ohm_missing_archive").run().stdout_utf8();
+        assert!(external.contains("/dev/null/ohm-recheck-dependent-links"), "{external}");
+        let bundled = native_archive("-lstatic=ohm_missing_archive").run_fail();
+        bundled.assert_stderr_contains("ohm_missing_archive");
+        assert!(bundled.stdout_utf8().contains(MARKER));
     }
 
     rfs::write("lib.rs", "pub fn ordinary() {}");
