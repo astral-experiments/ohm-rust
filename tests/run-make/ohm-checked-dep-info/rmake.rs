@@ -21,6 +21,7 @@ fn main() {
     if matches!(target().as_str(), "x86_64-unknown-linux-gnu" | "aarch64-apple-darwin") {
         rfs::write("payload.bin", [0]);
         // The same crate always emits a register barrier and ordinary instructions.
+        let x86_memory = (target() == "x86_64-unknown-linux-gnu").then_some("float_memory");
         for cfg in [
             "ordinary",
             "global_macro",
@@ -29,7 +30,10 @@ fn main() {
             "symbol",
             "constant",
             "raw",
-        ] {
+        ]
+        .into_iter()
+        .chain(x86_memory)
+        {
             let rules = rustc()
                 .input("inline.rs")
                 .crate_type("rlib")
