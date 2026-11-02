@@ -512,13 +512,14 @@ fn copy_all_cgu_workproducts_to_incr_comp_cache_dir(
         if let Some(path) = &module.bytecode {
             files.push((OutputType::Bitcode.extension(), path.as_path()));
         }
-        let (id, product) = copy_cgu_workproduct_to_incr_comp_cache_dir(
+        let (id, mut product) = copy_cgu_workproduct_to_incr_comp_cache_dir(
             sess,
             incr_comp_session.unwrap(),
             &module.name,
             files.as_slice(),
             &module.links_from_incr_cache,
         );
+        product.source_placement = module.source_placement.clone();
         work_products.insert(id, product);
     }
 
@@ -994,6 +995,7 @@ fn execute_copy_from_cache_work_item(
 
     CompiledModule {
         links_from_incr_cache,
+        source_placement: module.source.source_placement,
         kind: ModuleKind::Regular,
         name: module.name,
         object,

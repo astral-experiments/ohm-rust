@@ -1638,6 +1638,12 @@ unsafe extern "C" {
         allow_ohm_coalescer: bool,
     ) -> &'a mut PassManager<'a>;
 
+    pub(crate) fn LLVMRustGetSourcePlacement(
+        module: &Module,
+        context: *mut std::ffi::c_void,
+        emit: unsafe extern "C" fn(*mut std::ffi::c_void, *const u8, usize),
+    ) -> bool;
+
     pub(crate) fn LLVMAddAnalysisPasses<'a>(T: &'a TargetMachine, PM: &PassManager<'a>);
 
     pub(crate) fn LLVMGetHostCPUFeatures() -> *mut c_char;

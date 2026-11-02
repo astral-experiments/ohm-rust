@@ -51,7 +51,11 @@ pub fn copy_cgu_workproduct_to_incr_comp_cache_dir(
         }
     }
 
-    let work_product = WorkProduct { cgu_name: cgu_name.to_string(), saved_files };
+    let work_product = WorkProduct {
+        cgu_name: cgu_name.to_string(),
+        saved_files,
+        source_placement: Default::default(),
+    };
     debug!(?work_product);
     let work_product_id = WorkProductId::from_cgu_name(cgu_name);
     (work_product_id, work_product)

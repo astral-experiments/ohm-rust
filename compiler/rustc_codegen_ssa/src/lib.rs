@@ -116,6 +116,7 @@ impl<M> ModuleCodegen<M> {
             assembly,
             llvm_ir,
             links_from_incr_cache: Vec::new(),
+            source_placement: Default::default(),
         }
     }
 }
@@ -131,6 +132,7 @@ pub struct CompiledModule {
     pub assembly: Option<PathBuf>, // --emit=asm
     pub llvm_ir: Option<PathBuf>,  // --emit=llvm-ir, llvm-bc is in bytecode
     pub links_from_incr_cache: Vec<PathBuf>,
+    pub source_placement: rustc_middle::dep_graph::CguSourcePlacement,
 }
 
 impl CompiledModule {
