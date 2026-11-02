@@ -1,7 +1,7 @@
 //! Code to load the dep-graph from files.
 
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rustc_data_structures::unord::UnordMap;
@@ -26,10 +26,22 @@ use crate::persist::file_format::{OpenFile, OpenFileError};
 enum LoadResult {
     /// Loading was successful.
     Ok { prev_graph: Arc<SerializedDepGraph>, prev_work_products: WorkProductMap },
-    /// The file either didn't exist or was produced by an incompatible compiler version.
+    /// No usable previous session was found.
     DataOutOfDate,
     /// Loading failed due to an unexpected I/O error.
     IoError { path: PathBuf, err: io::Error },
+}
+
+fn decode_dep_graph(
+    sess: &Session,
+    path: &Path,
+    decoder: &mut MemDecoder<'_>,
+) -> Option<Arc<SerializedDepGraph>> {
+    let graph = SerializedDepGraph::try_decode(decoder, &sess.prof);
+    if graph.is_none() {
+        sess.dcx().emit_warn(diagnostics::CorruptFile { path });
+    }
+    graph
 }
 
 fn load_dep_graph(
@@ -114,9 +126,17 @@ fn load_dep_graph(
                 return LoadResult::DataOutOfDate;
             }
 
-            let prev_graph = stage_graph
-                .cloned()
-                .unwrap_or_else(|| SerializedDepGraph::decode(&mut decoder, &sess.prof));
+            let prev_graph = if let Some(graph) = stage_graph {
+                Arc::clone(graph)
+            } else if sess.opts.unstable_opts.ohm_shared_stages {
+                // A missing checkpoint makes the ordinary session the fallback for this stage.
+                let Some(graph) = decode_dep_graph(sess, &path, &mut decoder) else {
+                    return LoadResult::DataOutOfDate;
+                };
+                graph
+            } else {
+                SerializedDepGraph::decode(&mut decoder, &sess.prof)
+            };
 
             LoadResult::Ok { prev_graph, prev_work_products }
         }
@@ -192,7 +212,11 @@ pub fn setup_dep_graph(
     let mut incr_comp_session = prepare_session_directory(sess, crate_name, stable_crate_id);
     let should_codegen = sess.opts.output_types.should_codegen();
     let checkpoint_files = if sess.opts.unstable_opts.ohm_shared_stages {
-        match (should_codegen, in_old_incr_comp_dir_sess(&incr_comp_session, CHECK_SESSION).is_some_and(|path| path.is_file())) {
+        match (
+            should_codegen,
+            in_old_incr_comp_dir_sess(&incr_comp_session, CHECK_SESSION)
+                .is_some_and(|path| path.is_file()),
+        ) {
             (true, true) => Some((BUILD_DEP_GRAPH, BUILD_QUERY_CACHE)),
             (false, false) => Some((CHECK_DEP_GRAPH, CHECK_QUERY_CACHE)),
             _ => None,
@@ -337,7 +361,7 @@ fn load_stage_checkpoint(
     if Hash64::decode(&mut decoder) != sess.opts.dep_tracking_hash(false) {
         return None;
     }
-    let graph = SerializedDepGraph::decode(&mut decoder, &sess.prof);
+    let graph = decode_dep_graph(sess, &path, &mut decoder)?;
     let path = in_old_incr_comp_dir_sess(session, cache_filename)?;
     let OpenFile { mmap, start_pos } = file_format::open_incremental_file(sess, &path).ok()?;
     let cache = OnDiskCache::new(sess, mmap, start_pos).ok()?;
