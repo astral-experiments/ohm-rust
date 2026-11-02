@@ -7,8 +7,6 @@ use run_make_support::assertion_helpers::{assert_contains, assert_not_contains};
 use run_make_support::{path, rfs, rustdoc};
 
 fn main() {
-    rfs::create_dir("doc");
-
     // Ensure that all kinds of input reading flags end up in dep-info.
     rustdoc()
         .input("lib.rs")
