@@ -2738,6 +2738,8 @@ options! {
         "place upstream generics containing local closures in caller-local codegen units"),
     ohm_cgu_split_limit: Option<NonZero<usize>> = (None, parse_opt_number, [TRACKED],
         "maximum shards per oversized incremental codegen unit at opt-level 0 or 1; 1 disables splitting"),
+    ohm_check_relink_inputs: bool = (false, parse_bool, [TRACKED],
+        "check native codegen inputs before allowing Cargo to reuse saved objects"),
     ohm_early_metadata: bool = (false, parse_bool, [TRACKED],
         "pipeline metadata-only checks before checking all function bodies (default: no)"),
     ohm_incremental_mono_partitions: bool = (false, parse_bool, [TRACKED],
