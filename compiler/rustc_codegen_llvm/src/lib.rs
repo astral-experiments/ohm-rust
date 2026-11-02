@@ -118,6 +118,12 @@ impl ExtraBackendMethods for LlvmCodegenBackend {
 }
 
 impl WriteBackendMethods for LlvmCodegenBackend {
+    fn try_reuse_source_placement(
+        cgcx: &CodegenContext,
+        module: &mut ModuleCodegen<Self::Module>,
+    ) -> Option<rustc_middle::dep_graph::CguSourcePlacement> {
+        back::placed_object::try_reuse(cgcx, module)
+    }
     type Module = ModuleLlvm;
     type ModuleBuffer = back::lto::ModuleBuffer;
     type TargetMachine = OwnedTargetMachine;
@@ -463,6 +469,8 @@ impl CodegenBackend for LlvmCodegenBackend {
 }
 
 pub struct ModuleLlvm {
+    placement_input: Option<back::placed_object::Inputs>,
+    placement_to_save: Option<Vec<u8>>,
     llcx: &'static mut llvm::Context,
     llmod_raw: *const llvm::Module,
 
@@ -515,7 +523,13 @@ impl ModuleLlvm {
                 let llmod_raw = context::create_module(tcx, llcx, None, mod_name) as *const _;
                 (llmod_raw, create_target_machine())
             };
-            ModuleLlvm { llmod_raw, llcx, tm: ManuallyDrop::new(tm) }
+            ModuleLlvm {
+                llmod_raw,
+                llcx,
+                tm: ManuallyDrop::new(tm),
+                placement_input: None,
+                placement_to_save: None,
+            }
         }
     }
 
@@ -532,7 +546,13 @@ impl ModuleLlvm {
             let llmod_raw = back::lto::parse_module(llcx, name, buffer, dcx);
             let tm = tm_factory(dcx, TargetMachineFactoryConfig::new(cgcx, name.to_str().unwrap()));
 
-            ModuleLlvm { llmod_raw, llcx, tm: ManuallyDrop::new(tm) }
+            ModuleLlvm {
+                llmod_raw,
+                llcx,
+                tm: ManuallyDrop::new(tm),
+                placement_input: None,
+                placement_to_save: None,
+            }
         }
     }
 

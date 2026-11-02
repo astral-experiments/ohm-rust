@@ -14,6 +14,14 @@ use crate::back::write::{
 use crate::{CompiledModule, ModuleCodegen};
 
 pub trait WriteBackendMethods: Clone + 'static {
+    /// Writes the current native object when the prior machine input and debug placement suffice.
+    fn try_reuse_source_placement(
+        _cgcx: &CodegenContext,
+        _module: &mut ModuleCodegen<Self::Module>,
+    ) -> Option<rustc_middle::dep_graph::CguSourcePlacement> {
+        None
+    }
+
     type Module: Send + Sync;
     type TargetMachine;
     type ModuleBuffer: ModuleBufferMethods;

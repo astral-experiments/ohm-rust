@@ -5,8 +5,8 @@ use rustc_data_structures::sync::par_join;
 use rustc_middle::dep_graph::{DepGraph, WorkProductMap};
 use rustc_middle::query::on_disk_cache;
 use rustc_middle::ty::TyCtxt;
-use rustc_serialize::Encodable as RustcEncodable;
 use rustc_serialize::opaque::FileEncoder;
+use rustc_serialize::{Encodable as RustcEncodable, Encoder};
 use rustc_session::{IncrCompSession, Session};
 use tracing::debug;
 
@@ -268,5 +268,19 @@ fn encode_work_product_index(work_products: &WorkProductMap, encoder: &mut FileE
         })
         .collect();
 
-    serialized_products.encode(encoder)
+    serialized_products.encode(encoder);
+    let mut wrote_header = false;
+    for (slot, product) in serialized_products.iter().enumerate() {
+        let Some(bytes) = &product.work_product.source_placement.0 else { continue };
+        let (Ok(slot), Ok(len)) = (u32::try_from(slot), u32::try_from(bytes.len())) else {
+            continue;
+        };
+        if !wrote_header {
+            encoder.emit_raw_bytes(SOURCE_PLACEMENT_MAGIC);
+            wrote_header = true;
+        }
+        encoder.emit_raw_bytes(&slot.to_le_bytes());
+        encoder.emit_raw_bytes(&len.to_le_bytes());
+        encoder.emit_raw_bytes(bytes);
+    }
 }

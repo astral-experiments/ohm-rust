@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use rustc_data_structures::fingerprint::{Fingerprint, PackedFingerprint};
 use rustc_data_structures::fx::FxHashSet;
+use rustc_data_structures::owned_slice::{OwnedSlice, slice_owned};
 use rustc_data_structures::profiling::QueryInvocationId;
 use rustc_data_structures::sharded::{self, ShardedHashMap};
 use rustc_data_structures::stable_hash::{StableHash, StableHasher};
@@ -1280,6 +1281,60 @@ pub struct WorkProduct {
     /// By convention, file extensions are currently used as identifiers, i.e. the key "o" maps to
     /// the object file's path, and "dwo" to the dwarf object file's path.
     pub saved_files: UnordMap<String, String>,
+    pub source_placement: CguSourcePlacement,
+}
+
+/// Source coordinates bound to one native object. The work-product index owns their storage.
+#[derive(Clone, Default)]
+pub struct CguSourcePlacement(pub Option<OwnedSlice>);
+
+impl CguSourcePlacement {
+    /// Binds the compiler's placement record to the exact object its coordinates describe.
+    pub fn for_object(object: &std::path::Path, mut placement: Vec<u8>) -> Self {
+        use std::io::Read;
+
+        use rustc_span::{SourceFileHash, SourceFileHashAlgorithm};
+
+        let Ok(file) = std::fs::File::open(object) else { return Self::default() };
+        let Ok(hash) =
+            SourceFileHash::new(SourceFileHashAlgorithm::Blake3, file.chain(placement.as_slice()))
+        else {
+            return Self::default();
+        };
+        placement.extend_from_slice(hash.hash_bytes());
+        Self(Some(slice_owned(placement, |bytes| bytes.as_slice())))
+    }
+
+    /// Returns the placement only when the prior native file and record still agree.
+    pub fn checked_for(&self, object: &[u8]) -> Option<&[u8]> {
+        use std::io::Read;
+
+        use rustc_span::{SourceFileHash, SourceFileHashAlgorithm};
+
+        let bytes = self.0.as_deref()?;
+        let (placement, digest) = bytes.split_at_checked(bytes.len().checked_sub(32)?)?;
+        let hash =
+            SourceFileHash::new(SourceFileHashAlgorithm::Blake3, object.chain(placement)).ok()?;
+        (hash.hash_bytes() == digest).then_some(placement)
+    }
+}
+
+impl std::fmt::Debug for CguSourcePlacement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("CguSourcePlacement").field(&self.0.as_ref().map(|s| s.len())).finish()
+    }
+}
+
+// Keep ordinary work-product records and .rlink files byte-compatible. The optional
+// work-product index tail is the only on-disk representation of placements.
+impl<E: rustc_serialize::Encoder> rustc_serialize::Encodable<E> for CguSourcePlacement {
+    fn encode(&self, _: &mut E) {}
+}
+
+impl<D: rustc_serialize::Decoder> rustc_serialize::Decodable<D> for CguSourcePlacement {
+    fn decode(_: &mut D) -> Self {
+        Self::default()
+    }
 }
 
 pub type WorkProductMap = UnordMap<WorkProductId, WorkProduct>;

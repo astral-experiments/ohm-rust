@@ -990,7 +990,7 @@ pub(crate) fn codegen(
     cgcx: &CodegenContext,
     prof: &SelfProfilerRef,
     shared_emitter: &SharedEmitter,
-    module: ModuleCodegen<ModuleLlvm>,
+    mut module: ModuleCodegen<ModuleLlvm>,
     config: &ModuleConfig,
 ) -> CompiledModule {
     let _timer = prof.generic_activity_with_arg("LLVM_module_codegen", &*module.name);
@@ -1210,6 +1210,7 @@ pub(crate) fn codegen(
         && cgcx.target_can_use_split_dwarf
         && cgcx.split_debuginfo != SplitDebuginfo::Off
         && cgcx.split_dwarf_kind == SplitDwarfKind::Split;
+    let placement = module.module_llvm.placement_to_save.take();
     let mut compiled = module.into_compiled_module(
         config.emit_obj != EmitObj::None,
         dwarf_object_emitted,
@@ -1225,6 +1226,10 @@ pub(crate) fn codegen(
         if let Some(path) = &mut compiled.dwarf_object {
             *path = object_outputs.temp_path_dwo_for_cgu(&compiled.name);
         }
+    }
+    if let (Some(wire), Some(object)) = (placement, &compiled.object) {
+        compiled.source_placement =
+            rustc_middle::dep_graph::CguSourcePlacement::for_object(object, wire);
     }
     compiled
 }

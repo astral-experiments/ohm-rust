@@ -4,6 +4,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use rustc_data_structures::owned_slice::{OwnedSlice, slice_owned};
 use rustc_data_structures::unord::UnordMap;
 use rustc_hashes::Hash64;
 use rustc_middle::dep_graph::{CheckCacheSource, DepGraph, SerializedDepGraph, WorkProductMap};
@@ -79,8 +80,19 @@ fn load_dep_graph(
             sess.dcx().emit_warn(diagnostics::CorruptFile { path: &work_products_path });
             return LoadResult::DataOutOfDate;
         };
-        let work_products: Vec<SerializedWorkProduct> =
+        let mut work_products: Vec<SerializedWorkProduct> =
             Decodable::decode(&mut work_product_decoder);
+        if cfg!(all(target_os = "linux", target_arch = "x86_64"))
+            && work_product_decoder.remaining() != 0
+        {
+            let tail = work_product_decoder.position()..work_product_decoder.len();
+            let bytes = slice_owned(mmap, |map| &map[tail]);
+            if decode_source_placements(&mut work_products, bytes).is_none() {
+                for entry in &mut work_products {
+                    entry.work_product.source_placement = Default::default();
+                }
+            }
+        }
 
         for swp in work_products {
             let all_files_available = swp.work_product.saved_files.items().all(|(_, path)| {
@@ -307,6 +319,31 @@ pub fn setup_dep_graph(
         Some(incr_comp_session),
         query_cache,
     )
+}
+
+/// Attaches optional records to their original work-product slots without copying their bytes.
+fn decode_source_placements(
+    products: &mut [SerializedWorkProduct],
+    bytes: OwnedSlice,
+) -> Option<()> {
+    bytes.strip_prefix(SOURCE_PLACEMENT_MAGIC)?;
+    let mut cursor = SOURCE_PLACEMENT_MAGIC.len();
+    let mut previous = None;
+    while cursor < bytes.len() {
+        let header = bytes.get(cursor..)?.first_chunk::<8>()?;
+        let slot = u32::from_le_bytes(header[..4].try_into().ok()?) as usize;
+        let len = u32::from_le_bytes(header[4..].try_into().ok()?) as usize;
+        if previous.is_some_and(|prev| prev >= slot) || len <= 32 {
+            return None;
+        }
+        let start = cursor.checked_add(8)?;
+        cursor = start.checked_add(len)?;
+        bytes.get(start..cursor)?;
+        products.get_mut(slot)?.work_product.source_placement.0 =
+            Some(bytes.clone().slice(|data| &data[start..cursor]));
+        previous = Some(slot);
+    }
+    Some(())
 }
 
 /// Restores stage-local metadata filenames, including the prefix manifest's canonical path.

@@ -512,13 +512,14 @@ fn copy_all_cgu_workproducts_to_incr_comp_cache_dir(
         if let Some(path) = &module.bytecode {
             files.push((OutputType::Bitcode.extension(), path.as_path()));
         }
-        let (id, product) = copy_cgu_workproduct_to_incr_comp_cache_dir(
+        let (id, mut product) = copy_cgu_workproduct_to_incr_comp_cache_dir(
             sess,
             incr_comp_session.unwrap(),
             &module.name,
             files.as_slice(),
             &module.links_from_incr_cache,
         );
+        product.source_placement = module.source_placement.clone();
         work_products.insert(id, product);
     }
 
@@ -845,6 +846,13 @@ fn execute_optimize_work_item<B: WriteBackendMethods>(
 ) -> WorkItemResult<B> {
     let _timer = prof.generic_activity_with_arg("codegen_module_optimize", &*module.name);
 
+    if let Some(placement) = B::try_reuse_source_placement(cgcx, &mut module) {
+        let mut compiled =
+            module.into_compiled_module(true, false, false, false, false, &cgcx.output_filenames);
+        compiled.source_placement = placement;
+        return WorkItemResult::Finished(compiled);
+    }
+
     B::optimize(cgcx, prof, &shared_emitter, &mut module, &cgcx.module_config);
 
     // After we've done the initial round of optimizations we need to
@@ -994,6 +1002,7 @@ fn execute_copy_from_cache_work_item(
 
     CompiledModule {
         links_from_incr_cache,
+        source_placement: module.source.source_placement,
         kind: ModuleKind::Regular,
         name: module.name,
         object,
