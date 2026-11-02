@@ -7,11 +7,13 @@ use std::num::NonZero;
 use std::ops::Range;
 use std::path::Path;
 
+use rustc_ast::token::{Delimiter, TokenKind};
+use rustc_ast::tokenstream::TokenTree;
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_data_structures::fx::FxIndexSet;
 use rustc_data_structures::memmap::Mmap;
 use rustc_data_structures::stable_hash::{StableHash, StableHasher};
-use rustc_hir::def_id::{DefId, LOCAL_CRATE};
+use rustc_hir::def_id::{DefId, LOCAL_CRATE, LocalDefId};
 use rustc_macros::{Decodable, Encodable};
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::codec::TyEncoder;
@@ -160,6 +162,66 @@ pub(super) fn hash_definition_span(
     (span.hi().0 - source_file.start_pos.0).hash(hasher);
 }
 
+/// Validates exact downstream-observable locations in a source-written macro body.
+/// Generated tokens or contexts require fresh metadata rather than prefix reuse.
+pub(super) fn hash_macro_token_spans(
+    tcx: TyCtxt<'_>,
+    def_id: LocalDefId,
+    count: &mut usize,
+    hasher: &mut StableHasher,
+) -> bool {
+    if tcx.expn_that_defined(def_id) != rustc_span::ExpnId::root() {
+        return false;
+    }
+    let (_, macro_def, _) = tcx.hir_expect_item(def_id).expect_macro();
+    let definition = macro_def.body.dspan.entire();
+    if definition.is_dummy() || !definition.ctxt().is_root() {
+        return false;
+    }
+    let source_file = tcx.sess.source_map().lookup_source_file(definition.lo());
+    if source_file.is_imported() || !source_file.contains(definition.hi()) {
+        return false;
+    }
+    let mut hash_span = |span: Span| {
+        if span.is_dummy()
+            || !span.ctxt().is_root()
+            || span.lo() < definition.lo()
+            || span.hi() > definition.hi()
+        {
+            return false;
+        }
+        hash_definition_span(tcx, def_id.to_def_id(), Some(span), false, count, hasher);
+        true
+    };
+    if !hash_span(macro_def.body.dspan.open) || !hash_span(macro_def.body.dspan.close) {
+        return false;
+    }
+    let mut streams = vec![&macro_def.body.tokens];
+    while let Some(stream) = streams.pop() {
+        for tree in stream.iter() {
+            match tree {
+                TokenTree::Token(token, _) => {
+                    if matches!(token.kind, TokenKind::NtIdent(..) | TokenKind::NtLifetime(..))
+                        || !hash_span(token.span)
+                    {
+                        return false;
+                    }
+                }
+                TokenTree::Delimited(span, _, delimiter, tokens) => {
+                    if matches!(delimiter, Delimiter::Invisible(_))
+                        || !hash_span(span.open)
+                        || !hash_span(span.close)
+                    {
+                        return false;
+                    }
+                    streams.push(tokens);
+                }
+            }
+        }
+    }
+    true
+}
+
 impl MetadataPrefixManifestBuilder {
     pub(super) fn new(tcx: TyCtxt<'_>) -> Self {
         Self {
@@ -193,6 +255,16 @@ impl MetadataPrefixManifestBuilder {
             &mut self.manifest.definition_span_count,
             &mut self.definition_span_hasher,
         );
+    }
+
+    pub(super) fn capture_macro_tokens(&mut self, tcx: TyCtxt<'_>, def_id: LocalDefId) -> bool {
+        let (_, macro_def, _) = tcx.hir_expect_item(def_id).expect_macro();
+        hash_macro_token_spans(
+            tcx,
+            def_id,
+            &mut self.manifest.definition_span_count,
+            &mut self.definition_span_hasher,
+        ) && self.capture_protected_span(tcx, macro_def.body.dspan.entire())
     }
 
     pub(super) fn capture_protected_span(&mut self, tcx: TyCtxt<'_>, span: Span) -> bool {
