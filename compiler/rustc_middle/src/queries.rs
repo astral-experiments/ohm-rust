@@ -146,6 +146,14 @@ rustc_queries! {
         cache_on_disk
     }
 
+    /// The annotation and annotated item are separate inputs; only output tokens are cached.
+    query attribute_macro_expansion(key: (LocalExpnId, &'tcx TokenStream, &'tcx TokenStream))
+        -> Result<&'tcx TokenStream, ErrorGuaranteed>
+    {
+        desc { "expanding an attribute (proc) macro" }
+        cache_on_disk
+    }
+
     /// This exists purely for testing the interactions between delayed bugs and incremental.
     query trigger_delayed_bug(key: DefId) {
         desc { "triggering a delayed bug for testing incremental" }
