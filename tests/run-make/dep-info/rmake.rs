@@ -12,12 +12,24 @@
 // Finally, it removes one dependency and checks that compilation is still successful.
 // See https://github.com/rust-lang/rust/pull/10698
 
-use run_make_support::{cmd, is_windows, rfs, rustc};
+use run_make_support::{cmd, is_windows, path, rfs, rustc};
 
 fn main() {
     // We're only emitting dep info, so we shouldn't be running static analysis to
     // figure out that this program is erroneous.
-    rustc().input("erroneous.rs").emit("dep-info").run();
+    rustc().input("erroneous.rs").emit("dep-info").out_dir("fresh/nested").run();
+    assert!(path("fresh/nested/erroneous.d").is_file());
+
+    rustc()
+        .input("erroneous.rs")
+        .emit("dep-info=./relative/name.d")
+        .out_dir(path("relative"))
+        .run();
+    assert!(path("relative/name.d").is_file());
+
+    rustc().input("erroneous.rs").emit("dep-info=custom.d").out_dir("unused").run();
+    assert!(path("custom.d").is_file());
+    assert!(!path("unused").exists());
 
     rustc().input("lib.rs").emit("dep-info,link").crate_type("lib").run();
     rfs::remove_file("foo.rs");

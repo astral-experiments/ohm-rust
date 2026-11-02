@@ -966,6 +966,15 @@ pub fn write_dep_info(tcx: TyCtxt<'_>) {
     write_dep_info_for_outputs(tcx, &prepare_outputs(tcx), false);
 }
 
+/// Resolves symlinks in the existing part of a possibly missing output directory.
+fn resolve_output_dir(dir: &Path) -> Option<PathBuf> {
+    let dir = std::path::absolute(dir).ok()?;
+    dir.ancestors().find_map(|ancestor| {
+        let base = fs::canonicalize(ancestor).ok()?;
+        Some(base.join(dir.strip_prefix(ancestor).ok()?))
+    })
+}
+
 /// Checks for conflicting output paths and creates the requested output directories.
 pub fn prepare_outputs(tcx: TyCtxt<'_>) -> Vec<PathBuf> {
     // Make sure name resolution and macro expansion is run for
@@ -1005,11 +1014,16 @@ pub fn prepare_outputs(tcx: TyCtxt<'_>) -> Vec<PathBuf> {
     let only_dep_info = sess.opts.output_types.contains_key(&OutputType::DepInfo)
         && sess.opts.output_types.len() == 1;
 
-    if !only_dep_info {
-        if let Some(ref dir) = sess.io.output_dir {
-            if fs::create_dir_all(dir).is_err() {
-                sess.dcx().emit_fatal(diagnostics::OutDirError);
-            }
+    if let Some(ref dir) = sess.io.output_dir {
+        let needs_dir = !only_dep_info
+            || outputs.path(OutputType::DepInfo).parent().is_some_and(|parent| {
+                parent == dir
+                    || resolve_output_dir(parent)
+                        .zip(resolve_output_dir(dir))
+                        .is_some_and(|(a, b)| a == b)
+            });
+        if needs_dir && fs::create_dir_all(dir).is_err() {
+            sess.dcx().emit_fatal(diagnostics::OutDirError);
         }
     }
     output_paths
