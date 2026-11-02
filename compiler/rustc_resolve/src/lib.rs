@@ -1679,6 +1679,22 @@ impl<'tcx> Resolver<'_, 'tcx> {
         span: Span,
         is_owner: bool,
     ) -> TyCtxtFeed<'tcx, LocalDefId> {
+        self.create_def_with_derive_slot(
+            parent, node_id, name, def_kind, expn_id, span, is_owner, None,
+        )
+    }
+
+    fn create_def_with_derive_slot(
+        &mut self,
+        parent: LocalDefId,
+        node_id: ast::NodeId,
+        name: Option<Symbol>,
+        def_kind: DefKind,
+        expn_id: ExpnId,
+        span: Span,
+        is_owner: bool,
+        derive_slot: Option<u32>,
+    ) -> TyCtxtFeed<'tcx, LocalDefId> {
         assert!(
             !self.current_owner.node_id_to_def_id.contains_key(&node_id),
             "adding a def for node-id {:?}, name {:?}, data {:?} but a previous def exists: {:?}",
@@ -1693,7 +1709,14 @@ impl<'tcx> Resolver<'_, 'tcx> {
         let disambiguator = self.disambiguators.get_or_create(parent);
 
         // FIXME: remove `def_span` body, pass in the right spans here and call `tcx.at().create_def()`
-        let feed = self.tcx.create_def(parent, name, def_kind, None, disambiguator);
+        let feed = self.tcx.create_def_with_derive_slot(
+            parent,
+            name,
+            def_kind,
+            None,
+            disambiguator,
+            derive_slot,
+        );
         let def_id = feed.def_id();
 
         // Create the definition.

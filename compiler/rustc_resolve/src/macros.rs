@@ -19,6 +19,7 @@ use rustc_expand::expand::{
 use rustc_hir::attrs::{AttributeKind, CfgEntry, StrippedCfgItem};
 use rustc_hir::def::{DefKind, MacroKinds, Namespace, NonMacroAttrKind};
 use rustc_hir::def_id::{CrateNum, DefId, LocalDefId};
+use rustc_hir::definitions::proc_derive_impl_seed;
 use rustc_hir::{Attribute, StabilityLevel};
 use rustc_middle::middle::stability;
 use rustc_middle::ty::{RegisteredTools, TyCtxt};
@@ -197,11 +198,20 @@ impl<'ra, 'tcx> ResolverExpand for Resolver<'ra, 'tcx> {
         &mut self,
         expansion: LocalExpnId,
         fragment: &AstFragment,
+        proc_derive_subject: Option<Symbol>,
     ) {
         // Integrate the new AST fragment into all the definition and module structures.
         // We are inside the `expansion` now, but other parent scope components are still the same.
         let parent_scope = ParentScope { expansion, ..self.invocation_parent_scopes[&expansion] };
-        let output_macro_rules_scope = collect_definitions(self, fragment, parent_scope);
+        // ExpnHash includes spans whose hashing differs with incremental mode.
+        // The resolved macro declaration and the input type's spelling are
+        // stable in both modes. The final DefKey already includes its parent.
+        let derive_impl_seed = proc_derive_subject.and_then(|subject| {
+            let macro_def = expansion.expn_data().macro_def_id?;
+            Some(proc_derive_impl_seed(self.tcx.def_path_hash(macro_def), subject))
+        });
+        let output_macro_rules_scope =
+            collect_definitions(self, fragment, parent_scope, derive_impl_seed);
         self.output_macro_rules_scopes.insert(expansion, output_macro_rules_scope);
 
         let module = parent_scope.module.expect_local();

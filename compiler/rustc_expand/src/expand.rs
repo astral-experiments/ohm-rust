@@ -474,7 +474,7 @@ impl<'a, 'b> MacroExpander<'a, 'b> {
 
         // Collect all macro invocations and replace them with placeholders.
         let (mut fragment_with_placeholders, mut invocations) =
-            self.collect_invocations(input_fragment, &[]);
+            self.collect_invocations(input_fragment, &[], None);
 
         // Optimization: if we resolve all imports now,
         // we'll be able to immediately resolve most of imported macros.
@@ -536,6 +536,20 @@ impl<'a, 'b> MacroExpander<'a, 'b> {
             self.cx.force_mode = force;
 
             let fragment_kind = invoc.fragment_kind;
+            // Take the name from the derive input. Output impls can be generic,
+            // have projected self types, or point their spans into the macro crate.
+            let proc_derive_subject = match (&invoc.kind, &ext.kind) {
+                (
+                    InvocationKind::Derive { item: Annotatable::Item(item), .. },
+                    SyntaxExtensionKind::Derive(_),
+                ) if !item.span.is_dummy() && item.span.ctxt().is_root() => match item.kind {
+                    ItemKind::Struct(ident, ..)
+                    | ItemKind::Enum(ident, ..)
+                    | ItemKind::Union(ident, ..) => Some(ident.name),
+                    _ => None,
+                },
+                _ => None,
+            };
             match self.expand_invoc(invoc, &ext.kind) {
                 ExpandResult::Ready(fragment) => {
                     let mut derive_invocations = Vec::new();
@@ -569,8 +583,11 @@ impl<'a, 'b> MacroExpander<'a, 'b> {
                         })
                         .unwrap_or_default();
 
-                    let (expanded_fragment, collected_invocations) =
-                        self.collect_invocations(fragment, &derive_placeholders);
+                    let (expanded_fragment, collected_invocations) = self.collect_invocations(
+                        fragment,
+                        &derive_placeholders,
+                        proc_derive_subject,
+                    );
                     // We choose to expand any derive invocations associated with this macro
                     // invocation *before* any macro invocations collected from the output
                     // fragment.
@@ -627,6 +644,7 @@ impl<'a, 'b> MacroExpander<'a, 'b> {
         &mut self,
         mut fragment: AstFragment,
         extra_placeholders: &[NodeId],
+        proc_derive_subject: Option<Symbol>,
     ) -> (AstFragment, Vec<(Invocation, Option<Arc<SyntaxExtension>>)>) {
         // Resolve `$crate`s in the fragment for pretty-printing.
         self.cx.resolver.resolve_dollar_crates();
@@ -648,9 +666,11 @@ impl<'a, 'b> MacroExpander<'a, 'b> {
         };
 
         if self.monotonic {
-            self.cx
-                .resolver
-                .visit_ast_fragment_with_placeholders(self.cx.current_expansion.id, &fragment);
+            self.cx.resolver.visit_ast_fragment_with_placeholders(
+                self.cx.current_expansion.id,
+                &fragment,
+                proc_derive_subject,
+            );
 
             if self.cx.sess.opts.incremental.is_some() {
                 for (invoc, _) in invocations.iter_mut() {
