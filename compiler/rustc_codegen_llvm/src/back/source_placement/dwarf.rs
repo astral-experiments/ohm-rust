@@ -1,8 +1,6 @@
-use super::{
-    Gate,
-    maps::{Cursor, Mapping, write_leb},
-    require,
-};
+use std::collections::{BTreeMap, BTreeSet};
+use std::ops::Range;
+
 use gimli::{
     AttributeValue, DebugAbbrev, DebugInfo, DebugLine, DebugLineOffset, EndianSlice, LittleEndian,
 };
@@ -10,10 +8,9 @@ use object::{
     Architecture, BinaryFormat, Object, ObjectKind, ObjectSection, ObjectSymbol, RelocationFlags,
     RelocationTarget, SectionFlags,
 };
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    ops::Range,
-};
+
+use super::maps::{Cursor, Mapping, write_leb};
+use super::{Gate, require};
 
 struct Reloc<'a> {
     offset: usize,
@@ -61,23 +58,11 @@ fn known_payload(name: &str) -> bool {
     matches!(
         name,
         "" | ".group" | ".strtab" | ".shstrtab" | ".symtab" | ".comment" | ".note.GNU-stack"
-    ) || [
-        ".text",
-        ".data",
-        ".rodata",
-        ".bss",
-        ".tdata",
-        ".tbss",
-        ".eh_frame",
-        ".gcc_except_table",
-    ]
-    .iter()
-    .any(|&base| {
-        name == base
-            || name
-                .strip_prefix(base)
-                .is_some_and(|suffix| suffix.starts_with('.'))
-    })
+    ) || [".text", ".data", ".rodata", ".bss", ".tdata", ".tbss", ".eh_frame", ".gcc_except_table"]
+        .iter()
+        .any(|&base| {
+            name == base || name.strip_prefix(base).is_some_and(|suffix| suffix.starts_with('.'))
+        })
 }
 
 fn parse_elf<'a>(old: &'a [u8]) -> Gate<Elf<'a>> {
@@ -121,10 +106,7 @@ fn parse_elf<'a>(old: &'a [u8]) -> Gate<Elf<'a>> {
             k.starts_with(".debug") || known_payload(k),
             "unsupported native section carrying dependent payload",
         )?;
-        require(
-            n != ".note.GNU-stack" || s.size() == 0,
-            "nonempty stack note",
-        )?;
+        require(n != ".note.GNU-stack" || s.size() == 0, "nonempty stack note")?;
         if k.starts_with(".debug") {
             require(
                 matches!(
@@ -138,18 +120,12 @@ fn parse_elf<'a>(old: &'a [u8]) -> Gate<Elf<'a>> {
                 ),
                 "unsupported debug, type, macro or location section",
             )?;
-            require(
-                relevant.insert(n, s.index()).is_none(),
-                "duplicate debug section",
-            )?;
+            require(relevant.insert(n, s.index()).is_none(), "duplicate debug section")?;
             if !n.starts_with(".rela") {
                 let SectionFlags::Elf { sh_flags } = s.flags() else {
                     return Err("missing ELF section flags");
                 };
-                require(
-                    sh_flags & 0xA02 == 0,
-                    "allocated, compressed or grouped debug section",
-                )?;
+                require(sh_flags & 0xA02 == 0, "allocated, compressed or grouped debug section")?;
             }
         }
     }
@@ -164,9 +140,7 @@ fn parse_elf<'a>(old: &'a [u8]) -> Gate<Elf<'a>> {
         require(z == s.size(), "compressed debug section")?;
         let r = o as usize..(o + z) as usize;
         require(
-            !extents
-                .iter()
-                .any(|(i, x)| *i != s.index().0 as isize && overlap(x, &r)),
+            !extents.iter().any(|(i, x)| *i != s.index().0 as isize && overlap(x, &r)),
             "debug section overlaps ELF structure or another section",
         )?;
         Ok(r)
@@ -193,10 +167,7 @@ fn parse_elf<'a>(old: &'a [u8]) -> Gate<Elf<'a>> {
             let (sec, val) = match v.target() {
                 RelocationTarget::Symbol(i) => {
                     let sym = f.symbol_by_index(i).map_err(|_| "invalid debug symbol")?;
-                    (
-                        sym.section_index().ok_or("unbound debug symbol")?,
-                        i128::from(sym.address()),
-                    )
+                    (sym.section_index().ok_or("unbound debug symbol")?, i128::from(sym.address()))
                 }
                 RelocationTarget::Section(i) => (i, 0),
                 _ => return Err("absolute/unknown debug relocation"),
@@ -206,12 +177,7 @@ fn parse_elf<'a>(old: &'a [u8]) -> Gate<Elf<'a>> {
                 .map_err(|_| "invalid relocation section")?
                 .name()
                 .map_err(|_| "invalid relocation name")?;
-            r.push(Reloc {
-                offset: off,
-                kind,
-                target,
-                addend: val + i128::from(v.addend()),
-            });
+            r.push(Reloc { offset: off, kind, target, addend: val + i128::from(v.addend()) });
         }
         r.sort_unstable_by_key(|x| x.offset);
         require(
@@ -225,12 +191,8 @@ fn parse_elf<'a>(old: &'a [u8]) -> Gate<Elf<'a>> {
     Ok(Elf {
         info: &old[ir.clone()],
         line: &old[lr.clone()],
-        strings: section(".debug_str")?
-            .data()
-            .map_err(|_| "invalid strings")?,
-        ab: section(".debug_abbrev")?
-            .data()
-            .map_err(|_| "invalid abbreviations")?,
+        strings: section(".debug_str")?.data().map_err(|_| "invalid strings")?,
+        ab: section(".debug_abbrev")?.data().map_err(|_| "invalid abbreviations")?,
         ir,
         lr,
         ri,
@@ -262,15 +224,9 @@ fn check_abbrevs(b: &[u8]) -> Gate<()> {
         if id == 0 {
             return require(c.pos == b.len(), "multiple abbreviation tables");
         }
-        require(
-            id <= 4096 && ids.insert(id),
-            "duplicate or oversized abbreviation code",
-        )?;
+        require(id <= 4096 && ids.insert(id), "duplicate or oversized abbreviation code")?;
         let tag = c.leb(false)? as u64;
-        require(
-            matches!(tag, 0x11 | 0x2e | 0x1d | 0x0b),
-            "unknown or variable-bearing DIE",
-        )?;
+        require(matches!(tag, 0x11 | 0x2e | 0x1d | 0x0b), "unknown or variable-bearing DIE")?;
         require(c.byte()? <= 1, "invalid child flag")?;
         let mut names = BTreeSet::new();
         loop {
@@ -294,23 +250,16 @@ struct Field {
     range: Range<usize>,
 }
 fn get_reloc(r: &[Reloc<'_>], at: usize, kind: u32, section: &str) -> Gate<i128> {
-    let i = r
-        .binary_search_by_key(&at, |v| v.offset)
-        .map_err(|_| "missing bound debug relocation")?;
+    let i =
+        r.binary_search_by_key(&at, |v| v.offset).map_err(|_| "missing bound debug relocation")?;
     let v = &r[i];
-    require(
-        v.kind == kind && v.target == section,
-        "wrong bound debug relocation",
-    )?;
+    require(v.kind == kind && v.target == section, "wrong bound debug relocation")?;
     Ok(v.addend)
 }
 fn string_at(b: &[u8], n: i128) -> Gate<&str> {
     let p = usize::try_from(n).map_err(|_| "negative source path offset")?;
     let rest = b.get(p..).ok_or("path extent")?;
-    let len = rest
-        .iter()
-        .position(|x| *x == 0)
-        .ok_or("unterminated source path")?;
+    let len = rest.iter().position(|x| *x == 0).ok_or("unterminated source path")?;
     std::str::from_utf8(&rest[..len]).map_err(|_| "invalid source path UTF-8")
 }
 fn info(elf: &Elf<'_>) -> Gate<(String, Vec<Field>)> {
@@ -322,16 +271,10 @@ fn info(elf: &Elf<'_>) -> Gate<(String, Vec<Field>)> {
             && elf.info.get(10) == Some(&8),
         "unexpected CU extent or version",
     )?;
-    require(
-        get_reloc(&elf.ri, 6, 10, ".debug_abbrev")? == 0,
-        "unexpected abbreviation origin",
-    )?;
+    require(get_reloc(&elf.ri, 6, 10, ".debug_abbrev")? == 0, "unexpected abbreviation origin")?;
     let section = DebugInfo::new(elf.info, LittleEndian);
     let mut it = section.units();
-    let u = it
-        .next()
-        .map_err(|_| "gimli rejected compilation unit")?
-        .ok_or("empty debug info")?;
+    let u = it.next().map_err(|_| "gimli rejected compilation unit")?.ok_or("empty debug info")?;
     require(
         it.next().map_err(|_| "malformed trailing unit")?.is_none(),
         "multiple compilation units",
@@ -344,14 +287,9 @@ fn info(elf: &Elf<'_>) -> Gate<(String, Vec<Field>)> {
     let mut fields = Vec::new();
     let mut depth = 0i32;
     while !csr.is_empty() {
-        let mut raw = Cursor {
-            bytes: elf.info,
-            pos: csr.next_offset().0,
-        };
+        let mut raw = Cursor { bytes: elf.info, pos: csr.next_offset().0 };
         raw.leb(false)?;
-        let entry = csr
-            .read_abbreviation()
-            .map_err(|_| "invalid abbreviation code")?;
+        let entry = csr.read_abbreviation().map_err(|_| "invalid abbreviation code")?;
         require(raw.pos == csr.next_offset().0, "noncanonical DIE code")?;
         let Some(e) = entry else {
             depth -= 1;
@@ -378,9 +316,7 @@ fn info(elf: &Elf<'_>) -> Gate<(String, Vec<Field>)> {
         let mut fields_here = [None; 9];
         for spec in e.attributes() {
             let start = csr.next_offset().0;
-            let value = csr
-                .read_attribute(*spec)
-                .map_err(|_| "truncated DIE attribute")?;
+            let value = csr.read_attribute(*spec).map_err(|_| "truncated DIE attribute")?;
             let end = csr.next_offset().0;
             let n = spec.name().0;
             let f = spec.form().0;
@@ -392,10 +328,7 @@ fn info(elf: &Elf<'_>) -> Gate<(String, Vec<Field>)> {
                 _ => 0,
             };
             if f == 15 {
-                let mut v = Cursor {
-                    bytes: elf.info,
-                    pos: start,
-                };
+                let mut v = Cursor { bytes: elf.info, pos: start };
                 require(
                     v.leb(false)? == i128::from(x) && v.pos == end,
                     "noncanonical DIE integer",
@@ -405,11 +338,7 @@ fn info(elf: &Elf<'_>) -> Gate<(String, Vec<Field>)> {
                 fields_here[i] = Some((x, f, start, end));
             }
         }
-        let attr = |k| {
-            slot(k)
-                .and_then(|i| fields_here[i])
-                .map(|(v, f, s, e)| (v, f, s..e))
-        };
+        let attr = |k| slot(k).and_then(|i| fields_here[i]).map(|(v, f, s, e)| (v, f, s..e));
         if tag == 0x11 {
             let (lang, _, _) = attr(0x13).ok_or("missing CU language")?;
             require(lang == 0x1c, "non-Rust compilation unit")?;
@@ -420,10 +349,7 @@ fn info(elf: &Elf<'_>) -> Gate<(String, Vec<Field>)> {
                 "wrong compilation unit line table",
             )?;
             let (_, _, q) = attr(0x1b).ok_or("missing compilation directory")?;
-            require(
-                u32_at(elf.info, q.start)? == 0,
-                "unexpected string pointer value",
-            )?;
+            require(u32_at(elf.info, q.start)? == 0, "unexpected string pointer value")?;
             let path = string_at(elf.strings, get_reloc(&elf.ri, q.start, 10, ".debug_str")?)?;
             require(
                 path.starts_with('/') && !path.split('/').any(|p| p == ".."),
@@ -473,12 +399,7 @@ fn line_program<'a>(
     root: &'a str,
 ) -> Gate<gimli::IncompleteLineProgram<EndianSlice<'a, LittleEndian>>> {
     DebugLine::new(bytes, LittleEndian)
-        .program(
-            DebugLineOffset(0),
-            8,
-            Some(EndianSlice::new(root.as_bytes(), LittleEndian)),
-            None,
-        )
+        .program(DebugLineOffset(0), 8, Some(EndianSlice::new(root.as_bytes(), LittleEndian)), None)
         .map_err(|_| "gimli refused line program")
 }
 struct Layout {
@@ -525,24 +446,12 @@ impl Layout {
                     && f.size() == 0,
                 "unbound filename or physical timestamp/size",
             )?;
-            let dir = f
-                .directory(h)
-                .map(line_string)
-                .transpose()?
-                .ok_or("unknown line directory")?;
+            let dir =
+                f.directory(h).map(line_string).transpose()?.ok_or("unknown line directory")?;
             let logical = std::path::Path::new(root).join(dir).join(leaf);
-            files.push(
-                map.file(logical.to_str().ok_or("non-UTF8 resolved path")?)
-                    .ok(),
-            );
+            files.push(map.file(logical.to_str().ok_or("non-UTF8 resolved path")?).ok());
         }
-        Ok(Self {
-            base,
-            span,
-            opbase,
-            start,
-            files,
-        })
+        Ok(Self { base, span, opbase, start, files })
     }
     fn file(&self, i: u64) -> Gate<usize> {
         require(i > 0, "invalid zero file index")?;
@@ -553,10 +462,7 @@ impl Layout {
             .ok_or("unknown file index or logical source identity")
     }
     fn encode(&self, mut ld: i128, ad: i128, end: bool) -> Gate<Vec<u8>> {
-        require(
-            (0..=i128::from(u64::MAX)).contains(&ad),
-            "address delta overflow",
-        )?;
+        require((0..=i128::from(u64::MAX)).contains(&ad), "address delta overflow")?;
         let mut out = Vec::with_capacity(16);
         let limit = (255 - self.opbase) / self.span;
         if end {
@@ -596,18 +502,11 @@ impl Layout {
         }
         out.push(2);
         write_leb(ad, false, &mut out);
-        out.push(if copy {
-            1
-        } else {
-            u8::try_from(t).map_err(|_| "noncanonical line opcode")?
-        });
+        out.push(if copy { 1 } else { u8::try_from(t).map_err(|_| "noncanonical line opcode")? });
         Ok(out)
     }
     fn rewrite(&self, raw: &[u8], rl: &[Reloc<'_>], map: &Mapping<'_>) -> Gate<Vec<u8>> {
-        let mut c = Cursor {
-            bytes: raw,
-            pos: self.start,
-        };
+        let mut c = Cursor { bytes: raw, pos: self.start };
         let mut out = raw[..self.start].to_vec();
         let mut start = self.start;
         let mut next_reloc = 0;
@@ -623,14 +522,8 @@ impl Layout {
             match op {
                 0 => {
                     let n = c.count()? as usize;
-                    let limit = c
-                        .pos
-                        .checked_add(n)
-                        .ok_or("extended line extent overflow")?;
-                    require(
-                        n > 0 && limit <= raw.len(),
-                        "truncated extended line opcode",
-                    )?;
+                    let limit = c.pos.checked_add(n).ok_or("extended line extent overflow")?;
+                    require(n > 0 && limit <= raw.len(), "truncated extended line opcode")?;
                     match c.byte()? {
                         1 => {
                             require(n == 1, "invalid end_sequence")?;
@@ -738,9 +631,7 @@ fn verify_rows(old: &[u8], new: &[u8], cwd: &str, header: &Layout, map: &Mapping
     let mut b = line_program(new, cwd)?.rows();
     loop {
         let x = a.next_row().map_err(|_| "gimli rejected old line row")?;
-        let y = b
-            .next_row()
-            .map_err(|_| "gimli rejected candidate line row")?;
+        let y = b.next_row().map_err(|_| "gimli rejected candidate line row")?;
         match (x, y) {
             (None, None) => return Ok(()),
             (Some((_, x)), Some((_, y))) => {

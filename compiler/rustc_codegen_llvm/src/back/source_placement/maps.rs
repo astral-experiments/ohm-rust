@@ -1,5 +1,7 @@
+use std::borrow::Cow;
+use std::ops::Range;
+
 use super::{Gate, require};
-use std::{borrow::Cow, ops::Range};
 
 pub(super) struct Cursor<'a> {
     pub bytes: &'a [u8],
@@ -26,11 +28,7 @@ impl<'a> Cursor<'a> {
                     val -= 1i128 << (shift + 7);
                 }
                 require(
-                    if signed {
-                        i64::try_from(val).is_ok()
-                    } else {
-                        u64::try_from(val).is_ok()
-                    },
+                    if signed { i64::try_from(val).is_ok() } else { u64::try_from(val).is_ok() },
                     "LEB overflow",
                 )?;
                 let mut bytes = Vec::new();
@@ -111,16 +109,10 @@ impl<'a> Cursor<'a> {
 impl<'a> Placement<'a> {
     fn read(bytes: &'a [u8]) -> Gate<Self> {
         let mut input = Cursor { bytes, pos: 0 };
-        require(
-            input.take(17)? == b"CGU-GLOBAL-LINES\x01",
-            "wrong global coordinate version",
-        )?;
+        require(input.take(17)? == b"CGU-GLOBAL-LINES\x01", "wrong global coordinate version")?;
         let mut lines = Vec::new();
         input.sequence(&mut lines, 1_000_000)?;
-        require(
-            lines.starts_with(&[0, 1]),
-            "missing fixed line-number sentinels",
-        )?;
+        require(lines.starts_with(&[0, 1]), "missing fixed line-number sentinels")?;
         let count = input.count()? as usize;
         require(count > 0 && count <= 4096, "invalid DIFile count")?;
         let mut files = Vec::with_capacity(count);
@@ -131,10 +123,7 @@ impl<'a> Placement<'a> {
             let filename = input.text()?;
             require(!filename.is_empty(), "missing logical filename")?;
             let identity = (directory, filename);
-            require(
-                prior.is_none_or(|p| p < identity),
-                "duplicate or unsorted DIFile identity",
-            )?;
+            require(prior.is_none_or(|p| p < identity), "duplicate or unsorted DIFile identity")?;
             prior = Some(identity);
             let logical = if filename.starts_with('/') || directory.is_empty() {
                 Cow::Borrowed(filename)
@@ -152,9 +141,7 @@ impl<'a> Placement<'a> {
             };
             require(
                 hex.len() == expected
-                    && hex
-                        .iter()
-                        .all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f')),
+                    && hex.iter().all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f')),
                 "invalid DIFile checksum",
             )?;
             let checksum = (kind != 0).then_some((kind, hex));
@@ -165,13 +152,7 @@ impl<'a> Placement<'a> {
                     "unbound positive source rank",
                 )?;
             }
-            files.push(File {
-                logical,
-                directory,
-                filename,
-                checksum,
-                ranks: range,
-            });
+            files.push(File { logical, directory, filename, checksum, ranks: range });
         }
         require(input.pos == bytes.len(), "trailing coordinate bytes")?;
         files.sort_unstable_by(|a, b| a.logical.cmp(&b.logical));
@@ -179,11 +160,7 @@ impl<'a> Placement<'a> {
             files.windows(2).all(|p| p[0].logical != p[1].logical),
             "ambiguous logical file path",
         )?;
-        Ok(Self {
-            lines,
-            files,
-            ranks,
-        })
+        Ok(Self { lines, files, ranks })
     }
 }
 
@@ -217,27 +194,19 @@ impl<'a> Mapping<'a> {
                 "input identities or checksum kinds differ",
             )?;
             let ranks = &old.ranks[a.ranks.clone()];
-            require(
-                ranks == &new.ranks[b.ranks.clone()],
-                "per-file global ranks differ",
-            )?;
+            require(ranks == &new.ranks[b.ranks.clone()], "per-file global ranks differ")?;
             if a.logical.split('/').any(|c| c == "..") {
                 require(
                     a.checksum.is_some()
                         && a.checksum == b.checksum
-                        && ranks
-                            .iter()
-                            .all(|&r| old.lines[r as usize] == new.lines[r as usize]),
+                        && ranks.iter().all(|&r| old.lines[r as usize] == new.lines[r as usize]),
                     "changed or unbound literal parent source path",
                 )?;
             }
         }
         // Both global line arrays ascend strictly. Equal ranks across all files preserve LLVM's
         // cross-file physical-line comparisons when deciding whether to emit an is_stmt flag.
-        Ok(Self {
-            old,
-            new_lines: new.lines,
-        })
+        Ok(Self { old, new_lines: new.lines })
     }
     pub(super) fn file(&self, path: &str) -> Gate<usize> {
         self.old
@@ -255,13 +224,8 @@ impl<'a> Mapping<'a> {
             .lines
             .binary_search(&physical)
             .map_err(|_| "native coordinate absent from compiler placement")?;
-        let present = self.old.ranks[file.ranks.clone()]
-            .binary_search(&(rank as u32))
-            .is_ok();
-        require(
-            present,
-            "native coordinate is outside its declared source file",
-        )?;
+        let present = self.old.ranks[file.ranks.clone()].binary_search(&(rank as u32)).is_ok();
+        require(present, "native coordinate is outside its declared source file")?;
         Ok(self.new_lines[rank])
     }
 }
