@@ -882,6 +882,11 @@ impl CrateStore for CStore {
         self.get_crate_data(cnum).root.stable_crate_id
     }
 
+    fn has_def_kind(&self, def: DefId) -> bool {
+        let data = self.get_crate_data(def.krate);
+        data.root.tables.def_kind.get(data, def.index).is_some()
+    }
+
     /// Returns the `DefKey` for a given `DefId`. This indicates the
     /// parent `DefId` as well as some idea of what kind of data the
     /// `DefId` refers to.

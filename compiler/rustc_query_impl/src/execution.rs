@@ -5,7 +5,7 @@ use std::num::NonZero;
 use rustc_data_structures::hash_table::Entry;
 use rustc_data_structures::{Limit, defer, outline, sharded, sync};
 use rustc_errors::FatalError;
-use rustc_hir::def::DefKind;
+use rustc_hir::def::{CtorKind, DefKind};
 use rustc_middle::dep_graph::{
     DepGraphData, DepKind, DepNode, DepNodeIndex, DepNodeKey, SerializedDepNodeIndex,
 };
@@ -689,7 +689,7 @@ pub(crate) fn force_trait_impl_bucket(
     prev_index: SerializedDepNodeIndex,
 ) -> bool {
     let Some(key) = tcx.dep_graph.with_ignore(|| {
-        let (trait_node, adt_node) =
+        let (trait_node, receiver_node) =
             tcx.dep_graph.previous_trait_impl_inputs(dep_node, prev_index)?;
         let trait_id = trait_node.extract_def_id(tcx)?;
         if tcx.def_kind(trait_id) != DefKind::Trait {
@@ -700,12 +700,27 @@ pub(crate) fn force_trait_impl_bucket(
             (DepNode::construct(tcx, DepKind::non_blanket_trait_impls, &key) == dep_node)
                 .then_some(key)
         };
-        if let Some(adt_node) = adt_node {
-            let adt = adt_node.extract_def_id(tcx)?;
-            if !tcx.def_kind(adt).is_adt() {
-                return None;
-            }
-            matching_key(SimplifiedType::Adt(adt))
+        if let Some(node) = receiver_node {
+            let id = node.extract_def_id(tcx)?;
+            let kind = tcx.def_kind(id);
+            let receiver = match (node.kind, kind) {
+                (DepKind::trait_impl_receiver_adt, kind) if kind.is_adt() => {
+                    SimplifiedType::Adt(id)
+                }
+                (
+                    DepKind::def_kind,
+                    DefKind::Fn | DefKind::AssocFn | DefKind::Ctor(_, CtorKind::Fn),
+                ) => SimplifiedType::Closure(id),
+                (DepKind::def_kind, DefKind::Closure) if id.is_local() => {
+                    if tcx.is_coroutine(id) {
+                        SimplifiedType::Coroutine(id)
+                    } else {
+                        SimplifiedType::Closure(id)
+                    }
+                }
+                _ => return None,
+            };
+            matching_key(receiver)
         } else {
             let mut matches = FINITE_IMPL_RECEIVERS.iter().copied().filter_map(matching_key);
             let key = matches.next()?;

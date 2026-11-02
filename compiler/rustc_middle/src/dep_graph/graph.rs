@@ -956,14 +956,14 @@ impl DepGraph {
         if inputs.next().is_some() {
             return None;
         }
+        let is_receiver =
+            |kind| matches!(kind, DepKind::trait_impl_receiver_adt | DepKind::def_kind);
         match (first.kind, second) {
             (DepKind::trait_impls_of, None) => Some((first, None)),
-            (DepKind::trait_impls_of, Some(adt))
-                if adt.kind == DepKind::trait_impl_receiver_adt =>
-            {
-                Some((first, Some(adt)))
+            (DepKind::trait_impls_of, Some(receiver)) if is_receiver(receiver.kind) => {
+                Some((first, Some(receiver)))
             }
-            (DepKind::trait_impl_receiver_adt, Some(tr)) if tr.kind == DepKind::trait_impls_of => {
+            (kind, Some(tr)) if is_receiver(kind) && tr.kind == DepKind::trait_impls_of => {
                 Some((tr, Some(first)))
             }
             _ => None,

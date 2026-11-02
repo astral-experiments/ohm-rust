@@ -336,7 +336,15 @@ impl DepNode {
     /// has been removed.
     pub fn extract_def_id(&self, tcx: TyCtxt<'_>) -> Option<DefId> {
         if tcx.key_fingerprint_style(self.kind) == KeyFingerprintStyle::DefPathHash {
-            tcx.def_path_hash_to_def_id(DefPathHash(self.key_fingerprint.into()))
+            let id = tcx.def_path_hash_to_def_id(DefPathHash(self.key_fingerprint.into()))?;
+            // Sparse foreign metadata can retain an index without its old query result.
+            if self.kind == DepKind::def_kind
+                && !id.is_local()
+                && !tcx.cstore_untracked().has_def_kind(id)
+            {
+                return None;
+            }
+            Some(id)
         } else {
             None
         }

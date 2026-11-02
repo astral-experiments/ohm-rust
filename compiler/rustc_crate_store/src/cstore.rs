@@ -204,6 +204,9 @@ pub trait CrateStore: std::fmt::Debug {
     fn def_path(&self, def: DefId) -> DefPath;
     fn def_path_hash(&self, def: DefId) -> DefPathHash;
 
+    /// Whether an external definition-kind query can be recovered from the current metadata.
+    fn has_def_kind(&self, def: DefId) -> bool;
+
     // This information is safe to access, since it's hashed as part of the StableCrateId, which
     // incr. comp. uses to identify a CrateNum.
     fn crate_name(&self, cnum: CrateNum) -> Symbol;
