@@ -23,7 +23,7 @@ use rustc_middle::middle::dependency_format::{Dependencies, Linkage};
 use rustc_middle::middle::exported_symbols::{self, SymbolExportKind};
 use rustc_middle::middle::lang_items;
 use rustc_middle::mir::interpret::{CTFE_ALLOC_SALT, ErrorHandled, Scalar};
-use rustc_middle::mir::{BinOp, ConstValue};
+use rustc_middle::mir::{BinOp, ConstValue, TerminatorKind};
 use rustc_middle::mono::{CodegenUnit, CodegenUnitNameBuilder, MonoItem, MonoItemPartitions};
 use rustc_middle::query::Providers;
 use rustc_middle::ty::layout::{HasTyCtxt, HasTypingEnv, LayoutOf, TyAndLayout};
@@ -1211,7 +1211,9 @@ impl CrateInfo {
 }
 
 pub(crate) fn provide(providers: &mut Providers) {
-    providers.ohm_untracked_relink_inputs = has_untracked_relink_inputs;
+    providers.ohm_untracked_relink_inputs = |tcx, ()| {
+        has_untracked_relink_inputs(tcx, |kind| matches!(kind, TerminatorKind::InlineAsm { .. }))
+    };
     providers.backend_optimization_level = |tcx, cratenum| {
         let for_speed = match tcx.sess.opts.optimize {
             // If globally no optimisation is done, #[optimize] has no effect.
@@ -1248,7 +1250,10 @@ pub(crate) fn provide(providers: &mut Providers) {
 
 /// Assembly can open files outside rustc's dep-info, including when a dependency's
 /// generic function is instantiated in this codegen unit.
-fn has_untracked_relink_inputs(tcx: TyCtxt<'_>, (): ()) -> bool {
+pub fn has_untracked_relink_inputs<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    asm_has_untracked_inputs: impl Fn(&TerminatorKind<'tcx>) -> bool,
+) -> bool {
     let opts = &tcx.sess.opts;
     if !matches!(tcx.sess.lto(), config::Lto::No | config::Lto::ThinLocal)
         || opts.cg.linker_plugin_lto.enabled()
@@ -1263,14 +1268,11 @@ fn has_untracked_relink_inputs(tcx: TyCtxt<'_>, (): ()) -> bool {
     tcx.collect_and_partition_mono_items(()).codegen_units.iter().any(|cgu| {
         cgu.items().keys().any(|item| match *item {
             MonoItem::GlobalAsm(..) => true,
-            MonoItem::Fn(instance) => {
-                tcx.instance_mir(instance.def).basic_blocks.iter().any(|block| {
-                    matches!(
-                        block.terminator().kind,
-                        rustc_middle::mir::TerminatorKind::InlineAsm { .. }
-                    )
-                })
-            }
+            MonoItem::Fn(instance) => tcx
+                .instance_mir(instance.def)
+                .basic_blocks
+                .iter()
+                .any(|block| asm_has_untracked_inputs(&block.terminator().kind)),
             MonoItem::Static(_) => false,
         })
     })

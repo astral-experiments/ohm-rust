@@ -7,12 +7,13 @@ use rustc_codegen_ssa::mir::operand::OperandValue;
 use rustc_codegen_ssa::traits::*;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_middle::mir::interpret::{PointerArithmetic, Scalar as ConstScalar};
-use rustc_middle::ty::Instance;
+use rustc_middle::mir::{InlineAsmMacro, InlineAsmOperand, TerminatorKind};
 use rustc_middle::ty::layout::TyAndLayout;
+use rustc_middle::ty::{Instance, TyCtxt};
 use rustc_middle::{bug, span_bug};
 use rustc_span::{Pos, Span, Symbol, sym};
 use rustc_target::asm::*;
-use rustc_target::spec::HasTargetSpec;
+use rustc_target::spec::{HasTargetSpec, TargetTuple};
 use smallvec::SmallVec;
 use tracing::debug;
 
@@ -1570,5 +1571,102 @@ fn llvm_fixup_output_type<'ll, 'tcx>(
             cx.type_vector(cx.type_from_float(float), 16 / float.size().bytes())
         }
         _ => layout.llvm_type(cx),
+    }
+}
+
+/// Cargo can reuse a native object when rustc knows all of its assembler inputs.
+pub(crate) fn has_untracked_relink_inputs(tcx: TyCtxt<'_>, (): ()) -> bool {
+    let arch = match &tcx.sess.opts.target_triple {
+        TargetTuple::TargetTuple(t) if t == "x86_64-unknown-linux-gnu" => {
+            Some(InlineAsmArch::X86_64)
+        }
+        TargetTuple::TargetTuple(t) if t == "aarch64-apple-darwin" => Some(InlineAsmArch::AArch64),
+        _ => None,
+    };
+    rustc_codegen_ssa::base::has_untracked_relink_inputs(tcx, |kind| {
+        let TerminatorKind::InlineAsm { asm_macro, template, operands, options, .. } = kind else {
+            return false;
+        };
+        *asm_macro != InlineAsmMacro::Asm
+            || options.intersects(InlineAsmOptions::RAW | InlineAsmOptions::ATT_SYNTAX)
+            || !arch.is_some_and(|arch| file_free_inline_asm(arch, template, operands))
+    })
+}
+
+/// Recognize complete instruction lines. Unknown assembly anywhere in the crate still forces a
+/// rebuild: an assembler macro in one block could redefine an instruction used in another.
+fn file_free_inline_asm(
+    arch: InlineAsmArch,
+    template: &[InlineAsmTemplatePiece],
+    operands: &[InlineAsmOperand<'_>],
+) -> bool {
+    if !operands.iter().all(|operand| {
+        matches!(
+            operand,
+            InlineAsmOperand::In { .. }
+                | InlineAsmOperand::Out { .. }
+                | InlineAsmOperand::InOut { .. }
+        )
+    }) {
+        return false;
+    }
+
+    // Mark a substituted GPR as a single token. LLVM prints only a register name for these
+    // classes and modifiers. Reject a literal marker so it cannot impersonate a register.
+    let mut text = String::new();
+    for piece in template {
+        match piece {
+            InlineAsmTemplatePiece::String(s) if !s.contains('@') => text.push_str(s),
+            InlineAsmTemplatePiece::Placeholder { operand_idx, modifier, .. } => {
+                let reg = match &operands[*operand_idx] {
+                    InlineAsmOperand::In { reg, .. }
+                    | InlineAsmOperand::Out { reg, .. }
+                    | InlineAsmOperand::InOut { reg, .. } => reg.reg_class(),
+                    _ => return false,
+                };
+                if !matches!(
+                    reg,
+                    InlineAsmRegClass::X86(
+                        X86InlineAsmRegClass::reg
+                            | X86InlineAsmRegClass::reg_abcd
+                            | X86InlineAsmRegClass::reg_byte
+                    ) | InlineAsmRegClass::AArch64(AArch64InlineAsmRegClass::reg)
+                ) || modifier.is_some_and(|m| !reg.valid_modifiers(arch).contains(&m))
+                {
+                    return false;
+                }
+                text.push('@');
+            }
+            _ => return false,
+        }
+    }
+    text.split('\n').all(|line| file_free_asm_line(arch, line.trim_matches([' ', '\t'])))
+}
+
+fn file_free_asm_line(arch: InlineAsmArch, line: &str) -> bool {
+    if line.is_empty() {
+        return true;
+    }
+    if let Some(comment) = line.strip_prefix("/*").and_then(|s| s.strip_suffix("*/")) {
+        return comment
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b' ' | b'\t' | b'_' | b'@'));
+    }
+    let (opcode, args) = line.split_once([' ', '\t']).unwrap_or((line, ""));
+    match (arch, opcode) {
+        (_, "nop") | (InlineAsmArch::X86_64, "syscall" | "cpuid") => args.is_empty(),
+        (_, "mov") | (InlineAsmArch::X86_64, "xchg") => {
+            let Some((dst, src)) = args.split_once(',') else { return false };
+            [dst, src].iter().all(|arg| {
+                let arg = arg.trim_matches([' ', '\t']);
+                arg == "@"
+                    || match arch {
+                        InlineAsmArch::X86_64 => X86InlineAsmReg::parse(arg).is_ok(),
+                        InlineAsmArch::AArch64 => AArch64InlineAsmReg::parse(arg).is_ok(),
+                        _ => false,
+                    }
+            })
+        }
+        _ => false,
     }
 }
