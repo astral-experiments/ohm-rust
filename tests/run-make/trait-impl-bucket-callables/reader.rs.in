@@ -1,0 +1,29 @@
+fn copy<T: Copy>(value: T) -> T { value }
+
+pub fn only_named() -> u8 {
+    let f = facade::seed;
+    copy(f)()
+}
+
+pub fn only_ctor() -> u8 {
+    let f = facade::Token::Make;
+    match copy(f)(7) {
+        facade::Token::Make(value, ..) => value,
+    }
+}
+
+pub fn only_assoc() -> u8 {
+    copy(facade::Api::value)()
+}
+
+fn local() -> u8 { 4 }
+
+pub fn only_closure() -> u8 {
+    let _saved = 7u8;
+    let chosen = move || { let _ = &_saved; 6 };
+    copy(chosen)()
+}
+
+fn main() {
+    println!("{} {} {} {} {}", only_named(), only_ctor(), only_assoc(), only_closure(), local());
+}

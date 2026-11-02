@@ -1,0 +1,27 @@
+fn only_coroutine() {
+    // owner
+    let task = async { facade::BYTE };
+    let _take = || task;
+}
+
+fn require_send<T: Send>(_: T) {}
+
+fn check_capture() {
+    let shared = std::sync::Arc::new(facade::BYTE);
+    require_send(async move {
+        std::future::ready(()).await;
+        *shared
+    });
+}
+
+#[cfg(require_copy)]
+fn check_matching_impl(value: facade::Toggled) {
+    fn copy<T: Copy>(_: T) {}
+    copy(value);
+}
+
+fn main() {
+    only_coroutine();
+    check_capture();
+    println!("{}", facade::BYTE);
+}

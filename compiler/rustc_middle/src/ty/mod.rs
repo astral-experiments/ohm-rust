@@ -40,6 +40,7 @@ use rustc_errors::{Diag, ErrorGuaranteed, LintBuffer};
 use rustc_hir::attrs::StrippedCfgItem;
 use rustc_hir::attrs::lang_items::LangItem;
 use rustc_hir::def::{CtorKind, CtorOf, DefKind, DocLinkResMap, LifetimeRes, Res};
+use rustc_hir::definitions::DefPathData;
 use rustc_hir::def_id::{CrateNum, DefId, DefIdMap, LocalDefId, LocalDefIdMap, VisibilityDefId};
 use rustc_hir::definitions::PerParentDisambiguatorState;
 use rustc_hir::{self as hir, MissingLifetimeKind, attrs as attr, find_attr};
@@ -2549,10 +2550,23 @@ pub fn provide(providers: &mut Providers) {
         blanket_trait_impls: |tcx, trait_id| tcx.trait_impls_of(trait_id).blanket_impls(),
         non_blanket_trait_impls: |tcx, (trait_id, simp)| {
             let impls = tcx.trait_impls_of(trait_id);
-            if tcx.dep_graph.is_fully_enabled()
-                && let SimplifiedType::Adt(adt) = simp
-            {
-                let () = tcx.trait_impl_receiver_adt(adt);
+            if tcx.dep_graph.is_fully_enabled() {
+                match simp {
+                    SimplifiedType::Adt(adt) => tcx.trait_impl_receiver_adt(adt),
+                    SimplifiedType::Closure(id) | SimplifiedType::Coroutine(id)
+                        if id.is_local()
+                            || tcx.cstore_untracked().has_def_kind(id)
+                                && matches!(
+                                    tcx.def_key(id).disambiguated_data.data,
+                                    DefPathData::ValueNs(_) | DefPathData::Ctor
+                                ) =>
+                    {
+                        // A foreign closure body can be omitted from early metadata. Named
+                        // function items and their constructors retain their definition kind.
+                        let _ = tcx.def_kind(id);
+                    }
+                    _ => {}
+                }
             }
             impls.non_blanket_impls().get(&simp).map_or(&[], Vec::as_slice)
         },
