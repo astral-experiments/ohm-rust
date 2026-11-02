@@ -1201,6 +1201,12 @@ pub(super) fn crate_hash(tcx: TyCtxt<'_>, _: LocalCrate) -> Svh {
         }
         upstream_crates.stable_hash(&mut hcx, &mut stable_hasher);
         source_file_names.stable_hash(&mut hcx, &mut stable_hasher);
+        if tcx.sess.opts.unstable_opts.incremental_ignore_spans {
+            // A downstream crate can still observe the spans omitted from our HIR hash.
+            for &id in &source_file_names {
+                tcx.metadata_source_file_hash(id).stable_hash(&mut hcx, &mut stable_hasher);
+            }
+        }
         debugger_visualizers.stable_hash(&mut hcx, &mut stable_hasher);
         if tcx.sess.opts.incremental.is_some() {
             let definitions = tcx.untracked().definitions.freeze();

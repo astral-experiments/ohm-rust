@@ -292,12 +292,14 @@ fn main() {
     assert_eq!(tracked_source.len(), moved_source.len());
     assert_ne!(tracked_source, moved_source);
 
-    // Metadata-only span hashing retains eight column bits. The prefix must still be re-encoded.
     rfs::write("lib.rs", &tracked_source);
     let check_hash = compile_and_read_public_api_hash(false);
     rfs::write("lib.rs", &moved_source);
     change_private_value(5, 6);
-    assert_eq!(check_hash, compile_and_read_public_api_hash(false));
+    let moved_check_hash = compile_and_read_public_api_hash(false);
+    assert_ne!(check_hash, moved_check_hash);
+    rfs::remove_dir_all("incremental");
+    assert_eq!(moved_check_hash, compile_and_read_public_api_hash(false));
 
     // Native callers can observe the full column, so moving the definition must invalidate them.
     change_private_value(6, 5);
