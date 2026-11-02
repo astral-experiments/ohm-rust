@@ -191,13 +191,12 @@ impl<'tcx> TyCtxt<'tcx> {
                 // These may normalize or unify with any value, so retain the original scan.
                 _ => return self.for_each_relevant_impl(trait_def_id, self_ty, f),
             };
-            let impls = self.trait_impls_of(trait_def_id);
-            if let Some(bucket) = impls.non_blanket_impls.get(&SimplifiedType::Adt(adt.did()))
-                && bucket.len() >= 16
-            {
+            let bucket =
+                self.non_blanket_trait_impls((trait_def_id, SimplifiedType::Adt(adt.did())));
+            if bucket.len() >= 16 {
                 let index = self.trait_impls_by_const_arg((trait_def_id, adt.did()));
                 debug_assert_eq!(args[index.const_arg].as_const(), Some(ct));
-                for &impl_def_id in &impls.blanket_impls {
+                for &impl_def_id in self.blanket_trait_impls(trait_def_id) {
                     f(impl_def_id);
                 }
                 index.for_each(value, f);
@@ -217,12 +216,9 @@ impl<'tcx> TyCtxt<'tcx> {
         mut f: impl FnMut(DefId) -> R,
     ) -> R {
         let tcx = self;
-        let trait_impls = tcx.trait_impls_of(trait_def_id);
         let mut consider_impls_for_simplified_type = |simp| {
-            if let Some(impls_for_type) = trait_impls.non_blanket_impls().get(&simp) {
-                for &impl_def_id in impls_for_type {
-                    try_visit!(f(impl_def_id))
-                }
+            for &impl_def_id in tcx.non_blanket_trait_impls((trait_def_id, simp)) {
+                try_visit!(f(impl_def_id))
             }
 
             R::output()
@@ -316,7 +312,8 @@ impl<'tcx> TyCtxt<'tcx> {
 
             // This is only for diagnostics and normally ty vars should be handled by the callers.
             ty::Infer(ty::TyVar(_)) => {
-                for &impl_def_id in trait_impls.non_blanket_impls().values().flatten() {
+                let impls = tcx.trait_impls_of(trait_def_id);
+                for &impl_def_id in impls.non_blanket_impls().values().flatten() {
                     try_visit!(f(impl_def_id));
                 }
             }
@@ -354,13 +351,10 @@ impl<'tcx> TyCtxt<'tcx> {
         trait_def_id: DefId,
         self_ty: Ty<'tcx>,
     ) -> impl Iterator<Item = DefId> {
-        let impls = self.trait_impls_of(trait_def_id);
         if let Some(simp) =
             fast_reject::simplify_type(self, self_ty, TreatParams::InstantiateWithInfer)
         {
-            if let Some(impls) = impls.non_blanket_impls.get(&simp) {
-                return impls.iter().copied();
-            }
+            return self.non_blanket_trait_impls((trait_def_id, simp)).iter().copied();
         }
 
         [].iter().copied()
@@ -435,10 +429,8 @@ pub(super) fn trait_impls_by_const_arg_provider(
         .index as usize;
     let mut index =
         ConstArgImpls { const_arg, values: FxIndexMap::default(), fallback: Vec::new() };
-    let impls = tcx.trait_impls_of(trait_id);
-    for (position, &impl_def_id) in
-        impls.non_blanket_impls[&SimplifiedType::Adt(adt_id)].iter().enumerate()
-    {
+    let impls = tcx.non_blanket_trait_impls((trait_id, SimplifiedType::Adt(adt_id)));
+    for (position, &impl_def_id) in impls.iter().enumerate() {
         let self_ty = tcx.type_of(impl_def_id).instantiate_identity().skip_norm_wip();
         if let ty::Adt(_, args) = self_ty.kind()
             && let ty::ConstKind::Value(value) = args.const_at(const_arg).kind()
