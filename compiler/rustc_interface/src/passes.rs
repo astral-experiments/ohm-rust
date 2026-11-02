@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::borrow::Cow;
 use std::ffi::{OsStr, OsString};
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -42,9 +43,7 @@ use rustc_session::diagnostics::feature_err;
 use rustc_session::output::{filename_for_input, invalid_output_for_target};
 use rustc_session::search_paths::PathKind;
 use rustc_session::{IncrCompSession, Session};
-use rustc_span::{
-    DUMMY_SP, ErrorGuaranteed, ExpnKind, SourceFileHash, SourceFileHashAlgorithm, Span, Symbol, sym,
-};
+use rustc_span::{DUMMY_SP, ErrorGuaranteed, ExpnKind, SourceFileHash, Span, Symbol, sym};
 use rustc_trait_selection::{solve, traits};
 use tracing::{info, instrument};
 
@@ -594,6 +593,14 @@ fn write_out_deps(tcx: TyCtxt<'_>, outputs: &OutputFilenames, out_filenames: &[P
     let result = try {
         // Build a list of files used to compile the output and
         // write Makefile-compatible dependency rules
+        let mut lossy_paths = Vec::new();
+        let mut escape_path = |path: Cow<'_, str>| {
+            let escaped = escape_dep_filename(&path);
+            if matches!(path, Cow::Owned(_)) {
+                lossy_paths.push(escaped.clone());
+            }
+            escaped
+        };
         let mut files: IndexMap<String, (u64, Option<SourceFileHash>)> = sess
             .source_map()
             .files()
@@ -602,7 +609,7 @@ fn write_out_deps(tcx: TyCtxt<'_>, outputs: &OutputFilenames, out_filenames: &[P
             .filter(|fmap| !fmap.is_imported())
             .map(|fmap| {
                 (
-                    escape_dep_filename(&fmap.name.prefer_local_unconditionally().to_string()),
+                    escape_path(fmap.name.prefer_local_unconditionally().to_string_lossy()),
                     (
                         // This needs to be unnormalized,
                         // as external tools wouldn't know how rustc normalizes them
@@ -621,59 +628,38 @@ fn write_out_deps(tcx: TyCtxt<'_>, outputs: &OutputFilenames, out_filenames: &[P
 
         let normalize_path = |path: PathBuf| escape_dep_filename(&path.to_string_lossy());
 
-        // The entries will be used to declare dependencies between files in a
-        // Makefile-like output, so the iteration order does not matter.
-        fn hash_iter_files<P: AsRef<Path>>(
-            it: impl Iterator<Item = P>,
-            checksum_hash_algo: Option<SourceFileHashAlgorithm>,
-        ) -> impl Iterator<Item = (P, (u64, Option<SourceFileHash>))> {
-            it.map(move |path| {
-                match checksum_hash_algo.and_then(|algo| {
-                    fs::File::open(path.as_ref())
-                        .and_then(|mut file| {
-                            SourceFileHash::new(algo, &mut file).map(|h| (file, h))
-                        })
-                        .and_then(|(file, h)| file.metadata().map(|m| (m.len(), h)))
-                        .map_err(|e| {
-                            tracing::error!(
-                                "failed to compute checksum, omitting it from dep-info {} {e}",
-                                path.as_ref().display()
-                            )
-                        })
-                        .ok()
-                }) {
-                    Some((file_len, checksum)) => (path, (file_len, Some(checksum))),
-                    None => (path, (0, None)),
-                }
-            })
+        let mut add_file = |path: &Path| {
+            let escaped = escape_path(path.to_string_lossy());
+            let checksum = checksum_hash_algo.and_then(|algo| {
+                path.to_str()?;
+                rustc_session::filesearch::open_regular_file(path)
+                    .and_then(|mut file| SourceFileHash::new(algo, &mut file).map(|h| (file, h)))
+                    .and_then(|(file, h)| file.metadata().map(|m| (m.len(), Some(h))))
+                    .map_err(|e| {
+                        tracing::error!(
+                            "failed to compute checksum, omitting it from dep-info {} {e}",
+                            path.display()
+                        )
+                    })
+                    .ok()
+            });
+            files.insert(escaped, checksum.unwrap_or((0, None)));
+        };
+        for path in file_depinfo.iter() {
+            add_file(Path::new(path.as_str()));
         }
-
-        let extra_tracked_files = hash_iter_files(
-            file_depinfo.iter().map(|path_sym| normalize_path(PathBuf::from(path_sym.as_str()))),
-            checksum_hash_algo,
-        );
-        files.extend(extra_tracked_files);
 
         // We also need to track used PGO profile files
         if let Some(ref profile_instr) = sess.opts.cg.profile_use {
-            files.extend(hash_iter_files(
-                iter::once(normalize_path(profile_instr.as_path().to_path_buf())),
-                checksum_hash_algo,
-            ));
+            add_file(profile_instr);
         }
         if let Some(ref profile_sample) = sess.opts.unstable_opts.profile_sample_use {
-            files.extend(hash_iter_files(
-                iter::once(normalize_path(profile_sample.as_path().to_path_buf())),
-                checksum_hash_algo,
-            ));
+            add_file(profile_sample);
         }
 
         // Debugger visualizer files
         for debugger_visualizer in tcx.debugger_visualizers(LOCAL_CRATE) {
-            files.extend(hash_iter_files(
-                iter::once(normalize_path(debugger_visualizer.path.clone().unwrap())),
-                checksum_hash_algo,
-            ));
+            add_file(debugger_visualizer.path.as_ref().unwrap());
         }
 
         if sess.binary_dep_depinfo() {
@@ -681,34 +667,28 @@ fn write_out_deps(tcx: TyCtxt<'_>, outputs: &OutputFilenames, out_filenames: &[P
                 if backend.contains('.') {
                     // If the backend name contain a `.`, it is the path to an external dynamic
                     // library. If not, it is not a path.
-                    files.extend(hash_iter_files(
-                        iter::once(backend.to_string()),
-                        checksum_hash_algo,
-                    ));
+                    add_file(Path::new(backend));
                 }
             }
 
             for &cnum in tcx.crates(()) {
                 let source = tcx.used_crate_source(cnum);
                 if let Some(path) = &source.dylib {
-                    files.extend(hash_iter_files(
-                        iter::once(escape_dep_filename(&path.display().to_string())),
-                        checksum_hash_algo,
-                    ));
+                    add_file(path);
                 }
                 if let Some(path) = &source.rlib {
-                    files.extend(hash_iter_files(
-                        iter::once(escape_dep_filename(&path.display().to_string())),
-                        checksum_hash_algo,
-                    ));
+                    add_file(path);
                 }
                 if let Some(path) = &source.rmeta {
-                    files.extend(hash_iter_files(
-                        iter::once(escape_dep_filename(&path.display().to_string())),
-                        checksum_hash_algo,
-                    ));
+                    add_file(path);
                 }
             }
+        }
+
+        // One Make name can represent both a non-Unicode path and a literal replacement
+        // character. Withhold its checksum even if the representable input was inserted last.
+        for name in lossy_paths {
+            files.insert(name, (0, None));
         }
 
         if sess.proc_macro_observed_foreign_bytes.load(Ordering::Relaxed)
@@ -726,6 +706,15 @@ fn write_out_deps(tcx: TyCtxt<'_>, outputs: &OutputFilenames, out_filenames: &[P
         }
 
         let write_deps_to_file = |file: &mut dyn Write| -> io::Result<()> {
+            // Older Cargo recognizes the output prefix to handle a colon in its name.
+            // Preserve that layout when it could mistake the filename for a delimiter.
+            if checksum_hash_algo.is_some()
+                && out_filenames
+                    .first()
+                    .is_some_and(|p| p.to_str().is_some_and(|p| !p.contains(": ")))
+            {
+                writeln!(file, "# ohm-raw-checksum-paths-v2")?;
+            }
             for path in out_filenames {
                 writeln!(
                     file,
