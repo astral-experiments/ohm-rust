@@ -163,3 +163,172 @@ fn check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges() {
     );
     assert!(IndexedDepGraph::new(&legacy, 8).is_none());
 }
+
+/// Two workers flush in the opposite order to their allocated indices. Both retain unused tails.
+fn check_graph(fixed: bool) -> Vec<u8> {
+    let mut file = MemEncoder::new();
+    file.emit_raw_bytes(&[0; 8]);
+    if fixed {
+        file.emit_raw_bytes(fixed::MAGIC);
+    }
+    let mut packed_index = SeekIndexBuilder::default();
+    let mut directory = fixed::DirectoryWriter::default();
+    let mut counts = vec![0u32; DepKind::NUM_VARIANTS];
+    for (first, kinds) in [
+        (256u32, [DepKind::mir_borrowck, DepKind::CompileMonoItem]),
+        (0, [DepKind::typeck_root, DepKind::CompileCodegenUnit]),
+    ] {
+        let mut worker = fixed::BlockWriter::default();
+        let mut chunk = MemEncoder::new();
+        let mut positions = Vec::new();
+        let mut roots = Vec::new();
+        for (i, kind) in kinds.into_iter().enumerate() {
+            let id = first + i as u32;
+            let edges = [DepNodeIndex::from_u32(257), DepNodeIndex::from_u32(1)];
+            counts[kind.as_usize()] += 1;
+            let index = DepNodeIndex::from_u32(id);
+            let info = NodeInfo {
+                node: node(kind, u64::from(id), 31),
+                value_fingerprint: Fingerprint::new(19, u64::from(id)),
+                edges: if id == 0 { &edges } else { &[] },
+            };
+            if fixed {
+                worker.push(index, &info);
+            } else {
+                positions.push((index, chunk.data.len()));
+                if matches!(kind, DepKind::mir_borrowck | DepKind::typeck_root) {
+                    roots.push((info.node, index));
+                }
+                info.encode(&mut chunk, index);
+            }
+        }
+        let position = file.data.len();
+        if fixed {
+            worker.flush(&mut file, position, &mut directory);
+        } else {
+            packed_index.record_chunk(position, &mut positions, &mut roots);
+            file.emit_raw_bytes(&chunk.data);
+        }
+    }
+    let stats = file.data.len();
+    for count in counts {
+        count.encode(&mut file);
+    }
+    7u64.encode(&mut file);
+    let start = file.data.len();
+    if fixed {
+        directory.encode(&mut file, stats, start, 259);
+    } else {
+        packed_index.encode(&mut file, start, 259);
+    }
+    for n in [259u64, 4, 2] {
+        file.emit_raw_bytes(&n.to_le_bytes());
+    }
+    file.emit_raw_bytes(rustc_serialize::opaque::MAGIC_END_BYTES);
+    file.data
+}
+
+fn read_graph(data: &[u8]) -> Option<Arc<SerializedDepGraph>> {
+    SerializedDepGraph::try_decode(
+        &mut MemDecoder::new(data, 8).ok()?,
+        &SelfProfilerRef::new(None, None),
+    )
+}
+
+#[test]
+fn indexed_check_reads_both_formats_and_keeps_each_row_boundary() {
+    for fixed in [false, true] {
+        let data = check_graph(fixed);
+        let eager = read_graph(&data).unwrap();
+        let seek = IndexedDepGraph::new(&data, 8).unwrap();
+        let id = SerializedDepNodeIndex::from_u32;
+        assert_eq!(eager.session_count, 7);
+        assert_eq!(seek.node_count(), 4);
+        assert_eq!(seek.node_reads(), 0);
+        for (kind, raw) in [(DepKind::typeck_root, 0), (DepKind::mir_borrowck, 256)] {
+            let key = node(kind, raw.into(), 31);
+            assert_eq!(eager.node_to_index_opt(&key), Some(id(raw)));
+            assert_eq!(seek.node_to_index_opt(&key), Some(id(raw)));
+            assert_eq!(
+                seek.node(id(raw)).unwrap().fingerprint,
+                Fingerprint::new(19, u64::from(raw))
+            );
+        }
+        assert!(seek.node_to_index_opt(&node(DepKind::CompileMonoItem, 257, 31)).is_none());
+        assert!(seek.node(id(2)).is_none());
+        assert!(seek.node(id(258)).is_none());
+        assert!(seek.node(id(259)).is_none());
+        assert!(eager.edge_targets_from(id(258)).next().is_none());
+        let mut edges = eager.edge_targets_from(id(0));
+        assert_eq!(edges.next(), Some(id(257)));
+        assert_eq!(edges.clone().collect::<Vec<_>>(), [id(1)]);
+        assert_eq!(edges.find(|i| *i == id(1)), Some(id(1)));
+        assert_eq!(edges.next(), None);
+        assert_eq!(edges.next(), None);
+        assert_eq!(seek.node(id(0)).unwrap().edges().collect::<Vec<_>>(), [id(257), id(1)]);
+    }
+}
+
+#[test]
+fn fixed_check_rejects_invalid_records_offsets_edges_counts_and_truncation() {
+    let data = check_graph(true);
+    let end = data.len() - rustc_serialize::opaque::MAGIC_END_BYTES.len();
+    let index = fixed::Directory::new(&data[..end], 8).unwrap();
+    let block = index.block_offset(0).unwrap();
+    let offsets = block + 16 + 2 * 34;
+    let edges = offsets + 3 * 4;
+    for (at, bytes) in [
+        (block, &1u32.to_le_bytes()[..]),
+        (block + 4, &0u32.to_le_bytes()),
+        (block + 16, &u16::MAX.to_le_bytes()),
+        (block + 16, &DepKind::mir_borrowck.as_u16().to_le_bytes()),
+        (offsets + 4, &3u32.to_le_bytes()),
+        (edges, &u32::MAX.to_le_bytes()),
+        (index.stats, &[0xff; 10]),
+        (index.start, &0u64.to_le_bytes()),
+        (end - 8, &3u64.to_le_bytes()),
+    ] {
+        let mut bad = data.clone();
+        bad[at..at + bytes.len()].copy_from_slice(bytes);
+        assert!(read_graph(&bad).is_none(), "accepted invalid bytes at {at}");
+    }
+    // A numeric target in an unused worker tail is rejected when its parent is visited.
+    // No row can turn that hole green, and unrelated live rows keep their usual unknown color.
+    let mut bad = data.clone();
+    bad[edges + 4..edges + 8].copy_from_slice(&258u32.to_le_bytes());
+    let eager = read_graph(&bad).unwrap();
+    let colors = DepNodeColorMap::new(&eager);
+    let mut targets = eager.edge_targets_from(SerializedDepNodeIndex::from_u32(0));
+    let good = targets.next().unwrap();
+    let hole = targets.next().unwrap();
+    assert!(matches!(colors.get(good), super::super::graph::DepNodeColor::Unknown));
+    assert!(matches!(
+        colors.try_set_color(good, DesiredColor::Green { index: DepNodeIndex::from_u32(9) }),
+        TrySetColorResult::Success
+    ));
+    assert!(matches!(colors.get(good), super::super::graph::DepNodeColor::Green(_)));
+    assert!(matches!(colors.get(hole), super::super::graph::DepNodeColor::Red));
+    assert!(matches!(
+        colors.try_set_color(hole, DesiredColor::Green { index: DepNodeIndex::from_u32(10) }),
+        TrySetColorResult::AlreadyRed
+    ));
+    assert!(matches!(
+        colors.get(SerializedDepNodeIndex::from_u32(256)),
+        super::super::graph::DepNodeColor::Unknown
+    ));
+    let seek = IndexedDepGraph::new(&bad, 8).unwrap();
+    assert!(seek.node(hole).is_none());
+
+    for cut in [16, block + 16, offsets, edges + 1, index.start, end - 1] {
+        let mut bad = data[..cut].to_vec();
+        bad.extend_from_slice(rustc_serialize::opaque::MAGIC_END_BYTES);
+        assert!(read_graph(&bad).is_none(), "accepted truncated graph at {cut}");
+    }
+}
+
+#[test]
+fn fixed_graph_marker_cannot_be_a_packed_node() {
+    let mut bytes = [0; 38];
+    bytes[..fixed::MAGIC.len()].copy_from_slice(fixed::MAGIC);
+    assert_eq!(SerializedNodeHeader { bytes }.node().kind, DepKind::Null);
+}

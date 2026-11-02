@@ -3,25 +3,33 @@
 use std::cell::Cell;
 
 use rustc_data_structures::fingerprint::Fingerprint;
+use rustc_serialize::Decoder;
+#[cfg(test)]
+use rustc_serialize::Encoder;
 use rustc_serialize::opaque::MemDecoder;
-use rustc_serialize::{Decoder, Encoder};
 
-use super::{DepKind, DepNode, DepNodeIndex, SerializedDepNodeIndex, SerializedNodeHeader};
+#[cfg(test)]
+use super::DepNodeIndex;
+use super::{
+    DepKind, DepNode, SerializedDepGraph, SerializedDepNodeIndex, SerializedNodeHeader, fixed,
+};
 
 const FOOTER_BYTES: usize = 24;
 const INDEX_TRAILER_BYTES: usize = 24;
 const INDEX_MAGIC: u64 = u64::from_le_bytes(*b"OHMIDX01");
 
-fn key(node: &DepNode) -> (u16, [u8; 16]) {
+pub(super) fn key(node: &DepNode) -> (u16, [u8; 16]) {
     (node.kind.as_u16(), Fingerprint::from(node.key_fingerprint).to_le_bytes())
 }
 
+#[cfg(test)]
 #[derive(Default)]
 pub(super) struct SeekIndexBuilder {
     offsets: Vec<u64>,
     roots: Vec<(DepNode, DepNodeIndex)>,
 }
 
+#[cfg(test)]
 impl SeekIndexBuilder {
     pub(super) fn record_chunk(
         &mut self,
@@ -100,6 +108,7 @@ pub(crate) struct IndexedDepGraph<'a> {
     data: &'a [u8],
     graph_start: usize,
     index: SeekIndexMetadata,
+    fixed: Option<fixed::Directory<'a>>,
     node_reads: Cell<usize>,
 }
 
@@ -123,11 +132,26 @@ impl IndexedDepNode<'_> {
 impl<'a> IndexedDepGraph<'a> {
     pub(crate) fn new(data: &'a [u8], graph_start: usize) -> Option<Self> {
         let mut decoder = MemDecoder::new(data, graph_start).ok()?;
-        let index = SeekIndexMetadata::decode(&mut decoder)?;
+        let fixed = if SerializedDepGraph::has_fixed_check_marker(data, graph_start) {
+            Some(fixed::Directory::new(data.get(..decoder.len())?, graph_start)?)
+        } else {
+            None
+        };
+        let index = if let Some(d) = fixed {
+            SeekIndexMetadata {
+                start: d.start,
+                roots_start: d.roots_start,
+                roots_len: d.roots_len,
+                node_max: d.node_max,
+                node_count: d.node_count,
+            }
+        } else {
+            SeekIndexMetadata::decode(&mut decoder)?
+        };
         if index.start < graph_start {
             return None;
         }
-        Some(Self { data, graph_start, index, node_reads: Cell::new(0) })
+        Some(Self { data, graph_start, index, fixed, node_reads: Cell::new(0) })
     }
 
     pub(crate) fn node_count(&self) -> usize {
@@ -166,11 +190,20 @@ impl<'a> IndexedDepGraph<'a> {
         while left < right {
             let middle = left + (right - left) / 2;
             let offset = self.index.roots_start + middle * 4;
-            let index = SerializedDepNodeIndex::from_u32(u32::from_le_bytes(
-                self.data.get(offset..offset + 4)?.try_into().ok()?,
-            ));
-            let (header, _) = self.header(index)?;
-            match key(&header.node()).cmp(&wanted) {
+            let raw = u32::from_le_bytes(self.data.get(offset..offset + 4)?.try_into().ok()?);
+            if raw > SerializedDepNodeIndex::MAX_AS_U32 || raw as usize >= self.index.node_max {
+                return None;
+            }
+            let index = SerializedDepNodeIndex::from_u32(raw);
+            let node = if let Some(d) = self.fixed {
+                let (block, row) = d.indexed(index)?;
+                let (node, _) = block.node(row)?;
+                self.node_reads.set(self.node_reads.get() + 1);
+                node
+            } else {
+                self.header(index)?.0.node()
+            };
+            match key(&node).cmp(&wanted) {
                 std::cmp::Ordering::Less => left = middle + 1,
                 std::cmp::Ordering::Greater => right = middle,
                 std::cmp::Ordering::Equal => return Some(index),
@@ -180,6 +213,21 @@ impl<'a> IndexedDepGraph<'a> {
     }
 
     pub(crate) fn node(&self, index: SerializedDepNodeIndex) -> Option<IndexedDepNode<'a>> {
+        if let Some(d) = self.fixed {
+            let (block, row) = d.indexed(index)?;
+            let (node, fingerprint) = block.node(row)?;
+            let edges = block.row(row)?;
+            if edges
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .any(|&raw| u32::from_le_bytes(raw) as usize >= d.node_max)
+            {
+                return None;
+            }
+            self.node_reads.set(self.node_reads.get() + 1);
+            return Some(IndexedDepNode { node, fingerprint, edges, width: 4 });
+        }
         let (header, position) = self.header(index)?;
         let mut decoder = MemDecoder::new(self.data, position).ok()?;
         let len = header.len().unwrap_or_else(|| decoder.read_u32()) as usize;

@@ -103,7 +103,7 @@ fn load_dep_graph(
 
     let _prof_timer = sess.prof.generic_activity("incr_comp_load_dep_graph");
 
-    match file_format::open_incremental_file(sess, &path) {
+    match file_format::open_graph_file(sess, &path) {
         Err(OpenFileError::NotFoundOrHeaderMismatch) => LoadResult::DataOutOfDate,
         Err(OpenFileError::IoError { err }) => LoadResult::IoError { path: path.to_owned(), err },
         Ok(OpenFile { mmap, start_pos }) => {
@@ -297,7 +297,7 @@ pub fn setup_dep_graph(
         sess.dcx().emit_fatal(diagnostics::CreateDepGraph { path: &path_buf, err })
     });
 
-    file_format::write_file_header(&mut encoder, sess);
+    file_format::write_graph_header(&mut encoder, sess);
 
     // First encode the commandline arguments hash
     sess.opts.dep_tracking_hash(false).encode(&mut encoder);
@@ -350,7 +350,7 @@ fn load_metadata_checkpoint(
 /// Maps the current check snapshot without decoding it until a build query needs it.
 fn load_latest_check(sess: &Session, session: &IncrCompSession) -> Option<CheckCacheSource> {
     let OpenFile { mmap: graph, start_pos } =
-        file_format::open_incremental_file(sess, &dep_graph_path(session)).ok()?;
+        file_format::open_graph_file(sess, &dep_graph_path(session)).ok()?;
     let mut decoder = MemDecoder::new(&graph, start_pos).ok()?;
     if Hash64::decode(&mut decoder) != sess.opts.dep_tracking_hash(false) {
         return None;
@@ -368,7 +368,7 @@ fn load_stage_checkpoint(
     cache_filename: &str,
 ) -> Option<(Arc<SerializedDepGraph>, OnDiskCache)> {
     let path = in_incr_comp_dir_sess(session, graph_filename);
-    let OpenFile { mmap, start_pos } = file_format::open_incremental_file(sess, &path).ok()?;
+    let OpenFile { mmap, start_pos } = file_format::open_graph_file(sess, &path).ok()?;
     let mut decoder = MemDecoder::new(&mmap, start_pos).ok()?;
     if Hash64::decode(&mut decoder) != sess.opts.dep_tracking_hash(false) {
         return None;

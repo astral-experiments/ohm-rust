@@ -192,7 +192,7 @@ impl DepGraph {
         let current =
             CurrentDepGraph::new(session, prev_index_space_len, encoder, Arc::clone(&prev_graph));
 
-        let colors = DepNodeColorMap::new(prev_index_space_len);
+        let colors = DepNodeColorMap::new(&prev_graph);
 
         // Instantiate a node with zero dependencies only once for anonymous queries.
         let _green_node_index = current.alloc_new_node(
@@ -987,6 +987,9 @@ impl DepGraph {
 
         for previous_dependency in data.previous.edge_targets_from(previous_index) {
             let dependency = data.previous.index_to_node(previous_dependency);
+            if dependency.kind == DepKind::Null {
+                return None;
+            }
             if dependency.kind == refreshed_kind {
                 continue;
             }
@@ -1474,9 +1477,16 @@ const COMPRESSED_RED: u32 = u32::MAX - 1;
 const COMPRESSED_UNKNOWN: u32 = u32::MAX;
 
 impl DepNodeColorMap {
-    fn new(size: usize) -> DepNodeColorMap {
+    pub(super) fn new(previous: &SerializedDepGraph) -> DepNodeColorMap {
         debug_assert!(COMPRESSED_RED > DepNodeIndex::MAX_AS_U32);
-        DepNodeColorMap { values: (0..size).map(|_| AtomicU32::new(COMPRESSED_UNKNOWN)).collect() }
+        let mut values: IndexVec<_, _> =
+            (0..previous.index_space_len()).map(|_| AtomicU32::new(COMPRESSED_UNKNOWN)).collect();
+        previous.fixed_unused_slots(|range| {
+            for slot in &mut values.raw[range] {
+                *slot = AtomicU32::new(COMPRESSED_RED);
+            }
+        });
+        DepNodeColorMap { values }
     }
 
     #[inline]
