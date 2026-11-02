@@ -50,6 +50,41 @@ fn check_round_trip<
 }
 
 #[test]
+fn test_path_wire_format() {
+    use std::path::{Path, PathBuf};
+
+    use super::mem_encoder::MemEncoder;
+    use crate::Encoder;
+
+    let text = "source/é/🦀.rs";
+    let mut path = MemEncoder::new();
+    Path::new(text).encode(&mut path);
+    let mut legacy = MemEncoder::new();
+    legacy.emit_str(text);
+    assert_eq!(path.finish(), legacy.finish());
+
+    let mut paths = vec![PathBuf::from(text)];
+    #[cfg(unix)]
+    {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+        for native in [b"src-\xff", b"src-\xfe", b"src-\xc1", b"src-\xc2"] {
+            paths.push(PathBuf::from(OsStr::from_bytes(native)));
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::ffi::OsString;
+        use std::os::windows::ffi::OsStringExt;
+        for native in [[0xd800, 0x61], [0xdcff, 0x61], [0xdcfe, 0x61]] {
+            paths.push(PathBuf::from(OsString::from_wide(&native)));
+        }
+    }
+    paths.push(PathBuf::from("after"));
+    check_round_trip(paths);
+}
+
+#[test]
 fn test_unit() {
     check_round_trip(vec![(), (), (), ()]);
 }
