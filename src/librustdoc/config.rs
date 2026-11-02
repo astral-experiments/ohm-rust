@@ -21,7 +21,7 @@ use rustc_target::spec::TargetTuple;
 use smallvec::SmallVec;
 
 use crate::core::new_dcx;
-use crate::externalfiles::ExternalHtml;
+use crate::externalfiles::{ExternalFiles, ExternalHtml};
 use crate::html::markdown::IdMap;
 use crate::html::render::StylePath;
 use crate::html::static_files;
@@ -382,7 +382,7 @@ impl Options {
         early_dcx: &mut EarlyDiagCtxt,
         matches: &getopts::Matches,
         args: Vec<String>,
-    ) -> Option<(InputMode, Options, RenderOptions, Vec<PathBuf>)> {
+    ) -> Option<(InputMode, Options, RenderOptions, ExternalFiles)> {
         // Check for unstable options.
         nightly_options::check_nightly_options(early_dcx, matches, &opts());
 
@@ -744,10 +744,13 @@ impl Options {
 
         let extension_css = matches.opt_str("e").map(|s| PathBuf::from(&s));
 
-        let mut loaded_paths = Vec::new();
+        let mut external_files = ExternalFiles {
+            paths: Vec::new(),
+            fragments: emit.iter().any(|kind| matches!(kind, EmitType::DepInfo(_))).then(Vec::new),
+        };
 
         if let Some(ref p) = extension_css {
-            loaded_paths.push(p.clone());
+            external_files.paths.push(p.clone());
             if !p.is_file() {
                 dcx.fatal("option --extend-css argument must be a file");
             }
@@ -794,7 +797,7 @@ impl Options {
                     ))
                     .emit();
                 }
-                loaded_paths.push(theme_file.clone());
+                external_files.paths.push(theme_file.clone());
                 themes.push(StylePath { path: theme_file });
             }
         }
@@ -813,7 +816,7 @@ impl Options {
             &mut id_map,
             edition,
             &None,
-            &mut loaded_paths,
+            &mut external_files.fragments,
         ) else {
             dcx.fatal("`ExternalHtml::load` failed");
         };
@@ -826,7 +829,7 @@ impl Options {
         let index_page = matches.opt_str("index-page").map(|s| PathBuf::from(&s));
         if let Some(ref index_page) = index_page {
             if index_page.is_file() {
-                loaded_paths.push(index_page.clone());
+                external_files.paths.push(index_page.clone());
             } else {
                 dcx.fatal("option `--index-page` argument must be a file");
             }
@@ -912,8 +915,11 @@ impl Options {
 
         let scrape_examples_options = ScrapeExamplesOptions::new(matches, dcx);
         let with_examples = matches.opt_strs("with-examples");
-        let call_locations =
-            crate::scrape_examples::load_call_locations(with_examples, dcx, &mut loaded_paths);
+        let call_locations = crate::scrape_examples::load_call_locations(
+            with_examples,
+            dcx,
+            &mut external_files.paths,
+        );
         let doctest_build_args = matches.opt_strs("doctest-build-arg");
 
         let disable_minification = matches.opt_present("disable-minification");
@@ -998,7 +1004,7 @@ impl Options {
             parts_out_dir,
             disable_minification,
         };
-        Some((input, options, render_options, loaded_paths))
+        Some((input, options, render_options, external_files))
     }
 }
 
