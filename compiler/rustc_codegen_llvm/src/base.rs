@@ -68,13 +68,14 @@ pub(crate) fn compile_codegen_unit(
     let start_time = Instant::now();
 
     let dep_node = tcx.codegen_unit(cgu_name).codegen_dep_node(tcx);
-    let (module, _) = tcx.dep_graph.with_task(
+    let (mut module, _) = tcx.dep_graph.with_task(
         dep_node,
         tcx,
         || module_codegen(tcx, cgu_name),
         Some(dep_graph::hash_result),
     );
     let time_to_codegen = start_time.elapsed();
+    module.module_llvm.placement_input = crate::back::placed_object::prepare(tcx, cgu_name);
 
     // We assume that the cost to run LLVM on a CGU is proportional to
     // the time we needed for codegenning it.

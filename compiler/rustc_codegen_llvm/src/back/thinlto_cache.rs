@@ -109,6 +109,7 @@ impl CacheEntry {
             assembly: None,
             llvm_ir: None,
             links_from_incr_cache: Vec::new(),
+            source_placement: Default::default(),
         })
     }
 

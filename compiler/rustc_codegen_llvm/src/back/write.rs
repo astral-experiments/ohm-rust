@@ -995,6 +995,24 @@ pub(crate) fn codegen(
 ) -> CompiledModule {
     let _timer = prof.generic_activity_with_arg("LLVM_module_codegen", &*module.name);
 
+    let mut placement = None;
+    if let Some(wire) = super::placed_object::record(cgcx, &module) {
+        if let Some(object) = super::placed_object::materialize(cgcx, &module, &wire) {
+            let mut compiled = module.into_compiled_module(
+                true,
+                false,
+                false,
+                false,
+                false,
+                &cgcx.output_filenames,
+            );
+            compiled.source_placement =
+                rustc_middle::dep_graph::CguSourcePlacement::bind(object.as_slice(), wire);
+            return compiled;
+        }
+        placement = Some(wire);
+    }
+
     let dcx = DiagCtxt::new(Box::new(shared_emitter.clone()));
     let dcx = dcx.handle();
 
@@ -1225,6 +1243,10 @@ pub(crate) fn codegen(
         if let Some(path) = &mut compiled.dwarf_object {
             *path = object_outputs.temp_path_dwo_for_cgu(&compiled.name);
         }
+    }
+    if let (Some(wire), Some(object)) = (placement, &compiled.object) {
+        compiled.source_placement =
+            rustc_middle::dep_graph::CguSourcePlacement::for_object(object, wire);
     }
     compiled
 }

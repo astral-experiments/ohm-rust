@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use rustc_data_structures::fingerprint::{Fingerprint, PackedFingerprint};
 use rustc_data_structures::fx::FxHashSet;
+use rustc_data_structures::owned_slice::{OwnedSlice, slice_owned};
 use rustc_data_structures::profiling::QueryInvocationId;
 use rustc_data_structures::sharded::{self, ShardedHashMap};
 use rustc_data_structures::stable_hash::{StableHash, StableHasher};
@@ -1280,6 +1281,85 @@ pub struct WorkProduct {
     /// By convention, file extensions are currently used as identifiers, i.e. the key "o" maps to
     /// the object file's path, and "dwo" to the dwarf object file's path.
     pub saved_files: UnordMap<String, String>,
+    pub source_placement: CguSourcePlacement,
+}
+
+/// Source coordinates bound to one native object. The work-product index owns their storage.
+#[derive(Clone, Default)]
+pub struct CguSourcePlacement(pub Option<OwnedSlice>);
+
+impl CguSourcePlacement {
+    /// Maximum size of an object the native projector can inspect.
+    pub const MAX_OBJECT_BYTES: usize = 32 << 20;
+    /// Maximum size of the compiler's coordinate record before its digest.
+    pub const MAX_WIRE_BYTES: usize = 16 << 20;
+
+    /// Binds the compiler's placement record to the exact object its coordinates describe.
+    pub fn for_object(object: &std::path::Path, placement: Vec<u8>) -> Self {
+        use std::io::Read;
+
+        let Ok(file) = std::fs::File::open(object) else { return Self::default() };
+        let Ok(metadata) = file.metadata() else { return Self::default() };
+        if !metadata.is_file() || metadata.len() > Self::MAX_OBJECT_BYTES as u64 {
+            return Self::default();
+        }
+        Self::bind(file.take(metadata.len() + 1), placement)
+    }
+
+    /// Seals a produced object and its length-delimited coordinate record.
+    pub fn bind(object: impl std::io::Read, mut placement: Vec<u8>) -> Self {
+        if placement.len() > Self::MAX_WIRE_BYTES {
+            return Self::default();
+        }
+        let Ok(hash) = Self::hash(object, &placement) else { return Self::default() };
+        placement.extend_from_slice(hash.hash_bytes());
+        Self(Some(slice_owned(placement, |bytes| bytes.as_slice())))
+    }
+
+    /// Framing the record length distinguishes the object bytes from the trailing coordinates.
+    fn hash(
+        object: impl std::io::Read,
+        placement: &[u8],
+    ) -> std::io::Result<rustc_span::SourceFileHash> {
+        use std::io::Read;
+
+        use rustc_span::{SourceFileHash, SourceFileHashAlgorithm};
+
+        let len = (placement.len() as u64).to_le_bytes();
+        SourceFileHash::new(
+            SourceFileHashAlgorithm::Blake3,
+            object.chain(placement).chain(len.as_slice()),
+        )
+    }
+
+    /// Returns the placement only when the prior native file and record still agree.
+    pub fn checked_for(&self, object: &[u8]) -> Option<&[u8]> {
+        let bytes = self.0.as_deref()?;
+        let (placement, digest) = bytes.split_at_checked(bytes.len().checked_sub(32)?)?;
+        if placement.len() > Self::MAX_WIRE_BYTES || object.len() > Self::MAX_OBJECT_BYTES {
+            return None;
+        }
+        let hash = Self::hash(object, placement).ok()?;
+        (hash.hash_bytes() == digest).then_some(placement)
+    }
+}
+
+impl std::fmt::Debug for CguSourcePlacement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("CguSourcePlacement").field(&self.0.as_ref().map(|s| s.len())).finish()
+    }
+}
+
+// Keep ordinary work-product records and .rlink files byte-compatible. The optional
+// work-product index tail is the only on-disk representation of placements.
+impl<E: rustc_serialize::Encoder> rustc_serialize::Encodable<E> for CguSourcePlacement {
+    fn encode(&self, _: &mut E) {}
+}
+
+impl<D: rustc_serialize::Decoder> rustc_serialize::Decodable<D> for CguSourcePlacement {
+    fn decode(_: &mut D) -> Self {
+        Self::default()
+    }
 }
 
 pub type WorkProductMap = UnordMap<WorkProductId, WorkProduct>;

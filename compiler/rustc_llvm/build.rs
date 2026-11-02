@@ -350,6 +350,7 @@ fn main() {
     }
     cfg.file("llvm-wrapper/PassWrapper.cpp")
         .file("llvm-wrapper/OhmRegisterCoalescer.cpp")
+        .file("llvm-wrapper/OhmSourcePlacement.cpp")
         .file("llvm-wrapper/RustWrapper.cpp")
         .file("llvm-wrapper/CoverageMappingWrapper.cpp")
         .file("llvm-wrapper/SymbolWrapper.cpp")
