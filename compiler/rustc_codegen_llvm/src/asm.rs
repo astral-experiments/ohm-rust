@@ -1587,6 +1587,7 @@ pub(crate) fn relink_inputs(tcx: TyCtxt<'_>, (): ()) -> RelinkInputs {
         _ => None,
     };
     let mut saw_asm = false;
+    let mut saw_frame_pointer_move = false;
     let untracked = rustc_codegen_ssa::base::has_untracked_relink_inputs(tcx, |kind| {
         let TerminatorKind::InlineAsm { asm_macro, template, operands, options, .. } = kind else {
             return false;
@@ -1594,7 +1595,9 @@ pub(crate) fn relink_inputs(tcx: TyCtxt<'_>, (): ()) -> RelinkInputs {
         saw_asm = true;
         *asm_macro != InlineAsmMacro::Asm
             || options.intersects(InlineAsmOptions::RAW | InlineAsmOptions::ATT_SYNTAX)
-            || !arch.is_some_and(|arch| file_free_inline_asm(arch, template, operands))
+            || !arch.is_some_and(|arch| {
+                file_free_inline_asm(arch, template, operands, &mut saw_frame_pointer_move)
+            })
     });
     if untracked {
         return RelinkInputs::Rebuild;
@@ -1612,7 +1615,7 @@ pub(crate) fn relink_inputs(tcx: TyCtxt<'_>, (): ()) -> RelinkInputs {
     {
         return RelinkInputs::Rebuild;
     }
-    RelinkInputs::RecheckLink
+    if saw_frame_pointer_move { RelinkInputs::VerifyNativeLink } else { RelinkInputs::RecheckLink }
 }
 
 /// Recognize complete instruction lines. Unknown assembly anywhere in the crate still forces a
@@ -1621,6 +1624,7 @@ fn file_free_inline_asm(
     arch: InlineAsmArch,
     template: &[InlineAsmTemplatePiece],
     operands: &[InlineAsmOperand<'_>],
+    saw_frame_pointer_move: &mut bool,
 ) -> bool {
     if arch == InlineAsmArch::AArch64
         && let [InlineAsmOperand::InOut { reg: InlineAsmRegOrRegClass::RegClass(reg), .. }] =
@@ -1678,10 +1682,12 @@ fn file_free_inline_asm(
             _ => return false,
         }
     }
-    text.split('\n').all(|line| file_free_asm_line(arch, line.trim_matches([' ', '\t'])))
+    text.split('\n').all(|line| {
+        file_free_asm_line(arch, line.trim_matches([' ', '\t']), saw_frame_pointer_move)
+    })
 }
 
-fn file_free_asm_line(arch: InlineAsmArch, line: &str) -> bool {
+fn file_free_asm_line(arch: InlineAsmArch, line: &str, saw_frame_pointer_move: &mut bool) -> bool {
     if line.is_empty() {
         return true;
     }
@@ -1704,10 +1710,12 @@ fn file_free_asm_line(arch: InlineAsmArch, line: &str) -> bool {
         (InlineAsmArch::AArch64, "crc32b" | "crc32h" | "crc32w" | "crc32x") => register_operands(3),
         (InlineAsmArch::AArch64, "mov") => {
             let Some((dst, src)) = args.split_once(',') else { return false };
-            [dst, src].iter().all(|arg| {
-                let arg = arg.trim_matches([' ', '\t']);
-                arg == "@" || AArch64InlineAsmReg::parse(arg).is_ok()
-            })
+            let regs = [dst, src].map(|arg| arg.trim_matches([' ', '\t']));
+            if regs == ["fp", "fp"] {
+                *saw_frame_pointer_move = true;
+                return true;
+            }
+            regs.into_iter().all(|arg| arg == "@" || AArch64InlineAsmReg::parse(arg).is_ok())
         }
         _ => false,
     }

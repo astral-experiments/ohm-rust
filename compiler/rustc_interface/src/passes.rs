@@ -712,6 +712,7 @@ pub fn write_dep_info_with_relink_inputs(
         let marker_name = match inputs {
             RelinkInputs::Tracked => None,
             RelinkInputs::RecheckLink => Some("ohm-recheck-dependent-links"),
+            RelinkInputs::VerifyNativeLink => Some("ohm-recheck-dependent-links-v2"),
             RelinkInputs::Rebuild => Some("ohm-untracked-relink-inputs"),
         };
         let relink_marker = if let Some(name) = marker_name {
