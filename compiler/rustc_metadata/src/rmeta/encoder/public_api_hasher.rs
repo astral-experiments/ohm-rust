@@ -612,7 +612,9 @@ pub(super) fn crate_hashes<'tcx, 'h>(
     }
 
     let mut hasher = StableHasher::default();
-    let public_global_hash = stable_hash(hcx.hcx_mut(), root);
+    // A legacy intermediate can retain positional expansion IDs into a public dependency.
+    // Prevent it from accepting a new-format producer under the old equivalence relation.
+    let public_global_hash = stable_hash(hcx.hcx_mut(), &(crate::rmeta::OHM_METADATA_EPOCH, root));
     debug!("crate_hashes: public_global_hash = {public_global_hash:?}");
     debug!("crate_hashes: public_hashes roots hash = {:?}", public_hashes.hash);
     public_global_hash.stable_hash(hcx.hcx_mut(), &mut hasher);
@@ -931,7 +933,7 @@ impl ReachabilityGraphHashes {
             Node::Span(_) => unimplemented!(),
             Node::Ty(_) => unimplemented!(),
             Node::Predicate(_) => unimplemented!(),
-            Node::AllocId(_) => unimplemented!(),
+            Node::AllocId(_) | Node::MetadataLocation(_) => unimplemented!(),
         };
         *current_hash = current_hash.combine_commutative(hash);
     }
@@ -968,7 +970,7 @@ impl ReachabilityGraphHashes {
                     .ok()
             }),
             Node::Ty(_) => None,
-            Node::Predicate(_) => None,
+            Node::Predicate(_) | Node::MetadataLocation(_) => None,
             Node::AllocId(id) => Some(tcx.with_stable_hashing_context(|mut hcx| {
                 stable_hash(&mut hcx, &tcx.global_alloc(*id))
             })),
@@ -986,6 +988,7 @@ pub(crate) enum Node<'tcx> {
     Ty(Ty<'tcx>),
     Predicate(PredicateKind<'tcx>),
     AllocId(AllocId),
+    MetadataLocation(Fingerprint),
 }
 
 impl From<AllocId> for Node<'_> {
@@ -1188,7 +1191,7 @@ fn build_public_hashes<'tcx>(
             Node::Ty(_) => (),
             Node::Predicate(_) => (),
             Node::Span(_) => (),
-            Node::AllocId(_) => (),
+            Node::AllocId(_) | Node::MetadataLocation(_) => (),
         }
     }
     for &node_index in &graph.roots {
