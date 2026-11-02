@@ -3,11 +3,17 @@
 # Exit if anything fails
 set -e
 
+# Use the installed toolchain for both LLDB and its Python formatters.
+rustc="$(dirname "$0")/rustc"
+if [ ! -x "$rustc" ]; then
+    rustc=rustc
+fi
+
 # Find the host triple so we can find lldb in rustlib.
-host=$(rustc --print host-tuple)
+host=$("$rustc" --print host-tuple)
 
 # Find out where to look for the pretty printer Python module
-RUSTC_SYSROOT=$(rustc --print sysroot)
+RUSTC_SYSROOT=$("$rustc" --print sysroot)
 RUST_LLDB="$RUSTC_SYSROOT/lib/rustlib/$host/bin/lldb"
 
 lldb=lldb
