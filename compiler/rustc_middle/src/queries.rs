@@ -2219,12 +2219,15 @@ rustc_queries! {
         separate_provide_extern
     }
 
-    /// Collects all incoherent impls for the given crate and type.
-    ///
-    /// Do not call this directly, but instead use the `incoherent_impls` query.
-    /// This query is only used to get the data necessary for that query.
-    query crate_incoherent_impls(key: (CrateNum, SimplifiedType)) -> &'tcx [DefId] {
-        desc { "collecting all impls for a type in a crate" }
+    query local_incoherent_impls(key: SimplifiedType) -> &'tcx [DefId] {
+        desc { "collecting all inherent impls for `{:?}`", key }
+    }
+
+    /// Empty directories have no impls for any receiver. For populated directories
+    /// the external metadata input covers both the receiver keys and their impls.
+    query external_incoherent_impls_input(_: CrateNum) -> Option<Svh> {
+        eval_always
+        desc { "tracking input to external metadata queries" }
         separate_provide_extern
     }
 

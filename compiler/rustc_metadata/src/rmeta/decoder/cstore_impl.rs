@@ -16,7 +16,6 @@ use rustc_middle::middle::exported_symbols::{ExportedSymbol, SymbolExportLevel};
 use rustc_middle::middle::stability::DeprecationEntry;
 use rustc_middle::queries::ExternProviders;
 use rustc_middle::query::LocalCrate;
-use rustc_middle::ty::fast_reject::SimplifiedType;
 use rustc_middle::ty::{self, TyCtxt, TypeVisitable};
 use rustc_middle::util::Providers;
 use rustc_serialize::Decoder;
@@ -244,14 +243,6 @@ impl<'tcx> IntoArgs for ty::InstanceKind<'tcx> {
     }
 }
 
-impl IntoArgs for (CrateNum, SimplifiedType) {
-    type This = DefId;
-    type Other = SimplifiedType;
-    fn into_args(self) -> (DefId, SimplifiedType) {
-        (self.0.as_def_id(), self.1)
-    }
-}
-
 provide! { tcx, def_id, other, cdata,
     explicit_item_bounds => { table_defaulted_array }
     explicit_item_self_bounds => { table_defaulted_array }
@@ -473,7 +464,6 @@ provide! { tcx, def_id, other, cdata,
         }
     }
     implementations_of_trait => { cdata.get_implementations_of_trait(tcx, other) }
-    crate_incoherent_impls => { cdata.get_incoherent_impls(tcx, other) }
 
     crate_dep_kind => { cdata.dep_kind }
     module_children => {
@@ -746,6 +736,10 @@ pub(in crate::rmeta) fn provide(providers: &mut Providers) {
         ..providers.queries
     };
     provide_extern(&mut providers.extern_queries);
+    providers.extern_queries.external_incoherent_impls_input = |tcx, cnum| {
+        let has_impls = !CStore::from_tcx(tcx).get_crate_data(cnum).incoherent_impls.is_empty();
+        has_impls.then(|| tcx.external_metadata_input_hash(cnum))
+    };
     providers.extern_queries.trait_impls_key_hash = |tcx, cnum| {
         let cstore = CStore::from_tcx(tcx);
         cstore.get_crate_data(cnum).trait_impls_key_hash(&cstore)
@@ -899,6 +893,16 @@ impl CrateStore for CStore {
 }
 
 fn provide_cstore_hooks(providers: &mut Providers) {
+    providers.hooks.append_external_incoherent_impls = |tcx, cnum, simp, impls| {
+        if tcx.dep_graph.is_fully_enabled() && tcx.external_incoherent_impls_input(cnum).is_none() {
+            return;
+        }
+        let cstore = CStore::from_tcx(tcx);
+        let cdata = cstore.get_crate_data(cnum);
+        if let Some(indices) = cdata.incoherent_impls.get(&simp) {
+            impls.extend(indices.decode((cdata, tcx)).map(|index| cdata.local_def_id(index)));
+        }
+    };
     providers.hooks.has_implementations_of_trait = |tcx, cnum, trait_id, trait_hash| {
         if tcx.dep_graph.is_fully_enabled() {
             tcx.ensure_ok().trait_impls_key_hash(cnum);
