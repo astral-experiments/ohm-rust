@@ -1039,6 +1039,7 @@ pub trait ResolverExpand {
         &mut self,
         expn_id: LocalExpnId,
         fragment: &AstFragment,
+        proc_derive_subject: Option<Symbol>,
     );
     fn register_builtin_macro(&mut self, name: Symbol, ext: SyntaxExtensionKind);
 

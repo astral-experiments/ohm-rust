@@ -1408,6 +1408,25 @@ impl<'tcx> TyCtxt<'tcx> {
         override_def_path_data: Option<DefPathData>,
         disambiguator: &mut PerParentDisambiguatorState,
     ) -> TyCtxtFeed<'tcx, LocalDefId> {
+        self.create_def_with_derive_slot(
+            parent,
+            name,
+            def_kind,
+            override_def_path_data,
+            disambiguator,
+            None,
+        )
+    }
+
+    pub fn create_def_with_derive_slot(
+        self,
+        parent: LocalDefId,
+        name: Option<Symbol>,
+        def_kind: DefKind,
+        override_def_path_data: Option<DefPathData>,
+        disambiguator: &mut PerParentDisambiguatorState,
+        derive_slot: Option<u32>,
+    ) -> TyCtxtFeed<'tcx, LocalDefId> {
         let data = override_def_path_data.unwrap_or_else(|| def_kind.def_path_data(name));
         // The following call has the side effect of modifying the tables inside `definitions`.
         // These very tables are relied on by the incr. comp. engine to decode DepNodes and to
@@ -1418,7 +1437,12 @@ impl<'tcx> TyCtxt<'tcx> {
         // - has been created by this call to `create_def`.
         // As a consequence, this LocalDefId is always re-created before it is needed by the incr.
         // comp. engine itself.
-        let def_id = self.untracked.definitions.write().create_def(parent, data, disambiguator);
+        let def_id = self.untracked.definitions.write().create_def_with_derive_slot(
+            parent,
+            data,
+            disambiguator,
+            derive_slot,
+        );
 
         // This function modifies `self.definitions` using a side-effect.
         // We need to ensure that these side effects are re-run by the incr. comp. engine.

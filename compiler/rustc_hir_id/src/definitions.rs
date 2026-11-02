@@ -21,6 +21,16 @@ use tracing::{debug, instrument};
 
 use crate::def_path_hash_map::DefPathHashMap;
 
+const FIRST_DERIVED_IMPL: u32 = 1 << 31;
+
+pub fn proc_derive_impl_seed(macro_def: DefPathHash, subject: Symbol) -> u32 {
+    let mut hasher = StableHasher::new();
+    macro_def.hash(&mut hasher);
+    subject.as_str().hash(&mut hasher);
+    let hash: Hash64 = hasher.finish();
+    hash.as_u64() as u32
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct PerParentDisambiguatorState {
     #[cfg(debug_assertions)]
@@ -309,6 +319,10 @@ impl Definitions {
     }
 
     fn allocate(&mut self, key: DefKey, def_path_hash: DefPathHash) -> LocalDefId {
+        self.try_allocate(key, def_path_hash).expect("definition already allocated")
+    }
+
+    fn try_allocate(&mut self, key: DefKey, def_path_hash: DefPathHash) -> Option<LocalDefId> {
         // Assert that all DefPathHashes correctly contain the local crate's StableCrateId.
         debug_assert_eq!(self.stable_crate_id, def_path_hash.stable_crate_id());
         let local_hash = def_path_hash.local_hash();
@@ -324,8 +338,16 @@ impl Definitions {
         if let Some(existing) =
             self.def_path_hash_to_index.insert(&local_hash, &def_id.local_def_index)
         {
-            let def_path1 = self.def_path(LocalDefId { local_def_index: existing });
-            let def_path2 = self.def_path(def_id);
+            let replaced = self.def_path_hash_to_index.insert(&local_hash, &existing);
+            debug_assert_eq!(replaced, Some(def_id.local_def_index));
+            let original = LocalDefId { local_def_index: existing };
+            let occupied_slot = key.disambiguated_data.data == DefPathData::Impl
+                && key.disambiguated_data.disambiguator >= FIRST_DERIVED_IMPL
+                && self.def_key(original) == key;
+            let paths = (!occupied_slot).then(|| (self.def_path(original), self.def_path(def_id)));
+            self.def_path_hashes.pop().unwrap();
+            self.def_id_to_key.pop().unwrap();
+            let Some((def_path1, def_path2)) = paths else { return None };
 
             // Continuing with colliding DefPathHashes can lead to correctness
             // issues. We must abort compilation.
@@ -341,7 +363,7 @@ impl Definitions {
             );
         }
 
-        def_id
+        Some(def_id)
     }
 
     pub fn enumerated_keys_and_path_hashes(
@@ -363,6 +385,16 @@ impl Definitions {
         data: DefPathData,
         disambiguator: &mut PerParentDisambiguatorState,
     ) -> LocalDefId {
+        self.create_def_with_derive_slot(parent, data, disambiguator, None)
+    }
+
+    pub fn create_def_with_derive_slot(
+        &mut self,
+        parent: LocalDefId,
+        data: DefPathData,
+        disambiguator: &mut PerParentDisambiguatorState,
+        derive_slot: Option<u32>,
+    ) -> LocalDefId {
         // We can't use `Debug` implementation for `LocalDefId` here, since it tries to acquire a
         // reference to `Definitions` and we're already holding a mutable reference.
         debug!(
@@ -374,31 +406,32 @@ impl Definitions {
         assert!(data != DefPathData::CrateRoot);
 
         // Find the next free disambiguator for this key.
-        let disambiguator = {
-            #[cfg(debug_assertions)]
-            debug_assert_eq!(
-                parent,
-                disambiguator.parent.expect("must be set"),
-                "provided parent and parent in disambiguator must be the same"
-            );
-
-            let next_disamb = disambiguator.next.entry(data).or_insert(0);
-            let disambiguator = *next_disamb;
-            *next_disamb = next_disamb.checked_add(1).expect("disambiguator overflow");
-            disambiguator
+        #[cfg(debug_assertions)]
+        debug_assert_eq!(parent, disambiguator.parent.expect("must be set"));
+        debug_assert!(derive_slot.is_none() || matches!(data, DefPathData::Impl));
+        let next = disambiguator.next.entry(data).or_insert(0);
+        let mut reserve_dense = || {
+            let slot = *next;
+            *next = next.checked_add(1).expect("disambiguator overflow");
+            slot
         };
-        let key = DefKey {
-            parent: Some(parent.local_def_index),
-            disambiguated_data: DisambiguatedDefPathData { data, disambiguator },
-        };
-
+        let ordinary = reserve_dense();
+        let preferred = derive_slot.filter(|&slot| slot > ordinary);
+        let mut reserved = preferred.map(|_| ordinary);
+        let mut slot = preferred.unwrap_or(ordinary);
         let parent_hash = self.def_path_hash(parent);
-        let def_path_hash = key.compute_stable_hash(parent_hash);
-
-        debug!("create_def: after disambiguation, key = {:?}", key);
-
-        // Create the definition.
-        self.allocate(key, def_path_hash)
+        loop {
+            let key = DefKey {
+                parent: Some(parent.local_def_index),
+                disambiguated_data: DisambiguatedDefPathData { data, disambiguator: slot },
+            };
+            let def_path_hash = key.compute_stable_hash(parent_hash);
+            debug!("create_def: after disambiguation, key = {:?}", key);
+            if let Some(id) = self.try_allocate(key, def_path_hash) {
+                return id;
+            }
+            slot = reserved.take().unwrap_or_else(&mut reserve_dense);
+        }
     }
 
     #[inline(always)]
@@ -502,3 +535,7 @@ impl fmt::Display for DefPathData {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "definitions/tests.rs"]
+mod proc_derive_impl_tests;

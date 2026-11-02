@@ -24,12 +24,13 @@ pub(crate) fn collect_definitions<'ra>(
     resolver: &mut Resolver<'ra, '_>,
     fragment: &AstFragment,
     parent_scope: ParentScope<'ra>,
+    next_derive_impl: Option<u32>,
 ) -> MacroRulesScopeRef<'ra> {
     let invocation_parent = resolver.invocation_parents[&parent_scope.expansion];
     debug!("new fragment to visit with invocation_parent: {invocation_parent:?}");
     debug_assert_eq!(resolver.current_owner.id, DUMMY_NODE_ID);
     with_owner(resolver, invocation_parent.owner, |r| {
-        let mut visitor = DefCollector { r, invocation_parent, parent_scope };
+        let mut visitor = DefCollector { r, invocation_parent, parent_scope, next_derive_impl };
         fragment.visit_with(&mut visitor);
         visitor.parent_scope.macro_rules
     })
@@ -40,6 +41,7 @@ pub(crate) struct DefCollector<'a, 'ra, 'tcx> {
     pub(crate) r: &'a mut Resolver<'ra, 'tcx>,
     invocation_parent: InvocationParent,
     pub(crate) parent_scope: ParentScope<'ra>,
+    next_derive_impl: Option<u32>,
 }
 
 impl<'a, 'ra, 'tcx> DefCollector<'a, 'ra, 'tcx> {
@@ -80,13 +82,25 @@ impl<'a, 'ra, 'tcx> DefCollector<'a, 'ra, 'tcx> {
         span: Span,
         f: F,
     ) {
+        self.with_owner_and_derive_slot(owner, name, def_kind, span, None, f);
+    }
+
+    fn with_owner_and_derive_slot<F: FnOnce(&mut Self, TyCtxtFeed<'tcx, LocalDefId>)>(
+        &mut self,
+        owner: NodeId,
+        name: Option<Symbol>,
+        def_kind: DefKind,
+        span: Span,
+        derive_slot: Option<u32>,
+        f: F,
+    ) {
         debug_assert_ne!(owner, DUMMY_NODE_ID);
         debug_assert_ne!(owner, CRATE_NODE_ID);
         // We only get here if the owner didn't exist yet. After the owner has been created,
         // future invocations of `collect_definitions` will get the owner out of the `owners`
         // table.
         let parent_def = self.invocation_parent.parent_def;
-        let feed = self.r.create_def(
+        let feed = self.r.create_def_with_derive_slot(
             parent_def,
             owner,
             name,
@@ -94,6 +108,7 @@ impl<'a, 'ra, 'tcx> DefCollector<'a, 'ra, 'tcx> {
             self.parent_scope.expansion.to_expn_id(),
             span.with_parent(None),
             true,
+            derive_slot,
         );
         let tables = PerOwnerResolverData::new(owner, feed.key());
 
@@ -149,8 +164,17 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
         // Pick the def data. This need not be unique, but the more
         // information we encapsulate into, the better
         let mut opt_syn_ext = None;
+        let mut derive_slot = None;
         let def_kind = match &i.kind {
-            ItemKind::Impl(i) => DefKind::Impl { of_trait: i.of_trait.is_some() },
+            ItemKind::Impl(i) => {
+                if i.of_trait.is_some()
+                    && let Some(next) = &mut self.next_derive_impl
+                {
+                    derive_slot = Some(*next | (1 << 31));
+                    *next = next.wrapping_add(1);
+                }
+                DefKind::Impl { of_trait: i.of_trait.is_some() }
+            }
             ItemKind::ForeignMod(..) => DefKind::ForeignMod,
             ItemKind::Mod(..) => DefKind::Mod,
             ItemKind::Trait(..) => DefKind::Trait,
@@ -214,11 +238,12 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
             }
             ItemKind::DelegationMac(..) => unreachable!(),
         };
-        self.with_owner(
+        self.with_owner_and_derive_slot(
             i.id,
             i.kind.ident().map(|ident| ident.name),
             def_kind,
             i.span,
+            derive_slot,
             |this, feed| {
                 if let Some(ext) = opt_syn_ext {
                     this.r.local_macro_map.insert(feed.def_id(), this.r.arenas.alloc_macro(ext));

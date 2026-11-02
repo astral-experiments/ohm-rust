@@ -58,8 +58,8 @@ mod encoder;
 mod parameterized;
 mod table;
 
-/// Distinguishes metadata whose public hashes include the definitions of native exports.
-const OHM_METADATA_EPOCH: u32 = 3;
+/// Distinguishes metadata whose definition paths use source-bound procedural derive impls.
+const OHM_METADATA_EPOCH: u32 = 43322;
 
 pub(crate) fn rustc_version(cfg_version: &'static str) -> String {
     format!("rustc {cfg_version} (Ohm metadata {OHM_METADATA_EPOCH})")
