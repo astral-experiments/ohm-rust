@@ -297,6 +297,7 @@ jobs:
             tests/run-make/ohm-split-large-cgus
             tests/run-make/test-harness-exact-filter
             tests/run-make/parallel-query-depth-limits
+            tests/run-make/incremental-derive-call-site
             tests/run-make/incremental-attribute-proc-macro-cache
             tests/run-make/incremental-proc-macro-native-inputs
             tests/run-make/incremental-proc-macro-parse-source
