@@ -73,7 +73,7 @@ fn write_output_file<'ll>(
         std::ptr::null()
     };
     let result = unsafe {
-        let pm = llvm::LLVMRustCreateCoalescingPassManager(target, config.allow_ohm_coalescer);
+        let pm = llvm::LLVMRustCreateOutputPassManager(target, m, config.allow_ohm_coalescer);
         llvm::LLVMAddAnalysisPasses(target, pm);
         llvm::LLVMRustAddLibraryInfo(target, pm, m, config.no_builtins);
         llvm::LLVMRustWriteOutputFile(
