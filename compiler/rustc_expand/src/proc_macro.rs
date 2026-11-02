@@ -1,15 +1,18 @@
+use std::cell::RefCell;
+
 use rustc_ast as ast;
 use rustc_ast::tokenstream::TokenStream;
 use rustc_data_structures::profiling::TimingGuard;
 use rustc_errors::ErrorGuaranteed;
 use rustc_middle::dep_graph::DepNodeIndex;
+use rustc_middle::query::ProcMacroExpansion;
 use rustc_middle::ty::{self, TyCtxt};
 use rustc_parse::parser::{AllowConstBlockItems, ForceCollect, Parser};
 use rustc_proc_macro as pm;
 use rustc_session::Session;
 use rustc_session::config::ProcMacroExecutionStrategy;
 use rustc_span::profiling::SpannedEventArgRecorder;
-use rustc_span::{LocalExpnId, Span};
+use rustc_span::{FileName, LocalExpnId, Span, Symbol};
 
 use crate::base::{self, *};
 use crate::{diagnostics, proc_macro_server};
@@ -79,7 +82,7 @@ impl base::AttrProcMacro for AttrProcMacro {
                 let key = (ecx.current_expansion.id, annotation, annotated);
 
                 QueryProcMacroExpandCtx::enter(ecx, self.client, || {
-                    tcx.attribute_macro_expansion(key).cloned()
+                    tcx.attribute_macro_expansion(key)
                 })
             })
         } else {
@@ -119,7 +122,7 @@ impl MultiItemModifier for DeriveProcMacro {
                 let key: (LocalExpnId, &TokenStream) = (invoc_id, input);
 
                 QueryProcMacroExpandCtx::enter(ecx, self.client, move || {
-                    tcx.derive_macro_expansion(key).cloned()
+                    tcx.derive_macro_expansion(key)
                 })
             })
         } else {
@@ -168,12 +171,12 @@ impl MultiItemModifier for DeriveProcMacro {
 pub(super) fn provide_attribute_macro_expansion<'tcx>(
     tcx: TyCtxt<'tcx>,
     key: (LocalExpnId, &'tcx TokenStream, &'tcx TokenStream),
-) -> Result<&'tcx TokenStream, ErrorGuaranteed> {
+) -> ProcMacroExpansion<'tcx, ErrorGuaranteed> {
     let (invoc_id, annotation, annotated) = key;
     let expn_data = invoc_id.expn_data();
     let _ = tcx.crate_hash(expn_data.macro_def_id.unwrap().krate);
 
-    QueryProcMacroExpandCtx::with(|ecx, client| {
+    QueryProcMacroExpandCtx::with(tcx, |ecx, client| {
         expand_attribute_macro(
             expn_data.call_site,
             annotation.clone(),
@@ -189,13 +192,13 @@ pub(super) fn provide_attribute_macro_expansion<'tcx>(
 pub(super) fn provide_derive_macro_expansion<'tcx>(
     tcx: TyCtxt<'tcx>,
     key: (LocalExpnId, &'tcx TokenStream),
-) -> Result<&'tcx TokenStream, ()> {
+) -> ProcMacroExpansion<'tcx, ()> {
     let (invoc_id, input) = key;
 
     // Make sure that we invalidate the query when the crate defining the proc macro changes
     let _ = tcx.crate_hash(invoc_id.expn_data().macro_def_id.unwrap().krate);
 
-    QueryProcMacroExpandCtx::with(|ecx, client| {
+    QueryProcMacroExpandCtx::with(tcx, |ecx, client| {
         expand_derive_macro(invoc_id, input.clone(), ecx, client).map(|ts| &*tcx.arena.alloc(ts))
     })
 }
@@ -260,6 +263,16 @@ fn expand_derive_macro(
     }
 }
 
+/// Remember what parsing this string adds to the source map, including on a lexer error.
+pub(super) fn proc_macro_source_code(src: &str) -> FileName {
+    if PROC_MACRO_EXPAND_CTX.is_set() {
+        PROC_MACRO_EXPAND_CTX.with(|ctx| {
+            ctx.parsed_sources.borrow_mut().as_mut().unwrap().push(Symbol::intern(src));
+        });
+    }
+    FileName::proc_macro_source_code(src)
+}
+
 /// Prevent reuse when a queried macro observes state that its token inputs do not capture.
 pub(super) fn invalidate_cached_expansion() {
     if PROC_MACRO_EXPAND_CTX.is_set() {
@@ -272,23 +285,45 @@ struct QueryProcMacroExpandCtx {
     /// Type-erased version of `&mut ExtCtxt`
     expansion_ctx: *mut (),
     client: ProcMacroClient,
+    /// The provider takes these sources on a miss. A hit leaves the collector untouched.
+    parsed_sources: RefCell<Option<Vec<Symbol>>>,
 }
 
 impl QueryProcMacroExpandCtx {
     /// Store the extension context and the client into the thread local value.
     /// It will be accessible via the `with` method while `f` is active.
-    fn enter<F, R>(ecx: &mut ExtCtxt<'_>, client: ProcMacroClient, f: F) -> R
-    where
-        F: FnOnce() -> R,
-    {
+    fn enter<'tcx, E>(
+        ecx: &mut ExtCtxt<'_>,
+        client: ProcMacroClient,
+        f: impl FnOnce() -> ProcMacroExpansion<'tcx, E>,
+    ) -> Result<TokenStream, E> {
+        // Constructing a fresh server interns all three hygiene contexts. Do this before
+        // decoding a cached token stream, which can intern a subset in a different order.
+        let data = ecx.current_expansion.id.expn_data();
+        proc_macro_server::Rustc::expansion_globals(ecx, &data);
         // We need erasure to get rid of the lifetime
-        let ctx = Self { expansion_ctx: ecx as *mut _ as *mut (), client };
-        PROC_MACRO_EXPAND_CTX.set(&ctx, f)
+        let ctx = Self {
+            expansion_ctx: ecx as *mut _ as *mut (),
+            client,
+            parsed_sources: RefCell::new(Some(Vec::new())),
+        };
+        let (tokens, sources) = PROC_MACRO_EXPAND_CTX.set(&ctx, f);
+        // Expanding a different result can allocate different files. Replay only when this
+        // particular cached result is actually consumed, after all its dependencies validated.
+        if ctx.parsed_sources.into_inner().is_some() {
+            for &source in sources {
+                let src = source.as_str();
+                ecx.sess
+                    .source_map()
+                    .new_source_file(FileName::proc_macro_source_code(src), src.to_owned());
+            }
+        }
+        tokens.cloned()
     }
 
     /// Accesses the thread local value of the procedural macro expansion context.
     /// Must be called while the `enter` function is active.
-    fn with<F, R>(f: F) -> R
+    fn with<'tcx, F, R>(tcx: TyCtxt<'tcx>, f: F) -> (R, &'tcx [Symbol])
     where
         F: for<'a, 'b> FnOnce(&'b mut ExtCtxt<'a>, ProcMacroClient) -> R,
     {
@@ -303,7 +338,9 @@ impl QueryProcMacroExpandCtx {
                 unsafe { casted.as_mut().unwrap() }
             };
 
-            f(ectx, ctx.client)
+            let result = f(ectx, ctx.client);
+            let sources = ctx.parsed_sources.borrow_mut().take().unwrap();
+            (result, &*tcx.arena.alloc_from_iter(sources))
         })
     }
 }
