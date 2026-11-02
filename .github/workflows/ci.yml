@@ -17,7 +17,7 @@ concurrency:
 jobs:
   style:
     name: Formatting and tidy
-    runs-on: depot-ubuntu-24.04-4
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout Rust
@@ -48,13 +48,13 @@ jobs:
           test tidy
 
   compiler:
-    name: ${{ matrix.os == 'depot-ubuntu-24.04-16' && 'Compiler and regression tests' || 'Compiler and regression tests (macOS)' }}
+    name: ${{ matrix.os == 'namespace-profile-ubuntu-24-04-16' && 'Compiler and regression tests' || 'Compiler and regression tests (macOS)' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        os: [depot-ubuntu-24.04-16, namespace-profile-macos-15]
+        os: [namespace-profile-ubuntu-24-04-16, namespace-profile-macos-15]
     steps:
       - name: Checkout Rust
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -73,6 +73,12 @@ jobs:
       - name: Install Ninja for distribution tests
         if: runner.os == 'macOS'
         run: brew install ninja
+
+      - name: Install Ninja for Linux distribution tests
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ninja-build
 
       - name: Run bootstrap and component PGO tests
         shell: bash
@@ -146,19 +152,19 @@ jobs:
           tests/codegen-llvm/async-fn-debug-awaitee-field.rs
 
       - name: Run external coroutine layout dependency regression
-        if: matrix.os == 'depot-ubuntu-24.04-16'
+        if: matrix.os == 'namespace-profile-ubuntu-24-04-16'
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 2 tests/ui-fulldeps/coroutine-layout-projection.rs
 
       - name: Run retained static allocation regression
-        if: matrix.os == 'depot-ubuntu-24.04-16'
+        if: matrix.os == 'namespace-profile-ubuntu-24-04-16'
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 2 tests/ui-fulldeps/incremental-retained-static.rs
 
       - name: Inspect coroutine states with GDB
-        if: matrix.os == 'depot-ubuntu-24.04-16'
+        if: matrix.os == 'namespace-profile-ubuntu-24-04-16'
         shell: bash
         run: |
           if ! command -v gdb >/dev/null; then
@@ -261,6 +267,7 @@ jobs:
             tests/run-make/test-harness-exact-filter
             tests/run-make/parallel-query-depth-limits
             tests/run-make/incremental-retained-cache-snapshot
+            tests/run-make/incremental-missing-query-cache
             tests/run-make/ohm-retained-mono-values
             tests/run-make/incremental-lint-visibilities
             tests/run-make/split-debuginfo-incremental
