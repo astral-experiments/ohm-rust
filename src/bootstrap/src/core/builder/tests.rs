@@ -5,6 +5,7 @@ use build_helper::stage0_parser::parse_stage0_file;
 use llvm::prebuilt_llvm_config;
 
 use super::*;
+use crate::Mode;
 use crate::core::config::Config;
 use crate::utils::cache::ExecutedStep;
 use crate::utils::helpers::get_host_target;
@@ -27,6 +28,17 @@ fn run_build(paths: &[PathBuf], config: Config) -> Cache {
     let builder = Builder::new(&build);
     builder.run_step_descriptions(&Builder::get_step_descriptions(builder.kind), paths);
     builder.cache
+}
+
+#[test]
+fn bare_cargo_clears_inherited_coalescer_source() {
+    let build = Build::new(configure("build", &[TEST_TRIPLE_1], &[TEST_TRIPLE_1]));
+    let builder = Builder::new(&build);
+    let target = TargetSelection::from_user(TEST_TRIPLE_1);
+    let mut cargo = builder.bare_cargo(Compiler::new(0, target), Mode::Rustc, target, Kind::Build);
+    cargo.mark_as_executed();
+    let source = cargo.get_envs().find(|(name, _)| *name == "LLVM_RUSTC_OHM_COALESCER_SOURCE");
+    assert!(matches!(source, Some((_, None))));
 }
 
 #[test]

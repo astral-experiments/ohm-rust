@@ -628,6 +628,9 @@ impl Builder<'_> {
             cargo.env_remove("MFLAGS");
         }
 
+        // rustc_llvm_env supplies this path after checking the LLVM revision and source hashes.
+        cargo.env_remove("LLVM_RUSTC_OHM_COALESCER_SOURCE");
+
         cargo
     }
 
