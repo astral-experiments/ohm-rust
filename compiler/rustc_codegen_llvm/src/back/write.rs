@@ -55,7 +55,7 @@ pub(crate) fn llvm_err<'a>(dcx: DiagCtxtHandle<'_>, err: LlvmError<'a>) -> ! {
 fn write_output_file<'ll>(
     dcx: DiagCtxtHandle<'_>,
     target: &'ll llvm::TargetMachine,
-    no_builtins: bool,
+    config: &ModuleConfig,
     m: &'ll llvm::Module,
     output: &Path,
     dwo_output: Option<&Path>,
@@ -73,9 +73,9 @@ fn write_output_file<'ll>(
         std::ptr::null()
     };
     let result = unsafe {
-        let pm = llvm::LLVMCreatePassManager();
+        let pm = llvm::LLVMRustCreateCoalescingPassManager(target, config.allow_ohm_coalescer);
         llvm::LLVMAddAnalysisPasses(target, pm);
-        llvm::LLVMRustAddLibraryInfo(target, pm, m, no_builtins);
+        llvm::LLVMRustAddLibraryInfo(target, pm, m, config.no_builtins);
         llvm::LLVMRustWriteOutputFile(
             target,
             pm,
@@ -881,7 +881,7 @@ pub(crate) unsafe fn llvm_optimize(
             write_output_file(
                 dcx,
                 module.module_llvm.tm.raw(),
-                config.no_builtins,
+                config,
                 llmod2,
                 &out_obj,
                 None,
@@ -1130,7 +1130,7 @@ pub(crate) fn codegen(
             write_output_file(
                 dcx,
                 tm.raw(),
-                config.no_builtins,
+                config,
                 llmod,
                 &path,
                 None,
@@ -1170,7 +1170,7 @@ pub(crate) fn codegen(
                 write_output_file(
                     dcx,
                     tm.raw(),
-                    config.no_builtins,
+                    config,
                     llmod,
                     &obj_out,
                     dwo_out,

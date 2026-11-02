@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::env;
 use std::ffi::OsString;
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, BufWriter, ErrorKind, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -76,6 +76,66 @@ impl Config {
     fn download_file(&self, url: &str, dest_path: &Path, help_on_error: &str) {
         let dwn_ctx: DownloadContext<'_> = self.into();
         download_file(dwn_ctx, &self.out, url, dest_path, help_on_error);
+    }
+
+    /// Supply the two missing source files for the coalescer in our pinned binary LLVM SDK.
+    /// Other LLVM revisions and locally built backends keep their own implementation.
+    pub(crate) fn ohm_coalescer_sources(&self, llvm_root: &Path) -> Option<PathBuf> {
+        const REVISION: &str = "1b9c0d5ff9bbe7634aead059efe6b11a7eeba145";
+        const FILES: [(&str, &str); 2] = [
+            (
+                "RegisterCoalescer.cpp",
+                "426715cf2ea5bf705ec793a88d7e5c415e25025152437b3d7fa9b0381bfa17c1",
+            ),
+            (
+                "RegisterCoalescer.h",
+                "4e3f176f2e4f6ec785dfeb937219e98cf404298e95a676c89571243d15a5b82b",
+            ),
+        ];
+        if self.dry_run() || !self.llvm_from_ci || llvm_root != self.ci_llvm_root() {
+            return None;
+        }
+        let header =
+            fs::read_to_string(llvm_root.join("include/llvm/Support/VCSRevision.h")).ok()?;
+        let revision = format!("#define LLVM_REVISION R\"({REVISION})\"");
+        if !header.lines().any(|line| line == revision) {
+            return None;
+        }
+
+        let matches = |path: &Path, hash: &str| {
+            path.is_file() && sha256_file(path).is_ok_and(|actual| actual == hash)
+        };
+        let source = self.src.join("src/llvm-project/llvm/lib/CodeGen");
+        if FILES.iter().all(|(name, hash)| matches(&source.join(name), hash)) {
+            return Some(source);
+        }
+
+        let dir = self.out.join("cache/ohm-llvm-source").join(REVISION);
+        fs::create_dir_all(&dir).ok()?;
+        let ctx = DownloadContext::from(self);
+        for (name, hash) in FILES {
+            let path = dir.join(name);
+            if matches(&path, hash) {
+                continue;
+            }
+            let url = format!(
+                "https://raw.githubusercontent.com/rust-lang/llvm-project/{REVISION}/llvm/lib/CodeGen/{name}"
+            );
+            let pending = tempfile::NamedTempFile::new_in(&dir).ok()?;
+            if !download_http_with_retries(
+                ctx.host_target,
+                ctx.is_running_on_ci(),
+                ctx.exec_ctx,
+                pending.path(),
+                &url,
+                "using LLVM's original register coalescer",
+            ) || !matches(pending.path(), hash)
+            {
+                return None;
+            }
+            pending.persist(path).ok()?;
+        }
+        Some(dir)
     }
 
     fn unpack(&self, tarball: &Path, dst: &Path, pattern: &str) {
@@ -891,9 +951,16 @@ download-rustc = false
     Some(unpack(dwn_ctx.exec_ctx, &tarball, &bin_root, prefix))
 }
 
-pub(crate) fn verify(exec_ctx: &ExecutionContext, path: &Path, expected: &str) -> bool {
+/// Hash a file without loading it into memory.
+fn sha256_file(path: &Path) -> io::Result<String> {
     use sha2::Digest;
 
+    let mut hasher = sha2::Sha256::new();
+    io::copy(&mut File::open(path)?, &mut hasher)?;
+    Ok(hex_encode(hasher.finalize()))
+}
+
+pub(crate) fn verify(exec_ctx: &ExecutionContext, path: &Path, expected: &str) -> bool {
     exec_ctx.do_if_verbose(|| {
         println!("verifying {}", path.display());
     });
@@ -902,23 +969,7 @@ pub(crate) fn verify(exec_ctx: &ExecutionContext, path: &Path, expected: &str) -
         return false;
     }
 
-    let mut hasher = sha2::Sha256::new();
-
-    let file = t!(File::open(path));
-    let mut reader = BufReader::new(file);
-
-    loop {
-        let buffer = t!(reader.fill_buf());
-        let l = buffer.len();
-        // break if EOF
-        if l == 0 {
-            break;
-        }
-        hasher.update(buffer);
-        reader.consume(l);
-    }
-
-    let checksum = hex_encode(hasher.finalize().as_slice());
+    let checksum = t!(sha256_file(path));
     let verified = checksum == expected;
 
     if !verified {
@@ -1015,7 +1066,7 @@ fn download_file<'a>(
     // While bootstrap itself only supports http and https downloads, downstream forks might
     // need to download components from other protocols. The match allows them adding more
     // protocols without worrying about merge conflicts if we change the HTTP implementation.
-    match url.split_once("://").map(|(proto, _)| proto) {
+    let downloaded = match url.split_once("://").map(|(proto, _)| proto) {
         Some("http") | Some("https") => download_http_with_retries(
             dwn_ctx.host_target,
             dwn_ctx.is_running_on_ci(),
@@ -1026,6 +1077,9 @@ fn download_file<'a>(
         ),
         Some(other) => panic!("unsupported protocol {other} in {url}"),
         None => panic!("no protocol in {url}"),
+    };
+    if !downloaded {
+        helpers::exit_process(1);
     }
     t!(move_file(&tempfile, dest_path), format!("failed to rename {tempfile:?} to {dest_path:?}"));
 }
@@ -1040,6 +1094,7 @@ pub(crate) fn tempdir(out: &Path) -> PathBuf {
     tmp
 }
 
+/// Fetch a bootstrap input, leaving the caller to decide whether it is required.
 fn download_http_with_retries(
     host_target: TargetSelection,
     is_running_on_ci: bool,
@@ -1047,7 +1102,7 @@ fn download_http_with_retries(
     tempfile: &Path,
     url: &str,
     help_on_error: &str,
-) {
+) -> bool {
     println!("downloading {url}");
     assert!(cfg!(not(test)), "unit tests shouldn't be downloading things: {url:?}");
 
@@ -1056,6 +1111,7 @@ fn download_http_with_retries(
     // src/bootstrap/src/core/download.rs
     // for consistency
     let mut curl = command("curl").allow_failure();
+    curl.arg("--output").arg(tempfile);
     curl.args([
         // follow redirect
         "--location",
@@ -1067,9 +1123,6 @@ fn download_http_with_retries(
         // timeout if cannot connect within 30 seconds
         "--connect-timeout",
         "30",
-        // output file
-        "--output",
-        tempfile.to_str().unwrap(),
         // if there is an error, don't restart the download,
         // instead continue where it left off.
         "--continue-at",
@@ -1111,7 +1164,7 @@ fn download_http_with_retries(
                 ]).run_capture_stdout(exec_ctx);
 
                 if powershell.is_success() {
-                    return;
+                    return true;
                 }
 
                 eprintln!("\nspurious failure, trying again");
@@ -1120,12 +1173,13 @@ fn download_http_with_retries(
         if !help_on_error.is_empty() {
             eprintln!("{help_on_error}");
         }
-        helpers::exit_process(1);
+        return false;
     }
+    true
 }
 
 fn curl_version(exec_ctx: &ExecutionContext) -> semver::Version {
-    let mut curl = command("curl");
+    let mut curl = command("curl").allow_failure();
     curl.arg("-V");
     let curl = curl.run_capture_stdout(exec_ctx);
     if curl.is_failure() {

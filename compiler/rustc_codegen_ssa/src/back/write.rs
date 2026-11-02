@@ -104,6 +104,8 @@ pub struct ModuleConfig {
     // Miscellaneous flags. These are mostly copied from command-line
     // options.
     pub verify_llvm_ir: bool,
+    /// Allow the x86 debug-codegen coalescer on regular modules with the default LLVM pipeline.
+    pub allow_ohm_coalescer: bool,
     pub lint_llvm_ir: bool,
     pub no_prepopulate_passes: bool,
     pub no_builtins: bool,
@@ -227,6 +229,13 @@ impl ModuleConfig {
             ),
 
             verify_llvm_ir: sess.verify_llvm_ir(),
+            allow_ohm_coalescer: matches!(kind, ModuleKind::Regular)
+                && sess.opts.debug_assertions
+                && sess.opts.cg.llvm_args.is_empty()
+                && sess.opts.cg.passes.is_empty()
+                && sess.opts.unstable_opts.llvm_plugins.is_empty()
+                && !sess.print_llvm_stats()
+                && sess.print_llvm_stats_json().is_none(),
             lint_llvm_ir: sess.opts.unstable_opts.lint_llvm_ir,
             no_prepopulate_passes: sess.opts.cg.no_prepopulate_passes,
             no_builtins: no_builtins || sess.target.no_builtins,
