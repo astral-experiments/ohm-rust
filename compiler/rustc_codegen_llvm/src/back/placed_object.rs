@@ -188,7 +188,7 @@ pub(crate) fn record(cgcx: &CodegenContext, module: &ModuleCodegen<ModuleLlvm>) 
             (&raw mut wire).cast(),
             copy_placement,
         )
-    } || wire.get(..4) != Some(b"OSP\x01")
+    } || wire.get(..4) != Some(b"OSP\x03")
         || wire.len() <= 36
     {
         return None;

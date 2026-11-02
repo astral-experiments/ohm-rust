@@ -189,13 +189,14 @@ impl<'a> Placement<'a> {
 
 pub(super) struct Mapping<'a> {
     old: Placement<'a>,
-    new_lines: Vec<u32>,
+    // Current physical line, indexed by position in the previous file’s ordinal array.
+    destination: Vec<u32>,
 }
 impl<'a> Mapping<'a> {
     pub(super) fn load(before: &'a [u8], after: &'a [u8]) -> Gate<Self> {
         fn envelope(b: &[u8]) -> Gate<(&[u8], &[u8])> {
             require(
-                b.len() >= 36 && b.len() <= 16 << 20 && b.starts_with(b"OSP\x01"),
+                b.len() >= 36 && b.len() <= 16 << 20 && b.starts_with(b"OSP\x03"),
                 "invalid placement envelope",
             )?;
             Ok((&b[4..36], &b[36..]))
@@ -204,11 +205,13 @@ impl<'a> Mapping<'a> {
         let (new_key, new_wire) = envelope(after)?;
         require(old_key == new_key, "canonical module digest differs")?;
         let old = Placement::read(old_wire)?;
-        let new = Placement::read(new_wire)?;
-        require(
-            old.lines.len() == new.lines.len() && old.files.len() == new.files.len(),
-            "global coordinate shape differs",
-        )?;
+        let mut new = Placement::read(new_wire)?;
+        require(old.files.len() == new.files.len(), "file roster differs")?;
+        // The backend can keep the source file from one merged location and the line from
+        // another. Every occurrence of an old physical number must therefore have a single
+        // destination across files. Distinct old numbers may map to the same new number.
+        // Placement limits its ordinal count below u32::MAX, leaving that rank unassigned.
+        let mut destination_rank = vec![u32::MAX; old.lines.len()];
         for (a, b) in old.files.iter().zip(&new.files) {
             require(
                 a.directory == b.directory
@@ -216,28 +219,34 @@ impl<'a> Mapping<'a> {
                     && a.checksum.map(|s| s.0) == b.checksum.map(|s| s.0),
                 "input identities or checksum kinds differ",
             )?;
-            let ranks = &old.ranks[a.ranks.clone()];
+            // Both wire file tables use the same strict identity order. The range must retain
+            // the same file-local cardinality and therefore the same starting index.
+            require(a.ranks == b.ranks, "file-local coordinate count differs")?;
+            let literal_parent = a.logical.split('/').any(|c| c == "..");
             require(
-                ranks == &new.ranks[b.ranks.clone()],
-                "per-file global ranks differ",
+                !literal_parent || a.checksum.is_some() && a.checksum == b.checksum,
+                "changed or unbound literal parent source path",
             )?;
-            if a.logical.split('/').any(|c| c == "..") {
+            for (&previous, current) in old.ranks[a.ranks.clone()]
+                .iter()
+                .zip(&mut new.ranks[b.ranks.clone()])
+            {
+                let from = old.lines[previous as usize];
+                let to = new.lines[*current as usize];
+                require(from == to || from > 1 && to > 1, "fixed coordinate changed")?;
+                require(!literal_parent || from == to, "literal parent coordinate changed")?;
+                let destination = &mut destination_rank[previous as usize];
                 require(
-                    a.checksum.is_some()
-                        && a.checksum == b.checksum
-                        && ranks
-                            .iter()
-                            .all(|&r| old.lines[r as usize] == new.lines[r as usize]),
-                    "changed or unbound literal parent source path",
+                    *destination == u32::MAX || *destination == *current,
+                    "old physical line maps to distinct current lines",
                 )?;
+                *destination = *current;
+                *current = to;
             }
         }
-        // Both global line arrays ascend strictly. Equal ranks across all files preserve LLVM's
-        // cross-file physical-line comparisons when deciding whether to emit an is_stmt flag.
-        Ok(Self {
-            old,
-            new_lines: new.lines,
-        })
+        // The C3 key also binds the source-order constraints for neighboring emitted functions.
+        // Reuse the parsed ordinal arena for destination physical coordinates.
+        Ok(Self { old, destination: new.ranks })
     }
     pub(super) fn file(&self, path: &str) -> Gate<usize> {
         self.old
@@ -255,13 +264,12 @@ impl<'a> Mapping<'a> {
             .lines
             .binary_search(&physical)
             .map_err(|_| "native coordinate absent from compiler placement")?;
-        let present = self.old.ranks[file.ranks.clone()]
+        let ordinal = self.old.ranks[file.ranks.clone()]
             .binary_search(&(rank as u32))
-            .is_ok();
-        require(
-            present,
-            "native coordinate is outside its declared source file",
-        )?;
-        Ok(self.new_lines[rank])
+            .map_err(|_| "native coordinate is outside its declared source file")?;
+        self.destination
+            .get(file.ranks.start + ordinal)
+            .copied()
+            .ok_or("missing current file-local coordinate")
     }
 }

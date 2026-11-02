@@ -26,9 +26,10 @@ using SourcePlacementCallback = void (*)(void *, const uint8_t *, size_t);
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/Cloning.h"
-#include <map>
+#include <algorithm>
+#include <iterator>
 #include <optional>
-#include <set>
+
 
 namespace llvm {
 extern LLVM_ABI cl::opt<bool> PickMergedSourceLocations;
@@ -52,85 +53,107 @@ static void appendString(std::string &Out, StringRef S) {
   Out.append(S.data(), S.size());
 }
 
-struct FilePlacement {
-  std::optional<std::pair<unsigned, StringRef>> Checksum;
-  std::set<unsigned> Lines;
-};
+using NodeIds = DenseMap<MDNode *, size_t>;
+using Signature = std::pair<unsigned, StringRef>;
+using SourcePoint = std::pair<uint64_t, unsigned>;
 
 struct Placements {
-  std::map<unsigned, unsigned> Ranks{{0, 0}, {1, 1}};
-  std::map<FileName, FilePlacement> Files;
+  struct InputFile { FileName Name; Signature Check; size_t Node; };
+  struct File { FileName Name; Signature Check; size_t Begin, End, FirstOrdinary; };
+  const NodeIds &IDs;
+  SmallVector<InputFile, 0> Inputs;
+  SmallVector<File, 0> Files;
+  SmallVector<uint32_t, 0> FileOfNode;
+  // The high word first identifies an LLVM metadata node, then its sorted file.
+  // The low word is the physical source line. Each file gets one contiguous run.
+  SmallVector<uint64_t, 0> Points;
+  SmallVector<unsigned, 0> Absolute{0, 1};
 
-  static FileName id(const DIFile *F) {
-    return {F->getDirectory(), F->getFilename()};
-  }
+  explicit Placements(const NodeIds &IDs) : IDs(IDs) {}
 
-  bool recordFile(const DIFile *F) {
-    auto C = F->getChecksum();
-    auto Signature = std::make_pair(0u, StringRef());
-    if (C) {
-      unsigned Length = C->Kind == DIFile::CSK_MD5      ? 32
-                        : C->Kind == DIFile::CSK_SHA1   ? 40
-                        : C->Kind == DIFile::CSK_SHA256 ? 64
-                                                        : 0;
-      if (!Length || C->Value.size() != Length ||
-          !llvm::all_of(C->Value, [](char B) { return isHexDigit(B); }))
-        return false;
-      Signature = {static_cast<unsigned>(C->Kind), C->Value};
+  bool recordFile(DIFile *F) {
+    Signature S{0, StringRef()};
+    if (auto C = F->getChecksum()) {
+      unsigned Width = C->Kind == DIFile::CSK_MD5 ? 32 : C->Kind == DIFile::CSK_SHA1 ? 40 : C->Kind == DIFile::CSK_SHA256 ? 64 : 0;
+      if (!Width || C->Value.size() != Width || !llvm::all_of(C->Value, [](char B) { return isHexDigit(B); })) return false;
+      S = {static_cast<unsigned>(C->Kind), C->Value};
     }
-    auto &Row = Files[id(F)];
-    if (Row.Checksum && *Row.Checksum != Signature)
-      return false;
-    Row.Checksum = Signature;
+    auto I = IDs.find(F);
+    if (I == IDs.end()) return false;
+    Inputs.push_back({{F->getDirectory(), F->getFilename()}, S, I->second});
     return true;
   }
-  bool recordLine(const DIFile *F, unsigned Line) {
-    if (!F)
-      return false;
-    Files[id(F)].Lines.insert(Line);
-    Ranks.try_emplace(Line, 0);
+
+  bool recordLine(DIFile *F, unsigned Line) {
+    auto I = IDs.find(F);
+    if (I == IDs.end() || I->second >= UINT32_MAX) return false;
+    Points.push_back((uint64_t(I->second) << 32) | Line);
     return true;
   }
-  void finish() {
-    unsigned Rank = 0;
-    for (auto &Entry : Ranks)
-      Entry.second = Rank++;
+
+  bool finish() {
+    if (IDs.size() >= UINT32_MAX || Points.size() >= UINT32_MAX-2) return false;
+    FileOfNode.assign(IDs.size(), UINT32_MAX);
+    llvm::sort(Inputs, [](const auto &A, const auto &B) { return A.Name < B.Name; });
+    for (const auto &I : Inputs) {
+      if (Files.empty() || Files.back().Name != I.Name)
+        Files.push_back({I.Name, I.Check, 0, 0, 0});
+      else if (Files.back().Check != I.Check)
+        return false;
+      FileOfNode[I.Node] = Files.size() - 1;
+    }
+    for (auto &P : Points) {
+      unsigned File = FileOfNode[P >> 32], Line = static_cast<uint32_t>(P);
+      if (File == UINT32_MAX) return false;
+      P = (uint64_t(File) << 32) | Line;
+      Absolute.push_back(Line);
+    }
+    llvm::sort(Points); Points.erase(std::unique(Points.begin(), Points.end()), Points.end());
+    llvm::sort(Absolute); Absolute.erase(std::unique(Absolute.begin(), Absolute.end()), Absolute.end());
+    size_t Offset = 0;
+    for (size_t I = 0; I < Files.size(); ++I) {
+      auto &F = Files[I]; F.Begin = Offset;
+      while (Offset < Points.size() && Points[Offset] >> 32 == I) ++Offset;
+      F.End = Offset;
+      F.FirstOrdinary = std::upper_bound(Points.begin()+F.Begin, Points.begin()+F.End, (uint64_t(I)<<32)|1u) - Points.begin();
+    }
+    return Offset == Points.size();
   }
-  std::optional<unsigned> rank(unsigned Line) const {
-    auto It = Ranks.find(Line);
-    if (It == Ranks.end())
-      return std::nullopt;
-    return It->second;
+
+  std::optional<SourcePoint> point(const DIFile *F, unsigned Line) const {
+    auto I = IDs.find(const_cast<DIFile *>(F));
+    if (I == IDs.end()) return std::nullopt;
+    unsigned FI = FileOfNode[I->second];
+    if (FI >= Files.size()) return std::nullopt;
+    auto &D = Files[FI]; uint64_t P = (uint64_t(FI)<<32) | Line;
+    auto End = Points.begin()+D.End, At = std::lower_bound(Points.begin()+D.Begin, End, P);
+    if (At == End || *At != P) return std::nullopt;
+    unsigned Rank = Line < 2 ? Line : 2 + (At - (Points.begin()+D.FirstOrdinary));
+    return SourcePoint{(uint64_t(FI)<<32) | Rank, Line};
+  }
+  std::optional<unsigned> rank(const DIFile *F, unsigned Line) const {
+    if (auto Id = point(F, Line)) return static_cast<unsigned>(Id->first);
+    return std::nullopt;
   }
   bool append(std::string &Wire) const {
     Wire.append("CGU-GLOBAL-LINES\x01", 17);
-    appendInteger(Wire, Ranks.size());
-    unsigned Last = 0;
-    for (const auto &[Line, Rank] : Ranks) {
-      appendInteger(Wire, Line - Last);
-      Last = Line;
-    }
+    appendInteger(Wire, Absolute.size()); unsigned Last = 0;
+    for (unsigned Line : Absolute) { appendInteger(Wire, Line-Last); Last=Line; }
     appendInteger(Wire, Files.size());
-    for (const auto &[Name, File] : Files) {
-      if (!File.Checksum)
-        return false;
-      appendString(Wire, Name.first);
-      appendString(Wire, Name.second);
-      appendInteger(Wire, File.Checksum->first);
-      appendString(Wire, File.Checksum->second);
-      appendInteger(Wire, File.Lines.size());
-      Last = 0;
-      for (unsigned Line : File.Lines) {
-        auto Rank = rank(Line);
-        if (!Rank)
-          return false;
-        appendInteger(Wire, *Rank - Last);
-        Last = *Rank;
+    for (const auto &File : Files) {
+      appendString(Wire, File.Name.first); appendString(Wire, File.Name.second);
+      appendInteger(Wire, File.Check.first); appendString(Wire, File.Check.second);
+      appendInteger(Wire, File.End-File.Begin); Last=0;
+      for (size_t I=File.Begin; I<File.End; ++I) {
+        unsigned Line=static_cast<uint32_t>(Points[I]);
+        unsigned Rank=llvm::lower_bound(Absolute, Line)-Absolute.begin();
+        appendInteger(Wire, Rank-Last); Last=Rank;
       }
     }
     return true;
   }
 };
+
 
 static bool supportedMode(Module &M) {
   if (M.getMaterializer() || !M.ifunc_empty() ||
@@ -174,11 +197,17 @@ static bool supportedAttributes(const Function &F) {
 class MetadataGraph {
   DenseMap<MDNode *, size_t> IDs;
   SmallVector<MDNode *, 128> Nodes;
-  Placements Positions;
+  Placements Positions{IDs};
 
   void add(MDNode *N) {
     if (N && IDs.try_emplace(N, Nodes.size()).second)
       Nodes.push_back(N);
+  }
+
+  bool recordLine(DIFile *File, unsigned Line) {
+    if (!File) return false;
+    add(File);
+    return Positions.recordLine(File, Line);
   }
 
   bool inspectNode(MDNode *N, unsigned &CompileUnits) {
@@ -197,12 +226,12 @@ class MetadataGraph {
     if (auto *S = dyn_cast<DISubprogram>(N))
       return S->getRetainedNodes().empty() && S->getAnnotations().empty() &&
              !S->getKeyInstructionsEnabled() &&
-             Positions.recordLine(S->getFile(), S->getLine()) &&
-             Positions.recordLine(S->getFile(), S->getScopeLine());
+             recordLine(S->getFile(), S->getLine()) &&
+             recordLine(S->getFile(), S->getScopeLine());
     if (auto *L = dyn_cast<DILocation>(N))
-      return Positions.recordLine(L->getFile(), L->getLine());
+      return recordLine(L->getFile(), L->getLine());
     if (auto *B = dyn_cast<DILexicalBlock>(N))
-      return Positions.recordLine(B->getFile(), B->getLine());
+      return recordLine(B->getFile(), B->getLine());
     return isa<MDTuple, DINamespace, DILexicalBlockFile, DISubroutineType>(N);
   }
 
@@ -219,8 +248,8 @@ class MetadataGraph {
                                   F->getSource());
     }
     if (auto *S = dyn_cast<DISubprogram>(N)) {
-      auto Line = Positions.rank(S->getLine()),
-           ScopeLine = Positions.rank(S->getScopeLine());
+      auto Line = Positions.rank(S->getFile(), S->getLine()),
+           ScopeLine = Positions.rank(S->getFile(), S->getScopeLine());
       if (!Line || !ScopeLine)
         return {};
       return DISubprogram::getTemporary(
@@ -233,7 +262,7 @@ class MetadataGraph {
           S->getKeyInstructionsEnabled());
     }
     if (auto *L = dyn_cast<DILocation>(N)) {
-      auto Line = Positions.rank(L->getLine());
+      auto Line = Positions.rank(L->getFile(), L->getLine());
       if (!Line)
         return {};
       return DILocation::getTemporary(C, *Line, L->getColumn(), L->getScope(),
@@ -241,7 +270,7 @@ class MetadataGraph {
                                       L->getAtomGroup(), L->getAtomRank());
     }
     if (auto *B = dyn_cast<DILexicalBlock>(N)) {
-      auto Line = Positions.rank(B->getLine());
+      auto Line = Positions.rank(B->getFile(), B->getLine());
       if (!Line)
         return {};
       return DILexicalBlock::getTemporary(C, B->getScope(), B->getFile(), *Line,
@@ -344,8 +373,7 @@ public:
         if (auto *Child = dyn_cast_or_null<MDNode>(Op.get()))
           add(Child);
     }
-    Positions.finish();
-    return CUs == 1;
+    return CUs == 1 && Positions.finish();
   }
   bool normalize(Module &M) const {
     std::vector<TempMDNode> Temp;
@@ -422,6 +450,65 @@ public:
         }
     return !verifyModule(M);
   }
+  // Bind every possible local comparison, including lexical and inlined caller
+  // scopes. Also bind the union with the preceding LLVM function. The latter
+  // is a research guard whose physical emission assumptions are under audit.
+  std::optional<std::array<uint8_t, 32>> functionOrder(const Module &M) const {
+    SHA256 Hash; Hash.update("OHM-FUNCTION-AND-NEIGHBOR-ORDER-1");
+    SmallVector<uint32_t, 0> Seen(Nodes.size(), 0);
+    SmallVector<const MDNode *, 32> Pending;
+    SmallVector<SourcePoint, 0> Here, Previous, Group;
+    SmallVector<unsigned, 0> Lines;
+    std::string Record; uint32_t Epoch = 0;
+    for (const auto &F : M) {
+      if (F.isDeclaration()) continue;
+      if (++Epoch == 0) return std::nullopt;
+      bool Good = true;
+      auto visit = [&](const MDNode *N) {
+        if (!N) return;
+        auto I = IDs.find(const_cast<MDNode *>(N));
+        if (I == IDs.end()) { Good=false; return; }
+        if (Seen[I->second] == Epoch) return;
+        Seen[I->second] = Epoch; Pending.push_back(N);
+      };
+      auto point = [&](const DIFile *File, unsigned Line) {
+        if (auto P = Positions.point(File, Line)) Here.push_back(*P); else Good=false;
+      };
+      visit(F.getSubprogram());
+      for (const auto &B : F) for (const auto &I : B) visit(I.getDebugLoc().get());
+      Here.clear();
+      while (Good && !Pending.empty()) {
+        auto *N = Pending.pop_back_val();
+        if (auto *L = dyn_cast<DILocation>(N)) {
+          point(L->getFile(),L->getLine()); visit(L->getScope()); visit(L->getInlinedAt());
+        } else if (auto *S = dyn_cast<DISubprogram>(N)) {
+          point(S->getFile(),S->getLine()); point(S->getFile(),S->getScopeLine());
+          visit(S->getScope()); visit(S->getDeclaration());
+        } else if (auto *B = dyn_cast<DILexicalBlock>(N)) {
+          point(B->getFile(),B->getLine()); visit(B->getScope());
+        } else if (auto *B = dyn_cast<DILexicalBlockFile>(N)) {
+          visit(B->getScope());
+        } else if (auto *S = dyn_cast<DINamespace>(N)) {
+          visit(S->getScope());
+        } else if (!isa<DIFile, DICompileUnit>(N)) {
+          Good=false;
+        }
+      }
+      if (!Good) return std::nullopt;
+      llvm::sort(Here); Here.erase(std::unique(Here.begin(),Here.end()),Here.end());
+      Group.clear(); std::set_union(Previous.begin(),Previous.end(),Here.begin(),Here.end(),std::back_inserter(Group));
+      Lines.clear(); Lines.push_back(0); Lines.push_back(1);
+      for (auto &[ID, Line] : Group) Lines.push_back(Line);
+      llvm::sort(Lines); Lines.erase(std::unique(Lines.begin(),Lines.end()),Lines.end());
+      Record.clear(); appendString(Record,F.getName()); appendInteger(Record,Group.size());
+      for (auto &[ID,Line] : Group) {
+        appendInteger(Record,ID); appendInteger(Record,llvm::lower_bound(Lines,Line)-Lines.begin());
+      }
+      Hash.update(Record); Previous.swap(Here);
+    }
+    return Hash.final();
+  }
+
   bool appendPlacements(std::string &Out) const {
     return Positions.append(Out);
   }
@@ -450,12 +537,18 @@ static bool getSourcePlacement(Module &Original, std::string &Out) {
   // Preserve every value, operand and attribute while normalizing debug coordinates.
   auto Scratch = CloneModule(Original);
   MetadataGraph Graph;
-  if (!Graph.collect(*Scratch) || !Graph.normalize(*Scratch))
+  if (!Graph.collect(*Scratch)) return false;
+  auto Order = Graph.functionOrder(*Scratch);
+  if (!Order || !Graph.normalize(*Scratch))
     return false;
   BitcodeDigest Stream;
   WriteBitcodeToFile(*Scratch, Stream);
-  auto Key = Stream.finish();
-  Out.append("OSP\x01", 4);
+  auto Code = Stream.finish();
+  SHA256 Combined;
+  Combined.update("OHM-POST-O1-FILE-RANKED-BITCODE-AND-NEIGHBORS-3");
+  Combined.update(Code); Combined.update(*Order);
+  auto Key = Combined.final();
+  Out.append("OSP\x03", 4);
   Out.append(reinterpret_cast<const char *>(Key.data()), Key.size());
   return Graph.appendPlacements(Out);
 }
