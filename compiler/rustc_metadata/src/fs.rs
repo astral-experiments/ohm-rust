@@ -171,8 +171,8 @@ fn recover_public_api_hash(path: &Path, cfg_version: &'static str) -> Option<Str
         return None;
     }
 
-    let metadata = MetadataBlob::new(slice_owned(mmap, Deref::deref)).ok()?;
-    metadata.check_compatibility(cfg_version).ok()?;
+    let mut metadata = MetadataBlob::new(slice_owned(mmap, Deref::deref)).ok()?;
+    metadata.check_compatibility(cfg_version, || false).ok()?;
     Some(metadata.get_header().hashes.public_hash.to_hex())
 }
 

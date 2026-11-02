@@ -58,8 +58,11 @@ mod encoder;
 mod parameterized;
 mod table;
 
+/// Distinguishes stable foreign expansion references from legacy positional metadata.
+const OHM_METADATA_EPOCH: u32 = 1;
+
 pub(crate) fn rustc_version(cfg_version: &'static str) -> String {
-    format!("rustc {cfg_version}")
+    format!("rustc {cfg_version} (Ohm metadata {OHM_METADATA_EPOCH})")
 }
 
 /// Metadata encoding version.
@@ -375,7 +378,7 @@ impl RawDefId {
 #[derive(Encodable, BlobDecodable)]
 pub(crate) struct CrateDep {
     pub name: Symbol,
-    /// The dependency's public hash, which equals its full hash in legacy metadata.
+    /// The dependency hash required by the writer's DefId encoding: public for RDR, full for raw indices.
     pub hash: Svh,
     pub host_hash: Option<Svh>,
     pub kind: CrateDepKind,
