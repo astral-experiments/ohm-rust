@@ -289,6 +289,9 @@ jobs:
             tests/run-make/metadata-export-prefetch
             tests/run-make/c-linker-generic-summary
             tests/run-make/separate-link
+            tests/run-make/trait-impl-bucket-callables
+            tests/run-make/trait-impl-bucket-coroutine
+            tests/run-make/trait-impl-bucket-sparse-foreign
             tests/run-make/trait-impl-directory
             tests/run-make/ohm-shared-stages
             tests/run-make/ohm-thinlto-cache

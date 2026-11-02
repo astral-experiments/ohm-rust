@@ -4,7 +4,7 @@
 use run_make_support::{rfs, run, rust_lib_name, rustc};
 
 fn main() {
-    let roster = rfs::read_to_string("roster.rs");
+    let roster = rfs::read_to_string("roster.rs.in");
     let reader = rfs::read_to_string("reader.rs.in");
     let signature = roster.replace("fn seed()", "fn seed(_: u8)");
     let constructor = roster.replace("Make(u8)", "Make(u8, u8)");
@@ -31,11 +31,7 @@ fn main() {
     ] {
         rfs::write("current.rs", owner);
         let mut library = rustc();
-        library
-            .input("current.rs")
-            .crate_name("roster")
-            .crate_type("rlib")
-            .edition("2024");
+        library.input("current.rs").crate_name("roster").crate_type("rlib").edition("2024");
         if toggle {
             library.cfg("copy_impl");
         }

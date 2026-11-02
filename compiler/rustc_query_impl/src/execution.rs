@@ -704,13 +704,13 @@ pub(crate) fn force_trait_impl_bucket(
             let id = node.extract_def_id(tcx)?;
             let kind = tcx.def_kind(id);
             let receiver = match (node.kind, kind) {
-                (DepKind::trait_impl_receiver_adt, kind) if kind.is_adt() => SimplifiedType::Adt(id),
+                (DepKind::trait_impl_receiver_adt, kind) if kind.is_adt() => {
+                    SimplifiedType::Adt(id)
+                }
                 (
                     DepKind::def_kind,
                     DefKind::Fn | DefKind::AssocFn | DefKind::Ctor(_, CtorKind::Fn),
-                ) => {
-                    SimplifiedType::Closure(id)
-                }
+                ) => SimplifiedType::Closure(id),
                 (DepKind::def_kind, DefKind::Closure) if id.is_local() => {
                     if tcx.is_coroutine(id) {
                         SimplifiedType::Coroutine(id)

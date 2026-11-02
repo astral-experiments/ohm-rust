@@ -18,18 +18,8 @@ fn main() {
         (true, false, &shift, None),
         (true, false, &closure, None),
         (true, false, &remove, None),
-        (
-            true,
-            false,
-            &signature,
-            Some("this function takes 1 argument"),
-        ),
-        (
-            true,
-            false,
-            &non_send,
-            Some("cannot be sent between threads safely"),
-        ),
+        (true, false, &signature, Some("this function takes 1 argument")),
+        (true, false, &non_send, Some("cannot be sent between threads safely")),
         (false, true, &source, Some("Toggled: Copy")),
         (false, false, &source, None),
     ] {
