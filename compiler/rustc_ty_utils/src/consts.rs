@@ -141,7 +141,7 @@ fn recurse_build<'tcx>(
         ExprKind::RawBorrow { .. } | ExprKind::Deref { .. } => maybe_supported_error(
             GenericConstantTooComplexSub::AddressAndDerefNotSupported(node.span),
         )?,
-        ExprKind::Repeat { .. } | ExprKind::Array { .. } => {
+        ExprKind::Repeat { .. } | ExprKind::Array { .. } | ExprKind::IntArrayLiteral { .. } => {
             maybe_supported_error(GenericConstantTooComplexSub::ArrayNotSupported(node.span))?
         }
         ExprKind::NeverToAny { .. } => {
