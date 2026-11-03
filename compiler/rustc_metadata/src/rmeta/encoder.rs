@@ -3811,8 +3811,10 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
 
     let dep_node = tcx.metadata_dep_node();
 
-    // If the metadata dep-node is green, try to reuse the saved work product.
-    if tcx.dep_graph.is_fully_enabled()
+    // The saved work product contains only full metadata. A requested stub needs both crate hashes
+    // from the encoder, so generate the two files together.
+    if ref_path.is_none()
+        && tcx.dep_graph.is_fully_enabled()
         && let work_product_id = WorkProductId::from_cgu_name("metadata")
         && let Some(work_product) = tcx.dep_graph.previous_work_product(&work_product_id)
         && tcx.dep_graph.try_mark_green(tcx, &dep_node).is_some()
