@@ -1751,7 +1751,7 @@ fn exported_symbols_for_non_proc_macro(
     let target = driver_preemption_list(tcx.sess, crate_type);
     let mut owners = Vec::new();
     let mut locals = Vec::new();
-    if let Some(path) = &target {
+    if let Some(_path) = &target {
         let crates = tcx.crates(());
         owners.resize(1 + crates.iter().map(|c| c.index()).max().unwrap_or(0), false);
         owners[LOCAL_CRATE.index()] = true;
@@ -1760,7 +1760,7 @@ fn exported_symbols_for_non_proc_macro(
             use std::os::unix::fs::MetadataExt;
             if let Some(rlib) = &tcx.used_crate_source(cnum).rlib
                 && let Ok(meta) = rlib.metadata()
-                && let Ok(receipt) = path
+                && let Ok(receipt) = _path
                     .with_file_name(format!("{:x}-{:x}.rlib", meta.dev(), meta.ino()))
                     .metadata()
             {
