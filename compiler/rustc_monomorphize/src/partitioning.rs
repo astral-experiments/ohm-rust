@@ -345,6 +345,7 @@ fn split_large_codegen_units<'tcx>(
     // Splitting only spends unused slots from the existing CGU budget. Stable root hashes
     // keep ordinary body edits in the same shard, along with the root's private inline copies.
     let mut remaining = cx.tcx.sess.codegen_units().as_usize() - codegen_units.len();
+    let mut size_shards = Vec::new();
     for source in std::mem::take(codegen_units) {
         if remaining == 0
             || source.size_estimate() < 2 * TARGET_SIZE
@@ -391,10 +392,14 @@ fn split_large_codegen_units<'tcx>(
         for shard in &mut shards {
             shard.compute_size_estimate();
         }
-        codegen_units.extend(shards);
+        size_shards.extend(shards);
     }
-    if remaining > 0 {
-        split_derived_impls(cx, codegen_units, remaining);
+    // An oversized unit already split by size keeps its original shard limit. Only
+    // unsplit units can spend the remaining slots on derived receivers.
+    let unsplit = codegen_units.len();
+    codegen_units.append(&mut size_shards);
+    if remaining > 0 && split_limit > 1 {
+        split_derived_impls(cx, codegen_units, unsplit, remaining, split_limit);
     }
     codegen_units.sort_by(|a, b| a.name().as_str().cmp(b.name().as_str()));
 }
@@ -466,7 +471,9 @@ fn derived_impl_owner<'tcx>(tcx: TyCtxt<'tcx>, item: MonoItem<'tcx>) -> Option<D
 fn split_derived_impls<'tcx>(
     cx: &PartitioningCx<'_, 'tcx>,
     cgus: &mut Vec<CodegenUnit<'tcx>>,
+    unsplit: usize,
     mut remaining: usize,
+    split_limit: usize,
 ) {
     struct Group<'tcx> {
         source: usize,
@@ -479,7 +486,7 @@ fn split_derived_impls<'tcx>(
     let mut roots_remaining = vec![0; cgus.len()];
     let mut root_size = 0;
     for (source, cgu) in cgus.iter().enumerate() {
-        let can_split = can_split_codegen_unit(cgu);
+        let can_split = source < unsplit && can_split_codegen_unit(cgu);
         let mut owners = FxIndexMap::default();
         for (&item, data) in cgu.items().iter().filter(|(_, data)| !data.inlined) {
             roots_remaining[source] += 1;
@@ -517,8 +524,12 @@ fn split_derived_impls<'tcx>(
         if roots_remaining[group.source] <= group.roots.len() {
             continue;
         }
+        let receiver_shards = selected.entry(group.source).or_default();
+        if receiver_shards.len() + 1 >= split_limit {
+            continue;
+        }
         roots_remaining[group.source] -= group.roots.len();
-        selected.entry(group.source).or_default().push(group);
+        receiver_shards.push(group);
         remaining -= 1;
         if remaining == 0 {
             break;
