@@ -27,7 +27,21 @@ fn main() {
     rfs::write("payload.bin", [17, 255, 134, 93]);
     let deps = compile(first);
     assert_eq!(rfs::read("payload.bin"), [29, 255, 134, 93]);
-    assert!(deps.contains("# checksum:sha256=f5d6aa0ffac7194c844ac4a5578cd712ef0fb6dfa0efbef7bdfb182fc648947d file_len:4 "));
+    let old_sha = "f5d6aa0ffac7194c844ac4a5578cd712ef0fb6dfa0efbef7bdfb182fc648947d";
+    assert!(deps.contains(&format!("# checksum:sha256={old_sha} file_len:4 ")));
+
+    // The literal retains its UTF-8 BOM and CRLF even though Rust source text is normalized.
+    rfs::write("payload.bin", b"\xef\xbb\xbfA\r\n");
+    let deps = compile(
+        r#"
+        const TEXT: &str = include_str!("payload.bin");
+        const _: [(); 65] = [(); TEXT.as_bytes()[3] as usize];
+        const _: usize = save::save!(text);
+    "#,
+    );
+    assert_eq!(rfs::read("payload.bin"), b"\xef\xbb\xbfB\r\n");
+    let text_sha = "5e53d52af3601d7307afc26969b31801dd90e431e83643a42dfeba8c39de1a50";
+    assert!(deps.contains(&format!("# checksum:sha256={text_sha} file_len:6 ")));
 
     rfs::write("payload.bin", [17, 255, 134, 93]);
     let deps = compile(&format!(
