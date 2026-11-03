@@ -279,6 +279,23 @@ impl<'cx, 'tcx> Visitor<'tcx> for WritebackCx<'cx, 'tcx> {
         }
 
         self.visit_node_id(e.span, e.hir_id);
+        if let hir::ExprKind::Array(fields) = e.kind
+            && fields.len() >= 1024
+            && let ty::Array(element, _) = *self.typeck_results.node_type(e.hir_id).kind()
+            && self.fcx.is_static_uint_table(e, fields, element)
+        {
+            let inferred = self.fcx.typeck_results.borrow();
+            if fields.iter().all(|field| {
+                inferred.node_type_opt(field.hir_id) == Some(element)
+                    && inferred.expr_adjustments(field).is_empty()
+            }) {
+                let mut types = self.typeck_results.node_types_mut();
+                for field in fields {
+                    types.insert(field.hir_id, element);
+                }
+                return;
+            }
+        }
         intravisit::walk_expr(self, e);
 
         self.fix_scalar_builtin_expr(e);
