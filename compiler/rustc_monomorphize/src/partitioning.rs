@@ -451,7 +451,12 @@ fn derived_impl_owner<'tcx>(tcx: TyCtxt<'tcx>, item: MonoItem<'tcx>) -> Option<D
     if !tcx.is_automatically_derived(impl_id) {
         return None;
     }
-    let adt = tcx.type_of(impl_id).instantiate_identity().ty_adt_def()?;
+    let self_ty = tcx.instantiate_and_normalize_erasing_regions(
+        instance.args,
+        ty::TypingEnv::fully_monomorphized(),
+        tcx.type_of(impl_id),
+    );
+    let adt = self_ty.ty_adt_def()?;
     adt.did().is_local().then_some(adt.did())
 }
 
