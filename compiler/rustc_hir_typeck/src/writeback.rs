@@ -12,7 +12,7 @@ use std::mem;
 use std::ops::ControlFlow;
 
 use rustc_data_structures::fx::{FxHashSet, FxIndexMap};
-use rustc_data_structures::unord::ExtendUnord;
+use rustc_data_structures::unord::{ExtendUnord, UnordItems};
 use rustc_errors::{E0720, ErrorGuaranteed};
 use rustc_hir::def_id::LocalDefId;
 use rustc_hir::intravisit::{self, InferKind, Visitor};
@@ -289,10 +289,9 @@ impl<'cx, 'tcx> Visitor<'tcx> for WritebackCx<'cx, 'tcx> {
                 inferred.node_type_opt(field.hir_id) == Some(element)
                     && inferred.expr_adjustments(field).is_empty()
             }) {
-                let mut types = self.typeck_results.node_types_mut();
-                for field in fields {
-                    types.insert(field.hir_id, element);
-                }
+                self.typeck_results
+                    .node_types_mut()
+                    .extend(UnordItems::new(fields.iter().map(|field| (field.hir_id, element))));
                 return;
             }
         }
