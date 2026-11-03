@@ -13,6 +13,7 @@ use tracing::{debug, instrument};
 
 use crate::diagnostics;
 use crate::middle::codegen_fn_attrs::CodegenFnAttrFlags;
+use crate::mono::UpstreamMonoBucket;
 use crate::ty::normalize_erasing_regions::NormalizationError;
 use crate::ty::print::{FmtPrinter, Print};
 use crate::ty::{
@@ -237,20 +238,21 @@ impl<'tcx> Instance<'tcx> {
             return None;
         }
 
-        match self.def {
-            InstanceKind::Item(def) => tcx
-                .upstream_monomorphizations_for(def)
-                .and_then(|monos| monos.get(&self.args).cloned()),
+        let def_id = match self.def {
+            InstanceKind::Item(def) => def,
             InstanceKind::Shim(ShimKind::DropGlue(_, Some(_))) => {
-                tcx.upstream_drop_glue_for(self.args)
+                tcx.lang_items().drop_glue_fn()?
             }
-            InstanceKind::Shim(ShimKind::AsyncDropGlue(_, _)) => None,
-            InstanceKind::Shim(ShimKind::FutureDropPoll(_, _, _)) => None,
             InstanceKind::Shim(ShimKind::AsyncDropGlueCtor(_, _)) => {
-                tcx.upstream_async_drop_glue_for(self.args)
+                tcx.lang_items().async_drop_in_place_fn()?
             }
-            _ => None,
-        }
+            _ => return None,
+        };
+        let key = UpstreamMonoBucket::sort_key(tcx, def_id, self.args);
+        tcx.upstream_monomorphizations_in(UpstreamMonoBucket::from_sort_key(key))
+            .iter()
+            .find(|entry| entry.def_id == def_id && entry.args == self.args)
+            .map(|entry| entry.provider)
     }
 }
 
