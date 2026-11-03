@@ -44,7 +44,10 @@ fn main() {
 // Lookup .rmeta file in the same directory as a rlib/dylib with stub metadata.
 fn lookup_rmeta_in_lib_dir(kind: LibraryKind) {
     run_in_tmpdir(|| {
-        build_dep_rustc(kind).run();
+        // The second build must emit a new stub even when the full metadata is green.
+        for _ in 0..2 {
+            build_dep_rustc(kind).incremental("incremental").run();
+        }
         rustc().input("foo.rs").run();
     });
 }
