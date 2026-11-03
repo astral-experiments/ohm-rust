@@ -35,6 +35,8 @@ pub enum KeyFingerprintStyle {
     HirId,
     /// The fingerprint is a stable source-file identity.
     SourceFileId,
+    /// The fingerprint directly encodes an upstream monomorphization bucket.
+    UpstreamMonoBucket,
     /// Query key was `()` or equivalent, so fingerprint is just zero.
     Unit,
     /// The fingerprint is an opaque hash, and a key cannot be reconstructed from it.
@@ -52,7 +54,7 @@ impl KeyFingerprintStyle {
             KeyFingerprintStyle::DefPathHash
             | KeyFingerprintStyle::Unit
             | KeyFingerprintStyle::HirId => true,
-            KeyFingerprintStyle::SourceFileId => true,
+            KeyFingerprintStyle::SourceFileId | KeyFingerprintStyle::UpstreamMonoBucket => true,
             KeyFingerprintStyle::Opaque => false,
         }
     }
