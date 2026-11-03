@@ -112,12 +112,14 @@ pub unsafe fn atomic_ops(address: *mut u64) {
         "lock not qword ptr [{address}]",
         "mov rax, qword ptr [{address} + 8]",
         "cmp rax, 0",
+        "sete cl",
         "jne 2f",
         "vmovdqa {vector}, xmmword ptr [{address}]",
         "2:",
         address = in(reg) address,
         vector = out(xmm_reg) _,
         out("rax") _,
+        out("cl") _,
         options(nostack),
     );
 }
