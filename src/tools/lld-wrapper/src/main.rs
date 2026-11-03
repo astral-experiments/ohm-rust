@@ -80,6 +80,14 @@ fn get_rust_lld_command(current_exe_path: &Path) -> process::Command {
 
     command.arg("-flavor");
     command.arg(flavor);
+    if flavor == "gnu" {
+        if let Some(path) = env::var_os("OHM_RUSTC_DRIVER_LINK_EXPORTS") {
+            let mut list = std::ffi::OsString::from("--export-dynamic-symbol-list=");
+            list.push(path);
+            command.arg("-Bsymbolic-non-weak-functions").arg(list);
+            command.env_remove("OHM_RUSTC_DRIVER_LINK_EXPORTS");
+        }
+    }
     command.args(env::args_os().skip(1));
     command
 }

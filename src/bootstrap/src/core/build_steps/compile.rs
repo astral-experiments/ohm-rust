@@ -1142,10 +1142,37 @@ impl CommandLineStep for Rustc {
             cargo.arg("-p").arg(krate);
         }
 
-        if builder.build.config.enable_bolt_settings && build_compiler.stage == 1 {
+        let bolt_driver = builder.build.config.enable_bolt_settings && build_compiler.stage == 1;
+        if bolt_driver {
             // Relocations are required for BOLT to work.
             cargo.env("RUSTC_BOLT_LINK_FLAGS", "1");
         }
+        let _driver_link_dir = if bolt_driver
+            && cfg!(all(target_os = "linux", target_arch = "x86_64"))
+            && target == "x86_64-unknown-linux-gnu"
+            && builder.config.is_host_target(target)
+            && !builder.config.dry_run()
+        {
+            let dir = tempfile::Builder::new()
+                .prefix("rustc-driver-link-")
+                .tempdir_in(builder.config.tempdir())
+                .unwrap();
+            let root = builder.src.join("compiler");
+            let owners: Vec<_> = builder
+                .in_tree_crates("rustc_driver", Some(target))
+                .into_iter()
+                .filter(|krate| krate.path.starts_with(&root))
+                .filter_map(|krate| krate.path.join("Cargo.toml").canonicalize().ok())
+                .filter(|path| path.to_str().is_some())
+                .collect();
+            fs::write(dir.path().join("owners"), serde_json::to_vec(&owners).unwrap()).unwrap();
+            let driver = builder.src.join("compiler/rustc_driver").canonicalize().unwrap();
+            fs::write(dir.path().join("driver"), driver.as_os_str().as_encoded_bytes()).unwrap();
+            cargo.env("OHM_RUSTC_DRIVER_LINK_DIR", dir.path());
+            Some(dir)
+        } else {
+            None
+        };
 
         let _guard = builder.msg(
             Kind::Build,
@@ -2660,7 +2687,7 @@ pub fn run_cargo(
         let (filenames_vec, crate_types) = match msg {
             CargoMessage::CompilerArtifact {
                 filenames,
-                target: CargoTarget { crate_types },
+                target: CargoTarget { crate_types, .. },
                 ..
             } => {
                 let mut f: Vec<String> = filenames.into_iter().map(|s| s.into_owned()).collect();
@@ -2810,6 +2837,13 @@ pub fn stream_cargo(
     cb: &mut dyn FnMut(CargoMessage<'_>),
 ) -> bool {
     let mut cmd = cargo.into_cmd();
+    #[cfg(target_os = "linux")]
+    let driver = cmd.get_envs().find_map(|(key, value)| {
+        let dir = Path::new(value.filter(|_| key == "OHM_RUSTC_DRIVER_LINK_DIR")?);
+        let owners =
+            serde_json::from_slice::<HashSet<PathBuf>>(&fs::read(dir.join("owners")).ok()?).ok()?;
+        Some((dir.to_path_buf(), owners))
+    });
 
     // Instruct Cargo to give us json messages on stdout, critically leaving
     // stderr as piped so we can get those pretty colors.
@@ -2844,6 +2878,10 @@ pub fn stream_cargo(
         let line = t!(line);
         match serde_json::from_str::<CargoMessage<'_>>(&line) {
             Ok(msg) => {
+                #[cfg(target_os = "linux")]
+                if let Some((dir, owners)) = &driver {
+                    record_driver_artifact(dir, owners, &msg);
+                }
                 if builder.config.json_output {
                     // Forward JSON to stdout.
                     println!("{line}");
@@ -2867,15 +2905,58 @@ pub fn stream_cargo(
     status.success()
 }
 
+/// Keep the actual rlib inode alive for the driver link. A late Cargo message or an
+/// artifact on another filesystem simply leaves that supplier preemptible.
+#[cfg(target_os = "linux")]
+fn record_driver_artifact(dir: &Path, owners: &HashSet<PathBuf>, msg: &CargoMessage<'_>) {
+    use std::os::unix::fs::MetadataExt;
+
+    let CargoMessage::CompilerArtifact { filenames, manifest_path: Some(manifest), target } = msg
+    else {
+        return;
+    };
+    let Ok(manifest) = Path::new(manifest.as_ref()).canonicalize() else { return };
+    if !owners.contains(&manifest)
+        || !target.kind.iter().any(|k| matches!(k.as_ref(), "lib" | "rlib"))
+        || !target
+            .src_path
+            .as_deref()
+            .and_then(|src| Path::new(src).canonicalize().ok())
+            .is_some_and(|src| manifest.parent().is_some_and(|pkg| src.starts_with(pkg)))
+    {
+        return;
+    }
+    for file in filenames {
+        let path = Path::new(file.as_ref());
+        if path.extension() == Some(OsStr::new("rlib"))
+            && let Ok(meta) = path.metadata()
+            && meta.is_file()
+        {
+            let receipt = dir.join(format!("{:x}-{:x}.rlib", meta.dev(), meta.ino()));
+            let _ = fs::hard_link(path, receipt);
+        }
+    }
+}
+
 #[derive(Deserialize)]
 pub struct CargoTarget<'a> {
     crate_types: Vec<Cow<'a, str>>,
+    #[cfg(target_os = "linux")]
+    #[serde(default)]
+    kind: Vec<Cow<'a, str>>,
+    #[cfg(target_os = "linux")]
+    src_path: Option<Cow<'a, str>>,
 }
 
 #[derive(Deserialize)]
 #[serde(tag = "reason", rename_all = "kebab-case")]
 pub enum CargoMessage<'a> {
-    CompilerArtifact { filenames: Vec<Cow<'a, str>>, target: CargoTarget<'a> },
+    CompilerArtifact {
+        filenames: Vec<Cow<'a, str>>,
+        target: CargoTarget<'a>,
+        #[cfg(target_os = "linux")]
+        manifest_path: Option<Cow<'a, str>>,
+    },
     BuildScriptExecuted,
     BuildFinished,
 }
