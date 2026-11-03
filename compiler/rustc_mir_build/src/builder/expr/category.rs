@@ -81,6 +81,7 @@ impl Category {
             ExprKind::ConstBlock { .. }
             | ExprKind::Literal { .. }
             | ExprKind::NonHirLiteral { .. }
+            | ExprKind::IntArrayLiteral { .. }
             | ExprKind::ZstLiteral { .. }
             | ExprKind::ConstParam { .. }
             | ExprKind::StaticRef { .. }
