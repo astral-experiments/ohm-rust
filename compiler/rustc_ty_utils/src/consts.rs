@@ -294,6 +294,7 @@ impl<'a, 'tcx> IsThirPolymorphic<'a, 'tcx> {
             | thir::ExprKind::Return { .. }
             | thir::ExprKind::Become { .. }
             | thir::ExprKind::Array { .. }
+            | thir::ExprKind::IntArrayLiteral { .. }
             | thir::ExprKind::Tuple { .. }
             | thir::ExprKind::Adt(_)
             | thir::ExprKind::PlaceTypeAscription { .. }
