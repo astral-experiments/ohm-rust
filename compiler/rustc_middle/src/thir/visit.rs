@@ -153,7 +153,7 @@ pub fn walk_expr<'thir, 'tcx: 'thir, V: Visitor<'thir, 'tcx>>(
             fake_reads: _,
         }) => {}
         Literal { lit: _, neg: _ } => {}
-        NonHirLiteral { lit: _, user_ty: _ } => {}
+        NonHirLiteral { lit: _, user_ty: _ } | IntArrayLiteral { alloc_id: _ } => {}
         ZstLiteral { user_ty: _ } => {}
         NamedConst { def_id: _, args: _, user_ty: _ } => {}
         ConstParam { param: _, def_id: _ } => {}
