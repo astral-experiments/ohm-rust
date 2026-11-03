@@ -43,7 +43,7 @@ use rustc_session::config::{CrateType, Input, OutFileName, OutputFilenames, Outp
 use rustc_session::diagnostics::feature_err;
 use rustc_session::output::{filename_for_input, invalid_output_for_target};
 use rustc_session::search_paths::PathKind;
-use rustc_session::{IncrCompSession, Session};
+use rustc_session::{IncrCompSession, Session, TrackedFile};
 use rustc_span::{DUMMY_SP, ErrorGuaranteed, ExpnKind, SourceFileHash, Span, Symbol, sym};
 use rustc_trait_selection::{solve, traits};
 use tracing::{info, instrument};
@@ -612,31 +612,33 @@ pub fn write_dep_info_with_relink_inputs(
         // Build a list of files used to compile the output and
         // write Makefile-compatible dependency rules
         let mut lossy_paths = Vec::new();
-        let mut escape_path = |path: Cow<'_, str>| {
-            let escaped = escape_dep_filename(&path);
-            if matches!(path, Cow::Owned(_)) {
-                lossy_paths.push(escaped.clone());
+        // Cargo compares input names as paths. A spelling such as src/./data must
+        // not replace another checksum for src/data when it reads the dep-info.
+        let mut input_path = |path: Cow<'_, str>| {
+            let lossy = matches!(path, Cow::Owned(_));
+            let path = PathBuf::from(path.into_owned());
+            if lossy {
+                lossy_paths.push(path.clone());
             }
-            escaped
+            path
         };
-        let mut files: IndexMap<String, (u64, Option<SourceFileHash>)> = sess
-            .source_map()
-            .files()
-            .iter()
-            .filter(|fmap| fmap.is_real_file())
-            .filter(|fmap| !fmap.is_imported())
-            .map(|fmap| {
-                (
-                    escape_path(fmap.name.prefer_local_unconditionally().to_string_lossy()),
-                    (
-                        // This needs to be unnormalized,
-                        // as external tools wouldn't know how rustc normalizes them
-                        fmap.unnormalized_source_len as u64,
-                        fmap.checksum_hash,
-                    ),
-                )
-            })
-            .collect();
+        let mut files: IndexMap<PathBuf, (u64, Option<SourceFileHash>)> = IndexMap::new();
+        let mut conflicting_paths = Vec::new();
+        for file in
+            sess.source_map().files().iter().filter(|f| f.is_real_file() && !f.is_imported())
+        {
+            let path = input_path(file.name.prefer_local_unconditionally().to_string_lossy());
+            let input = (u64::from(file.unnormalized_source_len), file.checksum_hash);
+            if let Some(previous) = files.get(&path)
+                && previous.1.is_some()
+            {
+                if input.1.is_some() && *previous != input {
+                    conflicting_paths.push(path);
+                }
+                continue;
+            }
+            files.insert(path, input);
+        }
 
         let checksum_hash_algo = sess.opts.unstable_opts.checksum_hash_algorithm;
 
@@ -647,7 +649,10 @@ pub fn write_dep_info_with_relink_inputs(
         let normalize_path = |path: PathBuf| escape_dep_filename(&path.to_string_lossy());
 
         let mut add_file = |path: &Path| {
-            let escaped = escape_path(path.to_string_lossy());
+            let key = input_path(path.to_string_lossy());
+            if matches!(files.get(&key), Some((_, Some(_)))) {
+                return;
+            }
             let checksum = checksum_hash_algo.and_then(|algo| {
                 path.to_str()?;
                 rustc_session::filesearch::open_regular_file(path)
@@ -661,10 +666,12 @@ pub fn write_dep_info_with_relink_inputs(
                     })
                     .ok()
             });
-            files.insert(escaped, checksum.unwrap_or((0, None)));
+            files.insert(key, checksum.unwrap_or((0, None)));
         };
-        for path in file_depinfo.iter() {
-            add_file(Path::new(path.as_str()));
+        for (path, dep) in file_depinfo.iter() {
+            if matches!(dep, TrackedFile::Path) {
+                add_file(Path::new(path.as_str()));
+            }
         }
 
         // We also need to track used PGO profile files
@@ -703,9 +710,34 @@ pub fn write_dep_info_with_relink_inputs(
             }
         }
 
+        for (path, dep) in file_depinfo.iter() {
+            if let TrackedFile::Read(read) = dep {
+                let key = Path::new(path.as_str());
+                let Some((len, hash)) = read else {
+                    conflicting_paths.push(key.to_owned());
+                    continue;
+                };
+                let input = (*len, Some(*hash));
+                if let Some(previous) = files.get(key)
+                    && previous.1.is_some()
+                    && *previous != input
+                {
+                    conflicting_paths.push(key.to_owned());
+                } else {
+                    files.insert(key.to_owned(), input);
+                }
+            }
+        }
+        if sess.source_map().read_text_from_binary_placeholder() {
+            // A text read and a non-UTF-8 include observed incompatible versions in this session.
+            for (_, checksum) in files.values_mut() {
+                *checksum = None;
+            }
+        }
+
         // One Make name can represent both a non-Unicode path and a literal replacement
         // character. Withhold its checksum even if the representable input was inserted last.
-        for name in lossy_paths {
+        for name in lossy_paths.into_iter().chain(conflicting_paths) {
             files.insert(name, (0, None));
         }
 
@@ -742,8 +774,13 @@ pub fn write_dep_info_with_relink_inputs(
             } else {
                 path.join("ohm-foreign-span-bytes")
             };
-            files.insert(normalize_path(marker), (0, None));
+            files.insert(marker, (0, None));
         }
+
+        let files: Vec<_> = files
+            .into_iter()
+            .map(|(path, input)| (escape_dep_filename(&path.to_string_lossy()), input))
+            .collect();
 
         let write_deps_to_file = |file: &mut dyn Write| -> io::Result<()> {
             // Older Cargo recognizes the output prefix to handle a colon in its name.
@@ -755,7 +792,8 @@ pub fn write_dep_info_with_relink_inputs(
             {
                 writeln!(file, "# ohm-raw-checksum-paths-v2")?;
             }
-            let inputs = files.keys().map(String::as_str).intersperse(" ").collect::<String>();
+            let inputs =
+                files.iter().map(|(path, _)| path.as_str()).intersperse(" ").collect::<String>();
             let mut depfile_target = None;
             // Make treats spaces as separators and a Unix filename may contain the
             // colon that Cargo uses to find the first rule's prerequisites.
@@ -783,7 +821,7 @@ pub fn write_dep_info_with_relink_inputs(
             // Emit a fake target for each input file to the compilation. This
             // prevents `make` from spitting out an error if a file is later
             // deleted. For more info see #28735
-            for path in files.keys().chain(relink_marker.iter()) {
+            for path in files.iter().map(|(path, _)| path).chain(relink_marker.iter()) {
                 writeln!(file, "{path}:")?;
             }
 

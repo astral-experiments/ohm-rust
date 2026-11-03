@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::{env, io};
 
-use rustc_data_structures::fx::{FxHashMap, FxHashSet, FxIndexSet};
+use rustc_data_structures::fx::{FxHashMap, FxHashSet, FxIndexMap, FxIndexSet};
 use rustc_data_structures::profiling::{SelfProfiler, SelfProfilerRef};
 use rustc_data_structures::sync::{AppendOnlyVec, DynSend, DynSync, Lock};
 use rustc_data_structures::{Limit, flock};
@@ -24,7 +24,7 @@ use rustc_macros::StableHash;
 pub use rustc_span::def_id::StableCrateId;
 use rustc_span::edition::Edition;
 use rustc_span::source_map::{FilePathMapping, SourceMap};
-use rustc_span::{RealFileName, Span, Symbol};
+use rustc_span::{RealFileName, SourceFileHash, Span, Symbol};
 use rustc_target::asm::InlineAsmArch;
 use rustc_target::spec::{
     Arch, CfgAbi, CodeModel, DebuginfoKind, Os, PanicStrategy, RelocModel, RelroLevel,
@@ -322,6 +322,50 @@ impl PointerAuthConfig {
     }
 }
 
+/// An explicit dependency may have been read by rustc or only named by another tool.
+pub enum TrackedFile {
+    Path,
+    /// Distinct reads of the same path cannot be represented by a single checksum.
+    Read(Option<(u64, SourceFileHash)>),
+}
+
+/// Files to include in dep-info, in the order in which they were declared.
+#[derive(Default)]
+pub struct FileDependencies(FxIndexMap<Symbol, TrackedFile>);
+
+impl FileDependencies {
+    /// Tracks a path for which the caller did not supply the contents.
+    pub fn insert(&mut self, path: Symbol) -> bool {
+        if let Some(tracked) = self.0.get_mut(&path) {
+            if matches!(tracked, TrackedFile::Read(_)) {
+                *tracked = TrackedFile::Read(None);
+            }
+            false
+        } else {
+            self.0.insert(path, TrackedFile::Path);
+            true
+        }
+    }
+
+    /// Records the unmodified bytes consumed by a builtin. Conflicting reads stay unverified.
+    pub fn record_read(&mut self, path: Symbol, len: u64, checksum: SourceFileHash) {
+        let observed = Some((len, checksum));
+        self.0
+            .entry(path)
+            .and_modify(|previous| {
+                if !matches!(previous, TrackedFile::Read(known) if *known == observed) {
+                    *previous = TrackedFile::Read(None);
+                }
+            })
+            .or_insert(TrackedFile::Read(observed));
+    }
+
+    /// Returns the declared path and its available evidence.
+    pub fn iter(&self) -> impl Iterator<Item = (&Symbol, &TrackedFile)> {
+        self.0.iter()
+    }
+}
+
 /// Represents the data associated with a compilation
 /// session for a single crate.
 pub struct Session {
@@ -391,7 +435,7 @@ pub struct Session {
     pub env_depinfo: Lock<FxIndexSet<(Symbol, Option<Symbol>)>>,
 
     /// File paths accessed during the build.
-    pub file_depinfo: Lock<FxIndexSet<Symbol>>,
+    pub file_depinfo: Lock<FileDependencies>,
 
     /// A procedural macro read byte positions affected by external crate metadata.
     pub proc_macro_observed_foreign_bytes: AtomicBool,

@@ -275,13 +275,15 @@ fn load_binary_file(
         }
     };
     match cx.source_map().load_binary_file(&resolved_path) {
-        Ok(data) => {
-            cx.sess
-                .file_depinfo
-                .borrow_mut()
-                .insert(Symbol::intern(&resolved_path.to_string_lossy()));
-
-            Ok(data)
+        Ok((bytes, span)) => {
+            let path = Symbol::intern(&resolved_path.to_string_lossy());
+            if let Some(algo) = cx.sess.opts.unstable_opts.checksum_hash_algorithm {
+                let checksum = rustc_span::SourceFileHash::new_in_memory(algo, &*bytes);
+                cx.sess.file_depinfo.borrow_mut().record_read(path, bytes.len() as u64, checksum);
+            } else {
+                cx.sess.file_depinfo.borrow_mut().insert(path);
+            }
+            Ok((bytes, span))
         }
         Err(io_err) => {
             let mut err = cx.dcx().struct_span_err(
