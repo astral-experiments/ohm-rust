@@ -6,6 +6,7 @@ use std::hash::{BuildHasher, Hash, Hasher};
 use std::{fmt, str};
 
 use rustc_arena::DroplessArena;
+use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_data_structures::fx::FxBuildHasher;
 use rustc_data_structures::hash_table::{Entry, HashTable};
 use rustc_data_structures::stable_hash::{StableCompare, StableHash, StableHashCtxt, StableHasher};
@@ -2784,9 +2785,21 @@ impl ByteSymbol {
 
     /// Like `Symbol::as_str`.
     pub fn as_byte_str(&self) -> &[u8] {
-        with_session_globals(|session_globals| unsafe {
-            std::mem::transmute::<&[u8], &[u8]>(session_globals.symbol_interner.get_byte_str(*self))
+        self.stored_bytes().bytes()
+    }
+
+    fn stored_bytes(&self) -> StoredBytes<'_> {
+        with_session_globals(|globals| {
+            let bytes = globals.symbol_interner.get_stored_bytes(self.0.as_usize());
+            // SAFETY: ByteSymbol resolves through the interner of the current session.
+            unsafe { std::mem::transmute::<StoredBytes<'_>, StoredBytes<'_>>(bytes) }
         })
+    }
+
+    /// Returns the original bytes and the content fingerprint stored with a large literal.
+    pub fn as_hashed_bytes(&self) -> (&[u8], Option<Fingerprint>) {
+        let stored = self.stored_bytes();
+        (stored.bytes(), stored.fingerprint())
     }
 
     pub fn as_u32(self) -> u32 {
@@ -2803,7 +2816,67 @@ impl fmt::Debug for ByteSymbol {
 impl StableHash for ByteSymbol {
     #[inline]
     fn stable_hash<Hcx: StableHashCtxt>(&self, hcx: &mut Hcx, hasher: &mut StableHasher) {
-        self.as_byte_str().stable_hash(hcx, hasher);
+        let (bytes, fingerprint) = self.as_hashed_bytes();
+        match fingerprint {
+            Some(hash) => {
+                bytes.len().stable_hash(hcx, hasher);
+                hash.stable_hash(hcx, hasher);
+            }
+            None => bytes.stable_hash(hcx, hasher),
+        }
+    }
+}
+
+/// Large byte strings contribute their length and a typed content fingerprint to stable hashes.
+pub const LARGE_BYTE_STRING_LEN: usize = 64 * 1024;
+
+/// Computes the identity from the complete immutable contents, independent of any query or address.
+pub fn large_byte_fingerprint(bytes: &[u8]) -> Fingerprint {
+    debug_assert!(bytes.len() >= LARGE_BYTE_STRING_LEN);
+    let mut hasher = StableHasher::new();
+    hasher.write(b"rustc-large-byte-string-v1");
+    hasher.write_u64(bytes.len() as u64);
+    hasher.write(bytes);
+    hasher.finish()
+}
+
+/// A small string is stored directly. A large string is followed by the fingerprint of its bytes.
+#[derive(Clone, Copy)]
+struct StoredBytes<'a>(&'a [u8]);
+
+const _: () = assert!(size_of::<StoredBytes<'_>>() == size_of::<&[u8]>());
+
+impl<'a> StoredBytes<'a> {
+    fn in_arena(arena: &'a DroplessArena, bytes: &[u8]) -> Self {
+        if bytes.len() < LARGE_BYTE_STRING_LEN {
+            return Self(arena.alloc_slice(bytes));
+        }
+
+        let digest = large_byte_fingerprint(bytes).to_le_bytes();
+        let len = bytes.len().checked_add(digest.len()).unwrap();
+        let storage = arena.alloc_raw(std::alloc::Layout::array::<u8>(len).unwrap());
+        // SAFETY: the arena owns len fresh bytes for 'a. These two disjoint copies initialize
+        // exactly that range before we create the shared slice.
+        unsafe {
+            storage.copy_from_nonoverlapping(bytes.as_ptr(), bytes.len());
+            storage.add(bytes.len()).copy_from_nonoverlapping(digest.as_ptr(), digest.len());
+            Self(std::slice::from_raw_parts(storage, len))
+        }
+    }
+
+    /// # Safety
+    /// The returned value must be stored and accessed only inside the interner owning this arena.
+    unsafe fn in_interner(self) -> StoredBytes<'static> {
+        unsafe { std::mem::transmute(self) }
+    }
+
+    fn bytes(self) -> &'a [u8] {
+        if self.0.len() >= LARGE_BYTE_STRING_LEN { &self.0[..self.0.len() - 16] } else { self.0 }
+    }
+
+    fn fingerprint(&self) -> Option<Fingerprint> {
+        (self.0.len() >= LARGE_BYTE_STRING_LEN)
+            .then(|| Fingerprint::from_le_bytes(*self.0.last_chunk().unwrap()))
     }
 }
 
@@ -2821,7 +2894,7 @@ pub(crate) struct Interner(Lock<InternerInner>);
 struct InternerInner {
     arena: DroplessArena,
     indices: HashTable<(&'static [u8], u32)>,
-    byte_strs: Vec<&'static [u8]>,
+    byte_strs: Vec<StoredBytes<'static>>,
 }
 
 impl Interner {
@@ -2836,7 +2909,8 @@ impl Interner {
         let mut indices: HashTable<(&'static [u8], u32)> = HashTable::with_capacity(size_hint);
         let hasher = FxBuildHasher::default();
 
-        let mut byte_strs: Vec<&'static [u8]> = Vec::with_capacity(size_hint);
+        let arena = DroplessArena::default();
+        let mut byte_strs = Vec::with_capacity(size_hint);
 
         for v in values {
             match indices.entry(hasher.hash_one(&v), |&(s, _)| s == v, |&(s, _)| hasher.hash_one(s))
@@ -2844,7 +2918,12 @@ impl Interner {
                 Entry::Occupied(v) => conflicting_values.push(v.get().0),
                 Entry::Vacant(view) => {
                     view.insert((v, byte_strs.len() as u32));
-                    byte_strs.push(v);
+                    byte_strs.push(if v.len() >= LARGE_BYTE_STRING_LEN {
+                        // SAFETY: this interner owns both the arena and byte_strs.
+                        unsafe { StoredBytes::in_arena(&arena, v).in_interner() }
+                    } else {
+                        StoredBytes(v)
+                    });
                 }
             }
         }
@@ -2856,7 +2935,7 @@ impl Interner {
             )
         }
 
-        Interner(Lock::new(InternerInner { arena: Default::default(), indices, byte_strs }))
+        Interner(Lock::new(InternerInner { arena, indices, byte_strs }))
     }
 
     fn intern_str(&self, str: &str) -> Symbol {
@@ -2880,14 +2959,12 @@ impl Interner {
             ) {
                 Entry::Occupied(v) => v.get().1,
                 Entry::Vacant(view) => {
-                    let byte_str: &[u8] = inner.arena.alloc_slice(byte_str);
-
-                    // SAFETY: we can extend the arena allocation to `'static` because we
-                    // only access these while the arena is still alive.
-                    let byte_str: &'static [u8] = unsafe { &*(byte_str as *const [u8]) };
+                    // SAFETY: this interner owns the arena, index and byte_strs.
+                    let stored =
+                        unsafe { StoredBytes::in_arena(&inner.arena, byte_str).in_interner() };
                     let idx = inner.byte_strs.len() as u32;
-                    view.insert((byte_str, idx));
-                    inner.byte_strs.push(byte_str);
+                    view.insert((stored.bytes(), idx));
+                    inner.byte_strs.push(stored);
                     idx
                 }
             }
@@ -2903,14 +2980,11 @@ impl Interner {
         unsafe { str::from_utf8_unchecked(byte_str) }
     }
 
-    /// Get the symbol as a string.
-    ///
-    /// [`ByteSymbol::as_byte_str()`] should be used in preference to this function.
-    fn get_byte_str(&self, symbol: ByteSymbol) -> &[u8] {
-        self.get_inner(symbol.0.as_usize())
+    fn get_inner(&self, index: usize) -> &[u8] {
+        self.get_stored_bytes(index).bytes()
     }
 
-    fn get_inner(&self, index: usize) -> &[u8] {
+    fn get_stored_bytes(&self, index: usize) -> StoredBytes<'_> {
         self.0.with_lock(|inner| inner.byte_strs[index])
     }
 }

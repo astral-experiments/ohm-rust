@@ -15,13 +15,16 @@ use std::{fmt, io};
 
 use rustc_abi::{AddressSpace, Align, Endian, HasDataLayout, Size};
 use rustc_ast::Mutability;
+use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::sharded::ShardedHashMap;
+use rustc_data_structures::stable_hash::{StableHash, StableHashCtxt, StableHasher};
 use rustc_data_structures::sync::{AtomicU64, Lock};
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_macros::{StableHash, TyDecodable, TyEncodable, TypeFoldable, TypeVisitable};
 use rustc_serialize::{Decodable, Encodable};
+use rustc_span::symbol::{ByteSymbol, LARGE_BYTE_STRING_LEN, large_byte_fingerprint};
 use tracing::{debug, trace};
 // Also make the error macros available from this module.
 pub use {
@@ -440,6 +443,47 @@ impl<'tcx> GlobalAlloc<'tcx> {
     }
 }
 
+/// The stable digest belongs to the frozen bytes. AllocIds, salts and allocation equality retain
+/// their ordinary representation in the deduplication index and on disk.
+#[derive(Clone)]
+enum StoredGlobalAlloc<'tcx> {
+    Ordinary(GlobalAlloc<'tcx>),
+    // Keep the ordinary map entry's alignment on 32-bit hosts.
+    LargeMemory(ConstAllocation<'tcx>, [u8; 16]),
+}
+
+const _: () = assert!(size_of::<StoredGlobalAlloc<'_>>() == size_of::<GlobalAlloc<'_>>());
+
+impl<'tcx> StoredGlobalAlloc<'tcx> {
+    fn get(self) -> GlobalAlloc<'tcx> {
+        match self {
+            Self::Ordinary(alloc) => alloc,
+            Self::LargeMemory(memory, _) => GlobalAlloc::Memory(memory),
+        }
+    }
+}
+
+impl StableHash for StoredGlobalAlloc<'_> {
+    fn stable_hash<Hcx: StableHashCtxt>(&self, hcx: &mut Hcx, hasher: &mut StableHasher) {
+        let (memory, fingerprint) = match *self {
+            Self::LargeMemory(memory, bytes) => (memory, Fingerprint::from_le_bytes(bytes)),
+            Self::Ordinary(GlobalAlloc::Memory(memory))
+                if memory.inner().len() >= LARGE_BYTE_STRING_LEN =>
+            {
+                // Metadata and freshly evaluated allocations carry their original raw bytes.
+                // Compute the same typed hash without keeping another copy or indexing the data.
+                let allocation = memory.inner();
+                let bytes =
+                    allocation.inspect_with_uninit_and_ptr_outside_interpreter(0..allocation.len());
+                (memory, large_byte_fingerprint(bytes))
+            }
+            Self::Ordinary(ref alloc) => return alloc.stable_hash(hcx, hasher),
+        };
+        std::mem::discriminant(&GlobalAlloc::Memory(memory)).stable_hash(hcx, hasher);
+        memory.inner().stable_hash_large_bytes(fingerprint, hcx, hasher);
+    }
+}
+
 pub const CTFE_ALLOC_SALT: usize = 0;
 
 pub(crate) struct AllocMap<'tcx> {
@@ -450,7 +494,7 @@ pub(crate) struct AllocMap<'tcx> {
     // least up to 32 cores the one workload tested didn't exhibit much difference between the two.
     //
     // Should be locked *after* locking dedup if locking both to avoid deadlocks.
-    to_alloc: ShardedHashMap<AllocId, GlobalAlloc<'tcx>>,
+    to_alloc: ShardedHashMap<AllocId, StoredGlobalAlloc<'tcx>>,
 
     /// Used to deduplicate global allocations: functions, vtables, string literals, ...
     ///
@@ -493,6 +537,11 @@ impl<'tcx> TyCtxt<'tcx> {
     /// Reserves a new ID *if* this allocation has not been dedup-reserved before.
     /// Should not be used for mutable memory.
     fn reserve_and_set_dedup(self, alloc: GlobalAlloc<'tcx>, salt: usize) -> AllocId {
+        self.reserve_and_set_stored_dedup(StoredGlobalAlloc::Ordinary(alloc), salt)
+    }
+
+    fn reserve_and_set_stored_dedup(self, stored: StoredGlobalAlloc<'tcx>, salt: usize) -> AllocId {
+        let alloc = stored.clone().get();
         if let GlobalAlloc::Memory(mem) = alloc {
             if mem.inner().mutability.is_mut() {
                 bug!("trying to dedup-reserve mutable memory");
@@ -507,7 +556,7 @@ impl<'tcx> TyCtxt<'tcx> {
         let id = self.alloc_map.reserve();
         debug!("creating alloc {:?} with id {id:?}", alloc_salt.0);
         // We just reserved, so should always be unique.
-        self.alloc_map.to_alloc.insert_unique(id, alloc_salt.0.clone());
+        self.alloc_map.to_alloc.insert_unique(id, stored);
         dedup.insert(alloc_salt, id);
         id
     }
@@ -516,6 +565,20 @@ impl<'tcx> TyCtxt<'tcx> {
     /// allocated before, this will return the same `AllocId`.
     pub fn reserve_and_set_memory_dedup(self, mem: ConstAllocation<'tcx>, salt: usize) -> AllocId {
         self.reserve_and_set_dedup(GlobalAlloc::Memory(mem), salt)
+    }
+
+    /// Allocates the literal's exact bytes under the normal CTFE salt and carries its content
+    /// identity into this allocation. The returned length excludes the interner's private suffix.
+    pub fn allocate_byte_symbol_dedup(self, symbol: ByteSymbol, salt: usize) -> (AllocId, usize) {
+        let (bytes, fingerprint) = symbol.as_hashed_bytes();
+        let allocation =
+            self.mk_const_alloc(Allocation::from_bytes_byte_aligned_immutable(bytes, ()));
+        let stored = match fingerprint {
+            Some(hash) => StoredGlobalAlloc::LargeMemory(allocation, hash.to_le_bytes()),
+            None => StoredGlobalAlloc::Ordinary(GlobalAlloc::Memory(allocation)),
+        };
+        let id = self.reserve_and_set_stored_dedup(stored, salt);
+        (id, bytes.len())
     }
 
     /// Generates an `AllocId` for a static or return a cached one in case this function has been
@@ -563,7 +626,17 @@ impl<'tcx> TyCtxt<'tcx> {
     /// local dangling pointers and allocations in constants/statics.
     #[inline]
     pub fn try_get_global_alloc(self, id: AllocId) -> Option<GlobalAlloc<'tcx>> {
-        self.alloc_map.to_alloc.get(&id)
+        self.alloc_map.to_alloc.get(&id).map(StoredGlobalAlloc::get)
+    }
+
+    /// Copies the frozen entry before hashing any referenced allocations and taking further locks.
+    pub(crate) fn stable_hash_alloc_id<Hcx: StableHashCtxt>(
+        self,
+        id: AllocId,
+        hcx: &mut Hcx,
+        hasher: &mut StableHasher,
+    ) {
+        self.alloc_map.to_alloc.get(&id).stable_hash(hcx, hasher);
     }
 
     #[inline]
@@ -583,14 +656,18 @@ impl<'tcx> TyCtxt<'tcx> {
     /// call this function twice, even with the same `Allocation` will ICE the compiler if
     /// debug_assertions are enabled.
     pub fn set_alloc_id_memory(self, id: AllocId, mem: ConstAllocation<'tcx>) {
-        self.alloc_map.to_alloc.insert_unique(id, GlobalAlloc::Memory(mem))
+        self.alloc_map
+            .to_alloc
+            .insert_unique(id, StoredGlobalAlloc::Ordinary(GlobalAlloc::Memory(mem)))
     }
 
     /// Freezes an `AllocId` created with `reserve` by pointing it at a static item. Trying to
     /// call this function twice, even with the same `DefId` will ICE the compiler if
     /// debug_assertions are enabled.
     pub fn set_nested_alloc_id_static(self, id: AllocId, def_id: LocalDefId) {
-        self.alloc_map.to_alloc.insert_unique(id, GlobalAlloc::Static(def_id.to_def_id()))
+        self.alloc_map
+            .to_alloc
+            .insert_unique(id, StoredGlobalAlloc::Ordinary(GlobalAlloc::Static(def_id.to_def_id())))
     }
 }
 
