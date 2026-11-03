@@ -728,6 +728,11 @@ pub struct LocalTableInContextMut<'a, V> {
 }
 
 impl<'a, V> LocalTableInContextMut<'a, V> {
+    /// Reserves space for the nodes a caller is about to type-check.
+    pub fn reserve(&mut self, additional: usize) {
+        self.data.reserve(additional);
+    }
+
     pub fn get_mut(&mut self, id: HirId) -> Option<&mut V> {
         validate_hir_id_for_typeck_results(self.hir_owner, id);
         self.data.get_mut(&id.local_id)

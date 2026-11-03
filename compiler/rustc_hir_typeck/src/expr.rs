@@ -1711,6 +1711,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 })
                 .unwrap_or_else(|| self.next_ty_var(expr.span));
             let (checked, known) = if self.is_static_uint_table(expr, args, coerce_to) {
+                self.typeck_results.borrow_mut().node_types_mut().reserve(args.len());
                 args.split_at(1)
             } else {
                 (args, &[][..])
