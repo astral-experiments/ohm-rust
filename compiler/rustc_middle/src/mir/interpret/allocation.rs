@@ -15,7 +15,9 @@ pub use init_mask::{InitChunk, InitChunkIter};
 use provenance_map::*;
 use rustc_abi::{Align, HasDataLayout, Size};
 use rustc_ast::Mutability;
+use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_data_structures::intern::Interned;
+use rustc_data_structures::stable_hash::{StableHash, StableHashCtxt, StableHasher};
 use rustc_macros::StableHash;
 use rustc_serialize::{Decodable, Decoder, Encodable, Encoder};
 
@@ -290,6 +292,25 @@ impl<'tcx> fmt::Debug for ConstAllocation<'tcx> {
         // The debug representation of this is very verbose and basically useless,
         // so don't print it.
         write!(f, "ConstAllocation {{ .. }}")
+    }
+}
+
+impl Allocation {
+    /// Hashes the original allocation shape, using the intrinsic identity of its frozen bytes.
+    pub(super) fn stable_hash_large_bytes<Hcx: StableHashCtxt>(
+        &self,
+        fingerprint: Fingerprint,
+        hcx: &mut Hcx,
+        hasher: &mut StableHasher,
+    ) {
+        let Self { bytes, provenance, init_mask, align, mutability, extra } = self;
+        bytes.len().stable_hash(hcx, hasher);
+        fingerprint.stable_hash(hcx, hasher);
+        provenance.stable_hash(hcx, hasher);
+        init_mask.stable_hash(hcx, hasher);
+        align.stable_hash(hcx, hasher);
+        mutability.stable_hash(hcx, hasher);
+        extra.stable_hash(hcx, hasher);
     }
 }
 
