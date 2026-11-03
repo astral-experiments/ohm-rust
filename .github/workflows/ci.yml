@@ -284,6 +284,7 @@ jobs:
             tests/run-make/ohm-early-metadata
             tests/run-make/ohm-relink-assembler-inputs
             tests/run-make/ohm-checked-dep-info
+            tests/run-make/dep-info-consumed-input
             tests/run-make/metadata-export-prefetch
             tests/run-make/c-linker-generic-summary
             tests/run-make/separate-link
