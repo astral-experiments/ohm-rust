@@ -1652,6 +1652,47 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         }
     }
 
+    /// Whether every element of this static's initializer has the same known primitive type.
+    /// Keep the ordinary coercion of the enclosing array and its borrow.
+    pub(crate) fn is_static_uint_table(
+        &self,
+        expr: &hir::Expr<'tcx>,
+        fields: &[hir::Expr<'tcx>],
+        element: Ty<'tcx>,
+    ) -> bool {
+        if fields.len() < 1024
+            || !matches!(
+                self.tcx.def_kind(self.body_def_id),
+                DefKind::Static { mutability: hir::Mutability::Not, .. }
+            )
+            || self.infcx.obligation_inspector.get().is_some()
+            || self.tainted_by_errors().is_some()
+        {
+            return false;
+        }
+        let max = match element.kind() {
+            ty::Uint(ty::UintTy::U8) => u8::MAX as u128,
+            ty::Uint(ty::UintTy::U16) => u16::MAX as u128,
+            ty::Uint(ty::UintTy::U32) => u32::MAX as u128,
+            _ => return false,
+        };
+        let init = self.tcx.hir_body_owned_by(self.body_def_id).value;
+        let table = match init.kind {
+            ExprKind::AddrOf(hir::BorrowKind::Ref, hir::Mutability::Not, inner) => inner,
+            _ => init,
+        };
+        if table.hir_id != expr.hir_id {
+            return false;
+        }
+        let attrs = self.tcx.hir_attr_map(expr.hir_id.owner);
+        fields.iter().all(|field| {
+            field.hir_id.owner == expr.hir_id.owner
+                && attrs.get(field.hir_id.local_id).is_empty()
+                && matches!(field.kind, ExprKind::Lit(lit)
+                    if matches!(lit.node, rustc_ast::LitKind::Int(v, rustc_ast::LitIntType::Unsuffixed) if v.get() <= max))
+        })
+    }
+
     fn check_expr_array(
         &self,
         args: &'tcx [hir::Expr<'tcx>],
@@ -1669,9 +1710,14 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         .filter(|t| !self.resolve_vars_with_obligations(*t).is_ty_var())
                 })
                 .unwrap_or_else(|| self.next_ty_var(expr.span));
-            let mut coerce = CoerceMany::with_capacity(coerce_to, args.len());
+            let (checked, known) = if self.is_static_uint_table(expr, args, coerce_to) {
+                args.split_at(1)
+            } else {
+                (args, &[][..])
+            };
+            let mut coerce = CoerceMany::with_capacity(coerce_to, checked.len());
 
-            for e in args {
+            for e in checked {
                 // FIXME: the element expectation should use
                 // `try_structurally_resolve_and_adjust_for_branches` just like in `if` and `match`.
                 // While that fixes nested coercion, it will break [some
@@ -1680,6 +1726,9 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 let e_ty = self.check_expr_with_hint(e, coerce_to);
                 let cause = self.misc(e.span);
                 coerce.coerce(self, &cause, e, e_ty);
+            }
+            for e in known {
+                self.write_ty(e.hir_id, coerce_to);
             }
             coerce.complete(self)
         } else {
