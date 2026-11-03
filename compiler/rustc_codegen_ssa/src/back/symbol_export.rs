@@ -13,6 +13,7 @@ use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use rustc_middle::middle::exported_symbols::{
     ExportedSymbol, SymbolExportInfo, SymbolExportKind, SymbolExportLevel,
 };
+use rustc_middle::mono::{UpstreamMono, UpstreamMonoBucket};
 use rustc_middle::query::LocalCrate;
 use rustc_middle::ty::{
     self, GenericArgKind, GenericArgsRef, Instance, ShimKind, SymbolName, Ty, TyCtxt,
@@ -500,13 +501,13 @@ fn exported_generic_symbols_provider_local<'tcx>(
     tcx.arena.alloc_from_iter(symbols)
 }
 
-fn upstream_monomorphizations_provider(
-    tcx: TyCtxt<'_>,
+fn upstream_monomorphizations_provider<'tcx>(
+    tcx: TyCtxt<'tcx>,
     (): (),
-) -> DefIdMap<UnordMap<GenericArgsRef<'_>, CrateNum>> {
+) -> &'tcx [UpstreamMono<'tcx>] {
     let cnums = tcx.crates(());
 
-    let mut instances: DefIdMap<UnordMap<_, _>> = Default::default();
+    let mut instances = UnordMap::default();
 
     let drop_glue_fn_def_id = tcx.lang_items().drop_glue_fn();
     let async_drop_in_place_fn_def_id = tcx.lang_items().async_drop_in_place_fn();
@@ -544,9 +545,7 @@ fn upstream_monomorphizations_provider(
                 | ExportedSymbol::NoDefId(..) => unreachable!("{exported_symbol:?}"),
             };
 
-            let args_map = instances.entry(def_id).or_default();
-
-            match args_map.entry(args) {
+            match instances.entry((def_id, args)) {
                 Occupied(mut e) => {
                     // If there are multiple monomorphizations available,
                     // we select one deterministically.
@@ -562,37 +561,26 @@ fn upstream_monomorphizations_provider(
         }
     }
 
-    instances
+    let sorted = instances
+        .into_items()
+        .map(|((def_id, args), provider)| {
+            let key = UpstreamMonoBucket::sort_key(tcx, def_id, args);
+            let entry = UpstreamMono {
+                bucket: UpstreamMonoBucket::from_sort_key(key),
+                def_id,
+                args,
+                provider,
+            };
+            ((key, tcx.stable_crate_id(provider).as_u64()), entry)
+        })
+        .into_sorted_stable_ord_by_key(|(key, _)| key);
+    tcx.arena.alloc_from_iter(sorted.into_iter().map(|(_, entry)| entry))
 }
 
 fn has_generic_symbols_for_c_linker_provider(tcx: TyCtxt<'_>, _: LocalCrate) -> bool {
     tcx.exported_generic_symbols(LOCAL_CRATE)
         .iter()
         .any(|(_, info)| info.is_relevant_for_c_linker())
-}
-
-fn upstream_monomorphizations_for_provider(
-    tcx: TyCtxt<'_>,
-    def_id: DefId,
-) -> Option<&UnordMap<GenericArgsRef<'_>, CrateNum>> {
-    assert!(!def_id.is_local());
-    tcx.upstream_monomorphizations(()).get(&def_id)
-}
-
-fn upstream_drop_glue_for_provider<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    args: GenericArgsRef<'tcx>,
-) -> Option<CrateNum> {
-    let def_id = tcx.lang_items().drop_glue_fn()?;
-    tcx.upstream_monomorphizations_for(def_id)?.get(&args).cloned()
-}
-
-fn upstream_async_drop_glue_for_provider<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    args: GenericArgsRef<'tcx>,
-) -> Option<CrateNum> {
-    let def_id = tcx.lang_items().async_drop_in_place_fn()?;
-    tcx.upstream_monomorphizations_for(def_id)?.get(&args).cloned()
 }
 
 fn is_unreachable_local_definition_provider(tcx: TyCtxt<'_>, def_id: LocalDefId) -> bool {
@@ -606,14 +594,16 @@ pub(crate) fn provide(providers: &mut Providers) {
     providers.queries.exported_generic_symbols = exported_generic_symbols_provider_local;
     providers.queries.has_generic_symbols_for_c_linker = has_generic_symbols_for_c_linker_provider;
     providers.queries.upstream_monomorphizations = upstream_monomorphizations_provider;
+    providers.queries.upstream_monomorphizations_in = |tcx, bucket| {
+        let entries = tcx.upstream_monomorphizations(());
+        let first = entries.partition_point(|entry| entry.bucket < bucket);
+        let tail = &entries[first..];
+        &tail[..tail.iter().take_while(|entry| entry.bucket == bucket).count()]
+    };
     providers.queries.is_unreachable_local_definition = is_unreachable_local_definition_provider;
-    providers.queries.upstream_drop_glue_for = upstream_drop_glue_for_provider;
-    providers.queries.upstream_async_drop_glue_for = upstream_async_drop_glue_for_provider;
     providers.queries.wasm_import_module_map = wasm_import_module_map;
     providers.queries.is_reachable_non_generic_with_export_level_c =
         is_reachable_non_generic_with_export_level_c_provider;
-    providers.extern_queries.upstream_monomorphizations_for =
-        upstream_monomorphizations_for_provider;
 }
 
 pub(crate) fn allocator_shim_symbols(

@@ -99,6 +99,7 @@ use crate::mir::interpret::{
 };
 use crate::mono::{
     CodegenUnit, CollectionMode, MonoItem, MonoItemPartitions, NormalizationErrorInMono,
+    UpstreamMono, UpstreamMonoBucket,
 };
 use crate::query::plumbing::{define_callbacks, maybe_into_query_key};
 use crate::query::{ProcMacroExpansion, describe_as_module};
@@ -2024,72 +2025,16 @@ rustc_queries! {
         separate_provide_extern
     }
 
-    /// The entire set of monomorphizations the local crate can safely
-    /// link to because they are exported from upstream crates. Do
-    /// not depend on this directly, as its value changes anytime
-    /// a monomorphization gets added or removed in any upstream
-    /// crate. Instead use the narrower `upstream_monomorphizations_for`,
-    /// `upstream_drop_glue_for`, `upstream_async_drop_glue_for`, or,
-    /// even better, `Instance::upstream_monomorphization()`.
-    query upstream_monomorphizations(_: ()) -> &'tcx DefIdMap<UnordMap<GenericArgsRef<'tcx>, CrateNum>> {
-        arena_cache
+    /// Maps each exported instantiation to the upstream crate selected to provide it.
+    /// The entries are sorted by recoverable bucket so consumers can depend on the
+    /// relevant portion even when no upstream provider exists for their instance.
+    query upstream_monomorphizations(_: ()) -> &'tcx [UpstreamMono<'tcx>] {
         desc { "collecting available upstream monomorphizations" }
     }
 
-    /// Returns the set of upstream monomorphizations available for the
-    /// generic function identified by the given `def_id`. The query makes
-    /// sure to make a stable selection if the same monomorphization is
-    /// available in multiple upstream crates.
-    ///
-    /// You likely want to call `Instance::upstream_monomorphization()`
-    /// instead of invoking this query directly.
-    query upstream_monomorphizations_for(def_id: DefId)
-        -> Option<&'tcx UnordMap<GenericArgsRef<'tcx>, CrateNum>>
-    {
-        desc {
-            "collecting available upstream monomorphizations for `{}`",
-            tcx.def_path_str(def_id),
-        }
-        separate_provide_extern
-    }
-
-    /// Returns the upstream crate that exports drop-glue for the given
-    /// type (`args` is expected to be a single-item list containing the
-    /// type one wants drop-glue for).
-    ///
-    /// This is a subset of `upstream_monomorphizations_for` in order to
-    /// increase dep-tracking granularity. Otherwise adding or removing any
-    /// type with drop-glue in any upstream crate would invalidate all
-    /// functions calling drop-glue of an upstream type.
-    ///
-    /// You likely want to call `Instance::upstream_monomorphization()`
-    /// instead of invoking this query directly.
-    ///
-    /// NOTE: This query could easily be extended to also support other
-    ///       common functions that have are large set of monomorphizations
-    ///       (like `Clone::clone` for example).
-    query upstream_drop_glue_for(args: GenericArgsRef<'tcx>) -> Option<CrateNum> {
-        desc { "available upstream drop-glue for `{:?}`", args }
-    }
-
-    /// Returns the upstream crate that exports async-drop-glue for
-    /// the given type (`args` is expected to be a single-item list
-    /// containing the type one wants async-drop-glue for).
-    ///
-    /// This is a subset of `upstream_monomorphizations_for` in order
-    /// to increase dep-tracking granularity. Otherwise adding or
-    /// removing any type with async-drop-glue in any upstream crate
-    /// would invalidate all functions calling async-drop-glue of an
-    /// upstream type.
-    ///
-    /// You likely want to call `Instance::upstream_monomorphization()`
-    /// instead of invoking this query directly.
-    ///
-    /// NOTE: This query could easily be extended to also support other
-    ///       common functions that have are large set of monomorphizations
-    ///       (like `Clone::clone` for example).
-    query upstream_async_drop_glue_for(args: GenericArgsRef<'tcx>) -> Option<CrateNum> {
-        desc { "available upstream async-drop-glue for `{:?}`", args }
+    /// Returns every entry in a bucket. The caller compares exact instance identities.
+    query upstream_monomorphizations_in(bucket: UpstreamMonoBucket) -> &'tcx [UpstreamMono<'tcx>] {
+        desc { "looking up upstream monomorphizations in bucket {:?}", bucket }
     }
 
     /// Returns a list of all `extern` blocks of a crate.

@@ -352,7 +352,8 @@ impl DepNode {
         match tcx.key_fingerprint_style(kind) {
             KeyFingerprintStyle::Opaque
             | KeyFingerprintStyle::HirId
-            | KeyFingerprintStyle::SourceFileId => Err(()),
+            | KeyFingerprintStyle::SourceFileId
+            | KeyFingerprintStyle::UpstreamMonoBucket => Err(()),
             KeyFingerprintStyle::Unit => Ok(DepNode::new_no_params(tcx, kind)),
             KeyFingerprintStyle::DefPathHash => {
                 Ok(DepNode::from_def_path_hash(tcx, def_path_hash, kind))

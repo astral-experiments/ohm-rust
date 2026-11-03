@@ -1,10 +1,10 @@
 use std::borrow::Cow;
 use std::fmt;
-use std::hash::Hash;
+use std::hash::{BuildHasher, Hash};
 
 use rustc_data_structures::base_n::{BaseNString, CASE_INSENSITIVE, ToBaseN};
 use rustc_data_structures::fingerprint::Fingerprint;
-use rustc_data_structures::fx::FxIndexMap;
+use rustc_data_structures::fx::{FxBuildHasher, FxIndexMap};
 use rustc_data_structures::stable_hash::{
     StableHash, StableHashCtxt, StableHasher, ToStableHashKey,
 };
@@ -20,9 +20,47 @@ use rustc_target::spec::SymbolVisibility;
 use tracing::debug;
 
 use crate::dep_graph::dep_node::{make_compile_codegen_unit, make_compile_mono_item};
-use crate::dep_graph::{DepNode, WorkProduct, WorkProductId};
+use crate::dep_graph::{DepNode, DepNodeKey, WorkProduct, WorkProductId};
 use crate::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use crate::ty::{self, GenericArgs, Instance, InstanceKind, ShimKind, SymbolName, Ty, TyCtxt};
+
+/// The high word of an upstream monomorphization's key. Two different instances
+/// in the same bucket are distinguished by their original definition and arguments.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, StableHash)]
+pub struct UpstreamMonoBucket(pub u32);
+
+impl UpstreamMonoBucket {
+    /// Computes the sort key of an instance. Only incremental sessions need
+    /// to recover its bucket in another compiler process.
+    pub fn sort_key<'tcx>(
+        tcx: TyCtxt<'tcx>,
+        def_id: DefId,
+        args: ty::GenericArgsRef<'tcx>,
+    ) -> (u64, u64) {
+        let key = (def_id, args);
+        if tcx.dep_graph.is_fully_enabled() {
+            let (lo, hi) = key.to_fingerprint(tcx).split();
+            (lo.as_u64(), hi.as_u64())
+        } else {
+            // FxHasher returns a native word. Keep its high bits available on 32-bit hosts.
+            (FxBuildHasher.hash_one(key) << (u64::BITS - usize::BITS), 0)
+        }
+    }
+
+    /// Extracts the recoverable word used to address the sorted export table.
+    pub fn from_sort_key((first, _): (u64, u64)) -> Self {
+        Self((first >> 32) as u32)
+    }
+}
+
+/// One selected upstream provider. The table keeps one row per exact instance.
+#[derive(Copy, Clone, Debug, StableHash)]
+pub struct UpstreamMono<'tcx> {
+    pub bucket: UpstreamMonoBucket,
+    pub def_id: DefId,
+    pub args: ty::GenericArgsRef<'tcx>,
+    pub provider: CrateNum,
+}
 
 /// Describes how a monomorphization will be instantiated in object files.
 #[derive(PartialEq)]
