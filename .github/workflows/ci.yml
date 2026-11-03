@@ -214,6 +214,12 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 compiler/rustc_span --test-args hygiene::tests
 
+      - name: Run the large byte-string interning regression
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1 compiler/rustc_span
+          --test-args symbol::tests::large_strings_keep_their_bytes_and_share_symbol_ids
+
       - name: Run lint tool prefix unit tests
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
@@ -304,6 +310,7 @@ jobs:
             tests/run-make/incremental-proc-macro-parse-source
             tests/run-make/incremental-retained-cache-snapshot
             tests/run-make/incremental-loaded-cache-values
+            tests/run-make/incremental-large-byte-literal
             tests/run-make/incremental-recomputed-query-spans
             tests/run-make/incremental-missing-query-cache
             tests/run-make/ohm-retained-mono-values
