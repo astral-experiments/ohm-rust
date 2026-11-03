@@ -33,3 +33,30 @@ fn without_first_quote_test() {
         assert_eq!(i.without_first_quote().name, kw::Break);
     });
 }
+
+#[test]
+fn large_strings_keep_their_bytes_and_share_symbol_ids() {
+    let large: &'static str = "a".repeat(LARGE_BYTE_STRING_LEN + 1).leak();
+    let interner = Interner::prefill(&[""], &[large]);
+
+    for len in [LARGE_BYTE_STRING_LEN - 1, LARGE_BYTE_STRING_LEN, LARGE_BYTE_STRING_LEN + 1] {
+        let bytes = &large.as_bytes()[..len];
+        let symbol = interner.intern_byte_str(bytes);
+        assert_eq!(symbol.as_u32(), interner.intern_str(&large[..len]).as_u32());
+        let stored = interner.get_stored_bytes(symbol.0.as_usize());
+        assert_eq!(stored.bytes(), bytes);
+        assert_eq!(stored.0.len(), if len < LARGE_BYTE_STRING_LEN { len } else { len + 16 });
+        assert_eq!(
+            stored.fingerprint(),
+            (len >= LARGE_BYTE_STRING_LEN).then(|| large_byte_fingerprint(bytes)),
+        );
+    }
+
+    let mut changed = large.as_bytes().to_owned();
+    changed[LARGE_BYTE_STRING_LEN / 2] ^= 1;
+    let changed_id = interner.intern_byte_str(&changed);
+    let changed = interner.get_stored_bytes(changed_id.0.as_usize());
+    let original = interner.get_stored_bytes(interner.intern_str(large).0.as_usize());
+    assert_ne!(changed.fingerprint(), original.fingerprint());
+    assert_eq!(original.bytes(), large.as_bytes());
+}

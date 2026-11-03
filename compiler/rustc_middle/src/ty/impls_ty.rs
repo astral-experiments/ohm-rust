@@ -57,7 +57,7 @@ impl StableHash for mir::interpret::AllocId {
         ty::tls::with_opt(|tcx| {
             trace!("hashing {:?}", *self);
             let tcx = tcx.expect("can't hash AllocIds during hir lowering");
-            tcx.try_get_global_alloc(*self).stable_hash(hcx, hasher);
+            tcx.stable_hash_alloc_id(*self, hcx, hasher);
         });
     }
 }
