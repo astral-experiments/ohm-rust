@@ -8,6 +8,7 @@ use rustc_hir::{HirId, ItemLocalId, OwnerId};
 use rustc_span::StableSourceFileId;
 
 use crate::dep_graph::{DepNode, KeyFingerprintStyle};
+use crate::mono::UpstreamMonoBucket;
 use crate::ty::TyCtxt;
 
 /// Trait for query keys as seen by dependency-node tracking.
@@ -49,6 +50,24 @@ where
     #[inline(always)]
     default fn try_recover_key(_: TyCtxt<'tcx>, _: &DepNode) -> Option<Self> {
         None
+    }
+}
+
+impl<'tcx> DepNodeKey<'tcx> for UpstreamMonoBucket {
+    fn key_fingerprint_style() -> KeyFingerprintStyle {
+        KeyFingerprintStyle::UpstreamMonoBucket
+    }
+
+    fn to_fingerprint(&self, _: TyCtxt<'tcx>) -> Fingerprint {
+        Fingerprint::new(u64::from(self.0), 0u64)
+    }
+
+    fn try_recover_key(_: TyCtxt<'tcx>, node: &DepNode) -> Option<Self> {
+        let (lo, hi) = Fingerprint::from(node.key_fingerprint).split();
+        if hi.as_u64() != 0 {
+            return None;
+        }
+        Some(Self(u32::try_from(lo.as_u64()).ok()?))
     }
 }
 

@@ -14,7 +14,7 @@ use rustc_span::{DUMMY_SP, ExpnId, Ident, LocalExpnId, Span, StableSourceFileId,
 
 use crate::dep_graph::DepNodeIndex;
 use crate::infer::canonical::CanonicalQueryInput;
-use crate::mono::CollectionMode;
+use crate::mono::{CollectionMode, UpstreamMonoBucket};
 use crate::query::{DefIdCache, DefaultCache, SingleCache, VecCache};
 use crate::ty::fast_reject::SimplifiedType;
 use crate::ty::layout::ValidityRequirement;
@@ -59,6 +59,12 @@ pub trait QueryKey: Sized + QueryKeyBounds {
 impl QueryKey for () {
     type Cache<V> = SingleCache<V>;
 
+    fn default_span(&self, _: TyCtxt<'_>) -> Span {
+        DUMMY_SP
+    }
+}
+
+impl QueryKey for UpstreamMonoBucket {
     fn default_span(&self, _: TyCtxt<'_>) -> Span {
         DUMMY_SP
     }
