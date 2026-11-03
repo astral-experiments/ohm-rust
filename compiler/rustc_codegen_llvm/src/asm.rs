@@ -1865,7 +1865,7 @@ fn file_free_x86_instruction(opcode: &str, args: &str) -> bool {
             let Some((op, arg)) = args.split_once([' ', '\t']) else { return false };
             matches!(op, "cmpxchg16b" | "not" | "neg") && file_free_x86_operand(arg)
         }
-        "neg" | "not" | "setne" => file_free_x86_operand(args),
+        "neg" | "not" | "sete" | "setne" => file_free_x86_operand(args),
         "add" | "adc" | "and" | "cmovae" | "cmovb" | "cmovge" | "cmovl" | "cmp" | "mov" | "or"
         | "sbb" | "sub" | "vmovdqa" | "xchg" | "xor" => args
             .split_once(',')
