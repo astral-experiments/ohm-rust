@@ -563,8 +563,8 @@ pub enum ExprKind<'tcx> {
         mutability: Mutability,
         target: Ty<'tcx>,
     },
-    /// An integer array in a static initializer, stored in target byte order.
-    IntArrayLiteral {
+    /// A literal array stored in target layout, including its field offsets and byte order.
+    LiteralArray {
         alloc_id: AllocId,
     },
 }

@@ -282,7 +282,7 @@ impl<'cx, 'tcx> Visitor<'tcx> for WritebackCx<'cx, 'tcx> {
         if let hir::ExprKind::Array(fields) = e.kind
             && fields.len() >= 1024
             && let ty::Array(element, _) = *self.typeck_results.node_type(e.hir_id).kind()
-            && self.fcx.is_static_uint_table(e, fields, element)
+            && self.fcx.is_scalar_literal_table(e, fields, element)
         {
             let inferred = self.fcx.typeck_results.borrow();
             if fields.iter().all(|field| {

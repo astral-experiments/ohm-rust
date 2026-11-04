@@ -55,7 +55,7 @@ pub(crate) fn as_constant_inner<'tcx>(
 
             ConstOperand { span, user_ty: None, const_ }
         }
-        ExprKind::IntArrayLiteral { alloc_id } => ConstOperand {
+        ExprKind::LiteralArray { alloc_id } => ConstOperand {
             span,
             user_ty: None,
             const_: Const::Val(ConstValue::Indirect { alloc_id, offset: Size::ZERO }, ty),

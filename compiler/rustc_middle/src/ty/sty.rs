@@ -1514,6 +1514,24 @@ impl<'tcx> Ty<'tcx> {
         matches!(self.kind(), Infer(IntVar(_)) | Int(_) | Uint(_))
     }
 
+    /// Returns the bits of an unsigned or character literal that fits this type without a cast.
+    pub fn table_literal_bits(self, literal: &rustc_ast::LitKind) -> Option<u32> {
+        if let (Char, rustc_ast::LitKind::Char(ch)) = (self.kind(), literal) {
+            return Some(u32::from(*ch));
+        }
+        let rustc_ast::LitKind::Int(value, rustc_ast::LitIntType::Unsuffixed) = literal else {
+            return None;
+        };
+        let max = match self.kind() {
+            Uint(ty::UintTy::U8) => u8::MAX as u128,
+            Uint(ty::UintTy::U16) => u16::MAX as u128,
+            Uint(ty::UintTy::U32) => u32::MAX as u128,
+            _ => return None,
+        };
+        let value = value.get();
+        (value <= max).then_some(value as u32)
+    }
+
     #[inline]
     pub fn is_fresh_ty(self) -> bool {
         matches!(self.kind(), Infer(FreshTy(_)))
