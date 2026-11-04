@@ -555,8 +555,8 @@ impl<'a, 'tcx> ThirPrinter<'a, 'tcx> {
                     depth_lvl
                 );
             }
-            IntArrayLiteral { alloc_id } => {
-                print_indented!(self, format!("IntArrayLiteral({alloc_id:?})"), depth_lvl);
+            LiteralArray { alloc_id } => {
+                print_indented!(self, format!("LiteralArray({alloc_id:?})"), depth_lvl);
             }
             NonHirLiteral { lit, user_ty } => {
                 print_indented!(self, "NonHirLiteral {", depth_lvl);
