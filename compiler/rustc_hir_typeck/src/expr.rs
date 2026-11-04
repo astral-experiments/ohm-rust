@@ -1652,30 +1652,32 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         }
     }
 
-    /// Whether every element of this static's initializer has the same known primitive type.
+    /// Whether every element of this initializer has the same known primitive type.
     /// Keep the ordinary coercion of the enclosing array and its borrow.
-    pub(crate) fn is_static_uint_table(
+    pub(crate) fn is_scalar_literal_table(
         &self,
         expr: &hir::Expr<'tcx>,
         fields: &[hir::Expr<'tcx>],
         element: Ty<'tcx>,
     ) -> bool {
         if fields.len() < 1024
-            || !matches!(
-                self.tcx.def_kind(self.body_def_id),
-                DefKind::Static { mutability: hir::Mutability::Not, .. }
-            )
             || self.infcx.obligation_inspector.get().is_some()
             || self.tainted_by_errors().is_some()
         {
             return false;
         }
-        let max = match element.kind() {
-            ty::Uint(ty::UintTy::U8) => u8::MAX as u128,
-            ty::Uint(ty::UintTy::U16) => u16::MAX as u128,
-            ty::Uint(ty::UintTy::U32) => u32::MAX as u128,
+        match self.tcx.def_kind(self.body_def_id) {
+            DefKind::Static { mutability: hir::Mutability::Not, .. } => {}
+            DefKind::Const { is_type_const: false }
+                if self.tcx.generics_of(self.body_def_id).count() == 0 => {}
             _ => return false,
-        };
+        }
+        if !matches!(
+            element.kind(),
+            ty::Char | ty::Uint(ty::UintTy::U8 | ty::UintTy::U16 | ty::UintTy::U32)
+        ) {
+            return false;
+        }
         let init = self.tcx.hir_body_owned_by(self.body_def_id).value;
         let table = match init.kind {
             ExprKind::AddrOf(hir::BorrowKind::Ref, hir::Mutability::Not, inner) => inner,
@@ -1688,8 +1690,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         fields.iter().all(|field| {
             field.hir_id.owner == expr.hir_id.owner
                 && attrs.get(field.hir_id.local_id).is_empty()
-                && matches!(field.kind, ExprKind::Lit(lit)
-                    if matches!(lit.node, rustc_ast::LitKind::Int(v, rustc_ast::LitIntType::Unsuffixed) if v.get() <= max))
+                && matches!(field.kind, ExprKind::Lit(lit) if element.table_literal_bits(&lit.node).is_some())
         })
     }
 
@@ -1710,7 +1711,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         .filter(|t| !self.resolve_vars_with_obligations(*t).is_ty_var())
                 })
                 .unwrap_or_else(|| self.next_ty_var(expr.span));
-            let (checked, known) = if self.is_static_uint_table(expr, args, coerce_to) {
+            let (checked, known) = if self.is_scalar_literal_table(expr, args, coerce_to) {
                 self.typeck_results.borrow_mut().node_types_mut().reserve(args.len());
                 args.split_at(1)
             } else {

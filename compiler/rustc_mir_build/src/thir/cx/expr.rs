@@ -28,6 +28,13 @@ use tracing::{debug, info, instrument, trace};
 use crate::diagnostics::*;
 use crate::thir::cx::ThirBuildCx;
 
+/// A tuple node or scalar leaf, in source order, with its target byte range.
+struct LiteralField<'tcx> {
+    ty: Ty<'tcx>,
+    offset: usize,
+    size: usize,
+}
+
 /// The receiver of a splatted method, or the expression for a splatted function call.
 #[derive(Copy, Clone, Debug)]
 enum SplattedFunc<'tcx> {
@@ -388,27 +395,31 @@ impl<'tcx> ThirBuildCx<'tcx> {
         }
     }
 
-    /// Packs large integer tables after type checking, keeping their surrounding borrow
-    /// and the allocation of the static itself on the usual MIR path.
-    fn int_array_literal(
+    /// Packs a literal array after type checking. Its borrow and its owner's allocation
+    /// still go through the usual MIR construction.
+    fn literal_array(
         &self,
         ty: Ty<'tcx>,
         fields: &[hir::Expr<'tcx>],
     ) -> Option<mir::interpret::AllocId> {
-        if fields.len() < 1024
-            || !matches!(
-                self.tcx.def_kind(self.body_owner),
-                DefKind::Static { mutability: hir::Mutability::Not, .. }
-            )
-        {
+        if fields.len() < 1024 {
             return None;
         }
+        match self.tcx.def_kind(self.body_owner) {
+            DefKind::Static { mutability: hir::Mutability::Not, .. } => {}
+            DefKind::Const { is_type_const: false }
+                if self.tcx.generics_of(self.body_owner).count() == 0 => {}
+            _ => return None,
+        }
         let ty::Array(element, _) = ty.kind() else { return None };
+        if matches!(element.kind(), ty::Tuple(_)) {
+            return self.tuple_array_literal(*element, fields);
+        }
         let layout = &self.tcx.data_layout;
-        let (width, max, align) = match element.kind() {
-            ty::Uint(ty::UintTy::U8) => (1, u8::MAX as u128, layout.i8_align),
-            ty::Uint(ty::UintTy::U16) => (2, u16::MAX as u128, layout.i16_align),
-            ty::Uint(ty::UintTy::U32) => (4, u32::MAX as u128, layout.i32_align),
+        let (width, align) = match element.kind() {
+            ty::Uint(ty::UintTy::U8) => (1, layout.i8_align),
+            ty::Uint(ty::UintTy::U16) => (2, layout.i16_align),
+            ty::Uint(ty::UintTy::U32) | ty::Char => (4, layout.i32_align),
             _ => return None,
         };
         let owner = fields[0].hir_id.owner;
@@ -416,18 +427,14 @@ impl<'tcx> ThirBuildCx<'tcx> {
         let mut bytes = Vec::with_capacity(fields.len() * width);
         for field in fields {
             let hir::ExprKind::Lit(lit) = field.kind else { return None };
-            let rustc_ast::LitKind::Int(value, rustc_ast::LitIntType::Unsuffixed) = lit.node else {
-                return None;
-            };
-            let value = value.get();
-            if value > max
-                || field.hir_id.owner != owner
+            let value = element.table_literal_bits(&lit.node)?;
+            if field.hir_id.owner != owner
                 || !attrs.get(field.hir_id.local_id).is_empty()
-                || self.typeck_results.expr_ty(field) != *element
+                || self.typeck_results.expr_ty_opt(field) != Some(*element)
+                || !self.typeck_results.expr_adjustments(field).is_empty()
             {
                 return None;
             }
-            let value = value as u32;
             match layout.endian {
                 rustc_abi::Endian::Little => bytes.extend_from_slice(&value.to_le_bytes()[..width]),
                 rustc_abi::Endian::Big => {
@@ -437,6 +444,100 @@ impl<'tcx> ThirBuildCx<'tcx> {
         }
         let alloc = mir::interpret::Allocation::from_bytes(bytes, align, hir::Mutability::Not, ());
         Some(self.tcx.reserve_and_set_memory_alloc(self.tcx.mk_const_alloc(alloc)))
+    }
+
+    /// Computes the target field offsets once, then writes every tuple into one allocation.
+    fn tuple_array_literal(
+        &self,
+        element: Ty<'tcx>,
+        items: &[hir::Expr<'tcx>],
+    ) -> Option<mir::interpret::AllocId> {
+        let mut fields = Vec::new();
+        let stride = self.literal_fields(element, 0, &mut fields)?;
+        let owner = items[0].hir_id.owner;
+        let attrs = self.tcx.hir_attr_map(owner);
+        let mut bytes = vec![0; items.len().checked_mul(stride)?];
+        for (item, dest) in items.iter().zip(bytes.chunks_exact_mut(stride)) {
+            let mut remaining = fields.as_slice();
+            self.write_literal_fields(item, owner, attrs, &mut remaining, dest)?;
+            debug_assert!(remaining.is_empty());
+        }
+        let align = self.tcx.layout_of(self.typing_env.as_query_input(element)).ok()?.align.abi;
+        let alloc = mir::interpret::Allocation::from_bytes(bytes, align, hir::Mutability::Not, ());
+        Some(self.tcx.reserve_and_set_memory_alloc(self.tcx.mk_const_alloc(alloc)))
+    }
+
+    /// Records fixed-width leaves and padding-free tuples. Other layouts retain ordinary MIR.
+    fn literal_fields(
+        &self,
+        ty: Ty<'tcx>,
+        offset: usize,
+        fields: &mut Vec<LiteralField<'tcx>>,
+    ) -> Option<usize> {
+        if fields.len() >= 32 {
+            return None;
+        }
+        let children = match ty.kind() {
+            ty::Char | ty::Uint(ty::UintTy::U8 | ty::UintTy::U16 | ty::UintTy::U32) => None,
+            ty::Tuple(children) if !children.is_empty() && children.len() <= 32 => Some(children),
+            _ => return None,
+        };
+        let layout = self.tcx.layout_of(self.typing_env.as_query_input(ty)).ok()?;
+        let size = usize::try_from(layout.size.bytes()).ok()?;
+        fields.push(LiteralField { ty, offset, size });
+        if let Some(children) = children {
+            let mut initialized = 0;
+            for (index, child) in children.iter().enumerate() {
+                let field_offset = usize::try_from(layout.fields.offset(index).bytes()).ok()?;
+                initialized +=
+                    self.literal_fields(child, offset.checked_add(field_offset)?, fields)?;
+            }
+            if initialized != size {
+                return None;
+            }
+        }
+        Some(size)
+    }
+
+    /// Consumes the next part of the precomputed layout for one HIR expression.
+    fn write_literal_fields(
+        &self,
+        expr: &hir::Expr<'tcx>,
+        owner: hir::OwnerId,
+        attrs: &hir::AttributeMap<'tcx>,
+        fields: &mut &[LiteralField<'tcx>],
+        dest: &mut [u8],
+    ) -> Option<()> {
+        let (field, rest) = fields.split_first()?;
+        *fields = rest;
+        if expr.hir_id.owner != owner
+            || !attrs.get(expr.hir_id.local_id).is_empty()
+            || self.typeck_results.expr_ty_opt(expr) != Some(field.ty)
+            || !self.typeck_results.expr_adjustments(expr).is_empty()
+        {
+            return None;
+        }
+        match (expr.kind, field.ty.kind()) {
+            (hir::ExprKind::Tup(items), ty::Tuple(types)) if items.len() == types.len() => {
+                for item in items {
+                    self.write_literal_fields(item, owner, attrs, fields, dest)?;
+                }
+            }
+            (hir::ExprKind::Lit(lit), _) => {
+                let bits = field.ty.table_literal_bits(&lit.node)?;
+                let dst = &mut dest[field.offset..field.offset + field.size];
+                match self.tcx.data_layout.endian {
+                    rustc_abi::Endian::Little => {
+                        dst.copy_from_slice(&bits.to_le_bytes()[..field.size])
+                    }
+                    rustc_abi::Endian::Big => {
+                        dst.copy_from_slice(&bits.to_be_bytes()[4 - field.size..])
+                    }
+                }
+            }
+            _ => return None,
+        }
+        Some(())
     }
 
     #[instrument(level = "debug", skip(self), ret)]
@@ -1234,8 +1335,8 @@ impl<'tcx> ThirBuildCx<'tcx> {
             }
 
             hir::ExprKind::DropTemps(source) => ExprKind::Use { source: self.mirror_expr(source) },
-            hir::ExprKind::Array(fields) => match self.int_array_literal(expr_ty, fields) {
-                Some(alloc_id) => ExprKind::IntArrayLiteral { alloc_id },
+            hir::ExprKind::Array(fields) => match self.literal_array(expr_ty, fields) {
+                Some(alloc_id) => ExprKind::LiteralArray { alloc_id },
                 None => ExprKind::Array { fields: self.mirror_exprs(fields) },
             },
             hir::ExprKind::Tup(fields) => ExprKind::Tuple { fields: self.mirror_exprs(fields) },
