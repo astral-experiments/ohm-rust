@@ -3,6 +3,11 @@ run-name: Run both compiler regressions at e9a345479d on ${{ github.sha }}
 
 on:
   workflow_dispatch:
+    inputs:
+      retain_linux_runtime:
+        description: Export the verified Linux compiler for the paired Cargo smoke
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -13,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [namespace-profile-ubuntu-24-04-16, namespace-profile-macos-15]
+        os: ${{ fromJSON(inputs.retain_linux_runtime && '["namespace-profile-ubuntu-24-04-16"]' || '["namespace-profile-ubuntu-24-04-16","namespace-profile-macos-15"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 100
     steps:
@@ -66,3 +71,64 @@ jobs:
           path: ${{ runner.temp }}/combined-proof/
           if-no-files-found: error
           retention-days: 21
+
+      - name: Bind a portable Linux compiler to the two executed regressions
+        if: ${{ inputs.retain_linux_runtime && success() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${RUNNER_OS}" = Linux
+          stage="$PWD/build/x86_64-unknown-linux-gnu/stage1"
+          abi=x86_64-unknown-linux-gnu
+          root="$RUNNER_TEMP/interop-sdk"
+          packet="$RUNNER_TEMP/interop-packet"
+          mkdir -p "$root/bin" "$root/lib/rustlib/$abi" "$packet"
+          cp -L "$stage/bin/rustc" "$root/bin/"
+          cp -L "$stage/lib"/librustc_driver-*.so "$root/lib/"
+          cp -aL "$stage/lib/rustlib/$abi/lib" "$root/lib/rustlib/$abi/"
+          if test -d "$stage/lib/rustlib/$abi/bin"; then
+            cp -aL "$stage/lib/rustlib/$abi/bin" "$root/lib/rustlib/$abi/"
+          fi
+          ldd "$stage/lib"/librustc_driver-*.so > "$packet/driver-dependencies.txt"
+          python3 - "$packet/driver-dependencies.txt" "$root/lib" <<'PYCODE'
+          import pathlib, re, shutil, sys
+          lines = pathlib.Path(sys.argv[1]).read_text()
+          assert "not found" not in lines
+          for name, original in re.findall(r"(?m)^\s*(libLLVM[^\s]+) => (/[^\s]+)", lines):
+              shutil.copy2(original, pathlib.Path(sys.argv[2]) / name)
+          PYCODE
+          "$root/bin/rustc" -vV > "$packet/version.txt"
+          grep -F 'commit-hash: e9a345479da8838f597c780794026ae5fc0e84ea' "$packet/version.txt"
+          test "$("$root/bin/rustc" --print sysroot)" = "$root"
+          printf '%s\n' 'fn main() { println!("{}", u16::from_le_bytes([8, 1])); }' > "$RUNNER_TEMP/interop_probe.rs"
+          "$root/bin/rustc" "$RUNNER_TEMP/interop_probe.rs" -o "$RUNNER_TEMP/interop_probe"
+          "$RUNNER_TEMP/interop_probe" | tee "$packet/probe-stdout.txt"
+          grep -Fx 264 "$packet/probe-stdout.txt"
+          cp "$RUNNER_TEMP/combined-proof/source.txt" "$packet/source.txt"
+          python3 - "$root" "$packet/runtime.json" <<'PYCODE'
+          import hashlib, json, pathlib, sys
+          root = pathlib.Path(sys.argv[1])
+          files = {}
+          for path in sorted(root.rglob("*")):
+              if path.is_dir():
+                  continue
+              assert path.is_file() and not path.is_symlink()
+              with path.open("rb") as source:
+                  files[str(path.relative_to(root))] = [
+                      hashlib.file_digest(source, "sha256").hexdigest(),
+                      path.stat().st_size, path.stat().st_mode & 0o777]
+          assert len(files) > 40 and "bin/rustc" in files
+          pathlib.Path(sys.argv[2]).write_text(json.dumps(files, sort_keys=True, indent=2) + "\n")
+          PYCODE
+          tar -C "$root" --sort=name --mtime=@0 --owner=0 --group=0 -cf - bin lib | zstd -q -T2 -3 -o "$packet/runtime.tar.zst"
+          sha256sum "$packet/runtime.tar.zst" > "$packet/runtime-sha256.txt"
+
+      - name: Upload the source-identified Linux compiler and runtime
+        if: ${{ inputs.retain_linux_runtime && success() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: rc25-linux-interop-runtime
+          path: ${{ runner.temp }}/interop-packet/
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
