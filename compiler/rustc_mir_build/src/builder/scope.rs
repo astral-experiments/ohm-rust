@@ -912,7 +912,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
             ExprKind::Literal { .. }
             | ExprKind::NonHirLiteral { .. }
-            | ExprKind::IntArrayLiteral { .. }
+            | ExprKind::LiteralArray { .. }
             | ExprKind::ZstLiteral { .. }
             | ExprKind::NamedConst { .. } => self.as_constant(&self.thir[value]),
 
