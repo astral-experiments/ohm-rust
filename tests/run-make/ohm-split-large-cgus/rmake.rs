@@ -7,7 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use run_make_support::{rfs, run, run_in_tmpdir, rustc};
+use run_make_support::{dynamic_lib_name, rfs, run, run_in_tmpdir, rustc};
 
 const FUNCTIONS: u64 = 64;
 const OPERATIONS: u64 = 256;
@@ -193,7 +193,45 @@ fn check(optimization: &str) {
     run("fixture").assert_stdout_equals(format!("{expected}\n"));
 }
 
+/// Check that one real derive can move each receiver's method independently.
+fn derived_receivers() {
+    rustc().input("methods.rs").edition("2024").crate_type("proc-macro").run();
+    let build = |cache: &str, limit: Option<usize>| {
+        let mut compiler = rustc();
+        compiler
+            .input("derived.rs")
+            .edition("2024")
+            .extern_("methods", dynamic_lib_name("methods"))
+            .opt_level("1")
+            .codegen_units(64)
+            .incremental(cache)
+            .arg("-Zhuman-readable-cgu-names");
+        if let Some(limit) = limit {
+            compiler.arg(format!("-Zohm-cgu-split-limit={limit}"));
+        }
+        compiler.run();
+        objects(cache)
+            .into_keys()
+            .filter(|name| name.to_str().unwrap().contains("-ohm-derived-"))
+            .collect::<BTreeSet<_>>()
+    };
+
+    let original = build("derive", None);
+    assert_eq!(original.len(), 3);
+    run("derived").assert_stdout_equals("57\n102\n");
+    assert!(build("no-derive-shards", Some(1)).is_empty());
+    assert_eq!(build("one-extra-shard", Some(2)).len(), 1);
+
+    let source = rfs::read_to_string("derived.rs");
+    rfs::write("derived.rs", source.replace("i64 = 11;", "i64 = 21;"));
+    assert_eq!(build("derive", None), original);
+    run("derived").assert_stdout_equals("67\n112\n");
+    assert_eq!(build("fresh-derive", None), original);
+    run("derived").assert_stdout_equals("67\n112\n");
+}
+
 fn main() {
+    derived_receivers();
     rfs::write("fixture.rs", "fn main() {}\n");
     rustc()
         .input("fixture.rs")
