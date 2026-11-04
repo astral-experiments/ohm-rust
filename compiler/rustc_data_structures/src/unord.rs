@@ -485,6 +485,12 @@ impl<K: Hash + Eq, V, I: Iterator<Item = (K, V)>> From<UnordItems<(K, V), I>> fo
 }
 
 impl<K: Eq + Hash, V> UnordMap<K, V> {
+    /// Reserves space for at least `additional` more entries.
+    #[inline]
+    pub fn reserve(&mut self, additional: usize) {
+        self.inner.reserve(additional);
+    }
+
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         Self { inner: FxHashMap::with_capacity_and_hasher(capacity, Default::default()) }

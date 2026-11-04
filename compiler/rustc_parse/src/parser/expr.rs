@@ -1685,7 +1685,8 @@ impl<'a> Parser<'a> {
             } else if self.eat(exp!(Comma)) {
                 // Vector with two or more elements.
                 let sep = SeqSep::trailing_allowed(exp!(Comma));
-                let (mut exprs, _) = self.parse_seq_to_end(close, sep, |p| p.parse_expr())?;
+                let (mut exprs, _) =
+                    self.parse_seq_to_end(close, sep, |p| p.parse_array_element())?;
                 exprs.insert(0, first_expr);
                 ExprKind::Array(exprs)
             } else {
@@ -1696,6 +1697,23 @@ impl<'a> Parser<'a> {
         };
         let expr = self.mk_expr(lo.to(self.prev_token.span), kind);
         self.maybe_recover_from_bad_qpath(expr)
+    }
+
+    /// Parses one array element. A comma after an integer completes the expression,
+    /// so it can go straight through the ordinary literal and token readers.
+    fn parse_array_element(&mut self) -> PResult<'a, Box<Expr>> {
+        if matches!(
+            self.token.kind,
+            token::Literal(token::Lit { kind: token::Integer, suffix: None, .. })
+        ) && self.look_ahead(1, |token| token == &token::Comma)
+        {
+            self.current_closure.take();
+            self.with_res(Restrictions::empty(), |this| {
+                this.collect_tokens_for_expr(AttrWrapper::empty(), |this, _| this.parse_expr_lit())
+            })
+        } else {
+            self.parse_expr()
+        }
     }
 
     fn parse_expr_path_start(&mut self) -> PResult<'a, Box<Expr>> {

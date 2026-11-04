@@ -388,6 +388,57 @@ impl<'tcx> ThirBuildCx<'tcx> {
         }
     }
 
+    /// Packs large integer tables after type checking, keeping their surrounding borrow
+    /// and the allocation of the static itself on the usual MIR path.
+    fn int_array_literal(
+        &self,
+        ty: Ty<'tcx>,
+        fields: &[hir::Expr<'tcx>],
+    ) -> Option<mir::interpret::AllocId> {
+        if fields.len() < 1024
+            || !matches!(
+                self.tcx.def_kind(self.body_owner),
+                DefKind::Static { mutability: hir::Mutability::Not, .. }
+            )
+        {
+            return None;
+        }
+        let ty::Array(element, _) = ty.kind() else { return None };
+        let layout = &self.tcx.data_layout;
+        let (width, max, align) = match element.kind() {
+            ty::Uint(ty::UintTy::U8) => (1, u8::MAX as u128, layout.i8_align),
+            ty::Uint(ty::UintTy::U16) => (2, u16::MAX as u128, layout.i16_align),
+            ty::Uint(ty::UintTy::U32) => (4, u32::MAX as u128, layout.i32_align),
+            _ => return None,
+        };
+        let owner = fields[0].hir_id.owner;
+        let attrs = self.tcx.hir_attr_map(owner);
+        let mut bytes = Vec::with_capacity(fields.len() * width);
+        for field in fields {
+            let hir::ExprKind::Lit(lit) = field.kind else { return None };
+            let rustc_ast::LitKind::Int(value, rustc_ast::LitIntType::Unsuffixed) = lit.node else {
+                return None;
+            };
+            let value = value.get();
+            if value > max
+                || field.hir_id.owner != owner
+                || !attrs.get(field.hir_id.local_id).is_empty()
+                || self.typeck_results.expr_ty(field) != *element
+            {
+                return None;
+            }
+            let value = value as u32;
+            match layout.endian {
+                rustc_abi::Endian::Little => bytes.extend_from_slice(&value.to_le_bytes()[..width]),
+                rustc_abi::Endian::Big => {
+                    bytes.extend_from_slice(&value.to_be_bytes()[4 - width..])
+                }
+            }
+        }
+        let alloc = mir::interpret::Allocation::from_bytes(bytes, align, hir::Mutability::Not, ());
+        Some(self.tcx.reserve_and_set_memory_alloc(self.tcx.mk_const_alloc(alloc)))
+    }
+
     #[instrument(level = "debug", skip(self), ret)]
     fn make_mirror_unadjusted(&mut self, expr: &'tcx hir::Expr<'tcx>) -> Expr<'tcx> {
         let tcx = self.tcx;
@@ -1183,7 +1234,10 @@ impl<'tcx> ThirBuildCx<'tcx> {
             }
 
             hir::ExprKind::DropTemps(source) => ExprKind::Use { source: self.mirror_expr(source) },
-            hir::ExprKind::Array(fields) => ExprKind::Array { fields: self.mirror_exprs(fields) },
+            hir::ExprKind::Array(fields) => match self.int_array_literal(expr_ty, fields) {
+                Some(alloc_id) => ExprKind::IntArrayLiteral { alloc_id },
+                None => ExprKind::Array { fields: self.mirror_exprs(fields) },
+            },
             hir::ExprKind::Tup(fields) => ExprKind::Tuple { fields: self.mirror_exprs(fields) },
 
             hir::ExprKind::Yield(v, _) => ExprKind::Yield { value: self.mirror_expr(v) },
