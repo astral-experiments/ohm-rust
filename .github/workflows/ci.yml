@@ -45,7 +45,7 @@ jobs:
           proof="$RUNNER_TEMP/combined-proof"
           for suite in static-integer-array-literals ohm-split-large-cgus; do
             logfile="$proof/$suite.txt"
-            python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true \
+            python3 x.py --set rust.omit-git-hash=false --ci false --set build.submodules=false --set rust.debug-assertions=true \
               --set rust.lto=off test --stage 1 "tests/run-make/$suite" 2>&1 | tee "$logfile"
             python3 - "$logfile" <<'PY'
           import pathlib, re, sys
