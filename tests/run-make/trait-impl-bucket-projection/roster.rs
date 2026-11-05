@@ -19,6 +19,16 @@ impl<T> Score for T {
     }
 }
 
+#[cfg(foreign_peer)]
+extern crate selected;
+
+#[cfg(foreign_peer)]
+impl Score for selected::Peer {
+    fn score() -> u8 {
+        19
+    }
+}
+
 #[cfg(unrelated)]
 impl Score for Unrelated {
     fn score() -> u8 {

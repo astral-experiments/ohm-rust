@@ -2,11 +2,14 @@ use std::iter;
 
 use rustc_data_structures::fx::FxIndexMap;
 use rustc_errors::ErrorGuaranteed;
+use rustc_hashes::Hash64;
 use rustc_hir::def::DefKind;
-use rustc_hir::def_id::{DefId, LOCAL_CRATE};
+use rustc_hir::def_id::{CrateNum, DefId, DefIndex, LOCAL_CRATE};
 use rustc_hir::{self as hir, find_attr};
 use rustc_macros::{Decodable, Encodable, StableHash};
 use rustc_span::Span;
+use rustc_type_ir::fast_reject::SimplifiedType as ReceiverShape;
+use smallvec::SmallVec;
 use tracing::debug;
 
 use crate::query::LocalCrate;
@@ -370,32 +373,92 @@ impl<'tcx> TyCtxt<'tcx> {
     }
 }
 
-/// Query provider for `trait_impls_of`.
-pub(super) fn trait_impls_of_provider(tcx: TyCtxt<'_>, trait_id: DefId) -> TraitImpls {
-    let mut impls = TraitImpls::default();
+/// A negative kind bit excludes a receiver without decoding its impl list.
+pub fn trait_impl_receiver_kind<I>(ty: Option<ReceiverShape<I>>) -> u32 {
+    let Some(ty) = ty else { return 1 << 23 };
+    1 << match ty {
+        ReceiverShape::Bool => 0,
+        ReceiverShape::Char => 1,
+        ReceiverShape::Int(_) => 2,
+        ReceiverShape::Uint(_) => 3,
+        ReceiverShape::Float(_) => 4,
+        ReceiverShape::Adt(_) => 5,
+        ReceiverShape::Foreign(_) => 6,
+        ReceiverShape::Str => 7,
+        ReceiverShape::Array => 8,
+        ReceiverShape::Slice => 9,
+        ReceiverShape::Ref(_) => 10,
+        ReceiverShape::Ptr(_) => 11,
+        ReceiverShape::Never => 12,
+        ReceiverShape::Tuple(_) => 13,
+        ReceiverShape::MarkerTraitObject => 14,
+        ReceiverShape::Trait(_) => 15,
+        ReceiverShape::Closure(_) => 16,
+        ReceiverShape::Coroutine(_) => 17,
+        ReceiverShape::CoroutineWitness(_) => 18,
+        ReceiverShape::Function(_) => 19,
+        ReceiverShape::UnsafeBinder => 20,
+        ReceiverShape::Placeholder => 21,
+        ReceiverShape::Error => 22,
+    }
+}
 
-    // Traits defined in the current crate can't have impls in upstream
-    // crates, so we don't bother querying the cstore.
-    if !trait_id.is_local() {
-        let trait_hash = tcx.def_path_hash(trait_id);
-        for &cnum in tcx.crates(()).iter() {
-            if !tcx.has_implementations_of_trait(cnum, trait_id, trait_hash) {
-                continue;
-            }
-            for &(impl_def_id, simplified_self_ty) in
-                tcx.implementations_of_trait((cnum, trait_id)).iter()
-            {
-                if let Some(simplified_self_ty) = simplified_self_ty {
-                    impls
-                        .non_blanket_impls
-                        .entry(simplified_self_ty)
-                        .or_default()
-                        .push(impl_def_id);
-                } else {
-                    impls.blanket_impls.push(impl_def_id);
-                }
-            }
+/// The native forms of one requested bucket, shared by every supplier in this lookup.
+pub struct TraitImplReceiver {
+    pub kind: u32,
+    pub by_hash: Option<ReceiverShape<(CrateNum, Hash64)>>,
+    pub by_index: Option<ReceiverShape<(CrateNum, DefIndex)>>,
+}
+
+impl TraitImplReceiver {
+    fn new(tcx: TyCtxt<'_>, ty: Option<SimplifiedType>) -> Self {
+        Self {
+            kind: trait_impl_receiver_kind(ty),
+            by_hash: ty.map(|ty| ty.map_def(|id| (id.krate, tcx.def_path_hash(id).local_hash()))),
+            by_index: ty.map(|ty| ty.map_def(|id| (id.krate, id.index))),
         }
+    }
+}
+
+pub enum UpstreamTraitImpls {
+    Absent,
+    DifferentReceiver,
+    Present,
+}
+
+fn for_each_trait_impl(
+    tcx: TyCtxt<'_>,
+    trait_id: DefId,
+    bucket: Option<Option<SimplifiedType>>,
+    mut visit: impl FnMut(DefId, Option<SimplifiedType>),
+) {
+    let local_receiver = bucket.flatten().and_then(|ty| ty.def()).is_some_and(DefId::is_local);
+    if !trait_id.is_local() && !local_receiver {
+        let trait_hash = tcx.def_path_hash(trait_id);
+        let _ = tcx.crates(());
+        if tcx.dep_graph.is_fully_enabled() {
+            tcx.ensure_ok().upstream_trait_impls_key_hash(());
+        }
+        let receiver = bucket
+            .filter(|_| tcx.dep_graph.has_previous_nodes())
+            .map(|ty| TraitImplReceiver::new(tcx, ty));
+        tcx.for_each_trait_impl_supplier_untracked(
+            trait_hash,
+            receiver.as_ref(),
+            &mut |cnum, result| {
+                match result {
+                    UpstreamTraitImpls::Absent => return,
+                    UpstreamTraitImpls::DifferentReceiver => {
+                        tcx.ensure_ok().implementations_of_trait((cnum, trait_id));
+                        return;
+                    }
+                    UpstreamTraitImpls::Present => {}
+                }
+                for &(id, self_ty) in tcx.implementations_of_trait((cnum, trait_id)) {
+                    visit(id, self_ty);
+                }
+            },
+        );
     }
 
     for &impl_def_id in tcx.local_trait_impls(trait_id) {
@@ -403,16 +466,56 @@ pub(super) fn trait_impls_of_provider(tcx: TyCtxt<'_>, trait_id: DefId) -> Trait
 
         let impl_self_ty = tcx.type_of(impl_def_id).instantiate_identity().skip_norm_wip();
 
-        if let Some(simplified_self_ty) =
-            fast_reject::simplify_type(tcx, impl_self_ty, TreatParams::InstantiateWithInfer)
-        {
-            impls.non_blanket_impls.entry(simplified_self_ty).or_default().push(impl_def_id);
+        visit(
+            impl_def_id,
+            fast_reject::simplify_type(tcx, impl_self_ty, TreatParams::InstantiateWithInfer),
+        );
+    }
+}
+
+/// Query provider for `trait_impls_of`.
+pub(super) fn trait_impls_of_provider(tcx: TyCtxt<'_>, trait_id: DefId) -> TraitImpls {
+    let mut impls = TraitImpls::default();
+    for_each_trait_impl(tcx, trait_id, None, |id, self_ty| match self_ty {
+        Some(ty) => impls.non_blanket_impls.entry(ty).or_default().push(id),
+        None => impls.blanket_impls.push(id),
+    });
+    impls
+}
+
+pub(super) fn trait_impls_for_bucket(
+    tcx: TyCtxt<'_>,
+    trait_id: DefId,
+    bucket: Option<SimplifiedType>,
+) -> &[DefId] {
+    let complete: Option<&TraitImpls> = if tcx.dep_graph.is_fully_enabled() {
+        if bucket.and_then(|ty| ty.def()).is_some_and(DefId::is_local) {
+            None
         } else {
-            impls.blanket_impls.push(impl_def_id);
+            crate::query::inner::try_get_cached(
+                tcx,
+                &tcx.query_system.query_vtables.trait_impls_of.cache,
+                trait_id,
+            )
+            .map(crate::query::erase::restore_val)
         }
+    } else {
+        Some(tcx.trait_impls_of(trait_id))
+    };
+    if let Some(impls) = complete {
+        return match bucket {
+            Some(ty) => impls.non_blanket_impls.get(&ty).map_or(&[], Vec::as_slice),
+            None => impls.blanket_impls(),
+        };
     }
 
-    impls
+    let mut selected = SmallVec::<[DefId; 8]>::new();
+    for_each_trait_impl(tcx, trait_id, Some(bucket), |id, self_ty| {
+        if self_ty == bucket {
+            selected.push(id);
+        }
+    });
+    tcx.arena.alloc_slice(&selected)
 }
 
 /// Indexes one ADT bucket without changing the metadata or diagnostics view of trait impls.

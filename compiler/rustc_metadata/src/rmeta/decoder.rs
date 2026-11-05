@@ -29,6 +29,7 @@ use rustc_index::Idx;
 use rustc_middle::middle::lib_features::LibFeatures;
 use rustc_middle::mir::interpret::{AllocDecodingSession, AllocDecodingState};
 use rustc_middle::ty::codec::TyDecoder;
+use rustc_middle::ty::trait_def::{TraitImplReceiver, UpstreamTraitImpls};
 use rustc_middle::ty::{RestrictionKind, Visibility};
 use rustc_middle::{bug, implement_ty_decoder};
 use rustc_proc_macro::bridge::client::Client as ProcMacroClient;
@@ -100,16 +101,138 @@ pub(crate) type TargetModifiers = Vec<TargetModifier>;
 /// crate.
 pub(crate) type DeniedPartialMitigations = Vec<DeniedPartialMitigation>;
 
-enum TraitImplsMap {
-    DefIndex(FxIndexMap<(u32, DefIndex), LazyArray<(DefIndex, Option<SimplifiedType>)>>),
-    DefPathHash(FxIndexMap<(u32, Hash64), LazyArray<(DefIndex, Option<SimplifiedType>)>>),
+type TraitImplRows = LazyArray<(DefIndex, Option<SimplifiedType>)>;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EncodedTraitKey {
+    Index(DefIndex),
+    Hash(Hash64),
 }
 
-impl TraitImplsMap {
-    fn is_empty(&self) -> bool {
-        match self {
-            TraitImplsMap::DefIndex(m) => m.is_empty(),
-            TraitImplsMap::DefPathHash(m) => m.is_empty(),
+struct TraitGroup {
+    owner: CrateNum,
+    key: EncodedTraitKey,
+    impls: TraitImplRows,
+    kinds: Option<u32>,
+}
+
+#[derive(Clone, Copy)]
+struct TraitPosting {
+    supplier: CrateNum,
+    group: u32,
+}
+
+#[derive(Default)]
+struct TraitPostingRange {
+    start: usize,
+    general_end: usize,
+    end: usize,
+}
+
+impl TraitPostingRange {
+    fn cursor(&mut self, self_only: bool) -> &mut usize {
+        if self_only { &mut self.end } else { &mut self.general_end }
+    }
+}
+
+pub(crate) struct TraitImplDirectory {
+    ranges: FxIndexMap<DefPathHash, TraitPostingRange>,
+    postings: Vec<TraitPosting>,
+}
+
+impl TraitImplDirectory {
+    fn new(cstore: &CStore) -> Self {
+        let mut ranges: FxIndexMap<_, TraitPostingRange> = FxIndexMap::default();
+        let mut pending = Vec::new();
+        let max_crate = cstore.iter_crate_data().last().map_or(0, |(cnum, _)| cnum.as_usize());
+        let mut first_slot = vec![LOCAL_CRATE; max_crate + 1];
+        for (supplier, data) in cstore.iter_crate_data() {
+            if data.trait_impls.is_empty() {
+                continue;
+            }
+            // Point lookup uses the first slot when several slots resolve to the same crate.
+            for (slot, &owner) in data.cnum_map.iter_enumerated().rev() {
+                first_slot[owner.as_usize()] = slot;
+            }
+            for (i, group) in data.trait_impls.iter().enumerate() {
+                let owner = data.cnum_map[group.owner];
+                if first_slot[owner.as_usize()] != group.owner {
+                    continue;
+                }
+                let origin = cstore.get_crate_data(owner);
+                let trait_hash = match group.key {
+                    EncodedTraitKey::Index(index) => origin.def_path_hash(index),
+                    EncodedTraitKey::Hash(hash) => {
+                        DefPathHash::new(origin.root.stable_crate_id, hash)
+                    }
+                };
+                let entry = ranges.entry(trait_hash);
+                let position = entry.index();
+                let self_only =
+                    group.kinds.is_some_and(|kinds| kinds & LOCAL_NOMINAL_RECEIVERS != 0);
+                *entry.or_default().cursor(self_only) += 1;
+                pending.push((
+                    position,
+                    self_only,
+                    TraitPosting { supplier, group: u32::try_from(i).unwrap() },
+                ));
+            }
+        }
+        let mut end = 0;
+        for range in ranges.values_mut() {
+            let general = range.general_end;
+            let owned = range.end;
+            range.start = end;
+            range.general_end = end;
+            range.end = end + general;
+            end += general + owned;
+        }
+        let mut postings = vec![TraitPosting { supplier: LOCAL_CRATE, group: 0 }; end];
+        for (position, self_only, value) in pending {
+            let next = ranges.get_index_mut(position).unwrap().1.cursor(self_only);
+            postings[*next] = value;
+            *next += 1;
+        }
+        Self { ranges, postings }
+    }
+
+    fn suppliers(&self, key: DefPathHash) -> (&[TraitPosting], &[TraitPosting]) {
+        let Some(range) = self.ranges.get(&key) else { return (&[], &[]) };
+        (
+            &self.postings[range.start..range.general_end],
+            &self.postings[range.general_end..range.end],
+        )
+    }
+
+    fn find(posts: &[TraitPosting], supplier: CrateNum) -> Option<&TraitPosting> {
+        posts.binary_search_by_key(&supplier, |post| post.supplier).ok().map(|i| &posts[i])
+    }
+
+    fn visit(
+        &self,
+        key: DefPathHash,
+        owner: Option<CrateNum>,
+        mut visit: impl FnMut(TraitPosting),
+    ) {
+        let (mut general, mut owned) = self.suppliers(key);
+        if let Some(owner) = owner {
+            owned = Self::find(owned, owner).map_or(&[], std::slice::from_ref);
+        }
+        // The two ranges are each in crate-number order. Interleave them for the original
+        // visit order, even when the requested owner contributes a single certified group.
+        while let (Some((a, a_tail)), Some((b, b_tail))) =
+            (general.split_first(), owned.split_first())
+        {
+            if a.supplier < b.supplier {
+                visit(*a);
+                general = a_tail;
+            } else {
+                visit(*b);
+                owned = b_tail;
+            }
+        }
+        for &post in general.iter().chain(owned) {
+            visit(post);
         }
     }
 }
@@ -121,10 +244,7 @@ pub(crate) struct CrateMetadata {
     // --- Some data pre-decoded from the metadata blob, usually for performance ---
     /// Data about the top-level items in a crate, as well as various crate-level metadata.
     pub(super) root: CrateRoot,
-    /// Trait impl data.
-    /// FIXME: Used only from queries and can use query cache,
-    /// so pre-decoding can probably be avoided.
-    trait_impls: TraitImplsMap,
+    trait_impls: Vec<TraitGroup>,
     /// Inherent impls which do not follow the normal coherence rules.
     ///
     /// These can be introduced using either `#![rustc_coherence_is_core]`
@@ -760,6 +880,11 @@ impl MetadataBlob {
 
         let found_version = self.encoded_compiler_version();
         if rustc_version(cfg_version) != found_version {
+            if found_version
+                == format!("rustc {cfg_version} (Ohm metadata {PREVIOUS_OHM_METADATA_EPOCH})")
+            {
+                return Ok(());
+            }
             // Legacy foreign IDs are positional. Only the selected, internally consistent SDK
             // can use them. User libraries must be rebuilt even when their full hashes match.
             if found_version != format!("rustc {cfg_version}") || !is_sysroot_library() {
@@ -1587,57 +1712,117 @@ impl CrateMetadata {
 
     fn trait_impls_key_hash(&self, cstore: &CStore) -> Fingerprint {
         let mut hasher = StableHasher::new();
-        match &self.trait_impls {
-            TraitImplsMap::DefIndex(_) => {
+        if let EncodedTraitImpls::ReceiverShapes { fingerprint, .. } = &self.root.impls {
+            2u8.hash(&mut hasher);
+            fingerprint.hash(&mut hasher);
+            // The writer hashed its DefPathHashes. Its encoded slots must still name the same
+            // current crates if an old negative lookup is to remain green.
+            self.cnum_map.len().hash(&mut hasher);
+            for &cnum in self.cnum_map.iter() {
+                cstore.get_crate_data(cnum).root.stable_crate_id.hash(&mut hasher);
+            }
+            return hasher.finish();
+        }
+        match self.root.impls {
+            EncodedTraitImpls::DefIndex(_) => {
                 0u8.hash(&mut hasher);
-                // DefIndex keys can move when private items change.
                 self.private_hash().as_u128().hash(&mut hasher);
             }
-            TraitImplsMap::DefPathHash(impls) => {
+            EncodedTraitImpls::DefPathHash(_) => {
                 1u8.hash(&mut hasher);
-                impls.len().hash(&mut hasher);
-                for &(cnum, local_hash) in impls.keys() {
-                    let cnum = self.cnum_map[CrateNum::from_u32(cnum)];
+                self.trait_impls.len().hash(&mut hasher);
+                for group in &self.trait_impls {
+                    let EncodedTraitKey::Hash(hash) = group.key else { unreachable!() };
+                    let cnum = self.cnum_map[group.owner];
                     cstore.get_crate_data(cnum).root.stable_crate_id.hash(&mut hasher);
-                    local_hash.hash(&mut hasher);
+                    hash.hash(&mut hasher);
                 }
             }
+            EncodedTraitImpls::ReceiverShapes { .. } => unreachable!(),
         }
         // Private directory keys can change without changing the public API hash,
         // so the query recomputes this fingerprint in every compilation session.
         hasher.finish()
     }
 
-    fn trait_impls_for(
-        &self,
-        trait_def_id: DefId,
-        trait_hash: impl FnOnce() -> DefPathHash,
-    ) -> Option<&LazyArray<(DefIndex, Option<SimplifiedType>)>> {
-        if self.trait_impls.is_empty() {
+    fn trait_impls_for<'a>(&'a self, cstore: &CStore, trait_id: DefId) -> Option<&'a TraitGroup> {
+        if trait_id.is_local() || self.trait_impls.is_empty() {
             return None;
         }
-
-        // Do a reverse lookup beforehand to avoid touching the crate_num
-        // hash map in the loop below.
-        let key = match self.reverse_translate_def_id(trait_def_id) {
-            Some(def_id) => (def_id.krate.as_u32(), def_id.index),
-            None => return None,
-        };
-        match &self.trait_impls {
-            TraitImplsMap::DefIndex(trait_impls) => trait_impls.get(&key),
-            TraitImplsMap::DefPathHash(trait_impls) => {
-                trait_impls.get(&(key.0, trait_hash().local_hash()))
-            }
+        if let Some(directory) = cstore.trait_impls.get() {
+            let hash = cstore.get_crate_data(trait_id.krate).def_path_hash(trait_id.index);
+            let (general, owned) = directory.suppliers(hash);
+            let post = TraitImplDirectory::find(general, self.cnum)
+                .or_else(|| TraitImplDirectory::find(owned, self.cnum))?;
+            return Some(&self.trait_impls[post.group as usize]);
         }
+        let id = self.reverse_translate_def_id(trait_id)?;
+        let key = match self.root.impls {
+            EncodedTraitImpls::DefIndex(_) => EncodedTraitKey::Index(id.index),
+            _ => EncodedTraitKey::Hash(
+                cstore.get_crate_data(trait_id.krate).def_path_hash(trait_id.index).local_hash(),
+            ),
+        };
+        self.trait_impls.iter().find(|group| group.owner == id.krate && group.key == key)
+    }
+
+    fn trait_impls_for_lookup(
+        &self,
+        tcx: TyCtxt<'_>,
+        group: &TraitGroup,
+        receiver: Option<&TraitImplReceiver>,
+    ) -> UpstreamTraitImpls {
+        let rows = group.impls;
+        let kinds = group.kinds;
+        let Some(receiver) = receiver else { return UpstreamTraitImpls::Present };
+        let miss = if let Some(kinds) = kinds {
+            if kinds & receiver.kind == 0 {
+                return UpstreamTraitImpls::Absent;
+            }
+            UpstreamTraitImpls::Absent
+        } else {
+            UpstreamTraitImpls::DifferentReceiver
+        };
+        if let Some((owner, _)) = receiver.by_index.and_then(|ty| ty.def())
+            && owner != self.cnum
+            && !self.cnum_map.iter().any(|&cnum| cnum == owner)
+        {
+            return miss;
+        }
+
+        // The ordinary row is (impl DefIndex, Option<SimplifiedType<DefId>>). Only the
+        // nominal operand needs a different decoder here: read its encoded fields instead
+        // of looking up a current DefIndex for every stable hash in the supplier's list.
+        // CrateNum::decode still translates every supplier slot to the current session.
+        fn contains<D: BlobDecoder, T: Decodable<D> + PartialEq>(
+            decoder: &mut D,
+            count: usize,
+            wanted: &T,
+        ) -> bool {
+            (0..count).any(|_| {
+                let _ = DefIndex::decode(decoder);
+                T::decode(decoder).eq(wanted)
+            })
+        }
+
+        let mut dcx = (self, tcx).decoder(rows.position.get());
+        dcx.set_lazy_state(LazyState::NodeStart(rows.position));
+        let present = if self.root.public_api_hash_opt_enabled {
+            contains(&mut dcx, rows.num_elems, &receiver.by_hash)
+        } else {
+            contains(&mut dcx, rows.num_elems, &receiver.by_index)
+        };
+        if present { UpstreamTraitImpls::Present } else { miss }
     }
 
     fn get_implementations_of_trait<'tcx>(
         &self,
         tcx: TyCtxt<'tcx>,
+        cstore: &CStore,
         trait_def_id: DefId,
     ) -> &'tcx [(DefId, Option<SimplifiedType>)] {
-        if let Some(impls) = self.trait_impls_for(trait_def_id, || tcx.def_path_hash(trait_def_id))
-        {
+        if let Some(group) = self.trait_impls_for(cstore, trait_def_id) {
+            let impls = group.impls;
             tcx.arena.alloc_from_iter(
                 impls
                     .decode((self, tcx))
@@ -2079,18 +2264,33 @@ impl CrateMetadata {
         let alloc_decoding_state =
             AllocDecodingState::new(root.interpret_alloc_index.decode(&blob).collect());
         let trait_impls = match &root.impls {
-            EncodedTraitImpls::DefIndex(trait_impls) => TraitImplsMap::DefIndex(
-                trait_impls
-                    .decode(&blob)
-                    .map(|trait_impls| (trait_impls.trait_id, trait_impls.impls))
-                    .collect(),
-            ),
-            EncodedTraitImpls::DefPathHash(trait_impls) => TraitImplsMap::DefPathHash(
-                trait_impls
-                    .decode(&blob)
-                    .map(|trait_impls| (trait_impls.trait_id, trait_impls.impls))
-                    .collect(),
-            ),
+            EncodedTraitImpls::DefIndex(groups) => groups
+                .decode(&blob)
+                .map(|g| TraitGroup {
+                    owner: CrateNum::from_u32(g.trait_id.0),
+                    key: EncodedTraitKey::Index(g.trait_id.1),
+                    impls: g.impls,
+                    kinds: None,
+                })
+                .collect(),
+            EncodedTraitImpls::DefPathHash(groups) => groups
+                .decode(&blob)
+                .map(|g| TraitGroup {
+                    owner: CrateNum::from_u32(g.trait_id.0),
+                    key: EncodedTraitKey::Hash(g.trait_id.1),
+                    impls: g.impls,
+                    kinds: None,
+                })
+                .collect(),
+            EncodedTraitImpls::ReceiverShapes { groups, .. } => groups
+                .decode(&blob)
+                .map(|g| TraitGroup {
+                    owner: CrateNum::from_u32(g.group.trait_id.0),
+                    key: EncodedTraitKey::Hash(g.group.trait_id.1),
+                    impls: g.group.impls,
+                    kinds: Some(g.receiver_kinds),
+                })
+                .collect(),
         };
 
         // Pre-decode the DefPathHash->DefIndex table. This is a cheap operation
@@ -2272,3 +2472,6 @@ impl CrateMetadata {
         None
     }
 }
+
+#[cfg(test)]
+mod tests;

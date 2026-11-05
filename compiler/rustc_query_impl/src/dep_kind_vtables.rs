@@ -16,7 +16,7 @@ mod non_query {
         DepKindVTable {
             is_eval_always: false,
             key_fingerprint_style: KeyFingerprintStyle::Unit,
-            force_from_dep_node_fn: Some(|_, dep_node, _| {
+            force_from_dep_node_fn: Some(|_, dep_node, _, _| {
                 bug!("force_from_dep_node: encountered {dep_node:?}")
             }),
             promote_from_disk_fn: None,
@@ -28,7 +28,7 @@ mod non_query {
         DepKindVTable {
             is_eval_always: false,
             key_fingerprint_style: KeyFingerprintStyle::Unit,
-            force_from_dep_node_fn: Some(|_, dep_node, _| {
+            force_from_dep_node_fn: Some(|_, dep_node, _, _| {
                 bug!("force_from_dep_node: encountered {dep_node:?}")
             }),
             promote_from_disk_fn: None,
@@ -39,7 +39,7 @@ mod non_query {
         DepKindVTable {
             is_eval_always: false,
             key_fingerprint_style: KeyFingerprintStyle::Unit,
-            force_from_dep_node_fn: Some(|tcx, _, prev_index| {
+            force_from_dep_node_fn: Some(|tcx, _, prev_index, _| {
                 tcx.dep_graph.force_side_effect(tcx, prev_index);
                 true
             }),
@@ -51,7 +51,7 @@ mod non_query {
         DepKindVTable {
             is_eval_always: false,
             key_fingerprint_style: KeyFingerprintStyle::Opaque,
-            force_from_dep_node_fn: Some(|_, _, _| bug!("cannot force an anon node")),
+            force_from_dep_node_fn: Some(|_, _, _, _| bug!("cannot force an anon node")),
             promote_from_disk_fn: None,
         }
     }
@@ -111,12 +111,10 @@ where
     DepKindVTable {
         is_eval_always,
         key_fingerprint_style,
-        force_from_dep_node_fn: (can_recover && !is_no_force).then_some(
-            |tcx, dep_node, _prev_index| {
-                let query = Q::query_vtable(tcx);
-                crate::execution::force_query_dep_node(tcx, query, dep_node)
-            },
-        ),
+        force_from_dep_node_fn: (can_recover && !is_no_force).then_some(|tcx, dep_node, _, _| {
+            let query = Q::query_vtable(tcx);
+            crate::execution::force_query_dep_node(tcx, query, dep_node)
+        }),
         promote_from_disk_fn: (can_recover && is_cache_on_disk).then_some(
             |tcx, dep_node, prev_index, dep_node_index| {
                 let query = Q::query_vtable(tcx);
@@ -188,5 +186,7 @@ pub fn make_dep_kind_vtables<'tcx>(arena: &'tcx Arena<'tcx>) -> &'tcx [DepKindVT
     let vtables = arena.alloc_from_iter(nq_vtables.into_iter().chain(q_vtables.into_iter()));
     vtables[DepKind::non_blanket_trait_impls.as_usize()].force_from_dep_node_fn =
         Some(crate::execution::force_trait_impl_bucket);
+    vtables[DepKind::implementations_of_trait.as_usize()].force_from_dep_node_fn =
+        Some(crate::execution::force_implementations_of_trait);
     vtables
 }

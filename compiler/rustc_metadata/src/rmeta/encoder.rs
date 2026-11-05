@@ -39,6 +39,7 @@ use rustc_middle::query::Providers;
 use rustc_middle::traits::specialization_graph;
 use rustc_middle::ty::codec::TyEncoder;
 use rustc_middle::ty::fast_reject::{self, TreatParams};
+use rustc_middle::ty::trait_def::trait_impl_receiver_kind;
 use rustc_middle::ty::{AssocContainer, PredicateKind, Visibility};
 use rustc_middle::{bug, span_bug};
 use rustc_serialize::{Decodable, Decoder, Encodable, Encoder, opaque};
@@ -113,16 +114,16 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
     fn encoded_def_index(tcx: TyCtxt<'_>, def_id: DefId) -> Self::EncodedDefIndex;
     fn into_raw_def_id(tcx: TyCtxt<'_>, def_id: DefId) -> RawDefId;
     fn public_api_hasher<'h>(hcx: StableHashState<'h>) -> impl PublicApiHashState<'h>;
+    fn encode_trait_directory(
+        ecx: &mut EncodeContext<'_, 'tcx, Self>,
+        groups: Vec<(TraitImpls<Self::EncodedDefIndex>, u32)>,
+        shapes: StableHasher,
+    ) -> EncodedTraitImpls;
     fn encode_trait_impls<'h>(
         ecx: &mut EncodeContext<'_, 'tcx, Self>,
         trait_impls_map: &FxIndexMap<DefId, Vec<(LocalDefId, Option<SimplifiedType>)>>,
         hcx: &mut impl PublicApiHashState<'h>,
-    ) -> GraphHashed<EncodedTraitImpls>
-    where
-        TraitImpls<Self::EncodedDefIndex>:
-            for<'l> ParameterizedOverTcx<Value<'l> = TraitImpls<Self::EncodedDefIndex>>,
-        EncodedTraitImpls: From<LazyArray<TraitImpls<Self::EncodedDefIndex>>>,
-    {
+    ) -> GraphHashed<EncodedTraitImpls> {
         // we must encode extern traits as root nodes, as their DefId-s can be acquired from other
         // crates. However, this is not the case for local traits. Those should can only be accessed
         // if their DefId-s can be reached through the reachability graph we are building for this
@@ -135,16 +136,37 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
         let tcx = ecx.tcx;
         let policy =
             if Self::HASH_PUBLIC_API { private_impl_policy(tcx) } else { PrivateImpls::None };
-        let trait_impls: Vec<_> = trait_impls_map
+        // Both the producing slot and stable identity matter when the same input is rebound.
+        let slot_and_hash = |id: DefId| (id.krate.as_u32(), tcx.def_path_hash(id));
+        let mut shapes = StableHasher::new();
+        if Self::HASH_PUBLIC_API {
+            trait_impls_map.len().hash(&mut shapes);
+        }
+        let groups = trait_impls_map
             .iter()
-            .map(|(&trait_id, impls)| TraitImpls {
-                trait_id: (trait_id.krate.as_u32(), Self::encoded_def_index(ecx.tcx, trait_id)),
-                impls: {
+            .map(|(&trait_id, impls)| {
+                let mut kinds = 0;
+                let mut local_nominals = true;
+                if Self::HASH_PUBLIC_API {
+                    slot_and_hash(trait_id).hash(&mut shapes);
+                    impls.len().hash(&mut shapes);
+                }
+                let rows = {
                     let private_impls = policy != PrivateImpls::None
                         && !trait_id.is_local()
                         && !tcx.trait_is_auto(trait_id);
                     let mut hasher = PublicApiHasher::default();
                     let array = ecx.lazy_array_with(impls, |ecx, &(id, simplified_ty)| {
+                        if Self::HASH_PUBLIC_API {
+                            kinds |= trait_impl_receiver_kind(simplified_ty);
+                            let receiver = simplified_ty.map(|ty| {
+                                ty.map_def(|id| {
+                                    local_nominals &= id.is_local();
+                                    slot_and_hash(id)
+                                })
+                            });
+                            receiver.hash(&mut shapes);
+                        }
                         // Selection can enumerate all candidates, even without a known self type.
                         hasher.digest(&(id, simplified_ty), hcx);
                         let owner = if private_impls
@@ -173,12 +195,15 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
                     let hash = hasher.finish(hcx).unwrap_or(Fingerprint::ZERO);
                     hcx.add_node_hash(&trait_id.into(), hash);
                     array
-                },
+                };
+                if Self::HASH_PUBLIC_API && local_nominals {
+                    kinds |= LOCAL_NOMINAL_RECEIVERS;
+                }
+                let key = (trait_id.krate.as_u32(), Self::encoded_def_index(tcx, trait_id));
+                (TraitImpls { trait_id: key, impls: rows }, kinds)
             })
             .collect();
-        let encoded_trait_impls: LazyArray<TraitImpls<Self::EncodedDefIndex>> =
-            ecx.lazy_array(trait_impls).into();
-        GraphHashed(encoded_trait_impls.into())
+        GraphHashed(Self::encode_trait_directory(ecx, groups, shapes))
     }
 
     fn crate_hashes<'h>(
@@ -367,6 +392,17 @@ impl<'tcx> MetadataEncoder<'tcx> for DefPathHashDefIdEncoder<'tcx> {
     /// encoding, but it is not necessary to encode LocalDefId-s with this encoding.
     type EncodedDefIndex = Hash64;
     const HASH_PUBLIC_API: bool = true;
+    fn encode_trait_directory(
+        ecx: &mut EncodeContext<'_, 'tcx, Self>,
+        groups: Vec<(TraitImpls<Hash64>, u32)>,
+        shapes: StableHasher,
+    ) -> EncodedTraitImpls {
+        let groups = ecx.lazy_array_with(groups, |ecx, (group, receiver_kinds)| {
+            TraitImplsWithReceiverKinds { group, receiver_kinds }.encode(ecx);
+        });
+        EncodedTraitImpls::ReceiverShapes { groups, fingerprint: shapes.finish() }
+    }
+
     fn encoded_def_index(tcx: TyCtxt<'_>, def_id: DefId) -> Self::EncodedDefIndex {
         tcx.def_path_hash(def_id).local_hash()
     }
@@ -414,6 +450,16 @@ impl<'tcx> MetadataEncoder<'tcx> for DefIndexDefIdEncoder {
     type EncodedDefIndex = DefIndex;
 
     const HASH_PUBLIC_API: bool = false;
+    fn encode_trait_directory(
+        ecx: &mut EncodeContext<'_, 'tcx, Self>,
+        groups: Vec<(TraitImpls<DefIndex>, u32)>,
+        _: StableHasher,
+    ) -> EncodedTraitImpls {
+        EncodedTraitImpls::DefIndex(
+            ecx.lazy_array_with(groups, |ecx, (group, _)| group.encode(ecx)),
+        )
+    }
+
     #[inline(always)]
     fn encoded_def_index(_tcx: TyCtxt<'_>, def_id: DefId) -> Self::EncodedDefIndex {
         def_id.index
@@ -1181,12 +1227,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
     fn encode_crate_root<'h>(
         &mut self,
         hcx: &mut impl PublicApiHashState<'h>,
-    ) -> (LazyValue<CrateRoot>, CrateHashes)
-    where
-        TraitImpls<M::EncodedDefIndex>:
-            for<'l> ParameterizedOverTcx<Value<'l> = TraitImpls<M::EncodedDefIndex>>,
-        EncodedTraitImpls: From<LazyArray<TraitImpls<M::EncodedDefIndex>>>,
-    {
+    ) -> (LazyValue<CrateRoot>, CrateHashes) {
         assert_eq!(M::HASH_PUBLIC_API, hcx.enabled());
 
         let tcx = self.tcx;
@@ -3259,18 +3300,11 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
     fn encode_impls<'h>(
         &mut self,
         hcx: &mut impl PublicApiHashState<'h>,
-    ) -> GraphHashed<EncodedTraitImpls>
-    where
-        TraitImpls<M::EncodedDefIndex>:
-            for<'l> ParameterizedOverTcx<Value<'l> = TraitImpls<M::EncodedDefIndex>>,
-        EncodedTraitImpls: From<LazyArray<TraitImpls<M::EncodedDefIndex>>>,
-    {
+    ) -> GraphHashed<EncodedTraitImpls> {
         if self.is_proc_macro {
-            return if hcx.enabled() {
-                GraphHashed(EncodedTraitImpls::DefPathHash(Default::default()))
-            } else {
-                GraphHashed(EncodedTraitImpls::DefIndex(Default::default()))
-            };
+            let mut shapes = StableHasher::new();
+            0usize.hash(&mut shapes);
+            return GraphHashed(M::encode_trait_directory(self, Vec::new(), shapes));
         }
 
         let tcx = self.tcx;
@@ -3594,11 +3628,7 @@ fn encode_crate_root<'tcx, 'h, M: MetadataEncoder<'tcx>>(
     path: &Path,
     hcx: StableHashState<'h>,
     hashes: &mut CrateHashes,
-) where
-    TraitImpls<M::EncodedDefIndex>:
-        for<'l> ParameterizedOverTcx<Value<'l> = TraitImpls<M::EncodedDefIndex>>,
-    EncodedTraitImpls: From<LazyArray<TraitImpls<M::EncodedDefIndex>>>,
-{
+) {
     with_encode_metadata_header::<M>(tcx, path, |ecx| {
         // Encode all the entries and extra information in the crate,
         // culminating in the `CrateRoot` which points to all of it.
@@ -3694,6 +3724,10 @@ fn try_reuse_metadata_prefix(
     let mut metadata = MetadataBlob::new(slice_owned(previous_metadata, Deref::deref)).ok()?;
     metadata.check_compatibility(tcx.sess.cfg_version, || false).ok()?;
     let version = rustc_version(tcx.sess.cfg_version);
+    // Reuse prefixes only from our own writer, even if an older input is readable.
+    if metadata.encoded_compiler_version() != version {
+        return None;
+    }
     let mut version_encoder = opaque::mem_encoder::MemEncoder::new();
     version.encode(&mut version_encoder);
     if manifest.prefix_position < METADATA_HEADER.len() + 8 + version_encoder.position() {

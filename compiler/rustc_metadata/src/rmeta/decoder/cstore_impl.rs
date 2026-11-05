@@ -1,10 +1,12 @@
 use std::any::Any;
+use std::hash::Hash;
 use std::mem;
 use std::sync::Arc;
 
 use rustc_crate_store::{CrateStore, ExternCrate};
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_data_structures::fx::FxHashMap;
+use rustc_data_structures::stable_hash::StableHasher;
 use rustc_hir::attrs::Deprecation;
 use rustc_hir::def::{CtorKind, DefKind};
 use rustc_hir::def_id::{CrateNum, DefId, DefIdMap, LOCAL_CRATE};
@@ -17,6 +19,7 @@ use rustc_middle::middle::stability::DeprecationEntry;
 use rustc_middle::queries::ExternProviders;
 use rustc_middle::query::LocalCrate;
 use rustc_middle::ty::fast_reject::SimplifiedType;
+use rustc_middle::ty::trait_def::UpstreamTraitImpls;
 use rustc_middle::ty::{self, TyCtxt, TypeVisitable};
 use rustc_middle::util::Providers;
 use rustc_serialize::Decoder;
@@ -29,7 +32,6 @@ use rustc_span::{Span, Symbol, kw};
 use super::{Decodable, DecodeIterator};
 use crate::creader::{CStore, LoadedMacro};
 use crate::rmeta::AttrFlags;
-use crate::rmeta::decoder::TraitImplsMap;
 use crate::rmeta::table::IsDefault;
 use crate::{eii, foreign_modules, native_libs};
 
@@ -99,9 +101,9 @@ impl ProcessQueryValue<'_, Option<DeprecationEntry>> for Option<Deprecation> {
 }
 
 macro_rules! provide_one {
-    ($tcx:ident, $def_id:ident, $other:ident, $cdata:ident, $name:ident => { table }) => {
+    ($tcx:ident, $def_id:ident, $other:ident, $cdata:ident, $store:ident, $name:ident => { table }) => {
         provide_one! {
-            $tcx, $def_id, $other, $cdata, $name => {
+            $tcx, $def_id, $other, $cdata, $store, $name => {
                 $cdata
                     .root
                     .tables
@@ -112,9 +114,9 @@ macro_rules! provide_one {
             }
         }
     };
-    ($tcx:ident, $def_id:ident, $other:ident, $cdata:ident, $name:ident => { table_defaulted_array }) => {
+    ($tcx:ident, $def_id:ident, $other:ident, $cdata:ident, $store:ident, $name:ident => { table_defaulted_array }) => {
         provide_one! {
-            $tcx, $def_id, $other, $cdata, $name => {
+            $tcx, $def_id, $other, $cdata, $store, $name => {
                 let lazy = $cdata.root.tables.$name.get($cdata, $def_id.index);
                 let value = if lazy.is_default() {
                     &[] as &[_]
@@ -125,9 +127,9 @@ macro_rules! provide_one {
             }
         }
     };
-    ($tcx:ident, $def_id:ident, $other:ident, $cdata:ident, $name:ident => { table_direct }) => {
+    ($tcx:ident, $def_id:ident, $other:ident, $cdata:ident, $store:ident, $name:ident => { table_direct }) => {
         provide_one! {
-            $tcx, $def_id, $other, $cdata, $name => {
+            $tcx, $def_id, $other, $cdata, $store, $name => {
                 // We don't decode `table_direct`, since it's not a Lazy, but an actual value
                 $cdata
                     .root
@@ -138,7 +140,7 @@ macro_rules! provide_one {
             }
         }
     };
-    ($tcx:ident, $def_id:ident, $other:ident, $cdata:ident, $name:ident => $compute:block) => {
+    ($tcx:ident, $def_id:ident, $other:ident, $cdata:ident, $store:ident, $name:ident => $compute:block) => {
         fn $name<'tcx>(
             $tcx: TyCtxt<'tcx>,
             def_id_arg: rustc_middle::queries::$name::Key<'tcx>,
@@ -164,8 +166,8 @@ macro_rules! provide_one {
                 }
             }
 
-            let cstore = CStore::from_tcx($tcx);
-            let $cdata = cstore.get_crate_data($def_id.krate);
+            let $store = CStore::from_tcx($tcx);
+            let $cdata = $store.get_crate_data($def_id.krate);
 
             $compute
         }
@@ -173,11 +175,11 @@ macro_rules! provide_one {
 }
 
 macro_rules! provide {
-    ($tcx:ident, $def_id:ident, $other:ident, $cdata:ident,
+    ($tcx:ident, $def_id:ident, $other:ident, $cdata:ident, $store:ident,
       $($name:ident => { $($compute:tt)* })*) => {
         fn provide_extern(providers: &mut ExternProviders) {
             $(provide_one! {
-                $tcx, $def_id, $other, $cdata, $name => { $($compute)* }
+                $tcx, $def_id, $other, $cdata, $store, $name => { $($compute)* }
             })*
 
             *providers = ExternProviders {
@@ -252,7 +254,7 @@ impl IntoArgs for (CrateNum, SimplifiedType) {
     }
 }
 
-provide! { tcx, def_id, other, cdata,
+provide! { tcx, def_id, other, cdata, cstore,
     explicit_item_bounds => { table_defaulted_array }
     explicit_item_self_bounds => { table_defaulted_array }
     explicit_clauses_of => { table }
@@ -455,24 +457,11 @@ provide! { tcx, def_id, other, cdata,
     traits => { tcx.arena.alloc_from_iter(cdata.get_traits(tcx)) }
     trait_impls_in_crate => {
         // Decodes all trait impls in the crate (for rustdoc).
-        match &cdata.trait_impls {
-            TraitImplsMap::DefIndex(m) => {
-                tcx.arena.alloc_from_iter(m.values().flat_map(move |impls| {
-                    impls
-                        .decode((cdata, tcx))
-                        .map(move |(impl_index, _)| cdata.local_def_id(impl_index))
-                }))
-            }
-            TraitImplsMap::DefPathHash(m) => {
-                tcx.arena.alloc_from_iter(m.values().flat_map(move |impls| {
-                    impls
-                        .decode((cdata, tcx))
-                        .map(move |(impl_index, _)| cdata.local_def_id(impl_index))
-                }))
-            }
-        }
+        tcx.arena.alloc_from_iter(cdata.trait_impls.iter().flat_map(|group| {
+            group.impls.decode((cdata, tcx)).map(move |(index, _)| cdata.local_def_id(index))
+        }))
     }
-    implementations_of_trait => { cdata.get_implementations_of_trait(tcx, other) }
+    implementations_of_trait => { cdata.get_implementations_of_trait(tcx, &cstore, other) }
     crate_incoherent_impls => { cdata.get_incoherent_impls(tcx, other) }
 
     crate_dep_kind => { cdata.dep_kind }
@@ -724,6 +713,18 @@ pub(in crate::rmeta) fn provide(providers: &mut Providers) {
             tcx.untracked().freeze_cstore();
             tcx.arena.alloc_from_iter(CStore::from_tcx(tcx).iter_crate_data().map(|(cnum, _)| cnum))
         },
+        upstream_trait_impls_key_hash: |tcx, ()| {
+            let crates = tcx.crates(());
+            let cstore = CStore::from_tcx(tcx);
+            let mut hasher = StableHasher::new();
+            crates.len().hash(&mut hasher);
+            for &cnum in crates {
+                let cdata = cstore.get_crate_data(cnum);
+                cdata.root.stable_crate_id.hash(&mut hasher);
+                cdata.trait_impls_key_hash(&cstore).hash(&mut hasher);
+            }
+            hasher.finish()
+        },
         used_crates: |tcx, ()| {
             // The loaded-crate list is now frozen in the query cache; stop
             // mutating the cstore and stable crate id map from here on.
@@ -746,10 +747,6 @@ pub(in crate::rmeta) fn provide(providers: &mut Providers) {
         ..providers.queries
     };
     provide_extern(&mut providers.extern_queries);
-    providers.extern_queries.trait_impls_key_hash = |tcx, cnum| {
-        let cstore = CStore::from_tcx(tcx);
-        cstore.get_crate_data(cnum).trait_impls_key_hash(&cstore)
-    };
 }
 
 impl CStore {
@@ -899,14 +896,19 @@ impl CrateStore for CStore {
 }
 
 fn provide_cstore_hooks(providers: &mut Providers) {
-    providers.hooks.has_implementations_of_trait = |tcx, cnum, trait_id, trait_hash| {
-        if tcx.dep_graph.is_fully_enabled() {
-            tcx.ensure_ok().trait_impls_key_hash(cnum);
-        }
-        CStore::from_tcx(tcx)
-            .get_crate_data(cnum)
-            .trait_impls_for(trait_id, || trait_hash)
-            .is_some()
+    providers.hooks.for_each_trait_impl_supplier_untracked = |tcx, trait_hash, receiver, visit| {
+        let store = CStore::from_tcx(tcx);
+        let directory = store.trait_impls.get_or_init(|| super::TraitImplDirectory::new(&store));
+        let owner =
+            receiver.and_then(|r| r.by_index).and_then(|ty| ty.def()).map(|(krate, _)| krate);
+        directory.visit(trait_hash, owner, |post| {
+            let data = store.get_crate_data(post.supplier);
+            let result =
+                data.trait_impls_for_lookup(tcx, &data.trait_impls[post.group as usize], receiver);
+            if !matches!(result, UpstreamTraitImpls::Absent) {
+                visit(post.supplier, result);
+            }
+        });
     };
     providers.hooks.def_path_hash_to_def_id_extern = |tcx, hash, stable_crate_id| {
         // If this is a DefPathHash from an upstream crate, let the CrateStore map
