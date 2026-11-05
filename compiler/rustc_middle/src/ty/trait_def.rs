@@ -383,7 +383,11 @@ pub(super) fn trait_impls_of_provider(tcx: TyCtxt<'_>, trait_id: DefId) -> Trait
     // Traits defined in the current crate can't have impls in upstream
     // crates, so we don't bother querying the cstore.
     if !trait_id.is_local() {
+        let trait_hash = tcx.def_path_hash(trait_id);
         for &cnum in tcx.crates(()).iter() {
+            if !tcx.has_implementations_of_trait(cnum, trait_id, trait_hash) {
+                continue;
+            }
             for &(impl_def_id, simplified_self_ty) in
                 tcx.implementations_of_trait((cnum, trait_id)).iter()
             {
