@@ -113,6 +113,7 @@ pub(crate) fn query_feed<'tcx, C>(
     C::Key: DepNodeKey<'tcx>,
 {
     let format_value = query.format_value;
+    tcx.dep_graph.record_query_feed(tcx);
 
     // Check whether the in-memory cache already has a value for this key.
     match try_get_cached(tcx, &query.cache, key) {
