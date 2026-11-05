@@ -17,7 +17,7 @@ use rustc_middle::ty::fast_reject::SimplifiedType;
 use rustc_middle::ty::tls::{self, ImplicitCtxt};
 use rustc_middle::ty::{FloatTy, IntTy, Mutability, TyCtxt, UintTy};
 use rustc_middle::verify_ich::incremental_verify_ich;
-use rustc_span::def_id::LOCAL_CRATE;
+use rustc_span::def_id::{DefId, DefPathHash, LOCAL_CRATE};
 use rustc_span::{DUMMY_SP, Span};
 
 use crate::diagnostics::{QueryOverflow, QueryOverflowNote};
@@ -683,38 +683,97 @@ const FINITE_IMPL_RECEIVERS: &[SimplifiedType] = &[
     SimplifiedType::Tuple(3),
 ];
 
+fn registered_def_id(tcx: TyCtxt<'_>, dep_node: DepNode) -> Option<DefId> {
+    let hash = DefPathHash(dep_node.key_fingerprint.into());
+    let id = hash.stable_crate_id();
+    if id != tcx.stable_crate_id(LOCAL_CRATE)
+        && !tcx.untracked().stable_crate_ids.read().contains_key(&id)
+    {
+        return None;
+    }
+    dep_node.extract_def_id(tcx)
+}
+
+fn recover_trait_impl_bucket(
+    tcx: TyCtxt<'_>,
+    dep_node: DepNode,
+    prev_index: SerializedDepNodeIndex,
+) -> Option<(DefId, SimplifiedType)> {
+    let (trait_node, adt_node) =
+        tcx.dep_graph.previous_trait_impl_inputs(dep_node, prev_index)?;
+    let trait_id = registered_def_id(tcx, trait_node)?;
+    if tcx.def_kind(trait_id) != DefKind::Trait {
+        return None;
+    }
+    let matching_key = |receiver: SimplifiedType| {
+        let key = (trait_id, receiver);
+        (DepNode::construct(tcx, DepKind::non_blanket_trait_impls, &key) == dep_node)
+            .then_some(key)
+    };
+    if let Some(adt_node) = adt_node {
+        let adt = registered_def_id(tcx, adt_node)?;
+        if !tcx.def_kind(adt).is_adt() {
+            return None;
+        }
+        matching_key(SimplifiedType::Adt(adt))
+    } else {
+        let mut matches = FINITE_IMPL_RECEIVERS.iter().copied().filter_map(matching_key);
+        let key = matches.next()?;
+        matches.next().is_none().then_some(key)
+    }
+}
+
 pub(crate) fn force_trait_impl_bucket(
     tcx: TyCtxt<'_>,
     dep_node: DepNode,
     prev_index: SerializedDepNodeIndex,
+    _reader: Option<SerializedDepNodeIndex>,
 ) -> bool {
-    let Some(key) = tcx.dep_graph.with_ignore(|| {
-        let (trait_node, adt_node) =
-            tcx.dep_graph.previous_trait_impl_inputs(dep_node, prev_index)?;
-        let trait_id = trait_node.extract_def_id(tcx)?;
-        if tcx.def_kind(trait_id) != DefKind::Trait {
-            return None;
-        }
-        let matching_key = |receiver: SimplifiedType| {
-            let key = (trait_id, receiver);
-            (DepNode::construct(tcx, DepKind::non_blanket_trait_impls, &key) == dep_node)
-                .then_some(key)
-        };
-        if let Some(adt_node) = adt_node {
-            let adt = adt_node.extract_def_id(tcx)?;
-            if !tcx.def_kind(adt).is_adt() {
-                return None;
-            }
-            matching_key(SimplifiedType::Adt(adt))
-        } else {
-            let mut matches = FINITE_IMPL_RECEIVERS.iter().copied().filter_map(matching_key);
-            let key = matches.next()?;
-            matches.next().is_none().then_some(key)
-        }
-    }) else {
+    let Some(key) =
+        tcx.dep_graph.with_ignore(|| recover_trait_impl_bucket(tcx, dep_node, prev_index))
+    else {
         return false;
     };
     let query = &tcx.query_system.query_vtables.non_blanket_trait_impls;
+    try_execute_query::<_, true>(query, tcx, DUMMY_SP, key, Some(dep_node));
+    true
+}
+
+pub(crate) fn force_implementations_of_trait(
+    tcx: TyCtxt<'_>,
+    dep_node: DepNode,
+    prev_index: SerializedDepNodeIndex,
+    reader: Option<SerializedDepNodeIndex>,
+) -> bool {
+    let Some(key) = tcx.dep_graph.with_ignore(|| {
+        let reader = reader?;
+        let (reader_node, supplier_node) =
+            tcx.dep_graph.previous_implementations_of_trait_inputs(dep_node, prev_index, reader)?;
+        let trait_id = match reader_node.kind {
+            DepKind::trait_impls_of | DepKind::blanket_trait_impls => {
+                let id = registered_def_id(tcx, reader_node)?;
+                (tcx.def_kind(id) == DefKind::Trait).then_some(id)?
+            }
+            DepKind::non_blanket_trait_impls => {
+                recover_trait_impl_bucket(tcx, reader_node, reader)?.0
+            }
+            _ => return None,
+        };
+        let supplier = DefPathHash(supplier_node.key_fingerprint.into()).stable_crate_id();
+        let cnum = *tcx.untracked().stable_crate_ids.read().get(&supplier)?;
+        if trait_id.is_local()
+            || cnum == LOCAL_CRATE
+            || DepNode::construct(tcx, DepKind::external_metadata_input_hash, &cnum) != supplier_node
+        {
+            return None;
+        }
+        let key = (cnum, trait_id);
+        (DepNode::construct(tcx, DepKind::implementations_of_trait, &key) == dep_node)
+            .then_some(key)
+    }) else {
+        return false;
+    };
+    let query = &tcx.query_system.query_vtables.implementations_of_trait;
     try_execute_query::<_, true>(query, tcx, DUMMY_SP, key, Some(dep_node));
     true
 }

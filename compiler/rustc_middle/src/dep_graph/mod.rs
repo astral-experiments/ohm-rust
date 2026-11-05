@@ -104,11 +104,12 @@ impl<'tcx> TyCtxt<'tcx> {
         self,
         dep_node: DepNode,
         prev_index: SerializedDepNodeIndex,
+        reader: Option<SerializedDepNodeIndex>,
         frame: &MarkFrame<'_>,
     ) -> bool {
         if let Some(force_fn) = self.dep_kind_vtable(dep_node.kind).force_from_dep_node_fn {
             match panic::catch_unwind(panic::AssertUnwindSafe(|| {
-                force_fn(self, dep_node, prev_index)
+                force_fn(self, dep_node, prev_index, reader)
             })) {
                 Err(value) => {
                     if !value.is::<rustc_errors::FatalErrorMarker>() {

@@ -83,6 +83,7 @@ trivially_parameterized_over_tcx! {
     crate::rmeta::RawDefId,
     crate::rmeta::TraitImpls<DefIndex>,
     crate::rmeta::TraitImpls<rustc_hashes::Hash64>,
+    crate::rmeta::TraitImplsWithReceiverKinds,
     crate::rmeta::VariantData,
     rustc_abi::ReprOptions,
     rustc_ast::DelimArgs,

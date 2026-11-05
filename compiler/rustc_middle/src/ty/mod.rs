@@ -2546,15 +2546,15 @@ pub fn provide(providers: &mut Providers) {
     super::util::bug::provide(providers);
     *providers = Providers {
         trait_impls_of: trait_def::trait_impls_of_provider,
-        blanket_trait_impls: |tcx, trait_id| tcx.trait_impls_of(trait_id).blanket_impls(),
+        blanket_trait_impls: |tcx, trait_id| trait_def::trait_impls_for_bucket(tcx, trait_id, None),
         non_blanket_trait_impls: |tcx, (trait_id, simp)| {
-            let impls = tcx.trait_impls_of(trait_id);
+            let impls = trait_def::trait_impls_for_bucket(tcx, trait_id, Some(simp));
             if tcx.dep_graph.is_fully_enabled()
                 && let SimplifiedType::Adt(adt) = simp
             {
                 let () = tcx.trait_impl_receiver_adt(adt);
             }
-            impls.non_blanket_impls().get(&simp).map_or(&[], Vec::as_slice)
+            impls
         },
         trait_impl_receiver_adt: |_, _| (),
         trait_impls_by_const_arg: trait_def::trait_impls_by_const_arg_provider,

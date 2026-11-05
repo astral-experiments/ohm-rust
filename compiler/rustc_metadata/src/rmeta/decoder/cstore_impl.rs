@@ -1,10 +1,12 @@
 use std::any::Any;
+use std::hash::Hash;
 use std::mem;
 use std::sync::Arc;
 
 use rustc_crate_store::{CrateStore, ExternCrate};
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_data_structures::fx::FxHashMap;
+use rustc_data_structures::stable_hash::StableHasher;
 use rustc_hir::attrs::Deprecation;
 use rustc_hir::def::{CtorKind, DefKind};
 use rustc_hir::def_id::{CrateNum, DefId, DefIdMap, LOCAL_CRATE};
@@ -464,7 +466,7 @@ provide! { tcx, def_id, other, cdata,
                 }))
             }
             TraitImplsMap::DefPathHash(m) => {
-                tcx.arena.alloc_from_iter(m.values().flat_map(move |impls| {
+                tcx.arena.alloc_from_iter(m.values().flat_map(move |(impls, _)| {
                     impls
                         .decode((cdata, tcx))
                         .map(move |(impl_index, _)| cdata.local_def_id(impl_index))
@@ -724,6 +726,18 @@ pub(in crate::rmeta) fn provide(providers: &mut Providers) {
             tcx.untracked().freeze_cstore();
             tcx.arena.alloc_from_iter(CStore::from_tcx(tcx).iter_crate_data().map(|(cnum, _)| cnum))
         },
+        upstream_trait_impls_key_hash: |tcx, ()| {
+            let crates = tcx.crates(());
+            let cstore = CStore::from_tcx(tcx);
+            let mut hasher = StableHasher::new();
+            crates.len().hash(&mut hasher);
+            for &cnum in crates {
+                let cdata = cstore.get_crate_data(cnum);
+                cdata.root.stable_crate_id.hash(&mut hasher);
+                cdata.trait_impls_key_hash(&cstore).hash(&mut hasher);
+            }
+            hasher.finish()
+        },
         used_crates: |tcx, ()| {
             // The loaded-crate list is now frozen in the query cache; stop
             // mutating the cstore and stable crate id map from here on.
@@ -746,10 +760,6 @@ pub(in crate::rmeta) fn provide(providers: &mut Providers) {
         ..providers.queries
     };
     provide_extern(&mut providers.extern_queries);
-    providers.extern_queries.trait_impls_key_hash = |tcx, cnum| {
-        let cstore = CStore::from_tcx(tcx);
-        cstore.get_crate_data(cnum).trait_impls_key_hash(&cstore)
-    };
 }
 
 impl CStore {
@@ -899,14 +909,10 @@ impl CrateStore for CStore {
 }
 
 fn provide_cstore_hooks(providers: &mut Providers) {
-    providers.hooks.has_implementations_of_trait = |tcx, cnum, trait_id, trait_hash| {
-        if tcx.dep_graph.is_fully_enabled() {
-            tcx.ensure_ok().trait_impls_key_hash(cnum);
-        }
+    providers.hooks.trait_impls_for_lookup_untracked = |tcx, cnum, trait_id, trait_hash, receiver| {
         CStore::from_tcx(tcx)
             .get_crate_data(cnum)
-            .trait_impls_for(trait_id, || trait_hash)
-            .is_some()
+            .trait_impls_for_lookup(tcx, trait_id, trait_hash, receiver)
     };
     providers.hooks.def_path_hash_to_def_id_extern = |tcx, hash, stable_crate_id| {
         // If this is a DefPathHash from an upstream crate, let the CrateStore map

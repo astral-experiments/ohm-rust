@@ -2150,11 +2150,10 @@ rustc_queries! {
         separate_provide_extern
     }
 
-    /// Tracks the keys of a crate's trait-impl directory without decoding its impl lists.
-    query trait_impls_key_hash(_: CrateNum) -> Fingerprint {
+    /// Tracks the trait-impl directories consulted by a lookup across all upstream crates.
+    query upstream_trait_impls_key_hash(_: ()) -> Fingerprint {
         eval_always
-        desc { "fingerprinting the trait-impl directory of a crate" }
-        separate_provide_extern
+        desc { "fingerprinting upstream trait-impl directories" }
     }
 
     /// Given a crate and a trait, look up all impls of that trait in the crate.

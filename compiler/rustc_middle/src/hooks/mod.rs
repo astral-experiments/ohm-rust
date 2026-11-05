@@ -10,6 +10,7 @@ use rustc_span::{ExpnHash, ExpnId};
 
 use crate::mir;
 use crate::query::on_disk_cache::CacheEncoder;
+use crate::ty::trait_def::{TraitImplReceiver, UpstreamTraitImpls};
 use crate::ty::{Ty, TyCtxt};
 
 macro_rules! declare_hooks {
@@ -70,8 +71,13 @@ declare_hooks! {
     /// to trigger this manually when decoding a foreign `Span`
     hook import_source_files(key: CrateNum) -> ();
 
-    /// Records a dependency on the directory before checking for an external trait's impls.
-    hook has_implementations_of_trait(cnum: CrateNum, trait_id: DefId, trait_hash: DefPathHash) -> bool;
+    /// The caller tracks the trait directories and every present typed impl list.
+    hook trait_impls_for_lookup_untracked(
+        cnum: CrateNum,
+        trait_id: DefId,
+        trait_hash: DefPathHash,
+        receiver: Option<&TraitImplReceiver>
+    ) -> UpstreamTraitImpls;
 
     hook expn_hash_to_expn_id(
         cnum: CrateNum,

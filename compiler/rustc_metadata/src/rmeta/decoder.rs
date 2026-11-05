@@ -29,6 +29,7 @@ use rustc_index::Idx;
 use rustc_middle::middle::lib_features::LibFeatures;
 use rustc_middle::mir::interpret::{AllocDecodingSession, AllocDecodingState};
 use rustc_middle::ty::codec::TyDecoder;
+use rustc_middle::ty::trait_def::{TraitImplReceiver, UpstreamTraitImpls};
 use rustc_middle::ty::{RestrictionKind, Visibility};
 use rustc_middle::{bug, implement_ty_decoder};
 use rustc_proc_macro::bridge::client::Client as ProcMacroClient;
@@ -100,9 +101,11 @@ pub(crate) type TargetModifiers = Vec<TargetModifier>;
 /// crate.
 pub(crate) type DeniedPartialMitigations = Vec<DeniedPartialMitigation>;
 
+type TraitImplRows = LazyArray<(DefIndex, Option<SimplifiedType>)>;
+
 enum TraitImplsMap {
-    DefIndex(FxIndexMap<(u32, DefIndex), LazyArray<(DefIndex, Option<SimplifiedType>)>>),
-    DefPathHash(FxIndexMap<(u32, Hash64), LazyArray<(DefIndex, Option<SimplifiedType>)>>),
+    DefIndex(FxIndexMap<(u32, DefIndex), TraitImplRows>),
+    DefPathHash(FxIndexMap<(u32, Hash64), (TraitImplRows, Option<u32>)>),
 }
 
 impl TraitImplsMap {
@@ -760,6 +763,9 @@ impl MetadataBlob {
 
         let found_version = self.encoded_compiler_version();
         if rustc_version(cfg_version) != found_version {
+            if found_version == format!("rustc {cfg_version} (Ohm metadata {PREVIOUS_OHM_METADATA_EPOCH})") {
+                return Ok(());
+            }
             // Legacy foreign IDs are positional. Only the selected, internally consistent SDK
             // can use them. User libraries must be rebuilt even when their full hashes match.
             if found_version != format!("rustc {cfg_version}") || !is_sysroot_library() {
@@ -1587,6 +1593,17 @@ impl CrateMetadata {
 
     fn trait_impls_key_hash(&self, cstore: &CStore) -> Fingerprint {
         let mut hasher = StableHasher::new();
+        if let EncodedTraitImpls::ReceiverShapes { fingerprint, .. } = &self.root.impls {
+            2u8.hash(&mut hasher);
+            fingerprint.hash(&mut hasher);
+            // The writer hashed its DefPathHashes. Its encoded slots must still name the same
+            // current crates if an old negative lookup is to remain green.
+            self.cnum_map.len().hash(&mut hasher);
+            for &cnum in self.cnum_map.iter() {
+                cstore.get_crate_data(cnum).root.stable_crate_id.hash(&mut hasher);
+            }
+            return hasher.finish();
+        }
         match &self.trait_impls {
             TraitImplsMap::DefIndex(_) => {
                 0u8.hash(&mut hasher);
@@ -1612,7 +1629,7 @@ impl CrateMetadata {
         &self,
         trait_def_id: DefId,
         trait_hash: impl FnOnce() -> DefPathHash,
-    ) -> Option<&LazyArray<(DefIndex, Option<SimplifiedType>)>> {
+    ) -> Option<(TraitImplRows, Option<u32>)> {
         if self.trait_impls.is_empty() {
             return None;
         }
@@ -1624,11 +1641,62 @@ impl CrateMetadata {
             None => return None,
         };
         match &self.trait_impls {
-            TraitImplsMap::DefIndex(trait_impls) => trait_impls.get(&key),
+            TraitImplsMap::DefIndex(trait_impls) => trait_impls.get(&key).map(|&rows| (rows, None)),
             TraitImplsMap::DefPathHash(trait_impls) => {
-                trait_impls.get(&(key.0, trait_hash().local_hash()))
+                trait_impls.get(&(key.0, trait_hash().local_hash())).copied()
             }
         }
+    }
+
+    fn trait_impls_for_lookup(
+        &self,
+        tcx: TyCtxt<'_>,
+        trait_id: DefId,
+        trait_hash: DefPathHash,
+        receiver: Option<&TraitImplReceiver>,
+    ) -> UpstreamTraitImpls {
+        let Some((rows, kinds)) = self.trait_impls_for(trait_id, || trait_hash) else {
+            return UpstreamTraitImpls::Absent;
+        };
+        let Some(receiver) = receiver else { return UpstreamTraitImpls::Present };
+        let miss = if let Some(kinds) = kinds {
+            if kinds & receiver.kind == 0 {
+                return UpstreamTraitImpls::Absent;
+            }
+            UpstreamTraitImpls::Absent
+        } else {
+            UpstreamTraitImpls::DifferentReceiver
+        };
+        if let Some((owner, _)) = receiver.by_index.and_then(|ty| ty.def())
+            && owner != self.cnum
+            && !self.cnum_map.iter().any(|&cnum| cnum == owner)
+        {
+            return miss;
+        }
+
+        // The ordinary row is (impl DefIndex, Option<SimplifiedType<DefId>>). Only the
+        // nominal operand needs a different decoder here: read its encoded fields instead
+        // of looking up a current DefIndex for every stable hash in the supplier's list.
+        // CrateNum::decode still translates every supplier slot to the current session.
+        fn contains<D: BlobDecoder, T: Decodable<D> + PartialEq>(
+            decoder: &mut D,
+            count: usize,
+            wanted: &T,
+        ) -> bool {
+            (0..count).any(|_| {
+                let _ = DefIndex::decode(decoder);
+                T::decode(decoder).eq(wanted)
+            })
+        }
+
+        let mut dcx = (self, tcx).decoder(rows.position.get());
+        dcx.set_lazy_state(LazyState::NodeStart(rows.position));
+        let present = if self.root.public_api_hash_opt_enabled {
+            contains(&mut dcx, rows.num_elems, &receiver.by_hash)
+        } else {
+            contains(&mut dcx, rows.num_elems, &receiver.by_index)
+        };
+        if present { UpstreamTraitImpls::Present } else { miss }
     }
 
     fn get_implementations_of_trait<'tcx>(
@@ -1636,7 +1704,7 @@ impl CrateMetadata {
         tcx: TyCtxt<'tcx>,
         trait_def_id: DefId,
     ) -> &'tcx [(DefId, Option<SimplifiedType>)] {
-        if let Some(impls) = self.trait_impls_for(trait_def_id, || tcx.def_path_hash(trait_def_id))
+        if let Some((impls, _)) = self.trait_impls_for(trait_def_id, || tcx.def_path_hash(trait_def_id))
         {
             tcx.arena.alloc_from_iter(
                 impls
@@ -2088,7 +2156,13 @@ impl CrateMetadata {
             EncodedTraitImpls::DefPathHash(trait_impls) => TraitImplsMap::DefPathHash(
                 trait_impls
                     .decode(&blob)
-                    .map(|trait_impls| (trait_impls.trait_id, trait_impls.impls))
+                    .map(|group| (group.trait_id, (group.impls, None)))
+                    .collect(),
+            ),
+            EncodedTraitImpls::ReceiverShapes { groups, .. } => TraitImplsMap::DefPathHash(
+                groups
+                    .decode(&blob)
+                    .map(|entry| (entry.group.trait_id, (entry.group.impls, Some(entry.receiver_kinds))))
                     .collect(),
             ),
         };

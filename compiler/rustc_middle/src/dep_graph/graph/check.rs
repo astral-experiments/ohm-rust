@@ -237,7 +237,7 @@ impl DepGraphData {
                     && matches!(self.colors.get(previous), DepNodeColor::Unknown)
                 {
                     let frame = MarkFrame { index: previous, parent: None };
-                    tcx.try_force_from_dep_node(node, previous, &frame);
+                    tcx.try_force_from_dep_node(node, previous, None, &frame);
                 }
                 if let Some((Some(actual), current)) = check.current.lock().get(&node).copied() {
                     if actual != expected {

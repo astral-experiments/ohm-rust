@@ -248,6 +248,12 @@ impl DepGraph {
         self.data.is_some()
     }
 
+    /// Whether an incremental query can reuse a result from a previous compilation.
+    #[inline]
+    pub(crate) fn has_previous_nodes(&self) -> bool {
+        self.data.as_ref().is_some_and(|data| data.previous.live_node_count() != 0)
+    }
+
     /// Returns a clone of the in-memory retained dep graph, if it is being built
     /// (i.e. `-Zquery-dep-graph` is set). Cloning rather than exposing the lock keeps
     /// callers from holding it while forcing queries, which would deadlock against a
@@ -939,6 +945,29 @@ impl DepGraph {
         self.data()?.try_mark_green(tcx, dep_node)
     }
 
+    pub fn previous_implementations_of_trait_inputs(
+        &self,
+        dep_node: DepNode,
+        index: SerializedDepNodeIndex,
+        reader: SerializedDepNodeIndex,
+    ) -> Option<(DepNode, DepNode)> {
+        let previous = &self.data()?.previous;
+        let reader_node = *previous.index_to_node(reader);
+        if !matches!(
+            reader_node.kind,
+            DepKind::trait_impls_of | DepKind::blanket_trait_impls | DepKind::non_blanket_trait_impls
+        )
+            || dep_node.kind != DepKind::implementations_of_trait
+            || *previous.index_to_node(index) != dep_node
+        {
+            return None;
+        }
+        let mut inputs = previous.edge_targets_from(index);
+        let supplier = *previous.index_to_node(inputs.next()?);
+        (supplier.kind == DepKind::external_metadata_input_hash && inputs.next().is_none())
+            .then_some((reader_node, supplier))
+    }
+
     pub fn previous_trait_impl_inputs(
         &self,
         bucket: DepNode,
@@ -950,24 +979,33 @@ impl DepGraph {
         {
             return None;
         }
-        let mut inputs = previous.edge_targets_from(index).map(|i| *previous.index_to_node(i));
-        let first = inputs.next()?;
-        let second = inputs.next();
-        if inputs.next().is_some() {
+        let mut trait_input = None;
+        let mut adt_input = None;
+        let mut direct_bucket_inputs = false;
+        for input in previous.edge_targets_from(index).map(|i| *previous.index_to_node(i)) {
+            match input.kind {
+                DepKind::trait_impls_of | DepKind::local_trait_impls => {
+                    if trait_input.replace(input).is_some() {
+                        return None;
+                    }
+                }
+                DepKind::trait_impl_receiver_adt => {
+                    if adt_input.replace(input).is_some() {
+                        return None;
+                    }
+                }
+                DepKind::crates
+                | DepKind::upstream_trait_impls_key_hash
+                | DepKind::implementations_of_trait
+                | DepKind::type_of => direct_bucket_inputs = true,
+                _ => return None,
+            }
+        }
+        let trait_input = trait_input?;
+        if trait_input.kind == DepKind::trait_impls_of && direct_bucket_inputs {
             return None;
         }
-        match (first.kind, second) {
-            (DepKind::trait_impls_of, None) => Some((first, None)),
-            (DepKind::trait_impls_of, Some(adt))
-                if adt.kind == DepKind::trait_impl_receiver_adt =>
-            {
-                Some((first, Some(adt)))
-            }
-            (DepKind::trait_impl_receiver_adt, Some(tr)) if tr.kind == DepKind::trait_impls_of => {
-                Some((tr, Some(first)))
-            }
-            _ => None,
-        }
+        Some((trait_input, adt_input))
     }
 
     /// Returns the old edges except those which the caller will read again after rewriting its suffix.
@@ -1100,7 +1138,12 @@ impl DepGraphData {
             }
 
             // We failed to mark it green, so we try to force the query.
-            if !tcx.try_force_from_dep_node(*parent_dep_node, parent_dep_node_index, &frame) {
+            if !tcx.try_force_from_dep_node(
+                *parent_dep_node,
+                parent_dep_node_index,
+                Some(prev_dep_node_index),
+                &frame,
+            ) {
                 return None;
             }
 

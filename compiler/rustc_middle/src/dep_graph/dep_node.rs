@@ -213,7 +213,12 @@ pub struct DepKindVTable<'tcx> {
     /// is actually a `DefPathHash`, and can therefore just look up the corresponding
     /// `DefId` in `tcx.def_path_hash_to_def_id`.
     pub force_from_dep_node_fn: Option<
-        fn(tcx: TyCtxt<'tcx>, dep_node: DepNode, prev_index: SerializedDepNodeIndex) -> bool,
+        fn(
+            tcx: TyCtxt<'tcx>,
+            dep_node: DepNode,
+            prev_index: SerializedDepNodeIndex,
+            reader: Option<SerializedDepNodeIndex>,
+        ) -> bool,
     >,
 
     /// Load the on-disk cached value of a query into memory. The node is known
