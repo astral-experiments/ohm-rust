@@ -148,6 +148,35 @@ pub fn simplify_type<I: Interner>(
 }
 
 impl<DefId> SimplifiedType<DefId> {
+    /// Changes the identity representation of a nominal receiver, preserving its variant.
+    pub fn map_def<T>(self, f: impl FnOnce(DefId) -> T) -> SimplifiedType<T> {
+        match self {
+            Self::Bool => SimplifiedType::Bool,
+            Self::Char => SimplifiedType::Char,
+            Self::Int(v) => SimplifiedType::Int(v),
+            Self::Uint(v) => SimplifiedType::Uint(v),
+            Self::Float(v) => SimplifiedType::Float(v),
+            Self::Adt(d) => SimplifiedType::Adt(f(d)),
+            Self::Foreign(d) => SimplifiedType::Foreign(f(d)),
+            Self::Str => SimplifiedType::Str,
+            Self::Array => SimplifiedType::Array,
+            Self::Slice => SimplifiedType::Slice,
+            Self::Ref(v) => SimplifiedType::Ref(v),
+            Self::Ptr(v) => SimplifiedType::Ptr(v),
+            Self::Never => SimplifiedType::Never,
+            Self::Tuple(n) => SimplifiedType::Tuple(n),
+            Self::MarkerTraitObject => SimplifiedType::MarkerTraitObject,
+            Self::Trait(d) => SimplifiedType::Trait(f(d)),
+            Self::Closure(d) => SimplifiedType::Closure(f(d)),
+            Self::Coroutine(d) => SimplifiedType::Coroutine(f(d)),
+            Self::CoroutineWitness(d) => SimplifiedType::CoroutineWitness(f(d)),
+            Self::Function(n) => SimplifiedType::Function(n),
+            Self::UnsafeBinder => SimplifiedType::UnsafeBinder,
+            Self::Placeholder => SimplifiedType::Placeholder,
+            Self::Error => SimplifiedType::Error,
+        }
+    }
+
     pub fn def(self) -> Option<DefId> {
         match self {
             SimplifiedType::Adt(d)

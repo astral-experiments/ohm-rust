@@ -26,8 +26,8 @@ use crate::diagnostics;
 const FILE_MAGIC: &[u8] = b"RSIC";
 
 /// Change this if the header format changes.
-// Codegen partitions may place automatically derived impls in their own unit.
-const HEADER_FORMAT_VERSION: u16 = 61069;
+// The upstream trait directory can now prove a negative without a typed impl-list edge.
+const HEADER_FORMAT_VERSION: u16 = 61071;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);

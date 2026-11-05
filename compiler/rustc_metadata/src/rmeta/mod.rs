@@ -60,8 +60,9 @@ mod encoder;
 mod parameterized;
 mod table;
 
-/// Distinguishes metadata whose public hashes include the definitions of native exports.
-const OHM_METADATA_EPOCH: u32 = 3;
+/// The previous epoch has the same root layout and the original trait-directory variants.
+const PREVIOUS_OHM_METADATA_EPOCH: u32 = 3;
+const OHM_METADATA_EPOCH: u32 = 4;
 
 pub(crate) fn rustc_version(cfg_version: &'static str) -> String {
     format!("rustc {cfg_version} (Ohm metadata {OHM_METADATA_EPOCH})")
@@ -423,21 +424,16 @@ struct TraitImpls<DefIndexRepr> {
 }
 
 #[derive(MetadataEncodable, LazyDecodable)]
+struct TraitImplsWithReceiverKinds {
+    group: TraitImpls<Hash64>,
+    receiver_kinds: u32,
+}
+
+#[derive(MetadataEncodable, LazyDecodable)]
 enum EncodedTraitImpls {
     DefIndex(LazyArray<TraitImpls<DefIndex>>),
     DefPathHash(LazyArray<TraitImpls<Hash64>>),
-}
-
-impl From<LazyArray<TraitImpls<DefIndex>>> for EncodedTraitImpls {
-    fn from(value: LazyArray<TraitImpls<DefIndex>>) -> Self {
-        Self::DefIndex(value)
-    }
-}
-
-impl From<LazyArray<TraitImpls<Hash64>>> for EncodedTraitImpls {
-    fn from(value: LazyArray<TraitImpls<Hash64>>) -> Self {
-        Self::DefPathHash(value)
-    }
+    ReceiverShapes { groups: LazyArray<TraitImplsWithReceiverKinds>, fingerprint: Fingerprint },
 }
 
 #[derive(MetadataEncodable, LazyDecodable)]
