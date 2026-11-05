@@ -787,6 +787,18 @@ impl<'a> Linker for GccLinker<'a> {
     }
 
     fn export_symbols(&mut self, tmpdir: &Path, crate_type: CrateType, symbols: &[SymbolExport]) {
+        // Only the bundled GNU LLD wrapper applies this policy. A C driver can select
+        // a different linker, including when rustc retries without -fuse-ld=lld.
+        const EXPORTS: &str = "OHM_RUSTC_DRIVER_LINK_EXPORTS";
+        if self.uses_lld
+            && !self.is_ld
+            && let Some(path) = driver_preemption_list(self.sess, crate_type)
+        {
+            self.cmd.env(EXPORTS, path);
+        } else if env::var_os(EXPORTS).is_some() {
+            self.cmd.env_remove(EXPORTS);
+        }
+
         // Symbol visibility in object files typically takes care of this.
         if crate_type == CrateType::Executable {
             let should_export_executable_symbols =
@@ -1705,18 +1717,76 @@ pub(crate) fn exported_symbols(tcx: TyCtxt<'_>, crate_type: CrateType) -> Vec<Sy
     symbols
 }
 
+fn driver_preemption_list(sess: &Session, crate_type: CrateType) -> Option<PathBuf> {
+    if crate_type != CrateType::Dylib
+        || sess.opts.crate_name.as_deref() != Some("rustc_driver")
+        || sess.opts.target_triple.tuple() != "x86_64-unknown-linux-gnu"
+        // A .rlink must replay the original link without this ephemeral bootstrap input.
+        || sess.opts.unstable_opts.emit_rlink
+        || sess.opts.unstable_opts.no_link
+        || sess.opts.unstable_opts.link_only
+        || sess.target.override_export_symbols.is_some()
+        || !sess.target.limit_rdylib_exports
+    {
+        return None;
+    }
+    let dir = PathBuf::from(env::var_os("OHM_RUSTC_DRIVER_LINK_DIR")?);
+    let driver = fs::read_to_string(dir.join("driver")).ok()?;
+    let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR")?).canonicalize().ok()?;
+    let config::Input::File(input) = &sess.io.input else { return None };
+    if manifest_dir != Path::new(&driver)
+        || input.canonicalize().ok()? != manifest_dir.join("src/lib.rs")
+    {
+        return None;
+    }
+    Some(dir.join(format!("{}.exports", std::process::id())))
+}
+
 fn exported_symbols_for_non_proc_macro(
     tcx: TyCtxt<'_>,
     crate_type: CrateType,
 ) -> Vec<SymbolExport> {
     let mut symbols = Vec::new();
     let export_threshold = symbol_export::crates_export_threshold(&[crate_type]);
+    let target = driver_preemption_list(tcx.sess, crate_type);
+    let mut owners = Vec::new();
+    let mut locals = Vec::new();
+    if let Some(_path) = &target {
+        let crates = tcx.crates(());
+        owners.resize(1 + crates.iter().map(|c| c.index()).max().unwrap_or(0), false);
+        owners[LOCAL_CRATE.index()] = true;
+        #[cfg(target_os = "linux")]
+        for &cnum in crates {
+            use std::os::unix::fs::MetadataExt;
+            if let Some(rlib) = &tcx.used_crate_source(cnum).rlib
+                && let Ok(meta) = rlib.metadata()
+                && let Ok(receipt) = _path
+                    .with_file_name(format!("{:x}-{:x}.rlib", meta.dev(), meta.ino()))
+                    .metadata()
+            {
+                owners[cnum.index()] =
+                    meta.is_file() && (meta.dev(), meta.ino()) == (receipt.dev(), receipt.ino());
+            }
+        }
+    }
     for_each_exported_symbols_include_dep(tcx, crate_type, |symbol, info, cnum| {
         // Do not export mangled symbols from cdylibs and don't attempt to export compiler-builtins
         // from any dylib. The latter doesn't work anyway as we use hidden visibility for
         // compiler-builtins. Most linkers silently ignore it, but ld64 gives a warning.
         if info.level.is_below_threshold(export_threshold) && !tcx.is_compiler_builtins(cnum) {
-            symbols.push(symbol_export_from_exported_symbol(tcx, symbol, info.kind, cnum));
+            let export = symbol_export_from_exported_symbol(tcx, symbol, info.kind, cnum);
+            if owners.get(cnum.index()) == Some(&true)
+                && info.kind == SymbolExportKind::Text
+                && !info.is_relevant_for_c_linker()
+                && !matches!(
+                    symbol,
+                    ExportedSymbol::NoDefId(_) | ExportedSymbol::ThreadLocalShim(_)
+                )
+                && export.name.starts_with("_R")
+            {
+                locals.push(symbols.len());
+            }
+            symbols.push(export);
             symbol_export::extend_exported_symbols(&mut symbols, tcx, symbol, cnum);
         }
     });
@@ -1730,6 +1800,24 @@ fn exported_symbols_for_non_proc_macro(
             allocator_shim_symbols(tcx, kind)
                 .map(|(name, kind)| symbol_export_from_raw_name(tcx, name, kind)),
         );
+    }
+
+    if let Some(path) = target {
+        let res = try {
+            let mut file = File::create_buffered(path)?;
+            let mut locals = locals.into_iter().peekable();
+            writeln!(file, "{{")?;
+            for (i, sym) in symbols.iter().enumerate() {
+                if locals.next_if_eq(&i).is_none() {
+                    writeln!(file, "  {};", sym.name)?;
+                }
+            }
+            writeln!(file, "}};")?;
+            file.flush()?;
+        };
+        if let Err(error) = res {
+            tcx.sess.dcx().emit_fatal(diagnostics::VersionScriptWriteFailure { error });
+        }
     }
 
     symbols
