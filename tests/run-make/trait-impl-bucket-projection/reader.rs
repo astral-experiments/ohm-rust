@@ -3,6 +3,9 @@ extern crate roster;
 use roster::{Destination, Kept, Score};
 
 fn main() {
+    struct Local;
+    assert_eq!(Local::score(), 3);
+
     println!(
         "{} {} {} {} {}",
         Kept::score(),

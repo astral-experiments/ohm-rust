@@ -54,6 +54,7 @@ pub trait MetadataLoader {
 pub type MetadataLoaderDyn = dyn MetadataLoader + Send + Sync + sync::DynSend + sync::DynSync;
 
 pub struct CStore {
+    pub(crate) trait_impls: std::sync::OnceLock<crate::rmeta::TraitImplDirectory>,
     metadata_loader: Box<MetadataLoaderDyn>,
 
     metas: IndexVec<CrateNum, Option<Box<CrateMetadata>>>,
@@ -552,6 +553,7 @@ impl CStore {
 
     pub fn new(metadata_loader: Box<MetadataLoaderDyn>) -> CStore {
         CStore {
+            trait_impls: Default::default(),
             metadata_loader,
             // We add an empty entry for LOCAL_CRATE (which maps to zero) in
             // order to make array indices in `metas` match with the

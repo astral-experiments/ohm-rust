@@ -72,12 +72,11 @@ declare_hooks! {
     hook import_source_files(key: CrateNum) -> ();
 
     /// The caller tracks the trait directories and every present typed impl list.
-    hook trait_impls_for_lookup_untracked(
-        cnum: CrateNum,
-        trait_id: DefId,
+    hook for_each_trait_impl_supplier_untracked(
         trait_hash: DefPathHash,
-        receiver: Option<&TraitImplReceiver>
-    ) -> UpstreamTraitImpls;
+        receiver: Option<&TraitImplReceiver>,
+        visit: &mut dyn FnMut(CrateNum, UpstreamTraitImpls)
+    ) -> ();
 
     hook expn_hash_to_expn_id(
         cnum: CrateNum,

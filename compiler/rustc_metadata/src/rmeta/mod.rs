@@ -2,7 +2,9 @@ use std::marker::PhantomData;
 use std::num::NonZero;
 
 use decoder::LazyDecoder;
-pub(crate) use decoder::{CrateMetadata, CrateNumMap, MetadataBlob, TargetModifiers};
+pub(crate) use decoder::{
+    CrateMetadata, CrateNumMap, MetadataBlob, TargetModifiers, TraitImplDirectory,
+};
 use def_path_hash_map::DefPathHashMapRef;
 use encoder::EncodeContext;
 pub(crate) use encoder::early::prepare as prepare_early_metadata;
@@ -394,6 +396,9 @@ struct TraitImpls<DefIndexRepr> {
     trait_id: (u32, DefIndexRepr),
     impls: LazyArray<(DefIndex, Option<SimplifiedType>)>,
 }
+
+// Every nominal receiver in this group names a definition in the producing crate.
+const LOCAL_NOMINAL_RECEIVERS: u32 = 1 << 31;
 
 #[derive(MetadataEncodable, LazyDecodable)]
 struct TraitImplsWithReceiverKinds {

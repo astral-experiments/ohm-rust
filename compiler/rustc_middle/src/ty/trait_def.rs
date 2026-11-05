@@ -429,34 +429,36 @@ pub enum UpstreamTraitImpls {
 fn for_each_trait_impl(
     tcx: TyCtxt<'_>,
     trait_id: DefId,
-    receiver: Option<&TraitImplReceiver>,
+    bucket: Option<Option<SimplifiedType>>,
     mut visit: impl FnMut(DefId, Option<SimplifiedType>),
 ) {
-    // Traits defined in the current crate can't have impls in upstream
-    // crates, so we don't bother querying the cstore.
-    if !trait_id.is_local() {
+    let local_receiver = bucket.flatten().and_then(|ty| ty.def()).is_some_and(DefId::is_local);
+    if !trait_id.is_local() && !local_receiver {
         let trait_hash = tcx.def_path_hash(trait_id);
-        let crates = tcx.crates(());
+        let _ = tcx.crates(());
         if tcx.dep_graph.is_fully_enabled() {
             tcx.ensure_ok().upstream_trait_impls_key_hash(());
         }
-        for &cnum in crates {
-            match tcx.trait_impls_for_lookup_untracked(cnum, trait_id, trait_hash, receiver) {
-                UpstreamTraitImpls::Absent => continue,
-                UpstreamTraitImpls::DifferentReceiver => {
-                    // The trait directory stays present when a receiver is added to its list.
-                    // Keep that exact typed dependency, even when we can skip loading its value.
-                    tcx.ensure_ok().implementations_of_trait((cnum, trait_id));
-                    continue;
+        let receiver = bucket
+            .filter(|_| tcx.dep_graph.has_previous_nodes())
+            .map(|ty| TraitImplReceiver::new(tcx, ty));
+        tcx.for_each_trait_impl_supplier_untracked(
+            trait_hash,
+            receiver.as_ref(),
+            &mut |cnum, result| {
+                match result {
+                    UpstreamTraitImpls::Absent => return,
+                    UpstreamTraitImpls::DifferentReceiver => {
+                        tcx.ensure_ok().implementations_of_trait((cnum, trait_id));
+                        return;
+                    }
+                    UpstreamTraitImpls::Present => {}
                 }
-                UpstreamTraitImpls::Present => {}
-            }
-            for &(impl_def_id, simplified_self_ty) in
-                tcx.implementations_of_trait((cnum, trait_id)).iter()
-            {
-                visit(impl_def_id, simplified_self_ty);
-            }
-        }
+                for &(id, self_ty) in tcx.implementations_of_trait((cnum, trait_id)) {
+                    visit(id, self_ty);
+                }
+            },
+        );
     }
 
     for &impl_def_id in tcx.local_trait_impls(trait_id) {
@@ -486,9 +488,21 @@ pub(super) fn trait_impls_for_bucket(
     trait_id: DefId,
     bucket: Option<SimplifiedType>,
 ) -> &[DefId] {
-    // Without an incremental graph, amortize repeated bucket lookups through the full index.
-    if !tcx.dep_graph.is_fully_enabled() {
-        let impls = tcx.trait_impls_of(trait_id);
+    let complete: Option<&TraitImpls> = if tcx.dep_graph.is_fully_enabled() {
+        if bucket.and_then(|ty| ty.def()).is_some_and(DefId::is_local) {
+            None
+        } else {
+            crate::query::inner::try_get_cached(
+                tcx,
+                &tcx.query_system.query_vtables.trait_impls_of.cache,
+                trait_id,
+            )
+            .map(crate::query::erase::restore_val)
+        }
+    } else {
+        Some(tcx.trait_impls_of(trait_id))
+    };
+    if let Some(impls) = complete {
         return match bucket {
             Some(ty) => impls.non_blanket_impls.get(&ty).map_or(&[], Vec::as_slice),
             None => impls.blanket_impls(),
@@ -496,10 +510,7 @@ pub(super) fn trait_impls_for_bucket(
     }
 
     let mut selected = SmallVec::<[DefId; 8]>::new();
-    // A cold lookup will execute and cache the full provider anyway.
-    let receiver = (!trait_id.is_local() && tcx.dep_graph.has_previous_nodes())
-        .then(|| TraitImplReceiver::new(tcx, bucket));
-    for_each_trait_impl(tcx, trait_id, receiver.as_ref(), |id, self_ty| {
+    for_each_trait_impl(tcx, trait_id, Some(bucket), |id, self_ty| {
         if self_ty == bucket {
             selected.push(id);
         }

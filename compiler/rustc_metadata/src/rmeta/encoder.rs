@@ -146,6 +146,7 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
             .iter()
             .map(|(&trait_id, impls)| {
                 let mut kinds = 0;
+                let mut local_nominals = true;
                 if Self::HASH_PUBLIC_API {
                     slot_and_hash(trait_id).hash(&mut shapes);
                     impls.len().hash(&mut shapes);
@@ -158,7 +159,12 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
                     let array = ecx.lazy_array_with(impls, |ecx, &(id, simplified_ty)| {
                         if Self::HASH_PUBLIC_API {
                             kinds |= trait_impl_receiver_kind(simplified_ty);
-                            let receiver = simplified_ty.map(|ty| ty.map_def(slot_and_hash));
+                            let receiver = simplified_ty.map(|ty| {
+                                ty.map_def(|id| {
+                                    local_nominals &= id.is_local();
+                                    slot_and_hash(id)
+                                })
+                            });
                             receiver.hash(&mut shapes);
                         }
                         // Selection can enumerate all candidates, even without a known self type.
@@ -190,6 +196,9 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
                     hcx.add_node_hash(&trait_id.into(), hash);
                     array
                 };
+                if Self::HASH_PUBLIC_API && local_nominals {
+                    kinds |= LOCAL_NOMINAL_RECEIVERS;
+                }
                 let key = (trait_id.krate.as_u32(), Self::encoded_def_index(tcx, trait_id));
                 (TraitImpls { trait_id: key, impls: rows }, kinds)
             })
