@@ -909,11 +909,12 @@ impl CrateStore for CStore {
 }
 
 fn provide_cstore_hooks(providers: &mut Providers) {
-    providers.hooks.trait_impls_for_lookup_untracked = |tcx, cnum, trait_id, trait_hash, receiver| {
-        CStore::from_tcx(tcx)
-            .get_crate_data(cnum)
-            .trait_impls_for_lookup(tcx, trait_id, trait_hash, receiver)
-    };
+    providers.hooks.trait_impls_for_lookup_untracked =
+        |tcx, cnum, trait_id, trait_hash, receiver| {
+            CStore::from_tcx(tcx)
+                .get_crate_data(cnum)
+                .trait_impls_for_lookup(tcx, trait_id, trait_hash, receiver)
+        };
     providers.hooks.def_path_hash_to_def_id_extern = |tcx, hash, stable_crate_id| {
         // If this is a DefPathHash from an upstream crate, let the CrateStore map
         // it to a DefId.

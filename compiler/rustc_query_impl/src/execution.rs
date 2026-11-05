@@ -699,16 +699,14 @@ fn recover_trait_impl_bucket(
     dep_node: DepNode,
     prev_index: SerializedDepNodeIndex,
 ) -> Option<(DefId, SimplifiedType)> {
-    let (trait_node, adt_node) =
-        tcx.dep_graph.previous_trait_impl_inputs(dep_node, prev_index)?;
+    let (trait_node, adt_node) = tcx.dep_graph.previous_trait_impl_inputs(dep_node, prev_index)?;
     let trait_id = registered_def_id(tcx, trait_node)?;
     if tcx.def_kind(trait_id) != DefKind::Trait {
         return None;
     }
     let matching_key = |receiver: SimplifiedType| {
         let key = (trait_id, receiver);
-        (DepNode::construct(tcx, DepKind::non_blanket_trait_impls, &key) == dep_node)
-            .then_some(key)
+        (DepNode::construct(tcx, DepKind::non_blanket_trait_impls, &key) == dep_node).then_some(key)
     };
     if let Some(adt_node) = adt_node {
         let adt = registered_def_id(tcx, adt_node)?;
@@ -763,7 +761,8 @@ pub(crate) fn force_implementations_of_trait(
         let cnum = *tcx.untracked().stable_crate_ids.read().get(&supplier)?;
         if trait_id.is_local()
             || cnum == LOCAL_CRATE
-            || DepNode::construct(tcx, DepKind::external_metadata_input_hash, &cnum) != supplier_node
+            || DepNode::construct(tcx, DepKind::external_metadata_input_hash, &cnum)
+                != supplier_node
         {
             return None;
         }

@@ -763,7 +763,9 @@ impl MetadataBlob {
 
         let found_version = self.encoded_compiler_version();
         if rustc_version(cfg_version) != found_version {
-            if found_version == format!("rustc {cfg_version} (Ohm metadata {PREVIOUS_OHM_METADATA_EPOCH})") {
+            if found_version
+                == format!("rustc {cfg_version} (Ohm metadata {PREVIOUS_OHM_METADATA_EPOCH})")
+            {
                 return Ok(());
             }
             // Legacy foreign IDs are positional. Only the selected, internally consistent SDK
@@ -1704,7 +1706,8 @@ impl CrateMetadata {
         tcx: TyCtxt<'tcx>,
         trait_def_id: DefId,
     ) -> &'tcx [(DefId, Option<SimplifiedType>)] {
-        if let Some((impls, _)) = self.trait_impls_for(trait_def_id, || tcx.def_path_hash(trait_def_id))
+        if let Some((impls, _)) =
+            self.trait_impls_for(trait_def_id, || tcx.def_path_hash(trait_def_id))
         {
             tcx.arena.alloc_from_iter(
                 impls
@@ -2162,7 +2165,9 @@ impl CrateMetadata {
             EncodedTraitImpls::ReceiverShapes { groups, .. } => TraitImplsMap::DefPathHash(
                 groups
                     .decode(&blob)
-                    .map(|entry| (entry.group.trait_id, (entry.group.impls, Some(entry.receiver_kinds))))
+                    .map(|entry| {
+                        (entry.group.trait_id, (entry.group.impls, Some(entry.receiver_kinds)))
+                    })
                     .collect(),
             ),
         };
