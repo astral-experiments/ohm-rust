@@ -1,3 +1,4 @@
+//@ revisions: direct_first transitive_first
 //@ aux-crate:priv:shared=shared.rs
 //@ aux-crate:reexport=reexport.rs
 //@ compile-flags: -Zunstable-options
@@ -20,8 +21,11 @@
 #![crate_type = "lib"]
 #![deny(exported_private_dependencies)]
 
+#[cfg(direct_first)]
 extern crate shared;
 extern crate reexport;
+#[cfg(transitive_first)]
+extern crate shared;
 
 // FIXME: Should this trigger?
 //
