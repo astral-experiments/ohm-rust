@@ -955,9 +955,10 @@ impl DepGraph {
         let reader_node = *previous.index_to_node(reader);
         if !matches!(
             reader_node.kind,
-            DepKind::trait_impls_of | DepKind::blanket_trait_impls | DepKind::non_blanket_trait_impls
-        )
-            || dep_node.kind != DepKind::implementations_of_trait
+            DepKind::trait_impls_of
+                | DepKind::blanket_trait_impls
+                | DepKind::non_blanket_trait_impls
+        ) || dep_node.kind != DepKind::implementations_of_trait
             || *previous.index_to_node(index) != dep_node
         {
             return None;

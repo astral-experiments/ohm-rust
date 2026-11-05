@@ -40,8 +40,8 @@ use rustc_middle::mir::interpret;
 use rustc_middle::query::Providers;
 use rustc_middle::traits::specialization_graph;
 use rustc_middle::ty::codec::TyEncoder;
-use rustc_middle::ty::trait_def::trait_impl_receiver_kind;
 use rustc_middle::ty::fast_reject::{self, TreatParams};
+use rustc_middle::ty::trait_def::trait_impl_receiver_kind;
 use rustc_middle::ty::{AssocContainer, PredicateKind, Visibility};
 use rustc_serialize::opaque::{FileEncoder, mem_encoder::MemEncoder};
 use rustc_serialize::{Decodable, Decoder, Encodable, Encoder};
@@ -450,7 +450,9 @@ impl<'tcx> MetadataEncoder<'tcx> for DefIndexDefIdEncoder {
         groups: Vec<(TraitImpls<DefIndex>, u32)>,
         _: StableHasher,
     ) -> EncodedTraitImpls {
-        EncodedTraitImpls::DefIndex(ecx.lazy_array_with(groups, |ecx, (group, _)| group.encode(ecx)))
+        EncodedTraitImpls::DefIndex(
+            ecx.lazy_array_with(groups, |ecx, (group, _)| group.encode(ecx)),
+        )
     }
 
     #[inline(always)]
