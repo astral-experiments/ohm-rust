@@ -2735,6 +2735,8 @@ options! {
         "reuse unchanged incremental monomorphization partitions without public API hashing"),
     ohm_shared_stages: bool = (false, parse_bool, [TRACKED],
         "reuse frontend incremental queries between metadata and link emission"),
+    ohm_split_large_cgus: bool = (true, parse_bool, [TRACKED],
+        "split large codegen units in unoptimized incremental builds (default: yes)"),
     ohm_stable_cgu_merging: bool = (false, parse_bool, [TRACKED],
         "merge incremental codegen units into stable, name-based buckets"),
     on_broken_pipe: OnBrokenPipe = (OnBrokenPipe::Default, parse_on_broken_pipe, [TRACKED],
