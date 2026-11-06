@@ -1053,7 +1053,8 @@ impl<'hir> LoweringContext<'_, 'hir> {
     ) -> Span {
         let call_site = self.desugaring_call_site(span);
         self.tcx.with_stable_hashing_context(|hcx| {
-            let marked = call_site.mark_with_reason(allow_internal_unstable, reason, span.edition(), hcx);
+            let marked =
+                call_site.mark_with_reason(allow_internal_unstable, reason, span.edition(), hcx);
             span.with_ctxt(marked.ctxt())
         })
     }
@@ -1062,7 +1063,11 @@ impl<'hir> LoweringContext<'_, 'hir> {
     fn desugaring_call_site(&self, span: Span) -> Span {
         let lowerer = self.span_lowerer();
         let data = span.data_untracked();
-        if !lowerer.is_incremental || data.is_dummy() || !data.ctxt.is_root() || data.parent.is_some() {
+        if !lowerer.is_incremental
+            || data.is_dummy()
+            || !data.ctxt.is_root()
+            || data.parent.is_some()
+        {
             return span;
         }
         let owner = self.tcx.source_span_untracked(lowerer.def_id).data_untracked();
