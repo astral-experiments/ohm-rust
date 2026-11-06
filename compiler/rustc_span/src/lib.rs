@@ -843,6 +843,9 @@ impl Span {
 
     /// Returns `true` if `self` fully encloses `other`.
     pub fn contains(self, other: Span) -> bool {
+        if self == other {
+            return true;
+        }
         let span = self.data();
         let other = other.data();
         span.contains(other)
