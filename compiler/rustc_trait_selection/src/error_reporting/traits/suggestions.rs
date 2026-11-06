@@ -3890,6 +3890,16 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                 );
             }
         };
+        let bound_location = match *cause_code {
+            ObligationCauseCode::WhereClause(id, source)
+            | ObligationCauseCode::WhereClauseInExpr(id, source, ..) => {
+                source.non_dummy_span(tcx).map(|span| (id, span))
+            }
+            ObligationCauseCode::HostEffectInExpr(id, span, ..) if !span.is_dummy() => {
+                Some((id, span))
+            }
+            _ => None,
+        };
         match *cause_code {
             ObligationCauseCode::ExprAssignable
             | ObligationCauseCode::MatchExpressionArm { .. }
@@ -3950,10 +3960,10 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                     Applicability::MachineApplicable,
                 );
             }
-            ObligationCauseCode::WhereClause(item_def_id, span)
-            | ObligationCauseCode::WhereClauseInExpr(item_def_id, span, ..)
-            | ObligationCauseCode::HostEffectInExpr(item_def_id, span, ..)
-                if !span.is_dummy() =>
+            ObligationCauseCode::WhereClause(..)
+            | ObligationCauseCode::WhereClauseInExpr(..)
+            | ObligationCauseCode::HostEffectInExpr(..)
+                if let Some((item_def_id, span)) = bound_location =>
             {
                 if let ObligationCauseCode::WhereClauseInExpr(_, _, hir_id, pos) = &cause_code {
                     if let Node::Expr(expr) = tcx.parent_hir_node(*hir_id)
@@ -4591,6 +4601,7 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                 }
             }
             ObligationCauseCode::ImplDerived(ref data) => {
+                let predicate_span = data.span.span(tcx);
                 let mut parent_trait_pred =
                     self.deeply_resolve_ignoring_regions(data.derived.parent_trait_pred);
                 let parent_def_id = parent_trait_pred.def_id();
@@ -4661,14 +4672,16 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                         ) {
                             derived = true;
                             spans.push_span_label(
-                                data.span,
-                                if data.span.in_derive_expansion() {
+                                predicate_span,
+                                if predicate_span.in_derive_expansion() {
                                     format!("type parameter would need to implement `{trait_name}`")
                                 } else {
                                     format!("unsatisfied trait bound")
                                 },
                             );
-                        } else if !data.span.is_dummy() && !data.span.overlaps(self_ty.span) {
+                        } else if !predicate_span.is_dummy()
+                            && !predicate_span.overlaps(self_ty.span)
+                        {
                             // `Sized` may be an explicit or implicit trait bound. If it is
                             // implicit, mention it as such.
                             if let Some(pred) = predicate.as_trait_clause()
@@ -4678,15 +4691,15 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                                     .generics_of(data.impl_or_alias_def_id)
                                     .own_params
                                     .iter()
-                                    .any(|param| self.tcx.def_span(param.def_id) == data.span)
+                                    .any(|param| self.tcx.def_span(param.def_id) == predicate_span)
                             {
                                 spans.push_span_label(
-                                    data.span,
+                                    predicate_span,
                                     "unsatisfied trait bound implicitly introduced here",
                                 );
                             } else {
                                 spans.push_span_label(
-                                    data.span,
+                                    predicate_span,
                                     "unsatisfied trait bound introduced here",
                                 );
                             }
@@ -6536,9 +6549,7 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
         else {
             return;
         };
-        if span.is_dummy() {
-            return;
-        }
+        let Some(span) = span.non_dummy_span(self.tcx) else { return };
         debug!(?pred, ?item_def_id, ?span);
 
         let (Some(node), true) = (
@@ -7160,6 +7171,7 @@ fn point_at_assoc_type_restriction(
     else {
         return;
     };
+    let predicate_span = data.span.span(tcx);
     let mut predicates = generics.predicates.iter().peekable();
     let mut prev: Option<(&hir::WhereBoundPredicate<'_>, Span)> = None;
     while let Some(pred) = predicates.next() {
@@ -7172,7 +7184,7 @@ fn point_at_assoc_type_restriction(
             let Some(trait_ref) = bound.trait_ref() else {
                 continue;
             };
-            if bound.span() != data.span {
+            if bound.span() != predicate_span {
                 continue;
             }
             if let hir::TyKind::Path(path) = pred.bounded_ty.kind

@@ -580,10 +580,10 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                 if let ObligationCauseCode::WhereClause(_, span)
                 | ObligationCauseCode::WhereClauseInExpr(_, span, ..) =
                     cause.code().peel_derives()
-                    && !span.is_dummy()
                     && let TypeError::RegionsPlaceholderMismatch = terr
+                    && let Some(span) = span.non_dummy_span(self.tcx)
                 {
-                    err.span_note(*span, "the lifetime requirement is introduced here");
+                    err.span_note(span, "the lifetime requirement is introduced here");
                 }
             }
         }

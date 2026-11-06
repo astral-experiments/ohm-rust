@@ -611,19 +611,23 @@ impl<'a, 'tcx> WfPredicates<'a, 'tcx> {
         }
 
         let tcx = self.tcx();
-        let mut head = (def_id, tcx.clauses_of(def_id));
+        let mut head = (def_id, tcx.clause_facts_of(def_id));
         let mut inner_levels = SmallVec::<[_; 4]>::new();
         while let Some(parent) = head.1.parent {
             inner_levels.push(head);
-            head = (parent, tcx.clauses_of(parent));
+            head = (parent, tcx.clause_facts_of(parent));
         }
 
         // Emit outermost first, as diagnostics rely on that order.
         for &(origin_def_id, clauses) in iter::once(&head).chain(inner_levels.iter().rev()) {
-            for &(clause, span) in clauses.clauses {
+            for (index, &clause) in clauses.own.as_slice().iter().enumerate() {
                 let clause = tcx.instantiate_clause(ty::EarlyBinder::bind(tcx, clause), args);
                 if !clause.has_escaping_bound_vars() {
-                    let code = ObligationCauseCode::WhereClause(origin_def_id, span);
+                    let source = ty::ClauseLocation::Declared {
+                        definition: origin_def_id,
+                        index: u32::try_from(index).unwrap(),
+                    };
+                    let code = ObligationCauseCode::WhereClause(origin_def_id, source);
                     let cause = self.cause(code);
                     let obligation = traits::Obligation::with_depth(
                         tcx,
