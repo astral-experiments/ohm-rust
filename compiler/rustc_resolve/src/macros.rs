@@ -375,6 +375,27 @@ impl<'ra, 'tcx> ResolverExpand for Resolver<'ra, 'tcx> {
                 self.invocation_parents.get_mut(&invoc_id).unwrap().preceding_source_adt = None;
             }
         }
+        // Individual derive paths are synthesized after macro invocation collection.
+        // A path inside a source-written derive can use the same anchor as its attribute.
+        if kind == MacroKind::Derive && self.tcx.sess.opts.incremental.is_some() {
+            let child = span.data_untracked();
+            let attribute = parent_scope.expansion.call_site().data_untracked();
+            if let Some(anchor) = attribute.parent
+                && child.parent.is_none()
+                && !child.is_dummy()
+                && child.ctxt.is_root()
+                && attribute.ctxt == child.ctxt
+                && attribute.contains(child)
+            {
+                let file = self.tcx.sess.source_map().lookup_source_file(attribute.lo);
+                if !file.is_imported()
+                    && file.contains(attribute.hi)
+                    && file.contains(self.tcx.source_span_untracked(anchor).lo())
+                {
+                    span = span.with_parent(Some(anchor));
+                }
+            }
+        }
         let def_id = if deleg_impl.is_some() { None } else { res.opt_def_id() };
         self.tcx.with_stable_hashing_context(|hcx| {
             invoc_id.set_expn_data(
