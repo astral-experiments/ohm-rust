@@ -10,6 +10,7 @@ use rustc_span::{ExpnHash, ExpnId};
 
 use crate::mir;
 use crate::query::on_disk_cache::CacheEncoder;
+use crate::ty::fast_reject::SimplifiedType;
 use crate::ty::trait_def::{TraitImplReceiver, UpstreamTraitImpls};
 use crate::ty::{Ty, TyCtxt};
 
@@ -77,6 +78,8 @@ declare_hooks! {
         receiver: Option<&TraitImplReceiver>,
         visit: &mut dyn FnMut(CrateNum, UpstreamTraitImpls)
     ) -> ();
+
+    hook append_external_incoherent_impls(cnum: CrateNum, ty: SimplifiedType, impls: &mut Vec<DefId>) -> ();
 
     hook expn_hash_to_expn_id(
         cnum: CrateNum,
