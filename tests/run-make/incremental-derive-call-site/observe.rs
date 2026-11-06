@@ -9,6 +9,7 @@ pub fn observe(_: TokenStream) -> TokenStream {
         r#"impl Subject {{
             #[rustc_clean(cfg = "after_bytes", loaded_from_disk = "typeck_root")]
             #[rustc_clean(cfg = "after_later", loaded_from_disk = "typeck_root")]
+            #[rustc_clean(cfg = "after_translation")]
             fn unchanged(s: &str) -> usize {{ s.len() }}
             fn location() -> usize {{ {location} }}
         }}"#
