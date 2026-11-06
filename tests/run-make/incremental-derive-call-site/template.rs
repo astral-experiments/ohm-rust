@@ -11,3 +11,5 @@ fn main() {
     assert_eq!(Subject::unchanged("ok"), 2);
     println!("{}", Subject::location());
 }
+
+struct LaterAnchor;
