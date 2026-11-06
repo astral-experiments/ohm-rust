@@ -251,6 +251,7 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                 .add_to_diag(err);
             }
             SubregionOrigin::RelateParamBound(span, ty, opt_span) => {
+                let opt_span = opt_span.and_then(|source| source.non_dummy_span(self.tcx));
                 RegionOriginNote::WithName {
                     span,
                     msg: msg!(
@@ -411,6 +412,7 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                 })
             }
             SubregionOrigin::RelateParamBound(span, ty, opt_span) => {
+                let opt_span = opt_span.and_then(|source| source.non_dummy_span(self.tcx));
                 let prefix = match sub.kind() {
                     ty::ReStatic => note_and_explain::PrefixKind::TypeSatisfy,
                     _ => note_and_explain::PrefixKind::TypeOutlive,
@@ -664,7 +666,7 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                 | ObligationCauseCode::WhereClauseInExpr(_, span, ..) =
                     &trace.cause.code().peel_derives()
                 {
-                    let span = *span;
+                    let span = span.span(self.tcx);
                     let mut err = self.report_concrete_failure(
                         generic_param_scope,
                         placeholder_origin,

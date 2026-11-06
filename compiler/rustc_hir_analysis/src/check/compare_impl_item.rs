@@ -860,7 +860,7 @@ where
                     ObligationCause::new(
                         self.span,
                         self.impl_m_id,
-                        ObligationCauseCode::WhereClause(def_id, pred_span),
+                        ObligationCauseCode::WhereClause(def_id, pred_span.into()),
                     ),
                     self.param_env,
                     pred,
@@ -2522,7 +2522,7 @@ pub(super) fn check_type_bounds<'tcx>(
         },
     );
     let mk_cause = |span: Span| {
-        let code = ObligationCauseCode::WhereClause(trait_ty.def_id, span);
+        let code = ObligationCauseCode::WhereClause(trait_ty.def_id, span.into());
         ObligationCause::new(impl_ty_span, impl_ty_def_id, code)
     };
 

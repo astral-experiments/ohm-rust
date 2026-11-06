@@ -1809,13 +1809,11 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
         let tcx = self.tcx();
 
         let (ident, def_scope) = tcx.adjust_ident_and_get_scope(ident, scope, self.item_def_id());
-        // We have already adjusted the item name above, so compare with `.normalize_to_macros_2_0()`
-        // instead of calling `filter_by_name_and_kind` which would needlessly normalize the
-        // `ident` again and again.
+        // The use-site name is already adjusted to the item's scope.
         let item = tcx
             .associated_items(scope)
             .filter_by_name_unhygienic(ident.name)
-            .find(|i| i.tag() == assoc_tag && i.ident(tcx).normalize_to_macros_2_0() == ident)?;
+            .find(|i| i.tag() == assoc_tag && i.name_ctxt == ident.span.ctxt())?;
 
         Some((*item, def_scope))
     }
@@ -1869,7 +1867,8 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
                         .any(|i| {
                             i.is_type()
                                 && !i.is_impl_trait_in_trait()
-                                && i.ident(tcx).normalize_to_macros_2_0() == assoc_ident
+                                && i.opt_name() == Some(assoc_ident.name)
+                                && i.name_ctxt == assoc_ident.span.ctxt()
                         })
                     // Consider only accessible traits
                     && tcx.visibility(*trait_def_id)

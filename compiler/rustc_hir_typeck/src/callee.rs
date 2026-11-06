@@ -1152,7 +1152,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     if let Some(hir_id) = call_hir_id {
                         ObligationCauseCode::HostEffectInExpr(callee_did, pred_span, hir_id, idx)
                     } else {
-                        ObligationCauseCode::WhereClause(callee_did, pred_span)
+                        ObligationCauseCode::WhereClause(callee_did, pred_span.into())
                     },
                 );
                 self.register_predicate(Obligation::new(

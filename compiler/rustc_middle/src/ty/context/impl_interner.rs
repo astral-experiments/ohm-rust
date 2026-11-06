@@ -388,24 +388,16 @@ impl<'tcx> Interner for TyCtxt<'tcx> {
         self,
         def_id: DefId,
     ) -> ty::EarlyBinder<'tcx, impl IntoIterator<Item = ty::Clause<'tcx>>> {
-        ty::EarlyBinder::bind_iter(
-            self.clauses_of(def_id)
-                .instantiate_identity(self)
-                .clauses
-                .into_iter()
-                .map(Unnormalized::skip_normalization),
-        )
+        let mut clauses = Vec::new();
+        self.visit_clause_facts(def_id, &mut |clause, _| clauses.push(clause));
+        ty::EarlyBinder::bind_iter(clauses)
     }
 
     fn own_clauses_of(
         self,
         def_id: DefId,
     ) -> ty::EarlyBinder<'tcx, impl IntoIterator<Item = ty::Clause<'tcx>>> {
-        ty::EarlyBinder::bind_iter(
-            self.clauses_of(def_id)
-                .instantiate_own_identity()
-                .map(|(clause, _)| clause.skip_normalization()),
-        )
+        ty::EarlyBinder::bind_iter(self.clause_facts_of(def_id).own.as_slice().iter().copied())
     }
 
     fn explicit_super_clauses_of(

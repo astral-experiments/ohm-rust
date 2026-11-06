@@ -89,7 +89,7 @@ impl<'tcx> Elaboratable<TyCtxt<'tcx>> for PredicateObligation<'tcx> {
                 derived,
                 impl_or_alias_def_id: parent_trait_pred.def_id(),
                 impl_def_clause_index: Some(index),
-                span,
+                span: ty::ClauseLocation::Span(span),
             }))
         });
         Obligation {

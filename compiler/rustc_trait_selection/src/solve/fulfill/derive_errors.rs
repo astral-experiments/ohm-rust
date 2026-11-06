@@ -583,7 +583,7 @@ fn derive_cause<'tcx>(
                         derived,
                         impl_or_alias_def_id: impl_def_id,
                         impl_def_clause_index: Some(idx),
-                        span,
+                        span: ty::ClauseLocation::Span(span),
                     }))
                 })
             }

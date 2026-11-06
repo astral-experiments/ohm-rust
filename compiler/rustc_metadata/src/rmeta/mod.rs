@@ -510,7 +510,7 @@ define_tables! {
     lookup_default_body_stability: Table<RDRHashAll, DefIndex, LazyValue<hir::DefaultBodyStability>>,
     lookup_deprecation_entry: Table<RDRHashAll, DefIndex, LazyValue<attrs::Deprecation>>,
     explicit_clauses_of: Table<RDRHashAll, DefIndex, LazyValue<ty::GenericClauses<'static>>>,
-    generics_of: Table<RDRHashAll, DefIndex, LazyValue<ty::Generics>>,
+    generics_of: Table<RDRHashAll, DefIndex, LazyValue<ty::MetadataGenerics>>,
     type_of: Table<RDRHashAll, DefIndex, LazyValue<ty::EarlyBinder<'static, Ty<'static>>>>,
     variances_of: Table<RDRHashAll, DefIndex, LazyArray<ty::Variance>>,
     fn_sig: Table<RDRHashAll, DefIndex, LazyValue<ty::EarlyBinder<'static, ty::PolyFnSig<'static>>>>,

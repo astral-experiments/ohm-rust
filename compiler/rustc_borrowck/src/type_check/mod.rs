@@ -1841,12 +1841,7 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
 
             if let ty::FnDef(def_id, args) = *constant.const_.ty().kind() {
                 let args = args.no_bound_vars().unwrap();
-                let instantiated_clauses = tcx.clauses_of(def_id).instantiate(tcx, args);
-                self.normalize_and_prove_instantiated_clauses(
-                    def_id,
-                    instantiated_clauses,
-                    locations,
-                );
+                self.prove_declared_clauses(def_id, args, locations);
 
                 assert_eq!(tcx.trait_impl_of_assoc(def_id), None);
                 self.prove_clauses(
@@ -2606,7 +2601,8 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
 
         let (def_id, instantiated_clauses) = match *aggregate_kind {
             AggregateKind::Adt(adt_did, _, args, _, _) => {
-                (adt_did, tcx.clauses_of(adt_did).instantiate(tcx, args))
+                self.prove_declared_clauses(adt_did, args, location.to_locations());
+                return;
             }
 
             // For closures, we have some **extra requirements** we

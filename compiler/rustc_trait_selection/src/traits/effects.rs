@@ -573,7 +573,7 @@ fn evaluate_host_effect_for_fn_goal<'tcx>(
             .instantiate(tcx, args.no_bound_vars().unwrap())
             .into_iter()
             .map(|(c, span)| {
-                let code = ObligationCauseCode::WhereClause(def, span);
+                let code = ObligationCauseCode::WhereClause(def, span.into());
                 let cause =
                     ObligationCause::new(obligation.cause.span, obligation.cause.body_def_id, code);
                 Obligation::new(

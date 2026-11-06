@@ -36,7 +36,6 @@ use rustc_middle::ty::{
     TypeFolder, TypeSuperFoldable, TypeSuperVisitable, TypeVisitable, TypeVisitableExt, TypingMode,
     Unnormalized, Upcast,
 };
-use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use tracing::{debug, instrument};
 
@@ -177,11 +176,11 @@ pub enum TraitQueryMode {
 
 /// Creates predicate obligations from the generic bounds.
 #[instrument(level = "debug", skip(cause, param_env, normalize_clause))]
-pub fn predicates_for_generics<'tcx>(
-    cause: impl Fn(usize, Span) -> ObligationCause<'tcx>,
+pub fn predicates_for_generics<'tcx, Location: std::fmt::Debug>(
+    cause: impl Fn(usize, Location) -> ObligationCause<'tcx>,
     mut normalize_clause: impl FnMut(Unnormalized<'tcx, Clause<'tcx>>) -> Clause<'tcx>,
     param_env: ty::ParamEnv<'tcx>,
-    generic_bounds: ty::InstantiatedClauses<'tcx>,
+    generic_bounds: ty::InstantiatedClauses<'tcx, Location>,
 ) -> impl Iterator<Item = PredicateObligation<'tcx>> {
     generic_bounds.into_iter().enumerate().map(move |(idx, (clause, span))| Obligation {
         cause: cause(idx, span),

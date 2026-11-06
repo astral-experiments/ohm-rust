@@ -129,7 +129,7 @@ impl<'a, 'tcx> ConfirmContext<'a, 'tcx> {
         let filler_args = rcvr_args
             .extend_to(self.tcx, pick.item.def_id, |def, _| self.tcx.mk_param_from_def(def));
         let illegal_sized_bound = self.clauses_require_illegal_sized_bound(
-            self.tcx.clauses_of(pick.item.def_id).instantiate(self.tcx, filler_args),
+            self.tcx.instantiate_clause_facts(pick.item.def_id, filler_args),
         );
 
         // Unify the (adjusted) self type with what the method expects.
@@ -596,14 +596,14 @@ impl<'a, 'tcx> ConfirmContext<'a, 'tcx> {
         &mut self,
         pick: &probe::Pick<'tcx>,
         all_args: GenericArgsRef<'tcx>,
-    ) -> (ty::FnSig<'tcx>, ty::InstantiatedClauses<'tcx>) {
+    ) -> (ty::FnSig<'tcx>, ty::InstantiatedClauses<'tcx, ty::ClauseLocation>) {
         debug!("instantiate_method_sig(pick={:?}, all_args={:?})", pick, all_args);
 
         // Instantiate the bounds on the method with the
         // type/early-bound-regions instantiations performed. There can
         // be no late-bound regions appearing here.
         let def_id = pick.item.def_id;
-        let method_clauses = self.tcx.clauses_of(def_id).instantiate(self.tcx, all_args);
+        let method_clauses = self.tcx.instantiate_clause_facts(def_id, all_args);
 
         debug!("method_clauses after instantiation = {:?}", method_clauses);
 
@@ -620,7 +620,7 @@ impl<'a, 'tcx> ConfirmContext<'a, 'tcx> {
         &mut self,
         sig: ty::FnSig<'tcx>,
         all_args: GenericArgsRef<'tcx>,
-        method_clauses: ty::InstantiatedClauses<'tcx>,
+        method_clauses: ty::InstantiatedClauses<'tcx, ty::ClauseLocation>,
         def_id: DefId,
     ) {
         debug!(
@@ -669,7 +669,7 @@ impl<'a, 'tcx> ConfirmContext<'a, 'tcx> {
 
     fn clauses_require_illegal_sized_bound(
         &self,
-        inst_clauses: ty::InstantiatedClauses<'tcx>,
+        inst_clauses: ty::InstantiatedClauses<'tcx, ty::ClauseLocation>,
     ) -> Option<Span> {
         let sized_def_id = self.tcx.lang_items().sized_trait()?;
 
@@ -685,13 +685,13 @@ impl<'a, 'tcx> ConfirmContext<'a, 'tcx> {
                     .find_map(
                         |(c, span)| if c.skip_norm_wip() == clause { Some(span) } else { None },
                     )
-                    .unwrap_or(DUMMY_SP);
+                    .unwrap_or(ty::ClauseLocation::Span(DUMMY_SP));
                 Some((trait_pred, span))
             }
             _ => None,
         })
         .find_map(|(trait_pred, span)| match trait_pred.self_ty().kind() {
-            ty::Dynamic(..) => Some(span),
+            ty::Dynamic(..) => Some(span.span(self.tcx)),
             _ => None,
         })
     }

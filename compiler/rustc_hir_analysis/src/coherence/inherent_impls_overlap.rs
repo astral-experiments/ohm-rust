@@ -52,7 +52,7 @@ impl<'tcx> InherentOverlapChecker<'tcx> {
         for &item1 in impl_items1.in_definition_order() {
             let collision = impl_items2
                 .filter_by_name_unhygienic(item1.name())
-                .any(|&item2| self.compare_hygienically(item1, item2));
+                .any(|&item2| Self::compare_hygienically(item1, item2));
 
             if collision {
                 return true;
@@ -62,11 +62,9 @@ impl<'tcx> InherentOverlapChecker<'tcx> {
         false
     }
 
-    fn compare_hygienically(&self, item1: ty::AssocItem, item2: ty::AssocItem) -> bool {
-        // Symbols and namespace match, compare hygienically.
-        item1.namespace() == item2.namespace()
-            && item1.ident(self.tcx).normalize_to_macros_2_0()
-                == item2.ident(self.tcx).normalize_to_macros_2_0()
+    fn compare_hygienically(item1: ty::AssocItem, item2: ty::AssocItem) -> bool {
+        // Both callers have already filtered by symbol.
+        item1.namespace() == item2.namespace() && item1.name_ctxt == item2.name_ctxt
     }
 
     fn check_for_duplicate_items_in_impl(&self, impl_: DefId) -> Result<(), ErrorGuaranteed> {
@@ -75,13 +73,11 @@ impl<'tcx> InherentOverlapChecker<'tcx> {
         let mut seen_items = FxIndexMap::default();
         let mut res = Ok(());
         for impl_item in impl_items.in_definition_order() {
-            let span = self.tcx.def_span(impl_item.def_id);
-            let ident = impl_item.ident(self.tcx);
-
-            let norm_ident = ident.normalize_to_macros_2_0();
-            match seen_items.entry(norm_ident) {
+            match seen_items.entry((impl_item.name(), impl_item.name_ctxt)) {
                 IndexEntry::Occupied(entry) => {
-                    let former = entry.get();
+                    let ident = impl_item.ident(self.tcx);
+                    let span = self.tcx.def_span(impl_item.def_id);
+                    let former = self.tcx.def_span(*entry.get());
                     res = Err(struct_span_code_err!(
                         self.tcx.dcx(),
                         span,
@@ -90,11 +86,11 @@ impl<'tcx> InherentOverlapChecker<'tcx> {
                         ident,
                     )
                     .with_span_label(span, format!("duplicate definitions for `{ident}`"))
-                    .with_span_label(*former, format!("other definition for `{ident}`"))
+                    .with_span_label(former, format!("other definition for `{ident}`"))
                     .emit());
                 }
                 IndexEntry::Vacant(entry) => {
-                    entry.insert(span);
+                    entry.insert(impl_item.def_id);
                 }
             }
         }
@@ -114,7 +110,7 @@ impl<'tcx> InherentOverlapChecker<'tcx> {
         for &item1 in impl_items1.in_definition_order() {
             let collision = impl_items2
                 .filter_by_name_unhygienic(item1.name())
-                .find(|&&item2| self.compare_hygienically(item1, item2));
+                .find(|&&item2| Self::compare_hygienically(item1, item2));
 
             if let Some(item2) = collision {
                 let name = item1.ident(self.tcx).normalize_to_macros_2_0();

@@ -513,6 +513,34 @@ impl<T: ParameterizedOverTcx> LazyArray<T> {
 }
 
 impl<'a, 'tcx> MetadataDecodeContext<'a, 'tcx> {
+    fn with_span_data<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+        let start = self.position();
+        let tag = SpanTag(self.peek_byte());
+        if tag.kind() == SpanKind::Indirect {
+            // Skip past the tag we just peek'd.
+            self.read_u8();
+            // indirect tag lengths are safe to access, since they're (0, 8)
+            let bytes_needed = tag.length().unwrap().0 as usize;
+            let mut total = [0u8; usize::BITS as usize / 8];
+            total[..bytes_needed].copy_from_slice(self.read_raw_bytes(bytes_needed));
+            let offset_or_position = usize::from_le_bytes(total);
+            let position = if tag.is_relative_offset() {
+                start - offset_or_position
+            } else {
+                offset_or_position
+            };
+            self.with_position(position, f)
+        } else {
+            f(self)
+        }
+    }
+
+    fn span_tag_and_context(&mut self) -> (SpanTag, SyntaxContext) {
+        let tag = SpanTag::decode(self);
+        let ctxt = tag.context().unwrap_or_else(|| SyntaxContext::decode(self));
+        (tag, ctxt)
+    }
+
     #[inline]
     fn map_encoded_cnum_to_current(&self, cnum: CrateNum) -> CrateNum {
         self.cdata.map_encoded_cnum_to_current(cnum)
@@ -671,26 +699,7 @@ impl<'a, 'tcx> SpanDecoder for MetadataDecodeContext<'a, 'tcx> {
     }
 
     fn decode_span(&mut self) -> Span {
-        let start = self.position();
-        let tag = SpanTag(self.peek_byte());
-        let data = if tag.kind() == SpanKind::Indirect {
-            // Skip past the tag we just peek'd.
-            self.read_u8();
-            // indirect tag lengths are safe to access, since they're (0, 8)
-            let bytes_needed = tag.length().unwrap().0 as usize;
-            let mut total = [0u8; usize::BITS as usize / 8];
-            total[..bytes_needed].copy_from_slice(self.read_raw_bytes(bytes_needed));
-            let offset_or_position = usize::from_le_bytes(total);
-            let position = if tag.is_relative_offset() {
-                start - offset_or_position
-            } else {
-                offset_or_position
-            };
-            self.with_position(position, SpanData::decode)
-        } else {
-            SpanData::decode(self)
-        };
-        data.span()
+        self.with_span_data(SpanData::decode).span()
     }
 }
 
@@ -730,8 +739,7 @@ impl<'a> BlobDecoder for BlobDecodeContext<'a> {
 
 impl<'a, 'tcx> Decodable<MetadataDecodeContext<'a, 'tcx>> for SpanData {
     fn decode(decoder: &mut MetadataDecodeContext<'a, 'tcx>) -> SpanData {
-        let tag = SpanTag::decode(decoder);
-        let ctxt = tag.context().unwrap_or_else(|| SyntaxContext::decode(decoder));
+        let (tag, ctxt) = decoder.span_tag_and_context();
 
         if tag.kind() == SpanKind::Partial {
             return DUMMY_SP.with_ctxt(ctxt).data();
@@ -1634,7 +1642,17 @@ impl CrateMetadata {
         };
         let container = self.root.tables.assoc_container.get(self, id).unwrap().decode((self, tcx));
 
-        ty::AssocItem { kind, def_id: self.local_def_id(id), container }
+        let name_ctxt = match kind {
+            ty::AssocKind::Type { data: ty::AssocTypeData::Rpitit(_) } => SyntaxContext::root(),
+            _ => {
+                // The name's hygiene precedes the position and its SourceFile in the encoded span.
+                let span = self.root.tables.def_ident_span.get(self, id).unwrap();
+                let mut decoder = (self, tcx).decoder(span.position.get());
+                decoder.set_lazy_state(LazyState::NodeStart(span.position));
+                decoder.with_span_data(|d| d.span_tag_and_context().1).normalize_to_macros_2_0()
+            }
+        };
+        ty::AssocItem { kind, def_id: self.local_def_id(id), container, name_ctxt }
     }
 
     fn get_ctor(&self, tcx: TyCtxt<'_>, node_id: DefIndex) -> Option<(CtorKind, DefId)> {

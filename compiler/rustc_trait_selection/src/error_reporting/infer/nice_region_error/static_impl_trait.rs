@@ -84,7 +84,7 @@ impl<'a, 'tcx> NiceRegionError<'a, 'tcx> {
         let spans_empty = spans.is_empty();
         let require_as_note = spans.iter().any(|sp| sp.overlaps(return_sp) || *sp > return_sp);
         let bound = if let SubregionOrigin::RelateParamBound(_, _, Some(bound)) = sub_origin {
-            Some(*bound)
+            bound.non_dummy_span(self.tcx())
         } else {
             None
         };

@@ -1713,6 +1713,7 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                     && let ObligationCauseCode::WhereClauseInExpr(def_id, span, _, _)
                     | ObligationCauseCode::WhereClause(def_id, span) = &**parent_code
                 {
+                    let span = &span.span(self.tcx);
                     // We have a trait bound for a closure to return itself, like
                     // `T: FnOnce() -> T`. This is nonsensical, but as far as the type system is
                     // concerned, valid. This is quite an edge case, but lets produce a reasonable

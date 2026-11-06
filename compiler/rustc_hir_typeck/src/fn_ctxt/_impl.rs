@@ -1506,7 +1506,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         hir_id: HirId,
     ) {
         self.add_required_obligations_with_code(span, def_id, args, |idx, span| {
-            ObligationCauseCode::WhereClauseInExpr(def_id, span, hir_id, idx)
+            ObligationCauseCode::WhereClauseInExpr(def_id, span.into(), hir_id, idx)
         })
     }
 

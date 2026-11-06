@@ -141,6 +141,21 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
     }
 
     #[instrument(level = "debug", skip(self))]
+    pub(super) fn prove_declared_clauses(
+        &mut self,
+        definition: DefId,
+        args: ty::GenericArgsRef<'tcx>,
+        locations: Locations,
+    ) {
+        let tcx = self.tcx();
+        tcx.visit_clause_facts(definition, &mut |clause, source| {
+            let clause = tcx.instantiate_clause(ty::EarlyBinder::bind(tcx, clause), args);
+            let category = ConstraintCategory::Predicate(source);
+            let clause = self.normalize_with_category(clause, locations, category);
+            self.prove_clause(clause, locations, category);
+        });
+    }
+
     pub(super) fn normalize_and_prove_instantiated_clauses(
         &mut self,
         // Keep this parameter for now, in case we start using
@@ -151,7 +166,7 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
     ) {
         for (clause, span) in instantiated_clauses {
             debug!(?span, ?clause);
-            let category = ConstraintCategory::Predicate(span);
+            let category = ConstraintCategory::Predicate(ty::ClauseLocation::Span(span));
             let clause = self.normalize_with_category(clause, locations, category);
             self.prove_clause(clause, locations, category);
         }

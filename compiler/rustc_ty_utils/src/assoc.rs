@@ -6,8 +6,8 @@ use rustc_hir::{self as hir, ConstItemRhs, ImplItemImplKind, ItemKind};
 use rustc_middle::query::Providers;
 use rustc_middle::ty::{self, ImplTraitInTraitData, TyCtxt};
 use rustc_middle::{bug, span_bug};
-use rustc_span::Ident;
 use rustc_span::symbol::kw;
+use rustc_span::{Ident, SyntaxContext};
 
 pub(crate) fn provide(providers: &mut Providers) {
     *providers = Providers {
@@ -99,7 +99,12 @@ fn associated_item_from_trait_item(
         }
     };
 
-    ty::AssocItem { kind, def_id: owner_id.to_def_id(), container: ty::AssocContainer::Trait }
+    ty::AssocItem {
+        kind,
+        def_id: owner_id.to_def_id(),
+        container: ty::AssocContainer::Trait,
+        name_ctxt: trait_item.ident.span.ctxt().normalize_to_macros_2_0(),
+    }
 }
 
 fn associated_item_from_impl_item(tcx: TyCtxt<'_>, impl_item: &hir::ImplItem<'_>) -> ty::AssocItem {
@@ -123,7 +128,12 @@ fn associated_item_from_impl_item(tcx: TyCtxt<'_>, impl_item: &hir::ImplItem<'_>
             ty::AssocContainer::TraitImpl(trait_item_def_id)
         }
     };
-    ty::AssocItem { kind, def_id: owner_id.to_def_id(), container }
+    ty::AssocItem {
+        kind,
+        def_id: owner_id.to_def_id(),
+        container,
+        name_ctxt: impl_item.ident.span.ctxt().normalize_to_macros_2_0(),
+    }
 }
 struct RPITVisitor<'a, 'tcx> {
     tcx: TyCtxt<'tcx>,
@@ -260,6 +270,7 @@ fn associated_type_for_impl_trait_in_trait(
         },
         def_id,
         container: ty::AssocContainer::Trait,
+        name_ctxt: SyntaxContext::root(),
     });
 
     // Copy visility of the containing function.
@@ -325,6 +336,7 @@ fn associated_type_for_impl_trait_in_impl(
         },
         def_id,
         container: ty::AssocContainer::TraitImpl(Ok(trait_assoc_def_id)),
+        name_ctxt: SyntaxContext::root(),
     });
 
     // Copy visility of the containing function.
@@ -358,7 +370,7 @@ fn associated_type_for_impl_trait_in_impl(
             own_params,
             param_def_id_to_index,
             has_self: false,
-            has_late_bound_regions: trait_assoc_generics.has_late_bound_regions,
+            late_bound_region_source: trait_assoc_generics.late_bound_region_source,
         }
     });
 

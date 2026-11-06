@@ -264,7 +264,7 @@ impl<'tcx> NiceRegionError<'_, 'tcx> {
             {
                 (
                     true,
-                    Some(span),
+                    Some(span.span(self.tcx())),
                     Some(self.tcx().def_span(def_id)),
                     None,
                     self.tcx().def_path_str(def_id),

@@ -441,6 +441,12 @@ rustc_queries! {
         feedable
     }
 
+    /// The first late-bound lifetime in the signature of its original source definition.
+    query late_bound_regions_span(key: DefId) -> Option<Span> {
+        desc { "finding the late-bound lifetime span of `{}`", tcx.def_path_str(key) }
+        separate_provide_extern
+    }
+
     /// Returns the (elaborated) *clauses* of the definition given by `DefId`
     /// that must be proven true at usage sites (and which can be assumed at definition site).
     ///
@@ -448,7 +454,7 @@ rustc_queries! {
     ///
     /// **Tip**: You can use `#[rustc_dump_predicates]` on an item to basically print
     /// the result of this query for use in UI tests or for debugging purposes.
-    query clauses_of(key: DefId) -> ty::GenericClauses<'tcx> {
+    query clause_facts_of(key: DefId) -> ty::GenericClauseFacts<'tcx> {
         desc { "computing clauses of `{}`", tcx.def_path_str(key) }
     }
 
