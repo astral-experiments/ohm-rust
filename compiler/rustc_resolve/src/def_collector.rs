@@ -12,6 +12,7 @@ use rustc_hir::def::Namespace::{TypeNS, ValueNS};
 use rustc_hir::def_id::LocalDefId;
 use rustc_middle::span_bug;
 use rustc_middle::ty::{PerOwnerResolverData, TyCtxtFeed};
+use rustc_span::hygiene::LocalExpnId;
 use rustc_span::{Span, Symbol, sym};
 use tracing::{debug, instrument};
 
@@ -68,8 +69,10 @@ impl<'a, 'ra, 'tcx> DefCollector<'a, 'ra, 'tcx> {
 
     fn with_parent<F: FnOnce(&mut Self)>(&mut self, parent_def: LocalDefId, f: F) {
         let orig_parent_def = mem::replace(&mut self.invocation_parent.parent_def, parent_def);
+        let preceding_adt = self.invocation_parent.preceding_source_adt.take();
         f(self);
         self.invocation_parent.parent_def = orig_parent_def;
+        self.invocation_parent.preceding_source_adt = preceding_adt;
     }
 
     pub(super) fn with_owner<F: FnOnce(&mut Self, TyCtxtFeed<'tcx, LocalDefId>)>(
@@ -224,11 +227,20 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
                     this.r.local_macro_map.insert(feed.def_id(), this.r.arenas.alloc_macro(ext));
                 }
 
-                this.with_parent(feed.def_id(), |this| {
+                let def_id = feed.def_id();
+                this.with_parent(def_id, |this| {
                     this.with_impl_trait(ImplTraitContext::Existential, |this| {
                         this.brg_visit_item(i, feed)
                     })
                 });
+                if def_kind.is_adt()
+                    && this.r.tcx.sess.opts.incremental.is_some()
+                    && this.parent_scope.expansion == LocalExpnId::ROOT
+                    && !i.span.is_dummy()
+                    && i.span.ctxt().is_root()
+                {
+                    this.invocation_parent.preceding_source_adt = Some(def_id);
+                }
             },
         );
     }

@@ -198,6 +198,8 @@ impl<'ra> ParentScope<'ra> {
 #[derive(Copy, Debug, Clone)]
 struct InvocationParent {
     parent_def: LocalDefId,
+    /// The unexpanded source ADT preceding this placeholder under the same definition.
+    preceding_source_adt: Option<LocalDefId>,
     impl_trait_context: ImplTraitContext,
     in_attr: bool,
     owner: NodeId,
@@ -206,6 +208,7 @@ struct InvocationParent {
 impl InvocationParent {
     const ROOT: Self = Self {
         parent_def: CRATE_DEF_ID,
+        preceding_source_adt: None,
         impl_trait_context: ImplTraitContext::Existential,
         in_attr: false,
         owner: CRATE_NODE_ID,
@@ -1508,10 +1511,6 @@ pub struct Resolver<'ra, 'tcx> {
     /// and how the `impl Trait` fragments were introduced.
     invocation_parents: FxHashMap<LocalExpnId, InvocationParent>,
 
-    /// The last source-written ADT collected under each definition. A nearby definition
-    /// gives derive call sites a coordinate system that moves with edits above the item.
-    last_source_adt: LocalDefIdMap<LocalDefId> = Default::default(),
-
     /// Amount of lifetime parameters for each item in the crate.
     item_generics_num_lifetimes: FxHashMap<LocalDefId, usize> = default::fx_hash_map(),
     /// Generic args to suggest for required params (e.g. `<'_>`, `<_, _>`), if any.
@@ -1705,14 +1704,6 @@ impl<'tcx> Resolver<'_, 'tcx> {
         debug_assert_eq!(span.data_untracked().parent, None);
         let _id = self.tcx.untracked().source_span.push(span);
         debug_assert_eq!(_id, def_id);
-
-        if def_kind.is_adt()
-            && self.tcx.sess.opts.incremental.is_some()
-            && !span.is_dummy()
-            && span.ctxt().is_root()
-        {
-            self.last_source_adt.insert(parent, def_id);
-        }
 
         // Some things for which we allocate `LocalDefId`s don't correspond to
         // anything in the AST, so they don't have a `NodeId`. For these cases

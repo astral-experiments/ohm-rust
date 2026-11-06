@@ -1051,9 +1051,34 @@ impl<'hir> LoweringContext<'_, 'hir> {
         span: Span,
         allow_internal_unstable: Option<Arc<[Symbol]>>,
     ) -> Span {
+        let call_site = self.desugaring_call_site(span);
         self.tcx.with_stable_hashing_context(|hcx| {
-            span.mark_with_reason(allow_internal_unstable, reason, span.edition(), hcx)
+            let marked =
+                call_site.mark_with_reason(allow_internal_unstable, reason, span.edition(), hcx);
+            span.with_ctxt(marked.ctxt())
         })
+    }
+
+    /// Anchor a source-written desugaring to its enclosing local definition for incremental hashing.
+    fn desugaring_call_site(&self, span: Span) -> Span {
+        let lowerer = self.span_lowerer();
+        let data = span.data_untracked();
+        if !lowerer.is_incremental
+            || data.is_dummy()
+            || !data.ctxt.is_root()
+            || data.parent.is_some()
+        {
+            return span;
+        }
+        let owner = self.tcx.source_span_untracked(lowerer.def_id).data_untracked();
+        if owner.is_dummy() || !owner.ctxt.is_root() || !owner.contains(data) {
+            return span;
+        }
+        let file = self.tcx.sess.source_map().lookup_source_file(owner.lo);
+        if file.is_imported() || !file.contains(owner.hi) {
+            return span;
+        }
+        lowerer.lower(span)
     }
 
     fn span_lowerer(&self) -> SpanLowerer {

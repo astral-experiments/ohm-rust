@@ -232,6 +232,12 @@ impl LocalExpnId {
         HygieneData::with(|data| data.local_expn_data(self).clone())
     }
 
+    /// Returns the invocation span recorded for this local expansion.
+    #[inline]
+    pub fn call_site(self) -> Span {
+        HygieneData::with(|data| data.local_expn_data(self).call_site)
+    }
+
     #[inline]
     pub fn to_expn_id(self) -> ExpnId {
         ExpnId { krate: LOCAL_CRATE, local_id: self.as_raw() }

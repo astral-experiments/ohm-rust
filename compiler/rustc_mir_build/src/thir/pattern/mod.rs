@@ -371,7 +371,9 @@ impl<'tcx, 'ptcx> PatCtxt<'tcx, 'ptcx> {
 
             hir::PatKind::Binding(explicit_ba, id, ident, sub) => {
                 let mut thir_pat_span = span;
-                if let Some(ident_span) = ident.span.find_ancestor_inside(span) {
+                if ident.span != span
+                    && let Some(ident_span) = ident.span.find_ancestor_inside(span)
+                {
                     thir_pat_span = span.with_hi(ident_span.hi());
                 }
 

@@ -8,13 +8,22 @@ fn main() {
     let source = rfs::read_to_string("template.rs");
     for (revision, value, anchor) in [
         ("initial", "1", "struct Anchor;"),
+        ("after_later", "1", "struct Anchor;"),
         // This moves the derive's byte offset while preserving its line and its input.
         ("after_bytes", "12345", "struct Anchor;"),
+        ("after_translation", "12345", "struct Anchor;"),
         // The previous anchor disappears, and the native macro must observe its new line.
         ("after_lines", "12345", "\n\n"),
     ] {
         let source =
             source.replace("= 1;", &format!("= {value};")).replace("struct Anchor;", anchor);
+        let source = if revision == "after_later" {
+            source.replace("struct LaterAnchor;", "    struct LaterAnchor;")
+        } else if revision == "after_translation" {
+            format!("\n\n{source}")
+        } else {
+            source
+        };
         let line = 1 + source.lines().position(|s| s.starts_with("#[derive(")).unwrap();
         rfs::write("main.rs", source);
         rustc()
