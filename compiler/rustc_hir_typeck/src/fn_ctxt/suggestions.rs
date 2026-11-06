@@ -2102,10 +2102,11 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                             if let traits::ObligationCauseCode::ImplDerived(data) =
                                 error.obligation.cause.code()
                             {
-                                let mut span: MultiSpan = data.span.into();
+                                let predicate_span = data.span.span(self.tcx);
+                                let mut span: MultiSpan = predicate_span.into();
                                 if self.tcx.is_automatically_derived(data.impl_or_alias_def_id) {
                                     span.push_span_label(
-                                        data.span,
+                                        predicate_span,
                                         format!(
                                             "derive introduces an implicit `{}` bound",
                                             error.obligation.predicate
@@ -2138,7 +2139,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                                             ""
                                         };
                                         Some((
-                                            data.span,
+                                            data.span.span(self.tcx),
                                             format!(
                                                 "{pre}unsatisfied trait bound `{}`",
                                                 error.obligation.predicate

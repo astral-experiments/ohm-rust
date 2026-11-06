@@ -120,7 +120,7 @@ pub struct GenericParamCount {
 /// The ordering of parameters is the same as in [`ty::GenericArg`] (excluding child generics):
 /// `Self` (optionally), `Lifetime` params..., `Type` params...
 #[derive(Clone, TyDecodable, StableHash)]
-pub struct Generics {
+pub struct Generics<LateBound = Option<DefId>> {
     pub parent: Option<DefId>,
     pub parent_count: usize,
     pub own_params: Vec<GenericParamDef>,
@@ -130,29 +130,95 @@ pub struct Generics {
     pub param_def_id_to_index: FxHashMap<DefId, u32>,
 
     pub has_self: bool,
-    pub has_late_bound_regions: Option<Span>,
+    /// The definition whose signature supplies the first late-bound lifetime, if any.
+    pub late_bound_region_source: LateBound,
 }
 
-impl<'tcx, E: TyEncoder<'tcx>> Encodable<E> for Generics {
+/// The metadata layout predates the split between semantic generics and diagnostic locations.
+pub type MetadataGenerics = Generics<Option<Span>>;
+
+#[derive(StableHash)]
+pub struct MetadataGenericsRef<'a> {
+    parent: Option<DefId>,
+    parent_count: usize,
+    own_params: &'a [GenericParamDef],
+    has_self: bool,
+    late_bound_regions: Option<Span>,
+}
+
+fn encode_generics<'tcx, E: TyEncoder<'tcx>, L: Encodable<E>>(
+    parent: Option<DefId>,
+    parent_count: usize,
+    own_params: &[GenericParamDef],
+    has_self: bool,
+    late_bound: &L,
+    e: &mut E,
+) {
+    parent.encode(e);
+    parent_count.encode(e);
+    own_params.encode(e);
+    // Reconstruct the reverse map in declaration order, as in existing metadata.
+    own_params.len().encode(e);
+    for param in own_params {
+        param.def_id.encode(e);
+        param.index.encode(e);
+    }
+    has_self.encode(e);
+    late_bound.encode(e);
+}
+
+impl<'tcx, E: TyEncoder<'tcx>, L: Encodable<E>> Encodable<E> for Generics<L> {
     fn encode(&self, e: &mut E) {
-        self.parent.encode(e);
-        self.parent_count.encode(e);
-        self.own_params.encode(e);
-
-        // Query-cache decoding can change the reverse map's iteration order. Encode
-        // its entries in declaration order so query reuse cannot change metadata.
-        self.own_params.len().encode(e);
-        for param in &self.own_params {
-            param.def_id.encode(e);
-            param.index.encode(e);
-        }
-
-        self.has_self.encode(e);
-        self.has_late_bound_regions.encode(e);
+        encode_generics(
+            self.parent,
+            self.parent_count,
+            &self.own_params,
+            self.has_self,
+            &self.late_bound_region_source,
+            e,
+        );
     }
 }
 
-impl std::fmt::Debug for Generics {
+impl<'tcx, E: TyEncoder<'tcx>> Encodable<E> for MetadataGenericsRef<'_> {
+    fn encode(&self, e: &mut E) {
+        encode_generics(
+            self.parent,
+            self.parent_count,
+            self.own_params,
+            self.has_self,
+            &self.late_bound_regions,
+            e,
+        );
+    }
+}
+
+impl MetadataGenerics {
+    pub fn into_query(self, def_id: DefId) -> Generics {
+        Generics {
+            parent: self.parent,
+            parent_count: self.parent_count,
+            own_params: self.own_params,
+            param_def_id_to_index: self.param_def_id_to_index,
+            has_self: self.has_self,
+            late_bound_region_source: self.late_bound_region_source.map(|_| def_id),
+        }
+    }
+}
+
+impl Generics {
+    pub fn for_metadata(&self, span: Option<Span>) -> MetadataGenericsRef<'_> {
+        MetadataGenericsRef {
+            parent: self.parent,
+            parent_count: self.parent_count,
+            own_params: &self.own_params,
+            has_self: self.has_self,
+            late_bound_regions: span,
+        }
+    }
+}
+
+impl<LateBound: std::fmt::Debug> std::fmt::Debug for Generics<LateBound> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         // ironically, we get this warning because of what we're trying to fix.
         #[expect(rustc::potential_query_instability)]
@@ -164,7 +230,7 @@ impl std::fmt::Debug for Generics {
             .field("own_params", &self.own_params)
             .field("param_def_id_to_index", &stabilized_hashmap)
             .field("has_self", &self.has_self)
-            .field("has_late_bound_regions", &self.has_late_bound_regions)
+            .field("late_bound_region_source", &self.late_bound_region_source)
             .finish()
     }
 }
@@ -176,6 +242,14 @@ impl<'tcx> rustc_type_ir::inherent::GenericsOf<TyCtxt<'tcx>> for &'tcx Generics 
 }
 
 impl<'tcx> Generics {
+    /// Returns the declaration span, including when this item inherits its generics.
+    pub fn late_bound_regions_span(&self, tcx: TyCtxt<'tcx>) -> Option<Span> {
+        self.late_bound_region_source.map(|source| {
+            tcx.late_bound_regions_span(source)
+                .unwrap_or_else(|| bug!("missing late-bound lifetime span for {source:?}"))
+        })
+    }
+
     /// Looks through the generics and all parents to find the index of the
     /// given param def-id. This is in comparison to the `param_def_id_to_index`
     /// struct member, which only stores information about this item's own
@@ -407,6 +481,139 @@ impl<'tcx> Generics {
 pub struct GenericClauses<'tcx> {
     pub parent: Option<DefId>,
     pub clauses: &'tcx [(Clause<'tcx>, Span)],
+}
+
+/// Semantic declaration clauses in source order. The parent is expanded first for inherited bounds.
+#[derive(Copy, Clone, Debug, TyEncodable, TyDecodable, StableHash)]
+pub struct GenericClauseFacts<'tcx> {
+    pub parent: Option<DefId>,
+    pub own: ty::Clauses<'tcx>,
+}
+
+/// The source of a predicate obligation. A declared clause's ordinal is local to its own definition.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, TyEncodable, TyDecodable, StableHash)]
+#[derive(rustc_macros::TypeVisitable, rustc_macros::TypeFoldable)]
+pub enum ClauseLocation {
+    Span(Span),
+    Declared { definition: DefId, index: u32 },
+}
+
+impl From<Span> for ClauseLocation {
+    fn from(span: Span) -> Self {
+        Self::Span(span)
+    }
+}
+
+impl ClauseLocation {
+    pub fn non_dummy_span(self, tcx: TyCtxt<'_>) -> Option<Span> {
+        let span = self.span(tcx);
+        (!span.is_dummy()).then_some(span)
+    }
+
+    pub fn span(self, tcx: TyCtxt<'_>) -> Span {
+        match self {
+            Self::Span(span) => span,
+            Self::Declared { definition, index } => {
+                tcx.clauses_of(definition).clauses[index as usize].1
+            }
+        }
+    }
+}
+
+impl<'tcx> TyCtxt<'tcx> {
+    /// Read the original declaration locations on paths that consume them.
+    pub fn clauses_of(
+        self,
+        definition: impl crate::query::IntoQueryKey<DefId>,
+    ) -> GenericClauses<'tcx> {
+        use crate::ty::Upcast;
+        let tcx = self;
+        let def_id = definition.into_query_key();
+
+        let mut result = tcx.explicit_clauses_of(def_id);
+        tracing::debug!("clauses_of: explicit_clauses_of({:?}) = {:?}", def_id, result);
+
+        let inferred_outlives = tcx.inferred_outlives_of(def_id);
+        if !inferred_outlives.is_empty() {
+            tracing::debug!(
+                "clauses_of: inferred_outlives_of({:?}) = {:?}",
+                def_id,
+                inferred_outlives,
+            );
+            let inferred_outlives_iter =
+                inferred_outlives.iter().map(|(clause, span)| ((*clause).upcast(tcx), *span));
+            if result.clauses.is_empty() {
+                result.clauses = tcx.arena.alloc_from_iter(inferred_outlives_iter);
+            } else {
+                result.clauses = tcx.arena.alloc_from_iter(
+                    result.clauses.into_iter().copied().chain(inferred_outlives_iter),
+                );
+            }
+        }
+
+        if tcx.is_trait(def_id) {
+            // For traits, add `Self: Trait` clause. This is
+            // not part of the clauses that a user writes, but it
+            // is something that one must prove in order to invoke a
+            // method or project an associated type.
+            //
+            // In the chalk setup, this clause is not part of the
+            // "clauses" for a trait item. But it is useful in
+            // rustc because if you directly (e.g.) invoke a trait
+            // method like `Trait::method(...)`, you must naturally
+            // prove that the trait applies to the types that were
+            // used, and adding the clause into this list ensures
+            // that this is done.
+            //
+            // We use a DUMMY_SP here as a way to signal trait bounds that come
+            // from the trait itself that *shouldn't* be shown as the source of
+            // an obligation and instead be skipped. Otherwise we'd use
+            // `tcx.def_span(def_id);`
+            let span = rustc_span::DUMMY_SP;
+
+            result.clauses =
+                tcx.arena.alloc_from_iter(result.clauses.iter().copied().chain(std::iter::once((
+                    ty::TraitRef::identity(tcx, def_id).upcast(tcx),
+                    span,
+                ))));
+        }
+
+        tracing::debug!("clauses_of({:?}) = {:?}", def_id, result);
+        result
+    }
+
+    /// Instantiate parent bounds before own bounds, retaining each source declaration's own ordinal.
+    pub fn instantiate_clause_facts(
+        self,
+        definition: DefId,
+        args: GenericArgsRef<'tcx>,
+    ) -> InstantiatedClauses<'tcx, ClauseLocation> {
+        let mut instantiated = InstantiatedClauses::empty();
+        self.visit_clause_facts(definition, &mut |clause, origin| {
+            instantiated
+                .clauses
+                .push(self.instantiate_clause(EarlyBinder::bind(self, clause), args));
+            instantiated.spans.push(origin);
+        });
+        instantiated
+    }
+
+    pub fn visit_clause_facts(
+        self,
+        definition: DefId,
+        visit: &mut impl FnMut(Clause<'tcx>, ClauseLocation),
+    ) {
+        let facts = self.clause_facts_of(definition);
+        if let Some(parent) = facts.parent {
+            self.visit_clause_facts(parent, visit);
+        }
+        for (index, &clause) in facts.own.as_slice().iter().enumerate() {
+            visit(
+                clause,
+                ClauseLocation::Declared { definition, index: u32::try_from(index).unwrap() },
+            );
+        }
+    }
 }
 
 impl<'tcx> GenericClauses<'tcx> {

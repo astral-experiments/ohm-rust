@@ -1572,7 +1572,7 @@ pub(super) fn check_where_clauses<'tcx>(wfcx: &WfCheckingCtxt<'_, 'tcx>, def_id:
             let cause = traits::ObligationCause::new(
                 sp,
                 wfcx.body_def_id,
-                ObligationCauseCode::WhereClause(def_id.to_def_id(), sp),
+                ObligationCauseCode::WhereClause(def_id.to_def_id(), sp.into()),
             );
             Obligation::new(tcx, cause, wfcx.param_env, clause)
         });
@@ -1600,7 +1600,7 @@ pub(super) fn check_where_clauses<'tcx>(wfcx: &WfCheckingCtxt<'_, 'tcx>, def_id:
                 let cause = traits::ObligationCause::new(
                     sp,
                     wfcx.body_def_id,
-                    ObligationCauseCode::WhereClause(def_id.to_def_id(), sp),
+                    ObligationCauseCode::WhereClause(def_id.to_def_id(), sp.into()),
                 );
                 Obligation::new(tcx, cause, wfcx.param_env, pred_binder)
             })

@@ -26,56 +26,12 @@ use crate::hir_ty_lowering::{
 /// Returns a list of all type clauses (explicit and implicit) for the definition with
 /// ID `def_id`. This includes all clauses returned by `explicit_clauses_of`, plus
 /// inferred constraints concerning which regions outlive other regions.
-#[instrument(level = "debug", skip(tcx))]
-pub(super) fn clauses_of(tcx: TyCtxt<'_>, def_id: DefId) -> ty::GenericClauses<'_> {
-    let mut result = tcx.explicit_clauses_of(def_id);
-    debug!("clauses_of: explicit_clauses_of({:?}) = {:?}", def_id, result);
-
-    let inferred_outlives = tcx.inferred_outlives_of(def_id);
-    if !inferred_outlives.is_empty() {
-        debug!("clauses_of: inferred_outlives_of({:?}) = {:?}", def_id, inferred_outlives,);
-        let inferred_outlives_iter =
-            inferred_outlives.iter().map(|(clause, span)| ((*clause).upcast(tcx), *span));
-        if result.clauses.is_empty() {
-            result.clauses = tcx.arena.alloc_from_iter(inferred_outlives_iter);
-        } else {
-            result.clauses = tcx
-                .arena
-                .alloc_from_iter(result.clauses.into_iter().copied().chain(inferred_outlives_iter));
-        }
+pub(super) fn clause_facts_of(tcx: TyCtxt<'_>, def_id: DefId) -> ty::GenericClauseFacts<'_> {
+    let spanned = tcx.clauses_of(def_id);
+    ty::GenericClauseFacts {
+        parent: spanned.parent,
+        own: tcx.mk_clauses_from_iter(spanned.clauses.iter().map(|&(clause, _)| clause)),
     }
-
-    if tcx.is_trait(def_id) {
-        // For traits, add `Self: Trait` clause. This is
-        // not part of the clauses that a user writes, but it
-        // is something that one must prove in order to invoke a
-        // method or project an associated type.
-        //
-        // In the chalk setup, this clause is not part of the
-        // "clauses" for a trait item. But it is useful in
-        // rustc because if you directly (e.g.) invoke a trait
-        // method like `Trait::method(...)`, you must naturally
-        // prove that the trait applies to the types that were
-        // used, and adding the clause into this list ensures
-        // that this is done.
-        //
-        // We use a DUMMY_SP here as a way to signal trait bounds that come
-        // from the trait itself that *shouldn't* be shown as the source of
-        // an obligation and instead be skipped. Otherwise we'd use
-        // `tcx.def_span(def_id);`
-        let span = DUMMY_SP;
-
-        result.clauses = tcx.arena.alloc_from_iter(
-            result
-                .clauses
-                .iter()
-                .copied()
-                .chain(std::iter::once((ty::TraitRef::identity(tcx, def_id).upcast(tcx), span))),
-        );
-    }
-
-    debug!("clauses_of({:?}) = {:?}", def_id, result);
-    result
 }
 
 /// Returns a list of user-specified type clauses for the definition with ID `def_id`.

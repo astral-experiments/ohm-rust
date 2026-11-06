@@ -1039,11 +1039,15 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
     where
         T::Value<'tcx>: Encodable<Self>,
     {
+        self.lazy_encoded_as(value.borrow())
+    }
+
+    fn lazy_encoded_as<T, V: Encodable<Self>>(&mut self, value: &V) -> LazyValue<T> {
         let pos = NonZero::new(self.position()).unwrap();
 
         assert_eq!(self.lazy_state, LazyState::NoNode);
         self.lazy_state = LazyState::NodeStart(pos);
-        value.borrow().encode(self);
+        value.encode(self);
         self.lazy_state = LazyState::NoNode;
 
         assert!(pos.get() <= self.position());
@@ -2331,7 +2335,13 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             }
             if should_encode_generics(def_kind) {
                 let g = tcx.generics_of(def_id);
-                record!(self.tables.generics_of[def_id] <- g, hcx);
+                // Preserve the established producer wire and RDR fingerprint, including the
+                // current diagnostic span. Do not clone the parameter list or its reverse map.
+                let wire = g.for_metadata(g.late_bound_regions_span(tcx));
+                let lazy = self.with_record_mode(RecordMode::From(Node::DefId(def_id)), |ecx| {
+                    ecx.lazy_encoded_as(&wire)
+                });
+                self.tables.generics_of.set_some_hashed(def_id.index, lazy, (def_id, &wire), hcx);
                 record!(self.tables.explicit_clauses_of[def_id] <- self.tcx.explicit_clauses_of(def_id), hcx);
                 let inferred_outlives = self.tcx.inferred_outlives_of(def_id);
                 record_defaulted_array!(self.tables.inferred_outlives_of[def_id] <- inferred_outlives, hcx);

@@ -4,7 +4,7 @@ use rustc_hir::def::{DefKind, Namespace};
 use rustc_hir::def_id::DefId;
 use rustc_macros::{Decodable, Encodable, StableHash};
 use rustc_span::def_id::ModId;
-use rustc_span::{ErrorGuaranteed, Ident, Symbol};
+use rustc_span::{ErrorGuaranteed, Ident, Symbol, SyntaxContext};
 
 use super::{TyCtxt, Visibility};
 use crate::ty;
@@ -23,6 +23,8 @@ pub struct AssocItem {
     pub def_id: DefId,
     pub kind: AssocKind,
     pub container: AssocContainer,
+    /// The opaque marks on the item's name. Lookup needs its hygiene but not its source position.
+    pub name_ctxt: SyntaxContext,
 }
 
 impl AssocItem {
@@ -40,6 +42,12 @@ impl AssocItem {
     // associated type.
     pub fn name(&self) -> Symbol {
         self.opt_name().expect("name of non-Rpitit assoc item")
+    }
+
+    /// Matches a use-site identifier after adjusting it to the item's defining scope.
+    pub fn matches_ident(&self, tcx: TyCtxt<'_>, ident: Ident, parent: DefId) -> bool {
+        self.opt_name() == Some(ident.name)
+            && ident.span.ctxt().hygienic_eq(self.name_ctxt, tcx.expn_that_defined(parent))
     }
 
     pub fn ident(&self, tcx: TyCtxt<'_>) -> Ident {
@@ -311,7 +319,7 @@ impl AssocItems {
     ) -> Option<&ty::AssocItem> {
         self.filter_by_name_unhygienic(ident.name)
             .filter(|item| item.tag() == assoc_tag)
-            .find(|item| tcx.hygienic_eq(ident, item.ident(tcx), parent_def_id))
+            .find(|item| item.matches_ident(tcx, ident, parent_def_id))
     }
 
     /// Returns the associated item with the given identifier in the given `Namespace`, if one
@@ -325,7 +333,7 @@ impl AssocItems {
     ) -> Option<&ty::AssocItem> {
         self.filter_by_name_unhygienic(ident.name)
             .filter(|item| item.namespace() == ns)
-            .find(|item| tcx.hygienic_eq(ident, item.ident(tcx), parent_def_id))
+            .find(|item| item.matches_ident(tcx, ident, parent_def_id))
     }
 }
 

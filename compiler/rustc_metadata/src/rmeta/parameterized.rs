@@ -130,6 +130,7 @@ trivially_parameterized_over_tcx! {
     rustc_middle::ty::Generics,
     rustc_middle::ty::ImplTraitInTraitData,
     rustc_middle::ty::IntrinsicDef,
+    rustc_middle::ty::MetadataGenerics,
     rustc_middle::ty::RestrictionKind,
     rustc_middle::ty::TraitDef,
     rustc_middle::ty::Variance,

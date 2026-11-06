@@ -131,7 +131,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
         if let Some(assoc_item) = all_candidates().find_map(|r| {
             tcx.associated_items(r.def_id())
                 .filter_by_name_unhygienic(assoc_ident.name)
-                .find(|item| tcx.hygienic_eq(assoc_ident, item.ident(tcx), r.def_id()))
+                .find(|item| item.matches_ident(tcx, assoc_ident, r.def_id()))
         }) {
             return self.report_assoc_kind_mismatch(
                 assoc_item,

@@ -72,7 +72,8 @@ pub(crate) fn provide(providers: &mut Providers) {
         item_non_self_bounds: item_bounds::item_non_self_bounds,
         impl_super_outlives: item_bounds::impl_super_outlives,
         generics_of: generics_of::generics_of,
-        clauses_of: clauses_of::clauses_of,
+        late_bound_regions_span: generics_of::late_bound_regions_span,
+        clause_facts_of: clauses_of::clause_facts_of,
         explicit_clauses_of: clauses_of::explicit_clauses_of,
         explicit_super_clauses_of: clauses_of::explicit_super_clauses_of,
         explicit_implied_clauses_of: clauses_of::explicit_implied_clauses_of,
@@ -635,7 +636,7 @@ fn get_new_lifetime_name<'tcx>(
 pub(super) fn check_ctor(tcx: TyCtxt<'_>, def_id: LocalDefId) {
     tcx.ensure_ok().generics_of(def_id);
     tcx.ensure_ok().type_of(def_id);
-    tcx.ensure_ok().clauses_of(def_id);
+    tcx.ensure_ok().clause_facts_of(def_id);
 }
 
 pub(super) fn check_enum_variant_types(tcx: TyCtxt<'_>, def_id: LocalDefId) {
@@ -715,7 +716,7 @@ pub(super) fn check_enum_variant_types(tcx: TyCtxt<'_>, def_id: LocalDefId) {
         for f in &variant.fields {
             tcx.ensure_ok().generics_of(f.did);
             tcx.ensure_ok().type_of(f.did);
-            tcx.ensure_ok().clauses_of(f.did);
+            tcx.ensure_ok().clause_facts_of(f.did);
         }
 
         // Lower the ctor, if any. This also registers the variant as an item.

@@ -930,13 +930,13 @@ impl<'tcx> TermKind<'tcx> {
 /// like `Foo<isize,usize>`, then the `InstantiatedClauses` would be `[[],
 /// [usize:Bar<isize>]]`.
 #[derive(Clone, Debug)]
-pub struct InstantiatedClauses<'tcx> {
+pub struct InstantiatedClauses<'tcx, Location = Span> {
     pub clauses: Vec<Unnormalized<'tcx, Clause<'tcx>>>,
-    pub spans: Vec<Span>,
+    pub spans: Vec<Location>,
 }
 
-impl<'tcx> InstantiatedClauses<'tcx> {
-    pub fn empty() -> InstantiatedClauses<'tcx> {
+impl<'tcx, Location: Copy> InstantiatedClauses<'tcx, Location> {
+    pub fn empty() -> Self {
         InstantiatedClauses { clauses: vec![], spans: vec![] }
     }
 
@@ -949,12 +949,12 @@ impl<'tcx> InstantiatedClauses<'tcx> {
     }
 }
 
-impl<'tcx> IntoIterator for InstantiatedClauses<'tcx> {
-    type Item = (Unnormalized<'tcx, Clause<'tcx>>, Span);
+impl<'tcx, Location> IntoIterator for InstantiatedClauses<'tcx, Location> {
+    type Item = (Unnormalized<'tcx, Clause<'tcx>>, Location);
 
     type IntoIter = std::iter::Zip<
         std::vec::IntoIter<Unnormalized<'tcx, Clause<'tcx>>>,
-        std::vec::IntoIter<Span>,
+        std::vec::IntoIter<Location>,
     >;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -963,12 +963,12 @@ impl<'tcx> IntoIterator for InstantiatedClauses<'tcx> {
     }
 }
 
-impl<'a, 'tcx> IntoIterator for &'a InstantiatedClauses<'tcx> {
-    type Item = (Unnormalized<'tcx, Clause<'tcx>>, Span);
+impl<'a, 'tcx, Location: Copy> IntoIterator for &'a InstantiatedClauses<'tcx, Location> {
+    type Item = (Unnormalized<'tcx, Clause<'tcx>>, Location);
 
     type IntoIter = std::iter::Zip<
         std::iter::Copied<std::slice::Iter<'a, Unnormalized<'tcx, Clause<'tcx>>>>,
-        std::iter::Copied<std::slice::Iter<'a, Span>>,
+        std::iter::Copied<std::slice::Iter<'a, Location>>,
     >;
 
     fn into_iter(self) -> Self::IntoIter {

@@ -2854,11 +2854,12 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
         // obligation will normalize to `<$0 as Iterator>::Item = $1` and
         // `$1: Copy`, so we must ensure the obligations are emitted in
         // that order.
-        let clauses = tcx.clauses_of(def_id);
+        let clauses = tcx.clause_facts_of(def_id);
         assert_eq!(clauses.parent, None);
-        let clauses = clauses.instantiate_own(tcx, args);
-        let mut obligations = PredicateObligations::with_capacity(clauses.len());
-        for (index, (clause, span)) in clauses.into_iter().enumerate() {
+        let mut obligations = PredicateObligations::with_capacity(clauses.own.len());
+        for (index, &clause) in clauses.own.as_slice().iter().enumerate() {
+            let clause =
+                tcx.instantiate_clause(ty::EarlyBinder::bind_no_rigid_aliases(clause), args);
             let cause = if tcx.is_lang_item(parent_trait_pred.def_id(), LangItem::CoerceUnsized) {
                 cause.clone()
             } else {
@@ -2867,7 +2868,10 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                         derived,
                         impl_or_alias_def_id: def_id,
                         impl_def_clause_index: Some(index),
-                        span,
+                        span: ty::ClauseLocation::Declared {
+                            definition: def_id,
+                            index: u32::try_from(index).unwrap(),
+                        },
                     }))
                 })
             };

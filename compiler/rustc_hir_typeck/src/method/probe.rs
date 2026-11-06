@@ -1833,7 +1833,7 @@ impl<'tcx> Pick<'tcx> {
     /// Do not use for type checking.
     pub(crate) fn differs_from(&self, other: &Self) -> bool {
         let Self {
-            item: AssocItem { def_id, kind: _, container: _ },
+            item: AssocItem { def_id, kind: _, container: _, name_ctxt: _ },
             kind: _,
             import_ids: _,
             autoderefs: _,
@@ -2044,7 +2044,7 @@ impl<'a, 'tcx> ProbeContext<'a, 'tcx> {
                         |idx, span| {
                             let code = ObligationCauseCode::WhereClauseInExpr(
                                 impl_def_id,
-                                span,
+                                span.into(),
                                 self.scope_expr_id,
                                 idx,
                             );

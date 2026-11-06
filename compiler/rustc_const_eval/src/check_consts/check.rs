@@ -409,7 +409,7 @@ impl<'mir, 'tcx> Checker<'mir, 'tcx> {
                 ObligationCause::new(
                     call_span,
                     body_id,
-                    ObligationCauseCode::WhereClause(callee, span),
+                    ObligationCauseCode::WhereClause(callee, span.into()),
                 ),
                 param_env,
                 trait_ref.to_host_effect_clause(tcx, host_polarity),

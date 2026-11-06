@@ -415,7 +415,10 @@ impl<'tcx> BorrowExplanation<'tcx> {
                 let mut preds = path
                     .iter()
                     .filter_map(|constraint| match constraint.category {
-                        ConstraintCategory::Predicate(pred) if !pred.is_dummy() => Some(pred),
+                        ConstraintCategory::Predicate(source) => {
+                            let span = source.span(tcx);
+                            (!span.is_dummy()).then_some(span)
+                        }
                         _ => None,
                     })
                     .collect::<Vec<Span>>();

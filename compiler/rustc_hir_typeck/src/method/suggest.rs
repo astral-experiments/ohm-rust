@@ -1892,13 +1892,13 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         } else {
                             format!("unsatisfied bound `{p}` introduced here")
                         };
-                        (data.impl_or_alias_def_id, data.span, msg)
+                        (data.impl_or_alias_def_id, data.span.span(self.tcx), msg)
                     }
                     Some(
                         ObligationCauseCode::WhereClauseInExpr(def_id, span, _, _)
                         | ObligationCauseCode::WhereClause(def_id, span),
-                    ) if !span.is_dummy() => {
-                        (*def_id, *span, format!("unsatisfied bound `{p}` introduced here"))
+                    ) if let Some(span) = span.non_dummy_span(self.tcx) => {
+                        (*def_id, span, format!("unsatisfied bound `{p}` introduced here"))
                     }
                     _ => continue,
                 };

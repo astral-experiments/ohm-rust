@@ -45,7 +45,7 @@ const BASE_FN: &[DepKind] = &[
     // Callers will depend on the signature of these items, so we better test
     DepKind::fn_sig,
     DepKind::generics_of,
-    DepKind::clauses_of,
+    DepKind::clause_facts_of,
     DepKind::type_of,
     // And a big part of compilation (that we eventually want to cache) is type inference
     // information:
@@ -70,7 +70,7 @@ const BASE_MIR: &[DepKind] = &[DepKind::optimized_mir, DepKind::promoted_mir];
 ///
 /// Note that changing the type of a field does not change the type of the struct or enum, but
 /// adding/removing fields or changing a fields name or visibility does.
-const BASE_STRUCT: &[DepKind] = &[DepKind::generics_of, DepKind::clauses_of, DepKind::type_of];
+const BASE_STRUCT: &[DepKind] = &[DepKind::generics_of, DepKind::clause_facts_of, DepKind::type_of];
 
 /// Trait definition `DepNode`s.
 /// Extra `DepNode`s for functions and methods.
@@ -102,8 +102,10 @@ const LABELS_FN_IN_TRAIT: &[&[DepKind]] =
 const LABELS_HIR_ONLY: &[&[DepKind]] = &[BASE_HIR];
 
 /// Impl `DepNode`s.
-const LABELS_TRAIT: &[&[DepKind]] =
-    &[BASE_HIR, &[DepKind::associated_item_def_ids, DepKind::clauses_of, DepKind::generics_of]];
+const LABELS_TRAIT: &[&[DepKind]] = &[
+    BASE_HIR,
+    &[DepKind::associated_item_def_ids, DepKind::clause_facts_of, DepKind::generics_of],
+];
 
 /// Impl `DepNode`s.
 const LABELS_IMPL: &[&[DepKind]] = &[BASE_HIR, BASE_IMPL];

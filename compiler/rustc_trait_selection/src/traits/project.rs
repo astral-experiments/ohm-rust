@@ -566,7 +566,7 @@ pub fn normalize_inherent_projection<'a, 'b, 'tcx>(
             // cause code, inherent projections will be printed with identity instantiation in
             // diagnostics which is not ideal.
             // Consider creating separate cause codes for this specific situation.
-            ObligationCauseCode::WhereClause(def_id, span),
+            ObligationCauseCode::WhereClause(def_id, span.into()),
         );
 
         obligations.push(Obligation::with_depth(tcx, nested_cause, depth + 1, param_env, clause));
@@ -2125,7 +2125,7 @@ fn assoc_term_own_obligations<'cx, 'tcx>(
             ObligationCause::new(
                 obligation.cause.span,
                 obligation.cause.body_def_id,
-                ObligationCauseCode::WhereClause(def_id, span),
+                ObligationCauseCode::WhereClause(def_id, span.into()),
             )
         };
         nested.push(Obligation::with_depth(

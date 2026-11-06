@@ -431,7 +431,7 @@ pub enum SubregionOrigin<'tcx> {
 
     /// Some type parameter was instantiated with the given type,
     /// and that type must outlive some region.
-    RelateParamBound(Span, Ty<'tcx>, Option<Span>),
+    RelateParamBound(Span, Ty<'tcx>, Option<ty::ClauseLocation>),
 
     /// The given region parameter was instantiated with a region
     /// that must outlive some other region.
@@ -473,7 +473,9 @@ impl<'tcx> SubregionOrigin<'tcx> {
     pub fn to_constraint_category(&self) -> ConstraintCategory<'tcx> {
         match self {
             Self::Subtype(type_trace) => type_trace.cause.to_constraint_category(),
-            Self::AscribeUserTypeProvePredicate(span) => ConstraintCategory::Predicate(*span),
+            Self::AscribeUserTypeProvePredicate(span) => {
+                ConstraintCategory::Predicate(ty::ClauseLocation::Span(*span))
+            }
             Self::SolverRegionConstraint(span) => ConstraintCategory::SolverRegionConstraint(*span),
             _ => ConstraintCategory::BoringNoLocation,
         }

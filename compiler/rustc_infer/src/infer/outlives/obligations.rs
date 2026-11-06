@@ -161,12 +161,10 @@ impl<'tcx> InferCtxt<'tcx> {
                 cause.span,
                 sup_type,
                 match cause.code().peel_derives() {
-                    ObligationCauseCode::WhereClause(_, span)
-                    | ObligationCauseCode::WhereClauseInExpr(_, span, ..)
-                    | ObligationCauseCode::OpaqueTypeBound(span, _)
-                        if !span.is_dummy() =>
-                    {
-                        Some(*span)
+                    ObligationCauseCode::WhereClause(_, source)
+                    | ObligationCauseCode::WhereClauseInExpr(_, source, ..) => Some(*source),
+                    ObligationCauseCode::OpaqueTypeBound(span, _) if !span.is_dummy() => {
+                        Some((*span).into())
                     }
                     _ => None,
                 },

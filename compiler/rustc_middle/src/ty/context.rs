@@ -2266,7 +2266,7 @@ impl<'tcx> TyCtxt<'tcx> {
         elaborate::supertrait_def_ids(self, trait_def_id).any(|trait_did| {
             self.associated_items(trait_did)
                 .filter_by_name_unhygienic(assoc_name.name)
-                .any(|item| self.hygienic_eq(assoc_name, item.ident(self), trait_did))
+                .any(|item| item.matches_ident(self, assoc_name, trait_did))
         })
     }
 
