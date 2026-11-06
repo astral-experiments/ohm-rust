@@ -260,19 +260,6 @@ impl QueryKey for (CrateNum, DefId) {
     }
 }
 
-impl QueryKey for (CrateNum, SimplifiedType) {
-    type LocalQueryKey = SimplifiedType;
-
-    fn default_span(&self, _: TyCtxt<'_>) -> Span {
-        DUMMY_SP
-    }
-
-    #[inline(always)]
-    fn as_local_key(&self) -> Option<Self::LocalQueryKey> {
-        (self.0 == LOCAL_CRATE).then(|| self.1)
-    }
-}
-
 impl QueryKey for (DefId, ty::SizedTraitKind) {
     fn default_span(&self, tcx: TyCtxt<'_>) -> Span {
         self.0.default_span(tcx)

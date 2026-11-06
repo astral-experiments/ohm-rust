@@ -1702,14 +1702,6 @@ impl CrateMetadata {
         self.root.traits.decode((self, tcx)).map(move |index| self.local_def_id(index))
     }
 
-    fn get_incoherent_impls<'tcx>(&self, tcx: TyCtxt<'tcx>, simp: SimplifiedType) -> &'tcx [DefId] {
-        if let Some(impls) = self.incoherent_impls.get(&simp) {
-            tcx.arena.alloc_from_iter(impls.decode((self, tcx)).map(|idx| self.local_def_id(idx)))
-        } else {
-            &[]
-        }
-    }
-
     fn trait_impls_key_hash(&self, cstore: &CStore) -> Fingerprint {
         let mut hasher = StableHasher::new();
         if let EncodedTraitImpls::ReceiverShapes { fingerprint, .. } = &self.root.impls {

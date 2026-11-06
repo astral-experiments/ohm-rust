@@ -1,10 +1,8 @@
-use std::iter;
-
 use rustc_data_structures::fx::FxIndexMap;
 use rustc_errors::ErrorGuaranteed;
 use rustc_hashes::Hash64;
 use rustc_hir::def::DefKind;
-use rustc_hir::def_id::{CrateNum, DefId, DefIndex, LOCAL_CRATE};
+use rustc_hir::def_id::{CrateNum, DefId, DefIndex};
 use rustc_hir::{self as hir, find_attr};
 use rustc_macros::{Decodable, Encodable, StableHash};
 use rustc_span::Span;
@@ -554,11 +552,9 @@ pub(super) fn incoherent_impls_provider(tcx: TyCtxt<'_>, simp: SimplifiedType) -
         return &[];
     }
 
-    let mut impls = Vec::new();
-    for cnum in iter::once(LOCAL_CRATE).chain(tcx.crates(()).iter().copied()) {
-        for &impl_def_id in tcx.crate_incoherent_impls((cnum, simp)) {
-            impls.push(impl_def_id)
-        }
+    let mut impls = tcx.local_incoherent_impls(simp).to_vec();
+    for &cnum in tcx.crates(()) {
+        tcx.append_external_incoherent_impls(cnum, simp, &mut impls);
     }
     debug!(?impls);
 
