@@ -249,7 +249,14 @@ provide! { tcx, def_id, other, cdata, cstore,
     explicit_item_bounds => { table_defaulted_array }
     explicit_item_self_bounds => { table_defaulted_array }
     explicit_clauses_of => { table }
-    generics_of => { table }
+    generics_of => {
+        let wire = cdata.root.tables.generics_of.get(cdata, def_id.index).unwrap();
+        wire.decode((cdata, tcx)).into_query(def_id)
+    }
+    late_bound_regions_span => {
+        let wire = cdata.root.tables.generics_of.get(cdata, def_id.index).unwrap();
+        wire.decode((cdata, tcx)).late_bound_region_source
+    }
     inferred_outlives_of => { table_defaulted_array }
     explicit_super_clauses_of => { table_defaulted_array }
     explicit_implied_clauses_of => { table_defaulted_array }

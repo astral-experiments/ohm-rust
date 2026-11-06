@@ -41,9 +41,7 @@ impl<'a, 'tcx> NiceRegionError<'a, 'tcx> {
         else {
             return None;
         };
-        if binding_span.is_dummy() {
-            return None;
-        }
+        let binding_span = binding_span.non_dummy_span(self.tcx())?;
 
         // FIXME: we should point at the lifetime
         let multi_span: MultiSpan = vec![binding_span].into();

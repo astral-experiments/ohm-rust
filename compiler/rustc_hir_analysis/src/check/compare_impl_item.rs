@@ -14,9 +14,9 @@ use rustc_infer::infer::{self, BoundRegionConversionTime, InferCtxt, TyCtxtInfer
 use rustc_infer::traits::{TraitErrors, util};
 use rustc_middle::ty::error::{ExpectedFound, TypeError};
 use rustc_middle::ty::{
-    self, BottomUpFolder, GenericArgs, GenericParamDefKind, Generics, Ty, TyCtxt, TypeFoldable,
-    TypeFlags, TypeFolder, TypeSuperFoldable, TypeVisitable, TypeVisitableExt,
-    TypeVisitor, TypingMode, Unnormalized, Upcast,
+    self, BottomUpFolder, GenericArgs, GenericParamDefKind, Generics, Ty, TyCtxt, TypeFlags,
+    TypeFoldable, TypeFolder, TypeSuperFoldable, TypeVisitable, TypeVisitableExt, TypeVisitor,
+    TypingMode, Unnormalized, Upcast,
 };
 use rustc_span::{BytePos, DUMMY_SP, Span, bug, span_bug};
 use rustc_trait_selection::error_reporting::InferCtxtErrorExt;
@@ -859,7 +859,7 @@ where
                     ObligationCause::new(
                         self.span,
                         self.impl_m_id,
-                        ObligationCauseCode::WhereClause(def_id, pred_span),
+                        ObligationCauseCode::WhereClause(def_id, pred_span.into()),
                     ),
                     self.param_env,
                     pred,
@@ -2534,7 +2534,7 @@ pub(super) fn check_type_bounds<'tcx>(
         },
     );
     let mk_cause = |span: Span| {
-        let code = ObligationCauseCode::WhereClause(trait_ty.def_id, span);
+        let code = ObligationCauseCode::WhereClause(trait_ty.def_id, span.into());
         ObligationCause::new(impl_ty_span, impl_ty_def_id, code)
     };
 
