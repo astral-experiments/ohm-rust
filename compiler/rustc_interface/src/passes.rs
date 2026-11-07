@@ -879,7 +879,8 @@ pub fn write_dep_info_with_relink_inputs(
                     })?;
             }
 
-            Ok(())
+            // BufWriter discards errors when it flushes its last bytes on drop.
+            file.flush()
         };
 
         match deps_output {

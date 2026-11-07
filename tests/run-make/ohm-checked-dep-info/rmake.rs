@@ -6,6 +6,17 @@ use run_make_support::{bare_rustc, is_windows, llvm_ar, path, rfs, rustc, rustc_
 
 fn main() {
     const MARKER: &str = "ohm-untracked-relink-inputs";
+    #[cfg(target_os = "linux")]
+    {
+        rfs::write("empty.rs", "");
+        rfs::symlink_file("/dev/full", "full.d");
+        rustc()
+            .input("empty.rs")
+            .crate_type("rlib")
+            .emit("dep-info=full.d")
+            .run_fail()
+            .assert_stderr_contains("No space left on device");
+    }
     let compile = |outputs: &str| {
         let mut cmd = rustc();
         cmd.input("lib.rs")
