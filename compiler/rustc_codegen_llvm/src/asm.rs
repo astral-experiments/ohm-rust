@@ -1602,13 +1602,14 @@ pub(crate) fn relink_inputs(tcx: TyCtxt<'_>, (): ()) -> RelinkInputs {
     if !saw_asm {
         return RelinkInputs::Tracked;
     }
-    // A later executable link reads the copy inside the rlib. Rebuilding that
-    // archive is what picks up a replaced or malformed native library.
+    // A later executable link reads the copy inside the rlib. Without a checked
+    // snapshot, rebuild the archive to pick up a replaced or malformed library.
     if tcx.crate_types().iter().any(|ty| matches!(ty, CrateType::Rlib | CrateType::StaticLib))
         && tcx
             .native_libraries(LOCAL_CRATE)
             .iter()
             .any(|lib| matches!(lib.kind, NativeLibKind::Static { bundle: None | Some(true), .. }))
+        && rustc_codegen_ssa::back::link::track_bundled_archives(tcx).is_none()
     {
         return RelinkInputs::Rebuild;
     }
@@ -1840,8 +1841,13 @@ fn file_free_asm_line(arch: InlineAsmArch, line: &str, verify_native_link: &mut 
     match (arch, opcode) {
         (InlineAsmArch::X86_64, "#" | "div") => args == "@",
         (_, "nop") | (InlineAsmArch::X86_64, "syscall" | "cpuid") => args.is_empty(),
-        (InlineAsmArch::X86_64, "sqrtsd" | "sqrtss") => register_operands(2),
-        (InlineAsmArch::X86_64, "vfmadd213sd" | "vfmadd213ss") => register_operands(3),
+        (
+            InlineAsmArch::X86_64,
+            "sqrtsd" | "sqrtss" | "pcmpeqb" | "pand" | "pmovmskb" | "vpmovmskb",
+        ) => register_operands(2),
+        (InlineAsmArch::X86_64, "vfmadd213sd" | "vfmadd213ss" | "vpcmpeqb" | "vpand") => {
+            register_operands(3)
+        }
         (InlineAsmArch::X86_64, "vfmaddsd" | "vfmaddss") => register_operands(4),
         (InlineAsmArch::X86_64, _) => file_free_x86_instruction(opcode, args),
         (InlineAsmArch::AArch64, "crc32b" | "crc32h" | "crc32w" | "crc32x") => register_operands(3),
@@ -1867,7 +1873,7 @@ fn file_free_x86_instruction(opcode: &str, args: &str) -> bool {
         }
         "neg" | "not" | "sete" | "setne" => file_free_x86_operand(args),
         "add" | "adc" | "and" | "cmovae" | "cmovb" | "cmovge" | "cmovl" | "cmp" | "mov" | "or"
-        | "sbb" | "sub" | "vmovdqa" | "xchg" | "xor" => args
+        | "rol" | "sbb" | "sub" | "vmovdqa" | "xchg" | "xor" => args
             .split_once(',')
             .is_some_and(|(dst, src)| file_free_x86_operand(dst) && file_free_x86_operand(src)),
         "jne" => args.strip_suffix(['b', 'f']).is_some_and(asm_decimal),

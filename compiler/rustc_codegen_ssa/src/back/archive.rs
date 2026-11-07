@@ -386,10 +386,26 @@ pub struct ArArchiveBuilder<'a> {
     sess: &'a Session,
     object_reader: &'static ObjectReader,
 
-    src_archives: Vec<(PathBuf, Mmap)>,
+    src_archives: Vec<(PathBuf, ArchiveBytes<'a>)>,
     // Don't use an `HashMap` here, as the order is important. `lib.rmeta` needs
     // to be at the end of an archive in some cases for linkers to not get confused.
     entries: Vec<(Vec<u8>, ArchiveEntry)>,
+}
+
+enum ArchiveBytes<'a> {
+    Mapped(Mmap),
+    Checked(&'a [u8]),
+}
+
+impl std::ops::Deref for ArchiveBytes<'_> {
+    type Target = [u8];
+
+    fn deref(&self) -> &[u8] {
+        match self {
+            Self::Mapped(map) => map,
+            Self::Checked(bytes) => bytes,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -482,7 +498,11 @@ impl<'a> ArchiveBuilder for ArArchiveBuilder<'a> {
             return Ok(());
         }
 
-        let archive_map = unsafe { Mmap::map(File::open(&archive_path)?)? };
+        let archive_map =
+            match self.sess.checked_bundled_archives.get().and_then(|a| a.get(&archive_path)) {
+                Some(bytes) => ArchiveBytes::Checked(bytes),
+                None => ArchiveBytes::Mapped(unsafe { Mmap::map(File::open(&archive_path)?)? }),
+            };
         let archive = ArchiveFile::parse(&*archive_map)
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
         let skip = match &ar_kind {

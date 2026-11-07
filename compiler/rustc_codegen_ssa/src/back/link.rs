@@ -3,7 +3,7 @@ mod raw_dylib;
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::fs::{File, OpenOptions, read};
-use std::io::{BufReader, BufWriter, Write};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::ops::{ControlFlow, Deref};
 use std::path::{Path, PathBuf};
 use std::process::{Output, Stdio};
@@ -15,7 +15,7 @@ use object::{Object, ObjectSection, ObjectSymbol};
 use regex::Regex;
 use rustc_arena::TypedArena;
 use rustc_attr_parsing::eval_config_entry;
-use rustc_data_structures::fx::{FxHashSet, FxIndexSet};
+use rustc_data_structures::fx::{FxHashSet, FxIndexMap, FxIndexSet};
 use rustc_data_structures::jobserver;
 use rustc_data_structures::memmap::Mmap;
 use rustc_data_structures::temp_dir::MaybeTempDir;
@@ -33,6 +33,7 @@ use rustc_middle::lint::emit_lint_base;
 use rustc_middle::middle::debugger_visualizer::DebuggerVisualizerFile;
 use rustc_middle::middle::dependency_format::Linkage;
 use rustc_middle::middle::exported_symbols::SymbolExportKind;
+use rustc_middle::ty::TyCtxt;
 use rustc_session::config::{
     self, CFGuard, CrateType, DebugInfo, InstrumentMcount, LinkerFeaturesCli, LinkerJobs,
     OutFileName, OutputFilenames, OutputType, PrintKind, SplitDwarfKind, Strip,
@@ -230,7 +231,12 @@ pub(super) fn try_find_native_static_library(
         if !is_framework {
             for (prefix, suffix) in &formats {
                 let test = dir.join(format!("{prefix}{name}{suffix}"));
-                if test.exists() {
+                if sess
+                    .checked_bundled_archives
+                    .get()
+                    .is_some_and(|inputs| inputs.contains_key(&test))
+                    || test.exists()
+                {
                     return ControlFlow::Break(test);
                 }
             }
@@ -238,6 +244,73 @@ pub(super) fn try_find_native_static_library(
         ControlFlow::Continue(())
     })
     .break_value()
+}
+
+/// Track bundled members only when the selected archive is the first possible search result.
+/// The rlib builder consumes these same bytes, even if the file changes during compilation.
+pub fn track_bundled_archives(tcx: TyCtxt<'_>) -> Option<()> {
+    let sess = tcx.sess;
+    let opts = &sess.opts.unstable_opts;
+    if tcx.crate_types() != [CrateType::Rlib]
+        || !matches!(&sess.opts.target_triple, rustc_target::spec::TargetTuple::TargetTuple(triple) if triple.as_str() == "x86_64-unknown-linux-gnu")
+        || !sess.opts.output_types.contains_key(&OutputType::Exe)
+        || opts.packed_bundled_libs
+        || opts.no_link
+        || opts.link_only
+        || opts.emit_rlink
+    {
+        return None;
+    }
+    let algorithm = opts.checksum_hash_algorithm?;
+    let search = sess.target_filesearch();
+    let directory = &search.cli_search_paths(PathKind::Native).next()?.dir;
+    if !directory.is_absolute() {
+        return None;
+    }
+    let mut inputs = FxIndexMap::default();
+    // Large inputs can continue through the ordinary mapped-archive path.
+    let mut remaining = 16 * 1024 * 1024u64;
+    for lib in tcx.native_libraries(LOCAL_CRATE) {
+        let NativeLibKind::Static { bundle: Some(true) | None, whole_archive, .. } = lib.kind
+        else {
+            continue;
+        };
+        if lib.cfg.is_some() || whole_archive == Some(true) {
+            return None;
+        }
+        let name = lib.name.as_str();
+        if Path::new(name).file_name().and_then(|s| s.to_str()) != Some(name) {
+            return None;
+        }
+        let (prefix, suffix) = sess.staticlib_components(lib.verbatim.unwrap_or(false));
+        let path = directory.join(format!("{prefix}{name}{suffix}"));
+        if !path.to_str()?.bytes().all(|b| b.is_ascii_alphanumeric() || b"/._-+ ".contains(&b)) {
+            return None;
+        }
+        if inputs.contains_key(&path) {
+            continue;
+        }
+        let file = filesearch::open_regular_file(&path).ok()?;
+        let len = file.metadata().ok()?.len();
+        if len > remaining {
+            return None;
+        }
+        let mut bytes = Vec::with_capacity(len as usize);
+        file.take(remaining + 1).read_to_end(&mut bytes).ok()?;
+        if bytes.len() as u64 > remaining || !bytes.starts_with(b"!<arch>\n") {
+            // A thin archive can refer to external members.
+            return None;
+        }
+        remaining -= bytes.len() as u64;
+        inputs.insert(path, bytes);
+    }
+    let inputs = sess.checked_bundled_archives.get_or_init(|| inputs);
+    let mut dep_info = sess.file_depinfo.borrow_mut();
+    for (path, bytes) in inputs {
+        let checksum = rustc_span::SourceFileHash::new_in_memory(algorithm, bytes);
+        dep_info.record_read(Symbol::intern(path.to_str()?), bytes.len() as u64, checksum);
+    }
+    Some(())
 }
 
 pub(super) fn try_find_native_dynamic_library(
