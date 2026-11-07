@@ -94,6 +94,7 @@
 
 use std::cmp;
 use std::collections::hash_map::Entry;
+use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::hash::Hash;
 use std::io::Write;
@@ -252,7 +253,7 @@ where
         let characteristic_def_id = characteristic_def_id_of_mono_item(cx.tcx, mono_item);
         let is_volatile = is_incremental_build && mono_item.is_generic_fn();
 
-        let cgu_name = match characteristic_def_id {
+        let (cgu_name, partition_key) = match characteristic_def_id {
             Some(def_id) => compute_codegen_unit_name(
                 cx.tcx,
                 cgu_name_builder,
@@ -260,10 +261,14 @@ where
                 is_volatile,
                 cgu_name_cache,
             ),
-            None => fallback_cgu_name(cgu_name_builder),
+            None => fallback_cgu_name(cx.tcx, cgu_name_builder),
         };
 
-        let cgu = codegen_units.entry(cgu_name).or_insert_with(|| CodegenUnit::new(cgu_name));
+        let cgu = codegen_units.entry(cgu_name).or_insert_with(|| {
+            let mut cgu = CodegenUnit::new(cgu_name);
+            cgu.set_partition_key(partition_key);
+            cgu
+        });
 
         let mut can_be_internalized = true;
         let (linkage, visibility) = mono_item_linkage_and_visibility(
@@ -306,8 +311,10 @@ where
     // Always ensure we have at least one CGU; otherwise, if we have a
     // crate with just types (for example), we could wind up with no CGU.
     if codegen_units.is_empty() {
-        let cgu_name = fallback_cgu_name(cgu_name_builder);
-        codegen_units.insert(cgu_name, CodegenUnit::new(cgu_name));
+        let (cgu_name, partition_key) = fallback_cgu_name(cx.tcx, cgu_name_builder);
+        let mut cgu = CodegenUnit::new(cgu_name);
+        cgu.set_partition_key(partition_key);
+        codegen_units.insert(cgu_name, cgu);
     }
 
     let mut codegen_units: Vec<_> = cx.tcx.with_stable_hashing_context(|mut hcx| {
@@ -346,6 +353,7 @@ fn split_large_codegen_units<'tcx>(
     // keep ordinary body edits in the same shard, along with the root's private inline copies.
     let mut remaining = cx.tcx.sess.codegen_units().as_usize() - codegen_units.len();
     let mut size_shards = Vec::new();
+    codegen_units.sort_by(|a, b| a.partition_key().as_str().cmp(b.partition_key().as_str()));
     for source in std::mem::take(codegen_units) {
         if remaining == 0
             || source.size_estimate() < 2 * TARGET_SIZE
@@ -371,17 +379,20 @@ fn split_large_codegen_units<'tcx>(
         let mut shards: Vec<_> = (0..count)
             .map(|index| {
                 let name = format!("{}-ohm-split-{index}", source.name());
-                new_split_codegen_unit(cx.tcx, &name)
+                let key = Symbol::intern(&format!("{}-ohm-split-{index}", source.partition_key()));
+                new_split_codegen_unit(cx.tcx, &name, key)
             })
             .collect();
 
-        cx.tcx.with_stable_hashing_context(|mut hcx| {
-            for (&item, &data) in roots {
-                let hash = item.to_stable_hash_key(&mut hcx).to_smaller_hash().as_u64();
-                let shard = &mut shards[(hash % count as u64) as usize];
-                place_split_root(cx, shard, source.items(), item, data);
-            }
-        });
+        for (&item, &data) in roots {
+            // DefPathHash and interned types carry the compiler version. The fully qualified
+            // instance text retains generic arguments without that artifact namespace.
+            let mut hasher = StableHasher::new();
+            with_no_trimmed_paths!(item.to_string()).hash(&mut hasher);
+            let hash: Fingerprint = hasher.finish();
+            let shard = &mut shards[(hash.to_smaller_hash().as_u64() % count as u64) as usize];
+            place_split_root(cx, shard, source.items(), item, data);
+        }
 
         shards.retain(|cgu| !cgu.items().is_empty());
         if shards.len() <= 1 {
@@ -412,13 +423,18 @@ fn can_split_codegen_unit(cgu: &CodegenUnit<'_>) -> bool {
     })
 }
 
-fn new_split_codegen_unit<'tcx>(tcx: TyCtxt<'tcx>, name: &str) -> CodegenUnit<'tcx> {
+fn new_split_codegen_unit<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    name: &str,
+    partition_key: Symbol,
+) -> CodegenUnit<'tcx> {
     let name = if tcx.sess.opts.unstable_opts.human_readable_cgu_names {
         Symbol::intern(&CodegenUnit::shorten_name(name))
     } else {
         Symbol::intern(&CodegenUnit::mangle_name(name))
     };
     let mut cgu = CodegenUnit::new(name);
+    cgu.set_partition_key(partition_key);
     cgu.set_symbol_name(Symbol::intern(&rustc_symbol_mangling::mangle_cgu(
         tcx,
         LOCAL_CRATE,
@@ -516,7 +532,7 @@ fn split_derived_impls<'tcx>(
         (
             std::cmp::Reverse(group.size),
             group.source,
-            cx.tcx.def_path_hash(group.owner).local_hash().as_u64(),
+            cx.tcx.def_path(group.owner).to_string_no_crate_verbose(),
         )
     });
     let mut selected = FxIndexMap::<usize, Vec<_>>::default();
@@ -543,7 +559,12 @@ fn split_derived_impls<'tcx>(
         for (index, group) in groups.into_iter().enumerate() {
             let owner = cx.tcx.def_path_hash(group.owner).local_hash().as_u64();
             let name = format!("{}-ohm-derived-{owner:016x}", previous.name());
-            shards.push(new_split_codegen_unit(cx.tcx, &name));
+            let key = Symbol::intern(&format!(
+                "{}-ohm-derived-{}",
+                previous.partition_key(),
+                cx.tcx.def_path(group.owner).to_string_no_crate_verbose(),
+            ));
+            shards.push(new_split_codegen_unit(cx.tcx, &name, key));
             placements.extend(group.roots.into_iter().map(|item| (item, index)));
         }
         let original = std::mem::take(previous.items_mut());
@@ -601,9 +622,10 @@ fn merge_codegen_units<'tcx>(
         let mut buckets: Vec<Option<CodegenUnit<'tcx>>> =
             std::iter::repeat_with(|| None).take(max_codegen_units).collect();
 
+        codegen_units.sort_by(|a, b| a.partition_key().as_str().cmp(b.partition_key().as_str()));
         for mut source in std::mem::take(codegen_units) {
             let mut hasher = StableHasher::new();
-            source.name().as_str().hash(&mut hasher);
+            source.partition_key().as_str().hash(&mut hasher);
             let hash: Fingerprint = hasher.finish();
             let bucket = (hash.to_smaller_hash().as_u64() % max_codegen_units as u64) as usize;
 
@@ -1036,7 +1058,7 @@ fn compute_codegen_unit_name(
     def_id: DefId,
     volatile: bool,
     cache: &mut CguNameCache,
-) -> Symbol {
+) -> (Symbol, Symbol) {
     // Find the innermost module that is not nested within a function.
     let mut current_def_id = def_id;
     let mut cgu_def_id = None;
@@ -1074,13 +1096,27 @@ fn compute_codegen_unit_name(
 
         let volatile_suffix = volatile.then_some("volatile");
 
-        name_builder.build_cgu_name(def_path.krate, components, volatile_suffix)
+        let name = name_builder.build_cgu_name(def_path.krate, components.clone(), volatile_suffix);
+        let mut partition_key = tcx.crate_name(def_path.krate).to_string();
+        for component in components {
+            write!(partition_key, "-{component}").unwrap();
+        }
+        if volatile {
+            partition_key.push_str(".volatile");
+        }
+        (name, Symbol::intern(&partition_key))
     })
 }
 
 // Anything we can't find a proper codegen unit for goes into this.
-fn fallback_cgu_name(name_builder: &mut CodegenUnitNameBuilder<'_>) -> Symbol {
-    name_builder.build_cgu_name(LOCAL_CRATE, &["fallback"], Some("cgu"))
+fn fallback_cgu_name(
+    tcx: TyCtxt<'_>,
+    name_builder: &mut CodegenUnitNameBuilder<'_>,
+) -> (Symbol, Symbol) {
+    (
+        name_builder.build_cgu_name(LOCAL_CRATE, &["fallback"], Some("cgu")),
+        Symbol::intern(&format!("{}-fallback.cgu", tcx.crate_name(LOCAL_CRATE))),
+    )
 }
 
 fn mono_item_linkage_and_visibility<'tcx>(
@@ -1103,7 +1139,7 @@ fn mono_item_linkage_and_visibility<'tcx>(
     (Linkage::External, vis)
 }
 
-type CguNameCache = UnordMap<(DefId, bool), Symbol>;
+type CguNameCache = UnordMap<(DefId, bool), (Symbol, Symbol)>;
 
 fn static_visibility<'tcx>(
     tcx: TyCtxt<'tcx>,
