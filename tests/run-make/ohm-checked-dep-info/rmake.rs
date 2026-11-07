@@ -121,7 +121,7 @@ fn main() {
         bundled.assert_stderr_contains("ohm_missing_archive");
         assert!(bundled.stdout_utf8().contains(MARKER));
 
-        if target() == "x86_64-unknown-linux-gnu" {
+        if cfg!(unix) && target() == "x86_64-unknown-linux-gnu" {
             let archive_dir = path("native");
             rfs::create_dir(&archive_dir);
             rfs::create_dir("earlier");
