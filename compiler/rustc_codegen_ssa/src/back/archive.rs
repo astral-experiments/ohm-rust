@@ -391,7 +391,8 @@ impl ArchiveBuilderBuilder for ArArchiveBuilderBuilder {
 pub fn track_bundled_archives(tcx: TyCtxt<'_>) -> Option<()> {
     let sess = tcx.sess;
     let opts = &sess.opts.unstable_opts;
-    if tcx.crate_types() != [CrateType::Rlib]
+    if !cfg!(unix)
+        || tcx.crate_types() != [CrateType::Rlib]
         || !matches!(&sess.opts.target_triple, rustc_target::spec::TargetTuple::TargetTuple(triple) if triple.as_str() == "x86_64-unknown-linux-gnu")
         || !sess.opts.output_types.contains_key(&OutputType::Exe)
         || opts.packed_bundled_libs
