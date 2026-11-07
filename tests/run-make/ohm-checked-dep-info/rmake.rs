@@ -1,5 +1,7 @@
 //@ needs-asm-support
 
+mod git_archive;
+
 use run_make_support::{bare_rustc, is_windows, llvm_ar, path, rfs, rustc, rustc_minicore, target};
 
 fn main() {
@@ -100,7 +102,7 @@ fn main() {
             }
         }
 
-        let native_archive = |arg| {
+        let native_archive = |arg, outputs| {
             let mut cmd = bare_rustc();
             cmd.target(target())
                 .input("inline.rs")
@@ -108,12 +110,14 @@ fn main() {
                 .arg("-Zohm-check-relink-inputs")
                 .cfg("ordinary")
                 .arg(arg)
-                .emit("link,dep-info=-");
+                .emit(outputs);
             cmd
         };
-        let external = native_archive("-lstatic:-bundle=ohm_missing_archive").run().stdout_utf8();
+        let external = native_archive("-lstatic:-bundle=ohm_missing_archive", "link,dep-info=-")
+            .run()
+            .stdout_utf8();
         assert!(external.lines().any(|line| line == recheck_rule), "{external}");
-        let bundled = native_archive("-lstatic=ohm_missing_archive").run_fail();
+        let bundled = native_archive("-lstatic=ohm_missing_archive", "link,dep-info=-").run_fail();
         bundled.assert_stderr_contains("ohm_missing_archive");
         assert!(bundled.stdout_utf8().contains(MARKER));
 
@@ -123,12 +127,12 @@ fn main() {
             rfs::create_dir("earlier");
             rfs::create_dir("extracted");
             let compile = |extra: &[&str]| {
-                native_archive("-lstatic=probe")
+                native_archive("-lstatic=probe", "link,dep-info=checked-native.d")
                     .args(extra)
                     .arg(format!("-Lnative={}", archive_dir.display()))
                     .arg("-Zchecksum-hash-algorithm=blake3")
-                    .run()
-                    .stdout_utf8()
+                    .run();
+                rfs::read_to_string("checked-native.d")
             };
             let mut checksums = Vec::new();
             for value in [7, 9] {
@@ -138,7 +142,19 @@ fn main() {
                 );
                 rustc().input("member.rs").crate_type("lib").emit("obj=member.o").run();
                 llvm_ar().arg("rcs").output_input(archive_dir.join("libprobe.a"), "member.o").run();
+                rfs::copy(archive_dir.join("libprobe.a"), format!("git-provider/v{value}.a"));
                 let rules = compile(&[]);
+                git_archive::assert_proof(&rules, &archive_dir.join("libprobe.a"));
+                let inputs =
+                    rules.lines().find_map(|line| line.strip_prefix("checked-native.d: ")).unwrap();
+                assert!(inputs.contains("libprobe.a"), "{rules}");
+                assert!(!inputs.contains("/dev/null/ohm-"), "{rules}");
+                let recheck = recheck_rule.trim_end_matches(':');
+                assert!(
+                    rules.lines().any(|line| line
+                        == format!("libinline.rlib: {inputs} {} {recheck}", git_archive::GUARD)),
+                    "{rules}"
+                );
                 assert!(rules.lines().any(|line| line == recheck_rule), "{rules}");
                 assert!(!rules.contains(MARKER), "{rules}");
                 let checksum = rules
@@ -156,6 +172,9 @@ fn main() {
                 assert_eq!(rfs::read("extracted/member.o"), rfs::read("member.o"));
             }
             assert_ne!(checksums[0], checksums[1]);
+            if cfg!(all(target_arch = "x86_64", target_os = "linux", target_env = "gnu")) {
+                git_archive::retarget();
+            }
             let earlier = format!("-Lnative={}", path("earlier").display());
             for extra in [&earlier[..], "-Zpacked-bundled-libs", "-Zemit-rlink"] {
                 assert!(compile(&[extra]).contains(MARKER), "{extra}");
