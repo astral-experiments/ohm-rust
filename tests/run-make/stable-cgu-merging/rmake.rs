@@ -32,6 +32,8 @@ fn compile(incremental: Option<&str>, stable_merging: bool) -> BTreeMap<String, 
                 .find(|line| line.contains(&format!("{module}::value")))
                 .and_then(|line| line.split_once("@@"))
                 .and_then(|(_, units)| units.split_whitespace().next())
+                // A new cross-CGU call can change linkage without changing placement.
+                .map(|unit| unit.split('[').next().unwrap())
                 .unwrap_or_else(|| panic!("missing `{module}` codegen unit:\n{output}"));
             (module.to_owned(), codegen_unit.to_owned())
         })
