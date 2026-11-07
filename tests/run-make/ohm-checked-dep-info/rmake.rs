@@ -1,6 +1,6 @@
 //@ needs-asm-support
 
-use run_make_support::{is_windows, path, rfs, rustc, rustc_minicore, target};
+use run_make_support::{bare_rustc, is_windows, llvm_ar, path, rfs, rustc, rustc_minicore, target};
 
 fn main() {
     const MARKER: &str = "ohm-untracked-relink-inputs";
@@ -28,6 +28,7 @@ fn main() {
         // The same crate always emits a register barrier and ordinary instructions.
         let x86_cases = (target() == "x86_64-unknown-linux-gnu").then_some([
             "float_memory",
+            "rotate_directive",
             "hash_count",
             "hash_literal",
             "hash_symbol",
@@ -100,8 +101,9 @@ fn main() {
         }
 
         let native_archive = |arg| {
-            let mut cmd = rustc();
-            cmd.input("inline.rs")
+            let mut cmd = bare_rustc();
+            cmd.target(target())
+                .input("inline.rs")
                 .crate_type("rlib")
                 .arg("-Zohm-check-relink-inputs")
                 .cfg("ordinary")
@@ -114,6 +116,59 @@ fn main() {
         let bundled = native_archive("-lstatic=ohm_missing_archive").run_fail();
         bundled.assert_stderr_contains("ohm_missing_archive");
         assert!(bundled.stdout_utf8().contains(MARKER));
+
+        if target() == "x86_64-unknown-linux-gnu" {
+            let archive_dir = path("native");
+            rfs::create_dir(&archive_dir);
+            rfs::create_dir("earlier");
+            rfs::create_dir("extracted");
+            let compile = |extra: &[&str]| {
+                native_archive("-lstatic=probe")
+                    .args(extra)
+                    .arg(format!("-Lnative={}", archive_dir.display()))
+                    .arg("-Zchecksum-hash-algorithm=blake3")
+                    .run()
+                    .stdout_utf8()
+            };
+            let mut checksums = Vec::new();
+            for value in [7, 9] {
+                rfs::write(
+                    "member.rs",
+                    format!("#[no_mangle] pub extern \"C\" fn value() -> u8 {{ {value} }}"),
+                );
+                rustc().input("member.rs").crate_type("lib").emit("obj=member.o").run();
+                llvm_ar().arg("rcs").output_input(archive_dir.join("libprobe.a"), "member.o").run();
+                let rules = compile(&[]);
+                assert!(rules.lines().any(|line| line == recheck_rule), "{rules}");
+                assert!(!rules.contains(MARKER), "{rules}");
+                let checksum = rules
+                    .lines()
+                    .find(|line| {
+                        line.starts_with("# checksum:blake3=") && line.ends_with("libprobe.a")
+                    })
+                    .unwrap();
+                checksums.push(checksum.to_owned());
+                llvm_ar()
+                    .arg("x")
+                    .output_input(path("libinline.rlib"), "member.o")
+                    .current_dir(path("extracted"))
+                    .run();
+                assert_eq!(rfs::read("extracted/member.o"), rfs::read("member.o"));
+            }
+            assert_ne!(checksums[0], checksums[1]);
+            let earlier = format!("-Lnative={}", path("earlier").display());
+            for extra in [&earlier[..], "-Zpacked-bundled-libs", "-Zemit-rlink"] {
+                assert!(compile(&[extra]).contains(MARKER), "{extra}");
+            }
+            rfs::copy("member.o", archive_dir.join("member.o"));
+            rfs::remove_file(archive_dir.join("libprobe.a"));
+            llvm_ar()
+                .arg("rcsT")
+                .output_input("libprobe.a", "member.o")
+                .current_dir(&archive_dir)
+                .run();
+            assert!(compile(&[]).contains(MARKER));
+        }
     }
 
     if target() == "aarch64-unknown-linux-gnu" {
