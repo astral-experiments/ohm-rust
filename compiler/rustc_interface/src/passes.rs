@@ -777,6 +777,20 @@ pub fn write_dep_info_with_relink_inputs(
             files.insert(marker, (0, None));
         }
 
+        // Cargo can discard a checksummed input after resolving it into an immutable
+        // package. Older readers must rebuild unless they can retain each lexical name.
+        const ARCHIVE_GUARD: &str = "/dev/null/ohm-checked-bundled-archives-v1";
+        let archives = sess.checked_bundled_archives.get().filter(|archives| !archives.is_empty());
+        let archive_guard = (archives.is_some() && !files.contains_key(Path::new(ARCHIVE_GUARD)))
+            .then_some(ARCHIVE_GUARD);
+        let archive_proof = archives.filter(|archives| {
+            archive_guard.is_some()
+                && archives
+                    .keys()
+                    .all(|path| files.get(path).is_some_and(|(_, hash)| hash.is_some()))
+        });
+        let markers: Vec<_> = archive_guard.into_iter().chain(relink_marker.as_deref()).collect();
+        let marker_inputs = markers.join(" ");
         let files: Vec<_> = files
             .into_iter()
             .map(|(path, input)| (escape_dep_filename(&path.to_string_lossy()), input))
@@ -791,6 +805,13 @@ pub fn write_dep_info_with_relink_inputs(
                     .is_some_and(|p| p.to_str().is_some_and(|p| !p.contains(": ")))
             {
                 writeln!(file, "# ohm-raw-checksum-paths-v2")?;
+                if let Some(archives) = archive_proof {
+                    writeln!(file, "# ohm-bundled-archives-v1:{}", archives.len())?;
+                    for path in archives.keys() {
+                        // track_bundled_archives accepts only representable single-line names.
+                        writeln!(file, "# ohm-bundled-archive-v1:{}", path.display())?;
+                    }
+                }
             }
             let inputs =
                 files.iter().map(|(path, _)| path.as_str()).intersperse(" ").collect::<String>();
@@ -802,14 +823,14 @@ pub fn write_dep_info_with_relink_inputs(
                 if cfg!(unix) { name.replace(':', r"\:") } else { name }
             };
             for path in out_filenames {
-                if let Some(marker) = &relink_marker {
+                if !markers.is_empty() {
                     if !deps_output.is_stdout() && path == deps_filename {
                         // Make restarts if it remakes an included depfile. Keep its rule
                         // after the full input list that Cargo reads from the first rule.
                         depfile_target = Some(path);
                         continue;
                     }
-                    writeln!(file, "{}: {inputs} {marker}\n", target(path))?;
+                    writeln!(file, "{}: {inputs} {marker_inputs}\n", target(path))?;
                 } else {
                     writeln!(file, "{}: {inputs}\n", path.display())?;
                 }
@@ -821,7 +842,7 @@ pub fn write_dep_info_with_relink_inputs(
             // Emit a fake target for each input file to the compilation. This
             // prevents `make` from spitting out an error if a file is later
             // deleted. For more info see #28735
-            for path in files.iter().map(|(path, _)| path).chain(relink_marker.iter()) {
+            for path in files.iter().map(|(path, _)| path.as_str()).chain(markers.iter().copied()) {
                 writeln!(file, "{path}:")?;
             }
 
@@ -858,7 +879,8 @@ pub fn write_dep_info_with_relink_inputs(
                     })?;
             }
 
-            Ok(())
+            // BufWriter discards errors when it flushes its last bytes on drop.
+            file.flush()
         };
 
         match deps_output {
