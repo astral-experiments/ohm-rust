@@ -2,8 +2,8 @@ use std::any::Any;
 use std::path::Component::Prefix;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::{Arc, OnceLock};
 use std::{env, io};
 
 use rustc_data_structures::fx::{FxHashMap, FxHashSet, FxIndexMap, FxIndexSet};
@@ -436,6 +436,9 @@ pub struct Session {
 
     /// File paths accessed during the build.
     pub file_depinfo: Lock<FileDependencies>,
+
+    /// Bytes used both for checked dep-info and for the members copied into the local rlib.
+    pub checked_bundled_archives: OnceLock<FxIndexMap<PathBuf, Vec<u8>>>,
 
     /// A procedural macro read byte positions affected by external crate metadata.
     pub proc_macro_observed_foreign_bytes: AtomicBool,
@@ -1434,6 +1437,7 @@ pub fn build_session(
         using_internal_features,
         env_depinfo: Default::default(),
         file_depinfo: Default::default(),
+        checked_bundled_archives: Default::default(),
         proc_macro_observed_foreign_bytes: AtomicBool::new(false),
         untrackable_proc_macro_source: AtomicBool::new(false),
         target_filesearch,

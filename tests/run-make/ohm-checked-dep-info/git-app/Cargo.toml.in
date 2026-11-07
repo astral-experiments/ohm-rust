@@ -1,0 +1,9 @@
+[package]
+name = "archive_app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+archive_provider = { git = "$GIT_URL" }
+
+[workspace]
