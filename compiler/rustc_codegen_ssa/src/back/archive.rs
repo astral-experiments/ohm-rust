@@ -3,7 +3,7 @@ use std::env;
 use std::error::Error;
 use std::ffi::OsString;
 use std::fs::{self, File};
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
 use ar_archive_writer::{
@@ -12,11 +12,16 @@ use ar_archive_writer::{
 pub use ar_archive_writer::{DEFAULT_OBJECT_READER, ObjectReader};
 use object::read::archive::{ArchiveFile, ArchiveKind as ObjectArchiveKind};
 use object::read::macho::FatArch;
-use rustc_data_structures::fx::{FxHashSet, FxIndexSet};
+use rustc_data_structures::fx::{FxHashSet, FxIndexMap, FxIndexSet};
 use rustc_data_structures::memmap::Mmap;
 use rustc_fs_util::TempDirBuilder;
+use rustc_hir::attrs::NativeLibKind;
+use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_metadata::EncodedMetadata;
-use rustc_session::Session;
+use rustc_middle::ty::TyCtxt;
+use rustc_session::config::{CrateType, OutputType};
+use rustc_session::search_paths::PathKind;
+use rustc_session::{Session, filesearch};
 use rustc_span::Symbol;
 use rustc_target::spec::Arch;
 use tracing::trace;
@@ -379,6 +384,73 @@ impl ArchiveBuilderBuilder for ArArchiveBuilderBuilder {
     fn new_archive_builder<'a>(&self, sess: &'a Session) -> Box<dyn ArchiveBuilder + 'a> {
         Box::new(ArArchiveBuilder::new(sess, &DEFAULT_OBJECT_READER))
     }
+}
+
+/// Track bundled members only when the selected archive is the first possible search result.
+/// The rlib builder consumes these same bytes, even if the file changes during compilation.
+pub fn track_bundled_archives(tcx: TyCtxt<'_>) -> Option<()> {
+    let sess = tcx.sess;
+    let opts = &sess.opts.unstable_opts;
+    if tcx.crate_types() != [CrateType::Rlib]
+        || !matches!(&sess.opts.target_triple, rustc_target::spec::TargetTuple::TargetTuple(triple) if triple.as_str() == "x86_64-unknown-linux-gnu")
+        || !sess.opts.output_types.contains_key(&OutputType::Exe)
+        || opts.packed_bundled_libs
+        || opts.no_link
+        || opts.link_only
+        || opts.emit_rlink
+    {
+        return None;
+    }
+    let algorithm = opts.checksum_hash_algorithm?;
+    let search = sess.target_filesearch();
+    let directory = &search.cli_search_paths(PathKind::Native).next()?.dir;
+    if !directory.is_absolute() {
+        return None;
+    }
+    let mut inputs = FxIndexMap::default();
+    // Large inputs can continue through the ordinary mapped-archive path.
+    let mut remaining = 16 * 1024 * 1024u64;
+    for lib in tcx.native_libraries(LOCAL_CRATE) {
+        let NativeLibKind::Static { bundle: Some(true) | None, whole_archive, .. } = lib.kind
+        else {
+            continue;
+        };
+        if lib.cfg.is_some() || whole_archive == Some(true) {
+            return None;
+        }
+        let name = lib.name.as_str();
+        if Path::new(name).file_name().and_then(|s| s.to_str()) != Some(name) {
+            return None;
+        }
+        let (prefix, suffix) = sess.staticlib_components(lib.verbatim.unwrap_or(false));
+        let path = directory.join(format!("{prefix}{name}{suffix}"));
+        if !path.to_str()?.bytes().all(|b| b.is_ascii_alphanumeric() || b"/._-+ ".contains(&b)) {
+            return None;
+        }
+        if inputs.contains_key(&path) {
+            continue;
+        }
+        let file = filesearch::open_regular_file(&path).ok()?;
+        let len = file.metadata().ok()?.len();
+        if len > remaining {
+            return None;
+        }
+        let mut bytes = Vec::with_capacity(len as usize);
+        file.take(remaining + 1).read_to_end(&mut bytes).ok()?;
+        if bytes.len() as u64 > remaining || !bytes.starts_with(b"!<arch>\n") {
+            // A thin archive can refer to external members.
+            return None;
+        }
+        remaining -= bytes.len() as u64;
+        inputs.insert(path, bytes);
+    }
+    let inputs = sess.checked_bundled_archives.get_or_init(|| inputs);
+    let mut dep_info = sess.file_depinfo.borrow_mut();
+    for (path, bytes) in inputs {
+        let checksum = rustc_span::SourceFileHash::new_in_memory(algorithm, bytes);
+        dep_info.record_read(Symbol::intern(path.to_str()?), bytes.len() as u64, checksum);
+    }
+    Some(())
 }
 
 #[must_use = "must call build() to finish building the archive"]

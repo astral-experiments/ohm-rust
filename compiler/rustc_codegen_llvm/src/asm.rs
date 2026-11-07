@@ -1609,7 +1609,7 @@ pub(crate) fn relink_inputs(tcx: TyCtxt<'_>, (): ()) -> RelinkInputs {
             .native_libraries(LOCAL_CRATE)
             .iter()
             .any(|lib| matches!(lib.kind, NativeLibKind::Static { bundle: None | Some(true), .. }))
-        && rustc_codegen_ssa::back::link::track_bundled_archives(tcx).is_none()
+        && rustc_codegen_ssa::back::archive::track_bundled_archives(tcx).is_none()
     {
         return RelinkInputs::Rebuild;
     }
