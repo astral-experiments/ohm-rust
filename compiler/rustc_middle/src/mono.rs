@@ -388,6 +388,10 @@ pub struct CodegenUnit<'tcx> {
     /// as well as the crate name and disambiguator.
     name: Symbol,
 
+    /// Logical identity for partition placement, without the compiler-specific crate identity
+    /// needed to keep artifact and symbol names unique.
+    partition_key: Symbol,
+
     /// Symbol name for this CGU. Backend may emit symbols prefixed with this name
     /// and assume uniqueness.
     symbol_name: Option<Symbol>,
@@ -448,6 +452,7 @@ impl<'tcx> CodegenUnit<'tcx> {
     pub fn new(name: Symbol) -> CodegenUnit<'tcx> {
         CodegenUnit {
             name,
+            partition_key: name,
             symbol_name: None,
             items: Default::default(),
             size_estimate: 0,
@@ -462,6 +467,14 @@ impl<'tcx> CodegenUnit<'tcx> {
 
     pub fn set_name(&mut self, name: Symbol) {
         self.name = name;
+    }
+
+    pub fn partition_key(&self) -> Symbol {
+        self.partition_key
+    }
+
+    pub fn set_partition_key(&mut self, key: Symbol) {
+        self.partition_key = key;
     }
 
     pub fn is_primary(&self) -> bool {
