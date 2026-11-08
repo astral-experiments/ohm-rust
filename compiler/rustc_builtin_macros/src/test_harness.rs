@@ -296,6 +296,9 @@ fn mk_main(cx: &mut TestCtxt<'_>) -> Box<ast::Item> {
 
     let focused_filter = focused_test_filter(cx);
     let runner_name = match (cx.panic_strategy.unwinds(), focused_filter.is_some()) {
+        (true, false) if super::test::uses_integration_test_table(ecx) => {
+            "test_main_static_integration"
+        }
         (true, false) => "test_main_static",
         (true, true) => "test_main_static_focused",
         (false, false) => "test_main_static_abort",
