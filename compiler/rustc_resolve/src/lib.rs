@@ -198,8 +198,8 @@ impl<'ra> ParentScope<'ra> {
 #[derive(Copy, Debug, Clone)]
 struct InvocationParent {
     parent_def: LocalDefId,
-    /// The unexpanded source ADT preceding this placeholder under the same definition.
-    preceding_source_adt: Option<LocalDefId>,
+    /// A preceding source ADT, or an adjacent source method in the same inherent impl.
+    preceding_source_item: Option<LocalDefId>,
     impl_trait_context: ImplTraitContext,
     in_attr: bool,
     owner: NodeId,
@@ -208,7 +208,7 @@ struct InvocationParent {
 impl InvocationParent {
     const ROOT: Self = Self {
         parent_def: CRATE_DEF_ID,
-        preceding_source_adt: None,
+        preceding_source_item: None,
         impl_trait_context: ImplTraitContext::Existential,
         in_attr: false,
         owner: CRATE_NODE_ID,

@@ -280,7 +280,7 @@ impl<'ra, 'tcx> ResolverExpand for Resolver<'ra, 'tcx> {
                     .invocation_parents
                     .get(&eager_expansion_root)
                     .expect("non-eager expansion without an invocation parent");
-                invocation_parent.preceding_source_adt = None;
+                invocation_parent.preceding_source_item = None;
                 self.invocation_parent_scopes.insert(invoc_id, parent_scope);
                 self.invocation_parents.insert(invoc_id, invocation_parent);
                 (parent_scope, invocation_parent)
@@ -342,7 +342,7 @@ impl<'ra, 'tcx> ResolverExpand for Resolver<'ra, 'tcx> {
         )?;
 
         let mut span = invoc.span();
-        if let Some(anchor) = invocation_parent.preceding_source_adt {
+        if let Some(anchor) = invocation_parent.preceding_source_item {
             let builtin_derive = matches!(ext.builtin_name, Some(sym::derive | sym::derive_const));
             let derive = kind == MacroKind::Derive || builtin_derive;
             if derive || (kind == MacroKind::Attr && !inner_attr) {
@@ -354,16 +354,39 @@ impl<'ra, 'tcx> ResolverExpand for Resolver<'ra, 'tcx> {
                     && earlier.hi <= data.lo
                 {
                     let file = self.tcx.sess.source_map().lookup_source_file(data.lo);
-                    // A local parent in this file already gives an ordinary attribute
-                    // a relative coordinate. An out-of-line module declaration does not.
-                    if file.contains(earlier.lo)
-                        && file.contains(data.hi)
-                        && (derive
-                            || !file.contains(
-                                self.tcx.source_span_untracked(invocation_parent.parent_def).lo(),
-                            ))
-                    {
-                        span = span.with_parent(Some(anchor));
+                    if file.contains(earlier.lo) && file.contains(data.hi) {
+                        // An attribute on a method can move within its impl together with
+                        // the preceding source method. Keep its absolute span and hygiene.
+                        let use_anchor = if self.tcx.def_kind(anchor) == DefKind::AssocFn {
+                            !inner_attr
+                                && matches!(ext.kind, SyntaxExtensionKind::Attr(_))
+                                && parent_scope.expansion == LocalExpnId::ROOT
+                                && !file.is_imported()
+                                && self.tcx.local_parent(anchor) == invocation_parent.parent_def
+                                && matches!(
+                                    &invoc.kind,
+                                    InvocationKind::Attr {
+                                        item: Annotatable::AssocItem(
+                                            item,
+                                            ast::visit::AssocCtxt::Impl { of_trait: false },
+                                        ),
+                                        ..
+                                    } if matches!(&item.kind, ast::AssocItemKind::Fn(f) if f.body.is_some())
+                                        && !item.span.is_dummy()
+                                        && item.span.ctxt().is_root()
+                                )
+                        } else {
+                            // An ordinary item in its parent's file already has a local coordinate.
+                            derive
+                                || !file.contains(
+                                    self.tcx
+                                        .source_span_untracked(invocation_parent.parent_def)
+                                        .lo(),
+                                )
+                        };
+                        if use_anchor {
+                            span = span.with_parent(Some(anchor));
+                        }
                     }
                 }
             }
@@ -372,7 +395,7 @@ impl<'ra, 'tcx> ResolverExpand for Resolver<'ra, 'tcx> {
             if !builtin_derive
                 && !matches!(ext.kind, rustc_expand::base::SyntaxExtensionKind::NonMacroAttr)
             {
-                self.invocation_parents.get_mut(&invoc_id).unwrap().preceding_source_adt = None;
+                self.invocation_parents.get_mut(&invoc_id).unwrap().preceding_source_item = None;
             }
         }
         // Individual derive paths are synthesized after macro invocation collection.

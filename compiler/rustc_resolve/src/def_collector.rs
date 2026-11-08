@@ -69,10 +69,10 @@ impl<'a, 'ra, 'tcx> DefCollector<'a, 'ra, 'tcx> {
 
     fn with_parent<F: FnOnce(&mut Self)>(&mut self, parent_def: LocalDefId, f: F) {
         let orig_parent_def = mem::replace(&mut self.invocation_parent.parent_def, parent_def);
-        let preceding_adt = self.invocation_parent.preceding_source_adt.take();
+        let preceding = self.invocation_parent.preceding_source_item.take();
         f(self);
         self.invocation_parent.parent_def = orig_parent_def;
-        self.invocation_parent.preceding_source_adt = preceding_adt;
+        self.invocation_parent.preceding_source_item = preceding;
     }
 
     pub(super) fn with_owner<F: FnOnce(&mut Self, TyCtxtFeed<'tcx, LocalDefId>)>(
@@ -239,7 +239,7 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
                     && !i.span.is_dummy()
                     && i.span.ctxt().is_root()
                 {
-                    this.invocation_parent.preceding_source_adt = Some(def_id);
+                    this.invocation_parent.preceding_source_item = Some(def_id);
                 }
             },
         );
@@ -408,6 +408,8 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
             AssocItemKind::MacCall(..) => {
                 self.visit_macro_invoc(i.id);
                 self.visit_assoc_item_mac_call(i, ctxt);
+                // The placeholder can expand into zero or more members.
+                self.invocation_parent.preceding_source_item = None;
                 return;
             }
             AssocItemKind::DelegationMac(..) => {
@@ -416,9 +418,17 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
         };
 
         self.with_owner(i.id, Some(ident.name), def_kind, i.span, |this, feed| {
-            this.with_parent(feed.def_id(), |this| {
-                this.brg_visit_assoc_item(i, ctxt, ident, ns, feed)
-            });
+            let def_id = feed.def_id();
+            this.with_parent(def_id, |this| this.brg_visit_assoc_item(i, ctxt, ident, ns, feed));
+
+            this.invocation_parent.preceding_source_item =
+                (matches!(ctxt, visit::AssocCtxt::Impl { of_trait: false })
+                    && matches!(&i.kind, AssocItemKind::Fn(f) if f.body.is_some())
+                    && this.r.tcx.sess.opts.incremental.is_some()
+                    && this.parent_scope.expansion == LocalExpnId::ROOT
+                    && !i.span.is_dummy()
+                    && i.span.ctxt().is_root())
+                .then_some(def_id);
         })
     }
 
