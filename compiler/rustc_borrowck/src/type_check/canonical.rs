@@ -260,7 +260,7 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
         );
 
         let mut normalize = |ty| self.normalize(ty, location);
-        tcx.struct_tail_raw(ty, &cause, &mut normalize, || {})
+        tcx.struct_tail_raw(ty, || cause.span, &mut normalize, || {})
     }
 
     #[instrument(skip(self), level = "debug")]

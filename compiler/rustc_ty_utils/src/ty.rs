@@ -358,7 +358,7 @@ fn impl_self_is_guaranteed_unsized<'tcx>(tcx: TyCtxt<'tcx>, impl_def_id: DefId) 
     let self_ty = ocx.normalize(&cause, param_env, tcx.type_of(impl_def_id).instantiate_identity());
     let tail = tcx.struct_tail_raw(
         self_ty,
-        &cause,
+        || cause.span,
         |ty| {
             // FIXME: ambiguity is just ignored.
             ocx.normalize(&cause, param_env, ty)

@@ -14,7 +14,7 @@ use rustc_hir::def_id::{CrateNum, DefId, LocalDefId};
 use rustc_hir::{self as hir, find_attr};
 use rustc_index::bit_set::GrowableBitSet;
 use rustc_macros::{StableHash, TyDecodable, TyEncodable, extension};
-use rustc_span::sym;
+use rustc_span::{DUMMY_SP, Span, sym};
 use rustc_type_ir::solve::SizedTraitKind;
 use smallvec::{SmallVec, smallvec};
 use tracing::{debug, instrument};
@@ -23,7 +23,6 @@ use super::TypingEnv;
 use crate::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use crate::mir;
 use crate::query::Providers;
-use crate::traits::ObligationCause;
 use crate::ty::layout::{FloatExt, IntegerExt};
 use crate::ty::{
     self, Asyncness, FallibleTypeFolder, GenericArgKind, GenericArgsRef, Ty, TyCtxt, TypeFoldable,
@@ -218,7 +217,7 @@ impl<'tcx> TyCtxt<'tcx> {
         self.assert_fully_normalized(typing_env, ty);
         self.struct_tail_raw(
             ty,
-            &ObligationCause::dummy(),
+            || DUMMY_SP,
             |ty| self.normalize_erasing_regions(typing_env, ty),
             || {},
         )
@@ -253,7 +252,7 @@ impl<'tcx> TyCtxt<'tcx> {
     pub fn struct_tail_raw(
         self,
         mut ty: Ty<'tcx>,
-        cause: &ObligationCause<'tcx>,
+        overflow_span: impl FnOnce() -> Span,
         mut normalize: impl FnMut(Unnormalized<'tcx, Ty<'tcx>>) -> Ty<'tcx>,
         // This is currently used to allow us to walk a ValTree
         // in lockstep with the type in order to get the ValTree branch that
@@ -268,7 +267,7 @@ impl<'tcx> TyCtxt<'tcx> {
                     limit => limit * 2,
                 };
                 let reported = self.dcx().emit_err(crate::diagnostics::RecursionLimitReached {
-                    span: cause.span,
+                    span: overflow_span(),
                     ty,
                     suggested_limit,
                 });

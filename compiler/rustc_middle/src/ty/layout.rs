@@ -22,7 +22,6 @@ use tracing::debug;
 
 use crate::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use crate::query::TyCtxtAt;
-use crate::traits::ObligationCause;
 use crate::ty::normalize_erasing_regions::NormalizationError;
 use crate::ty::{self, CoroutineArgsExt, Ty, TyCtxt, TypeVisitableExt, Unnormalized};
 
@@ -403,7 +402,7 @@ impl<'tcx> SizeSkeleton<'tcx> {
                 tcx.assert_fully_normalized(typing_env, pointee);
                 let tail = tcx.struct_tail_raw(
                     pointee,
-                    &ObligationCause::dummy(),
+                    || DUMMY_SP,
                     |ty| match tcx.try_normalize_erasing_regions(typing_env, ty) {
                         Ok(ty) => ty,
                         Err(e) => Ty::new_error_with_message(
