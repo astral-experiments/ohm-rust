@@ -2981,7 +2981,13 @@ pub fn strip_debug(builder: &Builder<'_>, target: TargetSelection, path: &Path) 
     // Running strip can be relatively expensive (~1s on librustc_driver.so), so we don't rerun it
     // if the file is unchanged.
     if !stamp.is_up_to_date() {
-        command("strip").arg("--strip-debug").arg(path).run_capture(builder);
+        let mut strip = command("strip");
+        strip.arg("--strip-debug");
+        if builder.config.enable_bolt_settings && path.ends_with("librustc_driver.so") {
+            // BOLT uses FILE symbols to identify the parents of split local functions.
+            strip.arg("--keep-file-symbols");
+        }
+        strip.arg(path).run_capture(builder);
     }
     t!(stamp.write());
 
