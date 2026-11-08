@@ -1330,6 +1330,8 @@ pub struct OwnerNodes<'tcx> {
     pub nodes: IndexVec<ItemLocalId, ParentedNode<'tcx>>,
     /// Content of local bodies.
     pub bodies: SortedMap<ItemLocalId, &'tcx Body<'tcx>>,
+    /// Whether any node in this owner has a parsed `#[loop_match]` or `#[const_continue]`.
+    pub has_loop_control_attrs: bool,
 }
 
 impl<'tcx> OwnerNodes<'tcx> {
@@ -1349,6 +1351,7 @@ impl<'tcx> OwnerNodes<'tcx> {
                 1,
             ),
             bodies: SortedMap::new(),
+            has_loop_control_attrs: false,
         }
     }
 }
