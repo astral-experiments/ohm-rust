@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use rustc_data_structures::fx::{FxHashMap, FxHashSet, FxIndexSet};
+use rustc_data_structures::fx::{FxHashMap, FxIndexSet};
 use rustc_index::interval::SparseIntervalMatrix;
 use rustc_middle::mir::{Body, Location};
 use rustc_middle::ty::RegionVid;
@@ -106,40 +106,22 @@ impl LocalizedConstraintGraph {
     ) {
         let live_regions = liveness.points();
 
-        let mut visited = FxHashSet::default();
-        let mut stack = Vec::new();
-
-        // Compute reachability per loan by traversing each loan's subgraph starting from where it
-        // is introduced.
+        // Successors depend on the localized node, regardless of which loan reaches it.
+        // Build their flat adjacency lists once, following only nodes reachable from a loan.
+        let mut nodes = FxIndexSet::default();
+        let mut starts = Vec::with_capacity(borrow_set.len());
+        let mut offsets = Vec::new();
+        let mut targets = Vec::new();
         for (loan_idx, loan) in borrow_set.iter_enumerated() {
-            visited.clear();
-            stack.clear();
-
-            let start_node = LocalizedNode {
+            let start = LocalizedNode {
                 region: loan.region,
                 point: liveness.point_from_location(loan.reserve_location),
             };
-            stack.push(start_node);
-
-            while let Some(node) = stack.pop() {
-                if !visited.insert(node) {
-                    continue;
-                }
-
-                // We've reached a node we haven't visited before.
+            starts.push((loan_idx, nodes.insert_full(start).0));
+            while let Some(&node) = nodes.get_index(offsets.len()) {
+                offsets.push(targets.len());
                 let location = liveness.location_from_point(node.point);
-                visitor.on_node_traversed(loan_idx, node);
-
-                // When we find a _new_ successor, we'd like to
-                // - visit it eventually,
-                // - and let the generic visitor know about it.
-                let mut successor_found = |succ| {
-                    if !visited.contains(&succ) {
-                        stack.push(succ);
-                        visitor.on_successor_discovered(node, succ);
-                    }
-                };
-
+                let mut successor_found = |succ| targets.push(nodes.insert_full(succ).0);
                 // Then, we propagate the loan along the localized constraint graph. The outgoing
                 // edges are computed lazily, from:
                 // - the various physical edges present at this node,
@@ -232,6 +214,27 @@ impl LocalizedConstraintGraph {
                 for &logical_succ in self.logical_edges.get(&node.region).into_flat_iter() {
                     let succ = LocalizedNode { region: logical_succ, point: node.point };
                     successor_found(succ);
+                }
+            }
+        }
+        offsets.push(targets.len());
+        let nodes = nodes.into_boxed_slice();
+
+        let mut visited = vec![None; nodes.len()];
+        let mut stack = Vec::new();
+        for (loan_idx, start) in starts {
+            stack.push(start);
+            while let Some(index) = stack.pop() {
+                if visited[index].replace(loan_idx) == Some(loan_idx) {
+                    continue;
+                }
+                let node = nodes[index];
+                visitor.on_node_traversed(loan_idx, node);
+                for &target in &targets[offsets[index]..offsets[index + 1]] {
+                    if visited[target] != Some(loan_idx) {
+                        stack.push(target);
+                        visitor.on_successor_discovered(node, nodes[target]);
+                    }
                 }
             }
         }
