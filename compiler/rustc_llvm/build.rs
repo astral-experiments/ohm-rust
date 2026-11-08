@@ -166,7 +166,11 @@ fn is_libstdcxx_cxx11_abi_flag(flag: &str) -> bool {
         || flag == "-U_GLIBCXX_USE_CXX11_ABI"
 }
 
+#[path = "src/llvm_linkage.rs"]
+mod llvm_linkage;
+
 fn main() {
+    println!("cargo:rustc-check-cfg=cfg(llvm_single_codegen_provider)");
     if cfg!(feature = "check_only") {
         return;
     }
@@ -332,6 +336,16 @@ fn main() {
         .compile("llvm-wrapper");
 
     let (llvm_kind, llvm_link_arg) = detect_llvm_link();
+
+    // Static components live in the compiler. For shared LLVM, ask for every library
+    // implementing the selected components, excluding separate system link dependencies.
+    if llvm_kind == "static" || {
+        let mut cmd = Command::new(&llvm_config);
+        cmd.arg(llvm_link_arg).arg("--libs").args(&components);
+        llvm_linkage::is_monolithic(&quoted_split(cmd))
+    } {
+        println!("cargo:rustc-cfg=llvm_single_codegen_provider");
+    }
 
     // Link in all LLVM libraries, if we're using the "wrong" llvm-config then
     // we don't pick up system libs because unfortunately they're for the host

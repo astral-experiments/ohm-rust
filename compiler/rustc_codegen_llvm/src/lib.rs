@@ -124,6 +124,9 @@ impl WriteBackendMethods for LlvmCodegenBackend {
     type ThinData = back::lto::ThinData;
 
     fn object_cache_library_addresses(&self) -> Option<[usize; 2]> {
+        if !rustc_llvm::SINGLE_CODEGEN_PROVIDER {
+            return None;
+        }
         Some([
             llvm::LLVMRustObserverModuleHash as *const () as usize,
             llvm::LLVMContextCreate as *const () as usize,

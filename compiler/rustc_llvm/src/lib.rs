@@ -7,6 +7,12 @@ use std::{ptr, slice};
 
 use libc::size_t;
 
+#[cfg(test)]
+mod llvm_linkage;
+
+/// All linked LLVM components are static or provided by a single LLVM shared library.
+pub const SINGLE_CODEGEN_PROVIDER: bool = cfg!(llvm_single_codegen_provider);
+
 unsafe extern "C" {
     /// Opaque type that allows C++ code to write bytes to a Rust-side buffer,
     /// in conjunction with `RawRustStringOstream`. Use this as `&RustString`
