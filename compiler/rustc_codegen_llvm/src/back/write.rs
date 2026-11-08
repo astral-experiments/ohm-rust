@@ -26,7 +26,7 @@ use rustc_span::{BytePos, InnerSpan, Pos, RemapPathScopeComponents, SpanData, Sy
 use rustc_target::spec::{
     CodeModel, DebuginfoKind, FloatAbi, RelocModel, SanitizerSet, SplitDebuginfo, TlsModel,
 };
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 
 use crate::back::lto::{Buffer, ModuleBuffer};
 use crate::back::owned_target_machine::OwnedTargetMachine;
@@ -898,6 +898,34 @@ pub(crate) unsafe fn llvm_optimize(
 }
 
 // Unsafe due to LLVM calls.
+pub(crate) fn optimize_and_codegen(
+    cgcx: &CodegenContext,
+    prof: &SelfProfilerRef,
+    shared_emitter: &SharedEmitter,
+    mut module: ModuleCodegen<ModuleLlvm>,
+    config: &ModuleConfig,
+) -> CompiledModule {
+    let entry = super::thinlto_cache::CacheEntry::observer(cgcx, &module);
+    if let Some(entry) = &entry {
+        if let Some(cached) = entry.load() {
+            info!("ohm_observer_object_hit {}", module.name);
+            return cached;
+        }
+        info!("ohm_observer_object_miss {}", module.name);
+    }
+    let diagnostics = entry.as_ref().map(|_| shared_emitter.diagnostic_count());
+    optimize(cgcx, prof, shared_emitter, &mut module, config);
+    let entry =
+        entry.filter(|_| unsafe { !llvm::LLVMRustModuleHasInlineAsm(module.module_llvm.llmod()) });
+    let compiled = codegen(cgcx, prof, shared_emitter, module, config);
+    if let Some(entry) = entry
+        && Some(shared_emitter.diagnostic_count()) == diagnostics
+    {
+        entry.store(&compiled);
+    }
+    compiled
+}
+
 pub(crate) fn optimize(
     cgcx: &CodegenContext,
     prof: &SelfProfilerRef,

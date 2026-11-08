@@ -123,6 +123,16 @@ impl WriteBackendMethods for LlvmCodegenBackend {
     type TargetMachine = OwnedTargetMachine;
     type ThinData = back::lto::ThinData;
 
+    fn object_cache_library_addresses(&self) -> Option<[usize; 2]> {
+        if !rustc_llvm::SINGLE_CODEGEN_PROVIDER {
+            return None;
+        }
+        Some([
+            llvm::LLVMRustObserverModuleHash as *const () as usize,
+            llvm::LLVMContextCreate as *const () as usize,
+        ])
+    }
+
     fn thread_profiler() -> Box<dyn Any> {
         Box::new(TimeTraceProfiler::new())
     }
@@ -193,6 +203,15 @@ impl WriteBackendMethods for LlvmCodegenBackend {
         thin: ThinModule<Self>,
     ) -> CompiledModule {
         back::lto::optimize_and_codegen_thin_module(cgcx, prof, shared_emitter, tm_factory, thin)
+    }
+    fn optimize_and_codegen(
+        cgcx: &CodegenContext,
+        prof: &SelfProfilerRef,
+        shared_emitter: &SharedEmitter,
+        module: ModuleCodegen<Self::Module>,
+        config: &ModuleConfig,
+    ) -> CompiledModule {
+        back::write::optimize_and_codegen(cgcx, prof, shared_emitter, module, config)
     }
     fn codegen(
         cgcx: &CodegenContext,
