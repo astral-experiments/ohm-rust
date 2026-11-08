@@ -25,6 +25,11 @@ pub trait WriteBackendMethods: Clone + 'static {
     fn supports_parallel(&self) -> bool {
         true
     }
+    /// Functions in the backend bridge and its native code generator whose mapped
+    /// images must be identified before reusing machine code.
+    fn object_cache_library_addresses(&self) -> Option<[usize; 2]> {
+        None
+    }
     fn thread_profiler() -> Box<dyn Any> {
         Box::new(())
     }

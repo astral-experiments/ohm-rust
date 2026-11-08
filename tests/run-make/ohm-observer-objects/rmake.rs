@@ -40,6 +40,9 @@ fn main() {
     assert!(fs::read_to_string("out/reader.d").unwrap().contains("ohm-foreign-span-bytes"));
     let archive = fs::read("out/libreader.rlib").unwrap();
     compile_reader(&[]).assert_stderr_contains("ohm_observer_object_hit");
+    compile_reader(&["-Ztime-llvm-passes"]).assert_stderr_not_contains("ohm_observer_object_");
+    compile_reader(&["-Zprint-codegen-stats-json=llvm-stats.json"])
+        .assert_stderr_not_contains("ohm_observer_object_");
     assert_eq!(fs::read("out/libreader.rlib").unwrap(), archive);
     expect_value("17 0");
 

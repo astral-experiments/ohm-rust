@@ -1323,6 +1323,14 @@ fn start_executing_work<B: WriteBackendMethods>(
     };
 
     let cache_configuration = || -> Option<Fingerprint> {
+        // LLVM prints these reports from the actual optimization/codegen passes.
+        if sess.print_llvm_stats()
+            || sess.print_llvm_stats_json().is_some()
+            || sess.opts.unstable_opts.print_llvm_passes
+            || sess.opts.unstable_opts.time_llvm_passes
+        {
+            return None;
+        }
         let mut hasher = StableHasher::new();
         "ohm-thinlto-cache-v2".hash(&mut hasher);
         let compiler = std::env::current_exe().ok()?;
@@ -1340,6 +1348,8 @@ fn start_executing_work<B: WriteBackendMethods>(
             }
         }
         compiler_files.sort();
+        #[cfg(target_os = "linux")]
+        let mut sdk_ids = Vec::with_capacity(compiler_files.len());
         for path in compiler_files {
             let metadata = path.metadata().ok()?;
             path.hash(&mut hasher);
@@ -1350,7 +1360,20 @@ fn start_executing_work<B: WriteBackendMethods>(
                 use std::os::unix::fs::MetadataExt;
                 metadata.ctime().hash(&mut hasher);
                 metadata.ctime_nsec().hash(&mut hasher);
+                #[cfg(target_os = "linux")]
+                sdk_ids.push((
+                    libc::major(metadata.dev()),
+                    libc::minor(metadata.dev()),
+                    metadata.ino(),
+                ));
             }
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let [bridge, llvm] = backend.object_cache_library_addresses()?;
+            let driver = rustc_session::filesearch::dll_path as *const () as usize;
+            super::loaded_libraries::cache_provider_ids([driver, bridge, llvm], &sdk_ids)?
+                .hash(&mut hasher);
         }
         sess.cfg_version.hash(&mut hasher);
         sess.opts.dep_tracking_hash(false).hash(&mut hasher);
@@ -1378,7 +1401,8 @@ fn start_executing_work<B: WriteBackendMethods>(
 
     // A foreign-span observer still runs the frontend to consume the current
     // macro inputs. Each non-LTO object can be identified by the resulting IR.
-    let observer_object_cache = (sess.opts.unstable_opts.ohm_shared_stages
+    let observer_object_cache = (cfg!(target_os = "linux")
+        && sess.opts.unstable_opts.ohm_shared_stages
         && sess.opts.unstable_opts.ohm_check_relink_inputs
         && sess.proc_macro_observed_foreign_bytes.load(Ordering::Relaxed)
         && sess.target.os == Os::Linux

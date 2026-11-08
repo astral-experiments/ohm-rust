@@ -123,6 +123,13 @@ impl WriteBackendMethods for LlvmCodegenBackend {
     type TargetMachine = OwnedTargetMachine;
     type ThinData = back::lto::ThinData;
 
+    fn object_cache_library_addresses(&self) -> Option<[usize; 2]> {
+        Some([
+            llvm::LLVMRustObserverModuleHash as *const () as usize,
+            llvm::LLVMContextCreate as *const () as usize,
+        ])
+    }
+
     fn thread_profiler() -> Box<dyn Any> {
         Box::new(TimeTraceProfiler::new())
     }

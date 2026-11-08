@@ -7,6 +7,8 @@ pub mod archive;
 pub(crate) mod command;
 pub mod link;
 pub(crate) mod linker;
+#[cfg(target_os = "linux")]
+mod loaded_libraries;
 pub mod lto;
 pub mod metadata;
 pub mod rmeta_link;

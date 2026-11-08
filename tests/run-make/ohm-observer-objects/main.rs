@@ -1,5 +1,5 @@
 extern crate reader;
 
 fn main() {
-    println!("{} {}", reader::value(), reader::payload());
+    println!("{} {}", reader::ohm_observed_value(), reader::payload());
 }
