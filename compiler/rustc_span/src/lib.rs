@@ -1775,6 +1775,11 @@ impl Display for SourceFileHash {
 }
 
 impl SourceFileHash {
+    /// Uses the BLAKE3 digest of bytes that the caller has already read and verified.
+    pub fn from_blake3(value: [u8; 32]) -> Self {
+        Self { kind: SourceFileHashAlgorithm::Blake3, value }
+    }
+
     pub fn new_in_memory(kind: SourceFileHashAlgorithm, src: impl AsRef<[u8]>) -> SourceFileHash {
         let mut hash = SourceFileHash { kind, value: Default::default() };
         let len = hash.hash_len();
