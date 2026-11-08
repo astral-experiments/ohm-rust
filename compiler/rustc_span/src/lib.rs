@@ -1188,6 +1188,9 @@ impl Span {
     ///     ^^^^^^^^^^^^^^^^^^^^
     /// ```
     pub fn to(self, end: Span) -> Span {
+        if let Some(span) = self.to_in_same_inline_context(end) {
+            return span;
+        }
         match Span::prepare_to_combine(self, end) {
             Ok((from, to, parent)) => {
                 Span::new(cmp::min(from.lo, to.lo), cmp::max(from.hi, to.hi), from.ctxt, parent)
