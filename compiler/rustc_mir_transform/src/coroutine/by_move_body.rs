@@ -84,7 +84,8 @@ pub(crate) fn coroutine_by_move_body_def_id<'tcx>(
     tcx: TyCtxt<'tcx>,
     coroutine_def_id: LocalDefId,
 ) -> DefId {
-    let body = tcx.mir_built(coroutine_def_id).borrow();
+    let built = tcx.mir_built(coroutine_def_id);
+    let body = built.body.borrow();
 
     // If the typeck results are tainted, no need to make a by-ref body.
     if body.tainted_by_errors.is_some() {
@@ -249,7 +250,10 @@ pub(crate) fn coroutine_by_move_body_def_id<'tcx>(
     // The type of the coroutine is the `by_move_coroutine_ty`.
     body_def.type_of(ty::EarlyBinder::bind(tcx, by_move_coroutine_ty));
 
-    body_def.mir_built(tcx.arena.alloc(Steal::new(by_move_body)));
+    body_def.mir_built(mir::BuiltMir {
+        body: tcx.arena.alloc(Steal::new(by_move_body)),
+        rustc_regions: built.rustc_regions,
+    });
 
     body_def.def_id().to_def_id()
 }
