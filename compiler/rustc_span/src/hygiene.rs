@@ -928,6 +928,18 @@ impl SyntaxContext {
         HygieneData::with(|data| data.expn_data(data.outer_expn(self)).clone())
     }
 
+    /// Returns the call site for a local attribute whose expansion parent is the root.
+    #[inline]
+    pub fn outer_local_attr_call_site(self) -> Option<Span> {
+        HygieneData::with(|data| {
+            let id = data.outer_expn(self).as_local()?;
+            let expansion = data.local_expn_data(id);
+            (expansion.parent == ExpnId::root()
+                && matches!(expansion.kind, ExpnKind::Macro(MacroKind::Attr, _)))
+            .then_some(expansion.call_site)
+        })
+    }
+
     /// See [`HygieneData::outer_mark`]
     #[inline]
     fn outer_mark(self) -> (ExpnId, Transparency) {

@@ -1051,7 +1051,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
         span: Span,
         allow_internal_unstable: Option<Arc<[Symbol]>>,
     ) -> Span {
-        let call_site = self.desugaring_call_site(span);
+        let call_site = self.desugaring_call_site(span, reason);
         self.tcx.with_stable_hashing_context(|hcx| {
             let marked =
                 call_site.mark_with_reason(allow_internal_unstable, reason, span.edition(), hcx);
@@ -1060,14 +1060,18 @@ impl<'hir> LoweringContext<'_, 'hir> {
     }
 
     /// Anchor a source-written desugaring to its enclosing local definition for incremental hashing.
-    fn desugaring_call_site(&self, span: Span) -> Span {
+    fn desugaring_call_site(&self, span: Span, reason: DesugaringKind) -> Span {
         let lowerer = self.span_lowerer();
         let data = span.data_untracked();
-        if !lowerer.is_incremental
-            || data.is_dummy()
-            || !data.ctxt.is_root()
-            || data.parent.is_some()
-        {
+        if !lowerer.is_incremental || data.is_dummy() || data.parent.is_some() {
+            return span;
+        }
+        if !data.ctxt.is_root() {
+            if reason == DesugaringKind::Await
+                && let Some(anchor) = self.await_attribute_anchor(span, lowerer.def_id)
+            {
+                return span.with_parent(Some(anchor));
+            }
             return span;
         }
         let owner = self.tcx.source_span_untracked(lowerer.def_id).data_untracked();
@@ -1079,6 +1083,40 @@ impl<'hir> LoweringContext<'_, 'hir> {
             return span;
         }
         lowerer.lower(span)
+    }
+
+    /// An attribute can generate an await at its own invocation span before the method header.
+    fn await_attribute_anchor(&self, span: Span, method: LocalDefId) -> Option<LocalDefId> {
+        let data = span.data_untracked();
+        let call = data.ctxt.outer_local_attr_call_site()?.data_untracked();
+        let anchor = call.parent?;
+        if !call.ctxt.is_root()
+            || call.lo != data.lo
+            || call.hi != data.hi
+            || self.tcx.def_kind(method) != DefKind::AssocFn
+            || self.tcx.def_kind(anchor) != DefKind::AssocFn
+            || self.tcx.local_parent(anchor) != self.tcx.local_parent(method)
+        {
+            return None;
+        }
+        let previous = self.tcx.source_span_untracked(anchor).data_untracked();
+        let current = self.tcx.source_span_untracked(method).data_untracked();
+        if previous.is_dummy()
+            || current.is_dummy()
+            || !previous.ctxt.is_root()
+            || !current.ctxt.is_root()
+            || previous.hi > data.lo
+            || data.hi > current.lo
+        {
+            return None;
+        }
+        let source_map = self.tcx.sess.source_map();
+        let file_index = source_map.lookup_source_file_idx(data.lo);
+        let file = &source_map.files()[file_index];
+        if file.is_imported() || !file.contains(previous.lo) || !file.contains(current.hi) {
+            return None;
+        }
+        Some(anchor)
     }
 
     fn span_lowerer(&self) -> SpanLowerer {
