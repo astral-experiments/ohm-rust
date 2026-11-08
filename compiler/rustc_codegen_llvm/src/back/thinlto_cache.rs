@@ -8,14 +8,14 @@ use std::time::SystemTime;
 
 use rustc_codegen_ssa::back::lto::ThinModule;
 use rustc_codegen_ssa::back::write::{CodegenContext, EmitObj};
-use rustc_codegen_ssa::{CompiledModule, ModuleKind};
+use rustc_codegen_ssa::{CompiledModule, ModuleCodegen, ModuleKind};
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_data_structures::stable_hash::StableHasher;
 use rustc_fs_util::TempDirBuilder;
 use rustc_session::config::{OutputType, Passes};
 use rustc_target::spec::SplitDebuginfo;
 
-use crate::LlvmCodegenBackend;
+use crate::{LlvmCodegenBackend, ModuleLlvm, llvm};
 
 const MAGIC: &[u8; 8] = b"OHMTHIN1";
 const HEADER_LEN: usize = 40;
@@ -33,8 +33,26 @@ impl CacheEntry {
         module: &ThinModule<LlvmCodegenBackend>,
     ) -> Option<Self> {
         let root = cgcx.thinlto_cache_dir.as_ref()?;
+        if Self::unsupported(cgcx) {
+            return None;
+        }
+        let llvm_key = module.shared.data.cache_key(&module.shared.module_names[module.idx])?;
+        let mut hasher = StableHasher::new();
+        llvm_key.hash(&mut hasher);
+        module.name().hash(&mut hasher);
+        module.data().hash(&mut hasher);
+        let key: Fingerprint = hasher.finish();
+        Some(Self {
+            path: root.join(format!("{:032x}.cache", u128::from_le_bytes(key.to_le_bytes()))),
+            output: cgcx.output_filenames.temp_path_for_cgu(OutputType::Object, module.name()),
+            key,
+            name: module.name().to_owned(),
+        })
+    }
+
+    fn unsupported(cgcx: &CodegenContext) -> bool {
         let config = &cgcx.module_config;
-        if !matches!(config.emit_obj, EmitObj::ObjectCode(_))
+        !matches!(config.emit_obj, EmitObj::ObjectCode(_))
             || config.emit_pre_lto_bc
             || cgcx.incr_comp_session_dir.is_some()
             || config.emit_thin_lto_summary
@@ -56,21 +74,38 @@ impl CacheEntry {
             || !config.llvm_plugins.is_empty()
             || !config.autodiff.is_empty()
             || !config.offload.is_empty()
+    }
+
+    pub(super) fn observer(
+        cgcx: &CodegenContext,
+        module: &ModuleCodegen<ModuleLlvm>,
+    ) -> Option<Self> {
+        let (root, configuration) = cgcx.observer_object_cache.as_ref()?;
+        if module.kind != ModuleKind::Regular
+            || Self::unsupported(cgcx)
+            || unsafe { llvm::LLVMRustModuleHasInlineAsm(module.module_llvm.llmod()) }
         {
             return None;
         }
-
-        let llvm_key = module.shared.data.cache_key(&module.shared.module_names[module.idx])?;
+        let mut digest = [0u8; 32];
+        unsafe {
+            llvm::LLVMRustObserverModuleHash(module.module_llvm.llmod(), digest.as_mut_ptr())
+        };
         let mut hasher = StableHasher::new();
-        llvm_key.hash(&mut hasher);
-        module.name().hash(&mut hasher);
-        module.data().hash(&mut hasher);
+        "ohm-observer-object-v1".hash(&mut hasher);
+        configuration.hash(&mut hasher);
+        std::env::current_dir().ok()?.hash(&mut hasher);
+        std::env::var_os("LD_LIBRARY_PATH").hash(&mut hasher);
+        module.name.hash(&mut hasher);
+        digest.hash(&mut hasher);
         let key: Fingerprint = hasher.finish();
+        // Retain only the last result for each codegen unit in this output directory.
+        let slot = checksum(module.name.as_bytes());
         Some(Self {
-            path: root.join(format!("{:032x}.cache", u128::from_le_bytes(key.to_le_bytes()))),
-            output: cgcx.output_filenames.temp_path_for_cgu(OutputType::Object, module.name()),
+            path: root.join(format!("{:032x}.cache", u128::from_le_bytes(slot.to_le_bytes()))),
+            output: cgcx.output_filenames.temp_path_for_cgu(OutputType::Object, &module.name),
             key,
-            name: module.name().to_owned(),
+            name: module.name.clone(),
         })
     }
 

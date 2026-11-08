@@ -362,6 +362,8 @@ pub struct CodegenContext {
     /// compiling incrementally
     pub incr_comp_session_dir: Option<PathBuf>,
     pub thinlto_cache_dir: Option<PathBuf>,
+    /// Per-output cache of quiet non-LTO objects following a foreign-span observation.
+    pub observer_object_cache: Option<(PathBuf, Fingerprint)>,
     /// `Some(limit)` if the codegen should be run in parallel.
     ///
     /// Depends on [`WriteBackendMethods::supports_parallel()`] and `--jobs-backend`.
@@ -836,8 +838,6 @@ fn execute_optimize_work_item<B: WriteBackendMethods>(
 ) -> WorkItemResult<B> {
     let _timer = prof.generic_activity_with_arg("codegen_module_optimize", &*module.name);
 
-    B::optimize(cgcx, prof, &shared_emitter, &mut module, &cgcx.module_config);
-
     // After we've done the initial round of optimizations we need to
     // decide whether to synchronously codegen this module or ship it
     // back to the coordinator thread for further LTO processing (which
@@ -845,6 +845,16 @@ fn execute_optimize_work_item<B: WriteBackendMethods>(
 
     let lto_type =
         compute_per_cgu_lto_type(&cgcx.lto, cgcx.use_linker_plugin_lto, &cgcx.crate_types);
+    if matches!(lto_type, ComputedLtoType::No) {
+        return WorkItemResult::Finished(B::optimize_and_codegen(
+            cgcx,
+            prof,
+            &shared_emitter,
+            module,
+            &cgcx.module_config,
+        ));
+    }
+    B::optimize(cgcx, prof, &shared_emitter, &mut module, &cgcx.module_config);
 
     // If we're doing some form of incremental LTO then we need to be sure to
     // save our module to disk first.
@@ -856,10 +866,7 @@ fn execute_optimize_work_item<B: WriteBackendMethods>(
     };
 
     match lto_type {
-        ComputedLtoType::No => {
-            let module = B::codegen(cgcx, &prof, &shared_emitter, module, &cgcx.module_config);
-            WorkItemResult::Finished(module)
-        }
+        ComputedLtoType::No => unreachable!(),
         ComputedLtoType::Thin => {
             let thin_buffer = B::serialize_module(module.module_llvm, true);
             if let Some(path) = bitcode {
@@ -1315,19 +1322,7 @@ fn start_executing_work<B: WriteBackendMethods>(
         None
     };
 
-    let thinlto_cache_dir = sess.opts.unstable_opts.thinlto_cache.as_ref().and_then(|root| {
-        if sess.opts.unstable_opts.ohm_check_relink_inputs && tcx.ohm_untracked_relink_inputs(()) {
-            return None;
-        }
-        if sess.target.os != Os::Linux
-            || !matches!(sess.lto(), Lto::Thin | Lto::ThinLocal)
-            || sess.opts.incremental.is_some()
-            || sess.opts.cg.target_cpu.as_deref() == Some("native")
-            || !sess.opts.cg.llvm_args.is_empty()
-            || sess.opts.unstable_opts.codegen_backend.is_some()
-        {
-            return None;
-        }
+    let cache_configuration = || -> Option<Fingerprint> {
         let mut hasher = StableHasher::new();
         "ohm-thinlto-cache-v2".hash(&mut hasher);
         let compiler = std::env::current_exe().ok()?;
@@ -1362,9 +1357,51 @@ fn start_executing_work<B: WriteBackendMethods>(
         format!("{:?}", sess.target).hash(&mut hasher);
         backend_features.hash(&mut hasher);
         std::env::args_os().collect::<Vec<_>>().hash(&mut hasher);
-        let key: Fingerprint = hasher.finish();
+        Some(hasher.finish())
+    };
+    let thinlto_cache_dir = sess.opts.unstable_opts.thinlto_cache.as_ref().and_then(|root| {
+        if sess.opts.unstable_opts.ohm_check_relink_inputs && tcx.ohm_untracked_relink_inputs(()) {
+            return None;
+        }
+        if sess.target.os != Os::Linux
+            || !matches!(sess.lto(), Lto::Thin | Lto::ThinLocal)
+            || sess.opts.incremental.is_some()
+            || sess.opts.cg.target_cpu.as_deref() == Some("native")
+            || !sess.opts.cg.llvm_args.is_empty()
+            || sess.opts.unstable_opts.codegen_backend.is_some()
+        {
+            return None;
+        }
+        let key = cache_configuration()?;
         Some(root.join(format!("{:032x}", u128::from_le_bytes(key.to_le_bytes()))))
     });
+
+    // A foreign-span observer still runs the frontend to consume the current
+    // macro inputs. Each non-LTO object can be identified by the resulting IR.
+    let observer_object_cache = (sess.opts.unstable_opts.ohm_shared_stages
+        && sess.opts.unstable_opts.ohm_check_relink_inputs
+        && sess.proc_macro_observed_foreign_bytes.load(Ordering::Relaxed)
+        && sess.target.os == Os::Linux
+        && matches!(sess.lto(), Lto::No)
+        && tcx.crate_types() == [CrateType::Rlib]
+        && sess.opts.incremental.is_none()
+        && sess.opts.cg.target_cpu.as_deref() != Some("native")
+        && sess.opts.cg.llvm_args.is_empty()
+        && sess.opts.unstable_opts.codegen_backend.is_none()
+        && ["LD_PRELOAD", "LD_AUDIT"]
+            .iter()
+            .all(|key| std::env::var_os(key).is_none_or(|v| v.is_empty()))
+        && rustc_metadata::creader::CStore::from_tcx(tcx).has_public_api_hash_dependencies()
+        && !tcx.ohm_untracked_relink_inputs(()))
+    .then(|| {
+        let OutFileName::Real(metadata) = tcx.output_filenames(()).path(OutputType::Metadata)
+        else {
+            return None;
+        };
+        let root = metadata.parent()?.join(".ohm-observer-objects");
+        Some((root, cache_configuration()?))
+    })
+    .flatten();
 
     let cgcx = CodegenContext {
         crate_types: tcx.crate_types().to_vec(),
@@ -1382,6 +1419,7 @@ fn start_executing_work<B: WriteBackendMethods>(
             .as_ref()
             .map(|incr_comp_session| incr_comp_session.session_directory.clone()),
         thinlto_cache_dir,
+        observer_object_cache,
         output_filenames: Arc::clone(tcx.output_filenames(())),
         module_config: regular_config,
         opt_level,

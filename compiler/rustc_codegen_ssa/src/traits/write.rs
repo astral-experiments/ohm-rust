@@ -63,6 +63,16 @@ pub trait WriteBackendMethods: Clone + 'static {
         module: &mut ModuleCodegen<Self::Module>,
         config: &ModuleConfig,
     );
+    fn optimize_and_codegen(
+        cgcx: &CodegenContext,
+        prof: &SelfProfilerRef,
+        shared_emitter: &SharedEmitter,
+        mut module: ModuleCodegen<Self::Module>,
+        config: &ModuleConfig,
+    ) -> CompiledModule {
+        Self::optimize(cgcx, prof, shared_emitter, &mut module, config);
+        Self::codegen(cgcx, prof, shared_emitter, module, config)
+    }
     fn optimize_and_codegen_thin(
         cgcx: &CodegenContext,
         prof: &SelfProfilerRef,

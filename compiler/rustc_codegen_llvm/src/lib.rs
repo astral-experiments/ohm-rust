@@ -194,6 +194,15 @@ impl WriteBackendMethods for LlvmCodegenBackend {
     ) -> CompiledModule {
         back::lto::optimize_and_codegen_thin_module(cgcx, prof, shared_emitter, tm_factory, thin)
     }
+    fn optimize_and_codegen(
+        cgcx: &CodegenContext,
+        prof: &SelfProfilerRef,
+        shared_emitter: &SharedEmitter,
+        module: ModuleCodegen<Self::Module>,
+        config: &ModuleConfig,
+    ) -> CompiledModule {
+        back::write::optimize_and_codegen(cgcx, prof, shared_emitter, module, config)
+    }
     fn codegen(
         cgcx: &CodegenContext,
         prof: &SelfProfilerRef,
