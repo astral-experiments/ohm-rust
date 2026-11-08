@@ -929,6 +929,18 @@ impl SyntaxContext {
         HygieneData::with(|data| data.expn_data(data.outer_expn(self)).clone())
     }
 
+    /// Returns the call site for a local attribute whose expansion parent is the root.
+    #[inline]
+    pub fn outer_local_attr_call_site(self) -> Option<Span> {
+        HygieneData::with(|data| {
+            let id = data.outer_expn(self).as_local()?;
+            let expansion = data.local_expn_data(id);
+            (expansion.parent == ExpnId::root()
+                && matches!(expansion.kind, ExpnKind::Macro(MacroKind::Attr, _)))
+            .then_some(expansion.call_site)
+        })
+    }
+
     #[inline]
     pub(crate) fn dollar_crate_name(self) -> Symbol {
         HygieneData::with(|data| data.syntax_context_data[self.0 as usize].dollar_crate_name)
