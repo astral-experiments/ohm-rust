@@ -1570,9 +1570,17 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
     /// If no resolution is possible, then an error is reported.
     /// Numeric inference variables may be left unresolved.
     pub(crate) fn structurally_resolve_type(&self, sp: Span, ty: Ty<'tcx>) -> Ty<'tcx> {
+        self.structurally_resolve_type_with_span(ty, || sp)
+    }
+
+    pub(crate) fn structurally_resolve_type_with_span(
+        &self,
+        ty: Ty<'tcx>,
+        span: impl FnOnce() -> Span,
+    ) -> Ty<'tcx> {
         let ty = self.resolve_vars_with_obligations(ty);
 
-        if !ty.is_ty_var() { ty } else { self.type_must_be_known_at_this_point(sp, ty) }
+        if !ty.is_ty_var() { ty } else { self.type_must_be_known_at_this_point(span(), ty) }
     }
 
     #[cold]

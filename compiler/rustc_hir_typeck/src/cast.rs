@@ -59,7 +59,6 @@ pub(crate) struct CastCheck<'tcx> {
     expr: &'tcx hir::Expr<'tcx>,
     /// The source type for the cast expression
     expr_ty: Ty<'tcx>,
-    expr_span: Span,
     /// The target type. That is, the type we are casting to.
     cast_ty: Ty<'tcx>,
     cast_span: Span,
@@ -246,16 +245,8 @@ impl<'a, 'tcx> CastCheck<'tcx> {
         cast_span: Span,
         span: Span,
     ) -> Result<CastCheck<'tcx>, ErrorGuaranteed> {
-        let expr_span = expr.span.find_ancestor_inside(span).unwrap_or(expr.span);
-        let check = CastCheck {
-            expr,
-            expr_ty,
-            expr_span,
-            cast_ty,
-            cast_span,
-            span,
-            body_def_id: fcx.body_def_id,
-        };
+        let check =
+            CastCheck { expr, expr_ty, cast_ty, cast_span, span, body_def_id: fcx.body_def_id };
 
         // For better error messages, check for some obviously unsized
         // cases now. We do a more thorough check at the end, once
@@ -267,6 +258,7 @@ impl<'a, 'tcx> CastCheck<'tcx> {
     }
 
     fn report_cast_error(&self, fcx: &FnCtxt<'a, 'tcx>, e: CastError<'tcx>) {
+        let expr_span = self.expr_span();
         match e {
             CastError::ErrorGuaranteed(_) => {
                 // an error has already been reported
@@ -277,7 +269,7 @@ impl<'a, 'tcx> CastCheck<'tcx> {
 
                 if matches!(self.expr.kind, ExprKind::AddrOf(..)) {
                     // get just the borrow part of the expression
-                    let span = self.expr_span.with_hi(self.expr.peel_borrows().span.lo());
+                    let span = expr_span.with_hi(self.expr.peel_borrows().span.lo());
                     err.span_suggestion_verbose(
                         span,
                         "remove the unneeded borrow",
@@ -286,7 +278,7 @@ impl<'a, 'tcx> CastCheck<'tcx> {
                     );
                 } else {
                     err.span_suggestion_verbose(
-                        self.expr_span.shrink_to_lo(),
+                        expr_span.shrink_to_lo(),
                         "dereference the expression",
                         "*",
                         Applicability::MachineApplicable,
@@ -307,7 +299,7 @@ impl<'a, 'tcx> CastCheck<'tcx> {
                         && adt_def.is_payloadfree()
                     {
                         err.span_suggestion_verbose(
-                            self.expr_span.shrink_to_lo(),
+                            expr_span.shrink_to_lo(),
                             "try dereferencing before the cast",
                             "*",
                             Applicability::MaybeIncorrect,
@@ -334,7 +326,7 @@ impl<'a, 'tcx> CastCheck<'tcx> {
                     }
                 }
 
-                self.try_suggest_collection_to_bool(fcx, &mut err);
+                self.try_suggest_collection_to_bool(fcx, expr_span, &mut err);
 
                 err.emit();
             }
@@ -397,7 +389,7 @@ impl<'a, 'tcx> CastCheck<'tcx> {
                 let expr_ty = fcx.resolve_vars_if_possible(self.expr_ty);
                 let help = if self.expr_ty.is_numeric() {
                     diagnostics::CannotCastToBoolHelp::Numeric(
-                        self.expr_span.shrink_to_hi().with_hi(self.span.hi()),
+                        expr_span.shrink_to_hi().with_hi(self.span.hi()),
                     )
                 } else {
                     diagnostics::CannotCastToBoolHelp::Unsupported(self.span)
@@ -423,8 +415,8 @@ impl<'a, 'tcx> CastCheck<'tcx> {
                         err.multipart_suggestion(
                             "consider using `char::from_u32` instead",
                             vec![
-                                (self.expr_span.shrink_to_lo(), "char::from_u32(".to_string()),
-                                (self.expr_span.shrink_to_hi().to(self.cast_span), ")".to_string()),
+                                (expr_span.shrink_to_lo(), "char::from_u32(".to_string()),
+                                (expr_span.shrink_to_hi().to(self.cast_span), ")".to_string()),
                             ],
                             Applicability::MachineApplicable,
                         );
@@ -450,7 +442,7 @@ impl<'a, 'tcx> CastCheck<'tcx> {
                     fcx.ty_to_string(self.cast_ty)
                 );
 
-                if let Ok(snippet) = fcx.tcx.sess.source_map().span_to_snippet(self.expr_span)
+                if let Ok(snippet) = fcx.tcx.sess.source_map().span_to_snippet(expr_span)
                     && matches!(self.expr.kind, ExprKind::AddrOf(..))
                 {
                     err.note(format!(
@@ -496,7 +488,7 @@ impl<'a, 'tcx> CastCheck<'tcx> {
                 }
                 if sugg_mutref {
                     err.span_label(self.span, "invalid cast");
-                    err.span_note(self.expr_span, "this reference is immutable");
+                    err.span_note(expr_span, "this reference is immutable");
                     err.span_note(self.cast_span, "trying to cast to a mutable reference type");
                 } else if let Some((sugg, remove_cast)) = sugg {
                     err.span_label(self.span, "invalid cast");
@@ -505,7 +497,7 @@ impl<'a, 'tcx> CastCheck<'tcx> {
                         .tcx
                         .sess
                         .source_map()
-                        .span_to_snippet(self.expr_span)
+                        .span_to_snippet(expr_span)
                         .is_ok_and(|snip| snip.starts_with('('));
 
                     // Very crude check to see whether the expression must be wrapped
@@ -514,16 +506,14 @@ impl<'a, 'tcx> CastCheck<'tcx> {
                     let needs_parens =
                         !has_parens && matches!(self.expr.kind, hir::ExprKind::Cast(..));
 
-                    let mut suggestion = vec![(self.expr_span.shrink_to_lo(), sugg)];
+                    let mut suggestion = vec![(expr_span.shrink_to_lo(), sugg)];
                     if needs_parens {
                         suggestion[0].1 += "(";
-                        suggestion.push((self.expr_span.shrink_to_hi(), ")".to_string()));
+                        suggestion.push((expr_span.shrink_to_hi(), ")".to_string()));
                     }
                     if remove_cast {
-                        suggestion.push((
-                            self.expr_span.shrink_to_hi().to(self.cast_span),
-                            String::new(),
-                        ));
+                        suggestion
+                            .push((expr_span.shrink_to_hi().to(self.cast_span), String::new()));
                     }
 
                     err.multipart_suggestion(
@@ -552,11 +542,8 @@ impl<'a, 'tcx> CastCheck<'tcx> {
                             err.multipart_suggestion(
                                 "consider using the `From` trait instead",
                                 vec![
-                                    (self.expr_span.shrink_to_lo(), format!("{to_ty}::from(")),
-                                    (
-                                        self.expr_span.shrink_to_hi().to(self.cast_span),
-                                        ")".to_string(),
-                                    ),
+                                    (expr_span.shrink_to_lo(), format!("{to_ty}::from(")),
+                                    (expr_span.shrink_to_hi().to(self.cast_span), ")".to_string()),
                                 ],
                                 Applicability::MaybeIncorrect,
                             );
@@ -597,7 +584,7 @@ impl<'a, 'tcx> CastCheck<'tcx> {
                     self.cast_ty,
                     self.expr_ty,
                 );
-                self.try_suggest_collection_to_bool(fcx, &mut err);
+                self.try_suggest_collection_to_bool(fcx, expr_span, &mut err);
 
                 err.emit();
             }
@@ -612,7 +599,7 @@ impl<'a, 'tcx> CastCheck<'tcx> {
                 });
             }
             CastError::IntToWideCast(known_metadata) => {
-                let expr_if_nightly = fcx.tcx.sess.is_nightly_build().then_some(self.expr_span);
+                let expr_if_nightly = fcx.tcx.sess.is_nightly_build().then_some(expr_span);
                 let cast_ty = fcx.resolve_vars_if_possible(self.cast_ty);
                 let expr_ty = fcx.resolve_vars_if_possible(self.expr_ty);
                 let metadata = known_metadata.unwrap_or("type-specific metadata");
@@ -729,7 +716,7 @@ impl<'a, 'tcx> CastCheck<'tcx> {
                 );
             }
             _ => {
-                err.span_help(self.expr_span, "consider using a box or reference as appropriate");
+                err.span_help(self.expr_span(), "consider using a box or reference as appropriate");
             }
         }
         err.emit()
@@ -784,21 +771,33 @@ impl<'a, 'tcx> CastCheck<'tcx> {
         )
     }
 
-    fn expr_span_for_type_resolution(&self, fcx: &FnCtxt<'a, 'tcx>) -> Span {
+    fn expr_span(&self) -> Span {
+        let span = self.expr.span;
+        if span.from_expansion() {
+            span.find_ancestor_inside(self.span).unwrap_or(span)
+        } else {
+            span
+        }
+    }
+
+    fn ambiguous_index_span(&self, fcx: &FnCtxt<'a, 'tcx>) -> Option<Span> {
         if let hir::ExprKind::Index(_, idx, _) = self.expr.kind
             && fcx.resolve_vars_if_possible(self.expr_ty).is_ty_var()
             && fcx.resolve_vars_if_possible(fcx.node_ty(idx.hir_id)).is_ty_var()
         {
-            index_operand_ambiguity_span(idx)
+            Some(index_operand_ambiguity_span(idx))
         } else {
-            self.expr_span
+            None
         }
     }
 
     #[instrument(skip(fcx), level = "debug")]
     pub(crate) fn check(mut self, fcx: &FnCtxt<'a, 'tcx>) {
-        let expr_span = self.expr_span_for_type_resolution(fcx);
-        self.expr_ty = fcx.structurally_resolve_type(expr_span, self.expr_ty);
+        // Choose the index diagnostic before resolving any pending obligations.
+        let index_span = self.ambiguous_index_span(fcx);
+        self.expr_ty = fcx.structurally_resolve_type_with_span(self.expr_ty, || {
+            index_span.unwrap_or_else(|| self.expr_span())
+        });
         self.cast_ty = fcx.structurally_resolve_type(self.cast_span, self.cast_ty);
 
         debug!("check_cast({}, {:?} as {:?})", self.expr.hir_id, self.expr_ty, self.cast_ty);
@@ -855,7 +854,7 @@ impl<'a, 'tcx> CastCheck<'tcx> {
                     ty::FnDef(..) => {
                         // Attempt a coercion to a fn pointer type.
                         let f = fcx.normalize(
-                            self.expr_span,
+                            self.expr_span(),
                             Unnormalized::new_wip(self.expr_ty.fn_sig(fcx.tcx)),
                         );
                         let res = fcx.coerce(
@@ -1199,27 +1198,29 @@ impl<'a, 'tcx> CastCheck<'tcx> {
 
     /// Attempt to suggest using `.is_empty` when trying to cast from a
     /// collection type to a boolean.
-    fn try_suggest_collection_to_bool(&self, fcx: &FnCtxt<'a, 'tcx>, err: &mut Diag<'_>) {
+    fn try_suggest_collection_to_bool(
+        &self,
+        fcx: &FnCtxt<'a, 'tcx>,
+        expr_span: Span,
+        err: &mut Diag<'_>,
+    ) {
         if self.cast_ty.is_bool() {
             let derefed = fcx
-                .autoderef(self.expr_span, self.expr_ty)
+                .autoderef(expr_span, self.expr_ty)
                 .silence_errors()
                 .find(|t| matches!(t.0.kind(), ty::Str | ty::Slice(..)));
 
             if let Some((deref_ty, _)) = derefed {
                 // Give a note about what the expr derefs to.
                 if deref_ty != self.expr_ty.peel_refs() {
-                    err.subdiagnostic(diagnostics::DerefImplsIsEmpty {
-                        span: self.expr_span,
-                        deref_ty,
-                    });
+                    err.subdiagnostic(diagnostics::DerefImplsIsEmpty { span: expr_span, deref_ty });
                 }
 
                 // Create a multipart suggestion: add `!` and `.is_empty()` in
                 // place of the cast.
                 err.subdiagnostic(diagnostics::UseIsEmpty {
-                    lo: self.expr_span.shrink_to_lo(),
-                    hi: self.span.with_lo(self.expr_span.hi()),
+                    lo: expr_span.shrink_to_lo(),
+                    hi: self.span.with_lo(expr_span.hi()),
                     expr_ty: self.expr_ty,
                 });
             }
