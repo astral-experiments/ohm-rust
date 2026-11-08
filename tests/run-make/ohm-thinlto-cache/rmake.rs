@@ -13,7 +13,10 @@ fn build(cache: Option<&str>, extra: &[&str]) -> CompletedProcess {
         .opt_level("3")
         .lto("thin")
         .arg("-Ccodegen-units=2")
-        .env("RUSTC_LOG", "rustc_codegen_llvm::back::lto=info");
+        .env(
+            "RUSTC_LOG",
+            "rustc_codegen_llvm::back::lto=info,rustc_codegen_ssa::back::loaded_libraries=info",
+        );
     if let Some(cache) = cache {
         command.arg(format!("-Zthinlto-cache={cache}"));
     }
