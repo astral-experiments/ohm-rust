@@ -1239,7 +1239,7 @@ pub(crate) fn check_static_item<'tcx>(
         let is_structurally_foreign_item = || {
             let tail = tcx.struct_tail_raw(
                 item_ty,
-                &ObligationCause::dummy(),
+                || DUMMY_SP,
                 |ty| wfcx.deeply_normalize(span, loc, ty),
                 || {},
             );

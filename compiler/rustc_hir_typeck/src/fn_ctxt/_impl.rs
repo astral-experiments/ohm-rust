@@ -542,12 +542,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
     pub(crate) fn require_type_has_static_alignment(&self, ty: Ty<'tcx>, span: Span) {
         if !ty.references_error() {
-            let tail = self.tcx.struct_tail_raw(
-                ty,
-                &self.misc(span),
-                |ty| self.normalize(span, ty),
-                || {},
-            );
+            let tail = self.tcx.struct_tail_raw(ty, || span, |ty| self.normalize(span, ty), || {});
             // Sized types have static alignment, and so do slices.
             if tail.has_trivial_sizedness(self.tcx, SizedTraitKind::Sized)
                 || matches!(tail.kind(), ty::Slice(..))

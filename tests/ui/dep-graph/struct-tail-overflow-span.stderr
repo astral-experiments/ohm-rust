@@ -1,0 +1,8 @@
+error: no path from `Package` to `typeck_root`
+  --> $DIR/struct-tail-overflow-span.rs:14:30
+   |
+LL | #[rustc_then_this_would_need(typeck_root)]
+   |                              ^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
