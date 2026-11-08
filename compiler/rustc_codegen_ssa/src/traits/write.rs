@@ -25,6 +25,11 @@ pub trait WriteBackendMethods: Clone + 'static {
     fn supports_parallel(&self) -> bool {
         true
     }
+    /// Functions in the backend bridge and its native code generator whose mapped
+    /// images must be identified before reusing machine code.
+    fn object_cache_library_addresses(&self) -> Option<[usize; 2]> {
+        None
+    }
     fn thread_profiler() -> Box<dyn Any> {
         Box::new(())
     }
@@ -63,6 +68,16 @@ pub trait WriteBackendMethods: Clone + 'static {
         module: &mut ModuleCodegen<Self::Module>,
         config: &ModuleConfig,
     );
+    fn optimize_and_codegen(
+        cgcx: &CodegenContext,
+        prof: &SelfProfilerRef,
+        shared_emitter: &SharedEmitter,
+        mut module: ModuleCodegen<Self::Module>,
+        config: &ModuleConfig,
+    ) -> CompiledModule {
+        Self::optimize(cgcx, prof, shared_emitter, &mut module, config);
+        Self::codegen(cgcx, prof, shared_emitter, module, config)
+    }
     fn optimize_and_codegen_thin(
         cgcx: &CodegenContext,
         prof: &SelfProfilerRef,

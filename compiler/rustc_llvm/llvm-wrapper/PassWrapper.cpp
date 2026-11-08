@@ -10,6 +10,7 @@
 #include "llvm/Analysis/RuntimeLibcallInfo.h"
 #endif
 #include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/Support/BLAKE3.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/IR/AssemblyAnnotationWriter.h"
@@ -1510,6 +1511,15 @@ extern "C" bool LLVMRustPrepareThinLTOImport(const LLVMRustThinLTOData *Data,
     return false;
   }
   return true;
+}
+
+extern "C" void LLVMRustObserverModuleHash(LLVMModuleRef M, uint8_t *Digest) {
+  SmallVector<char, 0> Bytes;
+  raw_svector_ostream OS(Bytes);
+  WriteBitcodeToFile(*unwrap(M), OS, /*ShouldPreserveUseListOrder=*/true);
+  auto Hash = BLAKE3::hash<32>(ArrayRef(
+      reinterpret_cast<const uint8_t *>(Bytes.data()), Bytes.size()));
+  memcpy(Digest, Hash.data(), Hash.size());
 }
 
 extern "C" LLVMRustBuffer *LLVMRustModuleSerialize(LLVMModuleRef M,
