@@ -45,6 +45,7 @@ use crate::inline_asm::InlineAsmCtxt;
 use crate::method::probe::IsSuggestion;
 use crate::method::probe::Mode::MethodCall;
 use crate::method::probe::ProbeScope::TraitsInScope;
+use crate::pat::PatOrigin;
 use crate::{
     BreakableCtxt, Diverges, Expectation, FnCtxt, GatherLocalsVisitor, LoweredTy, Needs,
     TupleArgumentsFlag, diagnostics, struct_span_code_err,
@@ -1181,16 +1182,14 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         }
 
         // Does the expected pattern type originate from an expression and what is the span?
-        let (origin_expr, ty_span) = match (decl.ty, decl.init) {
-            (Some(ty), _) => (None, Some(ty.span)), // Bias towards the explicit user type.
-            (_, Some(init)) => {
-                (Some(init), Some(init.span.find_ancestor_inside(decl.span).unwrap_or(init.span)))
-            } // No explicit type; so use the scrutinee.
-            _ => (None, None), // We have `let $pat;`, so the expected type is unconstrained.
+        let origin = match (decl.ty, decl.init) {
+            (Some(ty), _) => PatOrigin::Type(ty.span),
+            (_, Some(expr)) => PatOrigin::Expr { expr, enclosing: decl.span },
+            _ => PatOrigin::Unspecified,
         };
 
         // Type check the pattern. Override if necessary to avoid knock-on errors.
-        self.check_pat_top(decl.pat, decl_ty, ty_span, origin_expr, Some(decl.origin));
+        self.check_pat_top(decl.pat, decl_ty, origin, Some(decl.origin));
         let pat_ty = self.node_ty(decl.pat.hir_id);
         if decl.ty.is_none()
             && decl.init.is_none()
