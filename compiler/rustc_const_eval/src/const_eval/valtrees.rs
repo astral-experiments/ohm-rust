@@ -2,7 +2,6 @@ use rustc_abi::{BackendRepr, FieldIdx, VariantIdx};
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::mir;
 use rustc_middle::mir::interpret::{EvalToValTreeResult, GlobalId, ValTreeCreationError};
-use rustc_middle::traits::ObligationCause;
 use rustc_middle::ty::consts::ConstExt;
 use rustc_middle::ty::layout::{LayoutCx, TyAndLayout};
 use rustc_middle::ty::{self, Ty, TyCtxt};
@@ -233,7 +232,7 @@ fn reconstruct_place_meta<'tcx>(
     // FIXME(#155345): Missing normalization call
     let tail = tcx.struct_tail_raw(
         layout.ty,
-        &ObligationCause::dummy(),
+        || DUMMY_SP,
         |ty| ty.skip_norm_wip(),
         || {
             let branches = last_valtree.to_branch();

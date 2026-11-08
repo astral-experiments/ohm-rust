@@ -1,4 +1,3 @@
-use rustc_middle::traits::ObligationCause;
 use rustc_middle::ty::{self, Ty};
 use rustc_span::Span;
 
@@ -74,14 +73,14 @@ impl<'a, 'tcx> Expectation<'tcx> {
     /// See the test case `test/ui/coerce-expect-unsized.rs` and #20169
     /// for examples of where this comes up,.
     pub(super) fn rvalue_hint(fcx: &FnCtxt<'a, 'tcx>, ty: Ty<'tcx>) -> Expectation<'tcx> {
-        let span = match ty.kind() {
+        let overflow_span = || match ty.kind() {
             ty::Adt(adt_def, _) => fcx.tcx.def_span(adt_def.did()),
             _ => fcx.tcx.def_span(fcx.body_def_id),
         };
-        let cause = ObligationCause::misc(span, fcx.body_def_id);
 
         // FIXME(#155345): Missing normalization call
-        match fcx.tcx.struct_tail_raw(ty, &cause, |ty| ty.skip_normalization(), || {}).kind() {
+        match fcx.tcx.struct_tail_raw(ty, overflow_span, |ty| ty.skip_normalization(), || {}).kind()
+        {
             ty::Slice(_) | ty::Str | ty::Dynamic(..) => ExpectRvalueLikeUnsized(ty),
             _ => ExpectHasType(ty),
         }
