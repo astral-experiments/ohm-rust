@@ -169,6 +169,12 @@ macro_rules! impl_erasable_for_types_with_no_type_params {
 // For types with no type parameters the erased storage for `Foo` is
 // `[u8; size_of::<Foo>()]`. ('_ lifetimes are allowed.)
 impl_erasable_for_types_with_no_type_params! {
+    crate::mir::BuiltMir<'_>,
+    (
+        &'_ Steal<crate::mir::Body<'_>>,
+        &'_ Steal<rustc_index::IndexVec<crate::mir::Promoted, crate::mir::Body<'_>>>,
+        Option<bool>,
+    ),
     // tidy-alphabetical-start
     (&'_ ty::CrateInherentImpls, Result<(), ErrorGuaranteed>),
     (),

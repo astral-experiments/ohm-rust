@@ -654,7 +654,7 @@ rustc_queries! {
     /// See the [rustc dev guide] for more info.
     ///
     /// [rustc dev guide]: https://rustc-dev-guide.rust-lang.org/mir/construction.html
-    query mir_built(key: LocalDefId) -> &'tcx Steal<mir::Body<'tcx>> {
+    query mir_built(key: LocalDefId) -> mir::BuiltMir<'tcx> {
         desc { "building MIR for `{}`", tcx.def_path_str(key) }
         feedable
     }
@@ -693,7 +693,8 @@ rustc_queries! {
 
     query mir_promoted(key: LocalDefId) -> (
         &'tcx Steal<mir::Body<'tcx>>,
-        &'tcx Steal<IndexVec<mir::Promoted, mir::Body<'tcx>>>
+        &'tcx Steal<IndexVec<mir::Promoted, mir::Body<'tcx>>>,
+        Option<bool>
     ) {
         no_hash
         desc { "promoting constants in MIR for `{}`", tcx.def_path_str(key) }

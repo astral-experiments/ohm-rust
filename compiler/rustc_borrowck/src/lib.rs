@@ -124,7 +124,7 @@ fn mir_borrowck(
         let opaque_types = Default::default();
         return Ok(tcx.arena.alloc(opaque_types));
     }
-    let (input_body, _) = tcx.mir_promoted(def);
+    let (input_body, _, _) = tcx.mir_promoted(def);
     debug!("run query mir_borrowck: {}", tcx.def_path_str(def));
 
     // We should eagerly check stalled coroutine obligations from HIR typeck.
@@ -299,6 +299,7 @@ impl<'tcx> ClosureOutlivesSubjectTy<'tcx> {
 struct CollectRegionConstraintsResult<'tcx> {
     infcx: BorrowckInferCtxt<'tcx>,
     body_owned: Body<'tcx>,
+    rustc_regions: Option<bool>,
     promoted: IndexVec<Promoted, Body<'tcx>>,
     move_data: MoveData<'tcx>,
     borrow_set: BorrowSet<'tcx>,
@@ -323,7 +324,7 @@ fn borrowck_collect_region_constraints<'tcx>(
 ) -> CollectRegionConstraintsResult<'tcx> {
     let tcx = root_cx.tcx;
     let infcx = BorrowckInferCtxt::new(tcx, def, root_cx.root_def_id());
-    let (input_body, promoted) = tcx.mir_promoted(def);
+    let (input_body, promoted, rustc_regions) = tcx.mir_promoted(def);
     let input_body: &Body<'_> = &input_body.borrow();
     let input_promoted: &IndexSlice<_, _> = &promoted.borrow();
     if let Some(e) = input_body.tainted_by_errors {
@@ -377,6 +378,7 @@ fn borrowck_collect_region_constraints<'tcx>(
     CollectRegionConstraintsResult {
         infcx,
         body_owned,
+        rustc_regions,
         promoted,
         move_data,
         borrow_set,
@@ -402,6 +404,7 @@ fn borrowck_check_region_constraints<'diag, 'tcx>(
     CollectRegionConstraintsResult {
         infcx,
         body_owned,
+        rustc_regions,
         promoted,
         move_data,
         borrow_set,
@@ -460,7 +463,7 @@ fn borrowck_check_region_constraints<'diag, 'tcx>(
 
     // We also have a `#[rustc_regions]` annotation that causes us to dump
     // information.
-    nll::dump_annotation(&infcx, body, &regioncx, &opt_closure_req);
+    nll::dump_annotation(&infcx, body, &regioncx, &opt_closure_req, rustc_regions);
 
     let movable_coroutine = body.coroutine.is_some()
         && tcx.coroutine_movability(def.to_def_id()) == hir::Movability::Movable;

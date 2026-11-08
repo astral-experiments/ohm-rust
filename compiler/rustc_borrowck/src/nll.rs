@@ -293,10 +293,14 @@ pub(super) fn dump_annotation<'tcx>(
     body: &Body<'tcx>,
     regioncx: &RegionInferenceContext<'tcx>,
     closure_region_requirements: &Option<ClosureRegionRequirements<'tcx>>,
+    rustc_regions: Option<bool>,
 ) {
     let tcx = infcx.tcx;
-    let base_def_id = tcx.typeck_root_def_id(body.source.def_id());
-    if !find_attr!(tcx, base_def_id, RustcRegions) {
+    let marked = rustc_regions.unwrap_or_else(|| {
+        let root = tcx.typeck_root_def_id(body.source.def_id());
+        find_attr!(tcx, root, RustcRegions)
+    });
+    if !marked {
         return;
     }
 
