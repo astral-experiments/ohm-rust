@@ -1332,28 +1332,28 @@ fn start_executing_work<B: WriteBackendMethods>(
             return None;
         }
         let mut hasher = StableHasher::new();
-        "ohm-thinlto-cache-v2".hash(&mut hasher);
+        "ohm-codegen-cache-v3".hash(&mut hasher);
         let compiler = std::env::current_exe().ok()?;
-        let libdir = compiler.parent()?.parent()?.join("lib");
-        let mut compiler_files = vec![compiler];
-        for entry in std::fs::read_dir(libdir).ok()? {
-            let entry = entry.ok()?;
-            let name = entry.file_name();
-            let name = name.to_str()?;
-            if name.starts_with("librustc_driver")
-                || name.starts_with("librustc_codegen_llvm")
-                || name.starts_with("libLLVM")
-            {
-                compiler_files.push(entry.path());
+        #[cfg(target_os = "linux")]
+        let compiler_files = [compiler];
+        #[cfg(not(target_os = "linux"))]
+        let compiler_files = {
+            let libdir = compiler.parent()?.parent()?.join("lib");
+            let mut files = vec![compiler];
+            for entry in std::fs::read_dir(libdir).ok()? {
+                let entry = entry.ok()?;
+                let name = entry.file_name();
+                let name = name.to_str()?;
+                if name.starts_with("librustc_driver")
+                    || name.starts_with("librustc_codegen_llvm")
+                    || name.starts_with("libLLVM")
+                {
+                    files.push(entry.path());
+                }
             }
-        }
-        compiler_files.sort();
-        #[cfg(target_os = "linux")]
-        let bundled_llvm = compiler_files.iter().any(|path| {
-            path.file_name().is_some_and(|name| name.as_encoded_bytes().starts_with(b"libLLVM"))
-        });
-        #[cfg(target_os = "linux")]
-        let mut sdk_ids = Vec::with_capacity(compiler_files.len());
+            files.sort();
+            files
+        };
         for path in compiler_files {
             let metadata = path.metadata().ok()?;
             path.hash(&mut hasher);
@@ -1364,20 +1364,13 @@ fn start_executing_work<B: WriteBackendMethods>(
                 use std::os::unix::fs::MetadataExt;
                 metadata.ctime().hash(&mut hasher);
                 metadata.ctime_nsec().hash(&mut hasher);
-                #[cfg(target_os = "linux")]
-                sdk_ids.push(super::loaded_libraries::file_id(&metadata));
             }
         }
         #[cfg(target_os = "linux")]
         {
             let [bridge, llvm] = backend.object_cache_library_addresses()?;
             let driver = rustc_session::filesearch::dll_path as *const () as usize;
-            super::loaded_libraries::cache_providers(
-                [driver, bridge, llvm],
-                &sdk_ids,
-                bundled_llvm,
-            )?
-            .hash(&mut hasher);
+            super::loaded_libraries::cache_providers([driver, bridge, llvm])?.hash(&mut hasher);
         }
         sess.cfg_version.hash(&mut hasher);
         sess.opts.dep_tracking_hash(false).hash(&mut hasher);

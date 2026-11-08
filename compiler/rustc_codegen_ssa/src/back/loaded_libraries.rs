@@ -1,83 +1,123 @@
 use std::ffi::OsStr;
+use std::fs::{self, File};
+use std::os::fd::AsRawFd;
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
-use std::{fs, str};
+use std::{ptr, str};
 
-/// Major and minor device numbers and inode, as reported by the Linux kernel.
-pub(super) type FileId = (u32, u32, u64);
+/// The kernel reports device major/minor and inode in /proc/self/maps.
+type FileId = (u32, u32, u64);
 
-pub(super) fn file_id(metadata: &fs::Metadata) -> FileId {
+fn file_id(metadata: &fs::Metadata) -> FileId {
     (libc::major(metadata.dev()), libc::minor(metadata.dev()), metadata.ino())
 }
 
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub(super) struct Provider {
     path: PathBuf,
-    id: FileId,
+    mapping: FileId,
+    file: FileId,
     len: u64,
     modified: SystemTime,
     ctime: (i64, i64),
 }
 
-/// Identify the actual compiler, backend bridge and LLVM providers. Bootstrap and
-/// external-LLVM builds can load a system LLVM that is absent from the sysroot.
-pub(super) fn cache_providers(
-    addresses: [usize; 3],
-    sdk_files: &[FileId],
-    bundled_llvm: bool,
-) -> Option<[Provider; 3]> {
-    let maps = fs::read("/proc/self/maps").ok()?;
-    providers(&maps, addresses, sdk_files, bundled_llvm)
+fn word<'a>(rest: &mut &'a [u8]) -> Option<&'a [u8]> {
+    let bytes = rest.trim_ascii_start();
+    let end = bytes.iter().position(u8::is_ascii_whitespace).unwrap_or(bytes.len());
+    let (field, remaining) = bytes.split_at(end);
+    *rest = remaining;
+    (!field.is_empty()).then_some(field)
 }
 
-fn providers(
-    maps: &[u8],
-    addresses: [usize; 3],
-    sdk_files: &[FileId],
-    bundled_llvm: bool,
-) -> Option<[Provider; 3]> {
-    let [Some(driver), Some(bridge), Some(llvm)] = addresses.map(|address| {
-        maps.split(|&byte| byte == b'\n').find_map(|line| {
-            // Linux separates the five numeric fields with spaces and pads the
-            // pathname to a fixed column. Keep embedded spaces and non-UTF-8 bytes.
-            let mut fields = line.splitn(6, |&byte| byte == b' ');
-            let (lo, hi) = str::from_utf8(fields.next()?).ok()?.split_once('-')?;
-            let range = usize::from_str_radix(lo, 16).ok()?..usize::from_str_radix(hi, 16).ok()?;
-            if !range.contains(&address) {
-                return None;
-            }
-            let (major, minor) = str::from_utf8(fields.nth(2)?).ok()?.split_once(':')?;
-            let id = (
-                u32::from_str_radix(major, 16).ok()?,
-                u32::from_str_radix(minor, 16).ok()?,
-                str::from_utf8(fields.next()?).ok()?.parse().ok()?,
-            );
-            let name = fields.next()?.trim_ascii_start();
-            let path = Path::new(OsStr::from_bytes(name));
-            if id.2 == 0 || !path.is_absolute() || name.ends_with(b" (deleted)") {
-                return None;
-            }
-            let meta = fs::metadata(path).ok()?;
-            if !meta.is_file() || file_id(&meta) != id {
-                return None;
-            }
-            Some(Provider {
-                path: path.to_owned(),
-                id,
-                len: meta.len(),
-                modified: meta.modified().ok()?,
-                ctime: (meta.ctime(), meta.ctime_nsec()),
-            })
-        })
-    }) else {
+/// Read only the mapping containing the address. Names can contain spaces and
+/// non-UTF-8 bytes, and the kernel marks unlinked files with a suffix.
+fn mapping(maps: &[u8], address: usize) -> Option<(FileId, &[u8])> {
+    maps.split(|&byte| byte == b'\n').find_map(|mut line| {
+        let (lo, hi) = str::from_utf8(word(&mut line)?).ok()?.split_once('-')?;
+        let range = usize::from_str_radix(lo, 16).ok()?..usize::from_str_radix(hi, 16).ok()?;
+        if !range.contains(&address) {
+            return None;
+        }
+        word(&mut line)?; // permissions
+        word(&mut line)?; // file offset
+        let (major, minor) = str::from_utf8(word(&mut line)?).ok()?.split_once(':')?;
+        let id = (
+            u32::from_str_radix(major, 16).ok()?,
+            u32::from_str_radix(minor, 16).ok()?,
+            str::from_utf8(word(&mut line)?).ok()?.parse().ok()?,
+        );
+        (id.2 != 0).then_some((id, line.trim_ascii_start()))
+    })
+}
+
+/// A stacked filesystem can expose different inode numbers through stat and its
+/// backing mapping. Compare two kernel mapping identities in that case.
+fn mapped_file_id(file: &File) -> Option<FileId> {
+    // SAFETY: the kernel chooses a new address. No bytes are accessible or read.
+    let addr = unsafe {
+        libc::mmap(ptr::null_mut(), 1, libc::PROT_NONE, libc::MAP_PRIVATE, file.as_raw_fd(), 0)
+    };
+    if addr == libc::MAP_FAILED {
+        return None;
+    }
+    let id = fs::read("/proc/self/maps")
+        .ok()
+        .and_then(|maps| mapping(&maps, addr.addr()).map(|(id, _)| id));
+    // SAFETY: this is the range returned by mmap above. No references were made.
+    unsafe { libc::munmap(addr, 1) };
+    id
+}
+
+fn provider(maps: &[u8], address: usize) -> Option<Provider> {
+    let Some((mapped, name)) = mapping(maps, address) else {
+        tracing::info!(address, "no file mapping for codegen cache provider");
         return None;
     };
-    (sdk_files.contains(&driver.id)
-        && sdk_files.contains(&bridge.id)
-        && (!bundled_llvm || sdk_files.contains(&llvm.id)))
-    .then_some([driver, bridge, llvm])
+    let path = Path::new(OsStr::from_bytes(name));
+    if !path.is_absolute() || name.ends_with(b" (deleted)") {
+        tracing::info!(?path, ?mapped, "codegen cache provider has no current pathname");
+        return None;
+    }
+    let file = File::options()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)
+        .inspect_err(|error| {
+            tracing::info!(?path, ?mapped, ?error, "cannot open codegen cache provider")
+        })
+        .ok()?;
+    let metadata = file.metadata().ok()?;
+    let named = file_id(&metadata);
+    if !metadata.is_file() || (named != mapped && mapped_file_id(&file) != Some(mapped)) {
+        tracing::info!(?path, ?mapped, ?named, "codegen cache provider no longer matches its file");
+        return None;
+    }
+    Some(Provider {
+        path: path.to_owned(),
+        mapping: mapped,
+        file: named,
+        len: metadata.len(),
+        modified: metadata.modified().ok()?,
+        ctime: (metadata.ctime(), metadata.ctime_nsec()),
+    })
+}
+
+/// Identify the actual driver, backend bridge and LLVM, including static,
+/// bootstrap and external-LLVM builds. A verified alternative gets its own key.
+pub(super) fn cache_providers(addresses: [usize; 3]) -> Option<[Provider; 3]> {
+    let maps = fs::read("/proc/self/maps")
+        .inspect_err(|error| tracing::info!(?error, "cannot read codegen cache provider mappings"))
+        .ok()?;
+    let [Some(driver), Some(bridge), Some(llvm)] =
+        addresses.map(|address| provider(&maps, address))
+    else {
+        tracing::info!(?addresses, "could not identify all loaded codegen cache providers");
+        return None;
+    };
+    Some([driver, bridge, llvm])
 }
 
 #[cfg(test)]

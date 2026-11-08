@@ -22,7 +22,10 @@ fn compile_reader(extra: &[&str]) -> CompletedProcess {
             "out",
         ])
         .args(extra)
-        .env("RUSTC_LOG", "rustc_codegen_llvm::back::write=info")
+        .env(
+            "RUSTC_LOG",
+            "rustc_codegen_llvm::back::write=info,rustc_codegen_ssa::back::loaded_libraries=info",
+        )
         .run()
 }
 
