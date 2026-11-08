@@ -649,9 +649,35 @@ impl BindingKey {
 
 type ResolutionTable<'ra> = FxIndexMap<BindingKey, NameResolutionRef<'ra>>;
 
+/// Immutable tables for external modules can reject absent associated names without
+/// visiting every binding. Possible matches still use the complete resolution table.
+struct ExternalResolutionTable<'ra> {
+    bindings: ResolutionTable<'ra>,
+    trait_names: Option<&'ra [u64; 4]>,
+}
+
+impl<'ra> ExternalResolutionTable<'ra> {
+    fn name_bit(name: Symbol) -> (usize, u64) {
+        let index = name.as_u32() & 255;
+        ((index / 64) as usize, 1 << (index % 64))
+    }
+
+    fn new(bindings: ResolutionTable<'ra>, trait_arena: Option<&'ra DroplessArena>) -> Self {
+        let trait_names = trait_arena.map(|arena| {
+            let mut names = [0; 4];
+            for key in bindings.keys() {
+                let (word, bit) = Self::name_bit(key.ident.name);
+                names[word] |= bit;
+            }
+            &*arena.alloc(names)
+        });
+        Self { bindings, trait_names }
+    }
+}
+
 enum Resolutions<'ra> {
     Local(CmRefCell<ResolutionTable<'ra>>),
-    Extern(OnceLock<ResolutionTable<'ra>>),
+    Extern(OnceLock<ExternalResolutionTable<'ra>>),
 }
 
 impl<'ra> Resolutions<'ra> {
@@ -2187,10 +2213,19 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
         assoc_item: Option<(Symbol, Namespace)>,
     ) -> bool {
         match (trait_module, assoc_item) {
-            (Some(trait_module), Some((name, ns))) => self
-                .resolutions(trait_module)
-                .iter()
-                .any(|(key, _name_resolution)| key.ns == ns && key.ident.name == name),
+            (Some(trait_module), Some((name, ns))) => {
+                if let Resolutions::Extern(table) = &trait_module.0.0.lazy_resolutions
+                    && let Some(names) = table.get().and_then(|table| table.trait_names)
+                {
+                    let (word, bit) = ExternalResolutionTable::name_bit(name);
+                    if names[word] & bit == 0 {
+                        return false;
+                    }
+                }
+                self.resolutions(trait_module)
+                    .keys()
+                    .any(|key| key.ns == ns && key.ident.name == name)
+            }
             _ => true,
         }
     }
@@ -2221,8 +2256,16 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
                 // to an external table.
                 CmRef::Untracked(
                     // As long as 1 thread is building this external table, all other threads will wait.
-                    extern_res
-                        .get_or_init(|| self.build_reduced_graph_external(module.expect_extern())),
+                    &extern_res
+                        .get_or_init(|| {
+                            let bindings =
+                                self.build_reduced_graph_external(module.expect_extern());
+                            ExternalResolutionTable::new(
+                                bindings,
+                                module.is_trait().then(|| &self.arenas.dropless),
+                            )
+                        })
+                        .bindings,
                 )
             }
         }
