@@ -32,10 +32,10 @@ enum Context {
         source: hir::CoroutineSource,
     },
     UnlabeledBlock {
-        label_span: Span,
-        wrap_end: Option<Span>,
+        span: Span,
+        targeted_by_break: bool,
     },
-    UnlabeledIfBlock(Span),
+    UnlabeledIfBlock,
     LabeledBlock,
     /// E.g. The labeled block inside `['_'; 'block: { break 'block 1 + 2; }]`.
     AnonConst,
@@ -137,7 +137,7 @@ impl<'hir> Visitor<'hir> for CheckLoopVisitor<'hir> {
                             Some(&Normal)
                                 | Some(&AnonConst)
                                 | Some(&UnlabeledBlock { .. })
-                                | Some(&UnlabeledIfBlock(_))
+                                | Some(&UnlabeledIfBlock)
                         )
                     {
                         Some(b)
@@ -147,18 +147,14 @@ impl<'hir> Visitor<'hir> for CheckLoopVisitor<'hir> {
                 };
 
                 if let Some(b) = get_block(self, then) {
-                    self.with_context(UnlabeledIfBlock(b.span.shrink_to_lo()), |v| {
-                        v.visit_block(b)
-                    });
+                    self.with_context(UnlabeledIfBlock, |v| v.visit_block(b));
                 } else {
                     self.visit_expr(then);
                 }
 
                 if let Some(else_expr) = else_opt {
                     if let Some(b) = get_block(self, else_expr) {
-                        self.with_context(UnlabeledIfBlock(b.span.shrink_to_lo()), |v| {
-                            v.visit_block(b)
-                        });
+                        self.with_context(UnlabeledIfBlock, |v| v.visit_block(b));
                     } else {
                         self.visit_expr(else_expr);
                     }
@@ -200,9 +196,8 @@ impl<'hir> Visitor<'hir> for CheckLoopVisitor<'hir> {
             {
                 // An unlabeled block targeted by `break` may comes from a `try` block.
                 // Since `try 'block: {}` is invalid, nest a labeled block inside its body.
-                let wrap_end = b.targeted_by_break.then(|| b.span.shrink_to_hi());
                 self.with_context(
-                    UnlabeledBlock { label_span: b.span.shrink_to_lo(), wrap_end },
+                    UnlabeledBlock { span: b.span, targeted_by_break: b.targeted_by_break },
                     |v| v.visit_block(b),
                 );
             }
@@ -294,21 +289,10 @@ impl<'hir> Visitor<'hir> for CheckLoopVisitor<'hir> {
                     }
                 }
 
-                let sp_lo = if let Ok(snippet) = self.tcx.sess.source_map().span_to_snippet(e.span)
-                    && let Some(break_pos) = snippet.find("break")
-                {
-                    e.span.with_lo(e.span.lo() + BytePos((break_pos + "break".len()) as u32))
-                } else {
-                    e.span.with_lo(e.span.lo() + BytePos("break".len() as u32))
-                };
-                let label_sp = match break_destination.label {
-                    Some(label) => sp_lo.with_hi(label.ident.span.hi()),
-                    None => sp_lo.shrink_to_lo(),
-                };
                 self.require_break_cx(
                     BreakContextKind::Break,
                     e.span,
-                    label_sp,
+                    break_destination.label.map(|label| label.ident.span),
                     self.cx_stack.len() - 1,
                 );
             }
@@ -335,7 +319,7 @@ impl<'hir> Visitor<'hir> for CheckLoopVisitor<'hir> {
                 self.require_break_cx(
                     BreakContextKind::Continue,
                     e.span,
-                    e.span,
+                    None,
                     self.cx_stack.len() - 1,
                 )
             }
@@ -358,7 +342,7 @@ impl<'hir> CheckLoopVisitor<'hir> {
         &mut self,
         br_cx_kind: BreakContextKind,
         span: Span,
-        break_span: Span,
+        label: Option<Span>,
         cx_pos: usize,
     ) {
         match self.cx_stack[cx_pos] {
@@ -389,22 +373,36 @@ impl<'hir> CheckLoopVisitor<'hir> {
                     source,
                 });
             }
-            UnlabeledBlock { label_span, wrap_end }
-                if br_cx_kind == BreakContextKind::Break && label_span.eq_ctxt(break_span) =>
+            UnlabeledBlock { span: block_span, targeted_by_break }
+                if br_cx_kind == BreakContextKind::Break && block_span.eq_ctxt(span) =>
             {
-                let block = self.block_breaks.entry(label_span).or_insert_with(|| BlockInfo {
-                    name: br_cx_kind.to_string(),
-                    spans: vec![],
-                    suggs: vec![],
-                    wrap_end,
-                });
+                let sp_lo = if let Ok(snippet) = self.tcx.sess.source_map().span_to_snippet(span)
+                    && let Some(break_pos) = snippet.find("break")
+                {
+                    span.with_lo(span.lo() + BytePos((break_pos + "break".len()) as u32))
+                } else {
+                    span.with_lo(span.lo() + BytePos("break".len() as u32))
+                };
+                let break_span = match label {
+                    Some(label) => sp_lo.with_hi(label.hi()),
+                    None => sp_lo.shrink_to_lo(),
+                };
+                let block =
+                    self.block_breaks.entry(block_span.shrink_to_lo()).or_insert_with(|| {
+                        BlockInfo {
+                            name: br_cx_kind.to_string(),
+                            spans: vec![],
+                            suggs: vec![],
+                            wrap_end: targeted_by_break.then(|| block_span.shrink_to_hi()),
+                        }
+                    });
                 block.spans.push(span);
                 block.suggs.push(break_span);
             }
-            UnlabeledIfBlock(_) if br_cx_kind == BreakContextKind::Break => {
-                self.require_break_cx(br_cx_kind, span, break_span, cx_pos - 1);
+            UnlabeledIfBlock if br_cx_kind == BreakContextKind::Break => {
+                self.require_break_cx(br_cx_kind, span, label, cx_pos - 1);
             }
-            Normal | AnonConst | Fn | UnlabeledBlock { .. } | UnlabeledIfBlock(_) | ConstBlock => {
+            Normal | AnonConst | Fn | UnlabeledBlock { .. } | UnlabeledIfBlock | ConstBlock => {
                 self.tcx.dcx().emit_err(OutsideLoop {
                     spans: vec![span],
                     name: &br_cx_kind.to_string(),

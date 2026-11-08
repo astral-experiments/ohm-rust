@@ -104,7 +104,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             }
         }
 
-        let Diverges::Always { span: orig_span, custom_note } = self.diverges.get() else {
+        let Diverges::Always(cause) = self.diverges.get() else {
             return;
         };
 
@@ -127,6 +127,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             return;
         }
 
+        // Only now do the diagnostic's choice of span and note become observable.
+        let (orig_span, custom_note) = cause.diagnostic();
         // Don't warn twice.
         self.diverges.set(Diverges::WarnedAlways);
 
