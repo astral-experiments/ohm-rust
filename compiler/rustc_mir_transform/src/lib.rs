@@ -365,7 +365,7 @@ fn mir_const_qualif(tcx: TyCtxt<'_>, def: LocalDefId) -> ConstQualifs {
     // cannot yet be stolen), because `mir_promoted()`, which steals
     // from `mir_built()`, forces this query to execute before
     // performing the steal.
-    let body = &tcx.mir_built(def).borrow();
+    let body = &tcx.mir_built(def).body.borrow();
     let ccx = check_consts::ConstCx::new(tcx, body);
     // No need to const-check a non-const `fn`.
     match ccx.const_kind {
@@ -391,10 +391,14 @@ fn mir_const_qualif(tcx: TyCtxt<'_>, def: LocalDefId) -> ConstQualifs {
 }
 
 /// Implementation of the `mir_built` query.
-fn mir_built(tcx: TyCtxt<'_>, def: LocalDefId) -> &Steal<Body<'_>> {
+fn mir_built(tcx: TyCtxt<'_>, def: LocalDefId) -> rustc_middle::mir::BuiltMir<'_> {
     // Delegate to the main MIR building code in the `rustc_mir_build` crate.
     // This is the one place that is allowed to call `build_mir_inner_impl`.
     let mut body = tcx.build_mir_inner_impl(def);
+    let rustc_regions = tcx.sess.opts.incremental.is_some().then(|| {
+        let root = tcx.typeck_root_def_id_local(def);
+        rustc_hir::find_attr!(tcx, root, RustcRegions)
+    });
 
     // Identifying trivial consts based on their mir_built is easy, but a little wasteful.
     // Trying to push this logic earlier in the compiler and never even produce the Body would
@@ -403,7 +407,7 @@ fn mir_built(tcx: TyCtxt<'_>, def: LocalDefId) -> &Steal<Body<'_>> {
         // Skip all the passes below for trivial consts.
         let body = tcx.alloc_steal_mir(body);
         pass_manager::dump_mir_for_phase_change(tcx, &body.borrow());
-        return body;
+        return rustc_middle::mir::BuiltMir { body, rustc_regions };
     }
 
     pass_manager::dump_mir_for_phase_change(tcx, &body);
@@ -428,14 +432,14 @@ fn mir_built(tcx: TyCtxt<'_>, def: LocalDefId) -> &Steal<Body<'_>> {
         ],
         None,
     );
-    tcx.alloc_steal_mir(body)
+    rustc_middle::mir::BuiltMir { body: tcx.alloc_steal_mir(body), rustc_regions }
 }
 
 /// Compute the main MIR body and the list of MIR bodies of the promoteds.
 fn mir_promoted(
     tcx: TyCtxt<'_>,
     def: LocalDefId,
-) -> (&Steal<Body<'_>>, &Steal<IndexVec<Promoted, Body<'_>>>) {
+) -> (&Steal<Body<'_>>, &Steal<IndexVec<Promoted, Body<'_>>>, Option<bool>) {
     debug_assert!(!tcx.is_trivial_const(def), "Tried to get mir_promoted of a trivial const");
     debug_assert!(!tcx.is_constructor(def.to_def_id()));
 
@@ -467,7 +471,8 @@ fn mir_promoted(
     // the `trivial_const` query uses mir_built, so make sure it is run.
     tcx.ensure_done().trivial_const(def);
 
-    let mut body = tcx.mir_built(def).steal();
+    let built = tcx.mir_built(def);
+    let mut body = built.body.steal();
     if let Some(error_reported) = const_qualifs.tainted_by_errors {
         body.tainted_by_errors = Some(error_reported);
     }
@@ -488,7 +493,7 @@ fn mir_promoted(
     lint_tail_expr_drop_order::run_lint(tcx, def, &body);
 
     let promoted = promote_pass.promoted_fragments.into_inner();
-    (tcx.alloc_steal_mir(body), tcx.alloc_steal_promoted(promoted))
+    (tcx.alloc_steal_mir(body), tcx.alloc_steal_promoted(promoted), built.rustc_regions)
 }
 
 /// Compute the MIR that is used during CTFE (and thus has no optimizations run on it)
@@ -633,7 +638,7 @@ fn mir_after_borrowck(tcx: TyCtxt<'_>, def: LocalDefId) -> Body<'_> {
 
     tcx.ensure_done().check_liveness(def);
 
-    let (body, _) = tcx.mir_promoted(def);
+    let (body, _, _) = tcx.mir_promoted(def);
     let mut body = body.steal();
 
     if let Some(error_reported) = tainted_by_errors {

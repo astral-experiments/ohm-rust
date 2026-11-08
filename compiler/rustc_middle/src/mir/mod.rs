@@ -201,6 +201,14 @@ pub enum MentionedItem<'tcx> {
     Closure(Ty<'tcx>),
 }
 
+/// Local MIR construction output passed on to constant promotion and borrow checking.
+#[derive(Clone, Copy, Debug, StableHash)]
+pub struct BuiltMir<'tcx> {
+    pub body: &'tcx rustc_data_structures::steal::Steal<Body<'tcx>>,
+    /// The type-checking root's `#[rustc_regions]` marker in incremental compilations.
+    pub rustc_regions: Option<bool>,
+}
+
 /// The lowered representation of a single function.
 #[derive(Clone, TyEncodable, TyDecodable, Debug, StableHash, TypeFoldable, TypeVisitable)]
 pub struct Body<'tcx> {

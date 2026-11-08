@@ -120,5 +120,5 @@ pub(crate) fn trivial_const_provider<'tcx>(
     tcx: TyCtxt<'tcx>,
     def: LocalDefId,
 ) -> Option<(ConstValue, Ty<'tcx>)> {
-    trivial_const(tcx, def, || tcx.mir_built(def).borrow())
+    trivial_const(tcx, def, || tcx.mir_built(def).body.borrow())
 }
