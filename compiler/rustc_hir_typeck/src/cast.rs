@@ -732,6 +732,16 @@ impl<'a, 'tcx> CastCheck<'tcx> {
         } else {
             (false, lint::builtin::TRIVIAL_CASTS)
         };
+        let ctxt = self.span.ctxt();
+        if !ctxt.is_root()
+            && !lint.report_in_external_macro
+            && lint.future_incompatible.is_none()
+            && ctxt.in_external_macro(fcx.tcx.sess.source_map())
+            && ctxt.source_callee_macro_name().is_none_or(|name| name.as_str() != "find_attr")
+        {
+            // The find_attr exception depends on an untracked option. Always read its lint scope.
+            return;
+        }
         let expr_ty = fcx.resolve_vars_if_possible(self.expr_ty);
         let cast_ty = fcx.resolve_vars_if_possible(self.cast_ty);
         fcx.tcx.emit_node_span_lint(
