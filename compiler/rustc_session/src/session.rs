@@ -1306,7 +1306,7 @@ fn default_emitter(sopts: &config::Options, source_map: Arc<SourceMap>) -> Box<D
 // JUSTIFICATION: literally session construction
 #[allow(rustc::bad_opt_access)]
 pub fn build_session(
-    sopts: config::Options,
+    mut sopts: config::Options,
     io: CompilerIO,
     driver_lint_caps: FxHashMap<lint::LintId, lint::Level>,
     target: Target,
@@ -1314,6 +1314,10 @@ pub fn build_session(
     ice_file: Option<PathBuf>,
     using_internal_features: &'static AtomicBool,
 ) -> Session {
+    // Rustc and rustdoc both construct sessions, but parse their options separately.
+    sopts.ohm_worktree_input_paths = sopts.unstable_opts.remap_cwd_prefix.is_some()
+        && std::env::var_os("__CARGO_OHM_WORKTREE_INPUT_PATHS").as_deref()
+            == Some(std::ffi::OsStr::new("1"));
     // FIXME: This is not general enough to make the warning lint completely override
     // normal diagnostic warnings, since the warning lint can also be denied and changed
     // later via the source code.
