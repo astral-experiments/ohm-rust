@@ -915,7 +915,11 @@ fn will_have_link_step(tcx: TyCtxt<'_>) -> bool {
     tcx.crate_types().iter().any(|ct| {
         matches!(
             ct,
-            CrateType::Executable | CrateType::Dylib | CrateType::Cdylib | CrateType::ProcMacro
+            CrateType::Executable
+                | CrateType::Dylib
+                | CrateType::Cdylib
+                | CrateType::StaticLib
+                | CrateType::ProcMacro
         )
     })
 }
