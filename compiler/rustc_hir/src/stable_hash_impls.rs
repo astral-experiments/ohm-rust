@@ -13,8 +13,12 @@ impl<'tcx> StableHash for OwnerNodes<'tcx> {
     fn stable_hash<Hcx: StableHashCtxt>(&self, hcx: &mut Hcx, hasher: &mut StableHasher) {
         // We ignore the other fields since these refer to information included in
         // `opt_hash` which is hashed in the collector and used for the crate hash.
-        let OwnerNodes { opt_hash, .. } = *self;
+        let OwnerNodes { opt_hash, has_loop_control_attrs, .. } = *self;
         opt_hash.unwrap().stable_hash(hcx, hasher);
+        // These attributes are otherwise hashed with the separate attribute map.
+        if has_loop_control_attrs {
+            true.stable_hash(hcx, hasher);
+        }
     }
 }
 

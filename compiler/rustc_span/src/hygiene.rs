@@ -956,13 +956,34 @@ impl SyntaxContext {
         HygieneData::with(|data| data.expn_data(data.outer_expn(self)).edition)
     }
 
+    /// The macro name of the outermost call site, as in `Span::source_callee`.
+    pub fn source_callee_macro_name(mut self) -> Option<Symbol> {
+        let mut name = None;
+        while !self.is_root() {
+            let (call_site, macro_name) = HygieneData::with(|data| {
+                let expn = data.expn_data(data.outer_expn(self));
+                let name = match expn.kind {
+                    ExpnKind::Macro(_, name) => Some(name),
+                    _ => None,
+                };
+                (expn.call_site, name)
+            });
+            self = call_site.ctxt();
+            name = macro_name;
+        }
+        name
+    }
+
     /// Returns whether this context originates in a foreign crate's external macro.
     ///
     /// This is used to test whether a lint should not even begin to figure out whether it should
     /// be reported on the current node.
     pub fn in_external_macro(self, sm: &SourceMap) -> bool {
-        let expn_data = self.outer_expn_data();
-        match expn_data.kind {
+        let (kind, def_site) = HygieneData::with(|data| {
+            let expn = data.expn_data(data.outer_expn(self));
+            (expn.kind.clone(), expn.def_site)
+        });
+        match kind {
             ExpnKind::Root
             | ExpnKind::Desugaring(
                 DesugaringKind::ForLoop
@@ -974,7 +995,7 @@ impl SyntaxContext {
             ExpnKind::AstPass(_) | ExpnKind::Desugaring(_) => true, // well, it's "external"
             ExpnKind::Macro(MacroKind::Bang, _) => {
                 // Dummy span for the `def_site` means it's an external macro.
-                expn_data.def_site.is_dummy() || sm.is_imported(expn_data.def_site)
+                def_site.is_dummy() || sm.is_imported(def_site)
             }
             ExpnKind::Macro { .. } => true, // definitely a plugin
         }

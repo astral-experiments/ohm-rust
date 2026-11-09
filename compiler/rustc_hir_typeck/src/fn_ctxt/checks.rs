@@ -1223,10 +1223,10 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         let ty = self.check_decl(local.into());
         self.write_ty(local.hir_id, ty);
         if local.pat.is_never_pattern() {
-            self.diverges.set(Diverges::Always {
-                span: local.pat.span,
-                custom_note: Some("any code following a never pattern is unreachable"),
-            });
+            self.diverges.set(Diverges::always_with_note(
+                local.pat.span,
+                "any code following a never pattern is unreachable",
+            ));
         }
     }
 

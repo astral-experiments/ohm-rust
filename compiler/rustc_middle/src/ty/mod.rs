@@ -2331,15 +2331,29 @@ impl<'tcx> TyCtxt<'tcx> {
         // We could use `Ident::eq` here, but we deliberately don't. The identifier
         // comparison fails frequently, and we want to avoid the expensive
         // `normalize_to_macros_2_0()` calls required for the span comparison whenever possible.
-        use_ident.name == def_ident.name
-            && use_ident
-                .span
-                .ctxt()
-                .hygienic_eq(def_ident.span.ctxt(), self.expn_that_defined(def_parent_def_id))
+        if use_ident.name != def_ident.name {
+            return false;
+        }
+        let use_ctxt = use_ident.span.ctxt();
+        let def_ctxt = def_ident.span.ctxt();
+        if use_ctxt.is_root() {
+            // Every defining expansion descends from the root, so adjustment cannot remove a mark.
+            def_ctxt.normalize_to_macros_2_0().is_root()
+        } else {
+            use_ctxt.hygienic_eq(def_ctxt, self.expn_that_defined(def_parent_def_id))
+        }
+    }
+
+    fn adjust_ident_span(self, span: &mut Span, scope: DefId) -> Option<ExpnId> {
+        if span.ctxt().is_root() {
+            None
+        } else {
+            span.normalize_to_macros_2_0_and_adjust(self.expn_that_defined(scope))
+        }
     }
 
     pub fn adjust_ident(self, mut ident: Ident, scope: DefId) -> Ident {
-        ident.span.normalize_to_macros_2_0_and_adjust(self.expn_that_defined(scope));
+        self.adjust_ident_span(&mut ident.span, scope);
         ident
     }
 
@@ -2349,9 +2363,8 @@ impl<'tcx> TyCtxt<'tcx> {
         scope: DefId,
         item_id: LocalDefId,
     ) -> (Ident, VisibilityDefId) {
-        let scope = ident
-            .span
-            .normalize_to_macros_2_0_and_adjust(self.expn_that_defined(scope))
+        let scope = self
+            .adjust_ident_span(&mut ident.span, scope)
             .and_then(|actual_expansion| actual_expansion.expn_data().parent_module)
             .unwrap_or_else(|| self.parent_module_from_def_id(item_id).to_def_id().into());
         (ident, scope)
