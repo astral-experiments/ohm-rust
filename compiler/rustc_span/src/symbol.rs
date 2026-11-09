@@ -1474,6 +1474,7 @@ symbols! {
         offset_of_enum,
         offset_of_nested,
         offset_of_slice,
+        ohm_worktree_source_paths: "__CARGO_OHM_WORKTREE_SOURCE_PATHS",
         ok_or_else,
         old_name,
         omit_gdb_pretty_printer_section,
