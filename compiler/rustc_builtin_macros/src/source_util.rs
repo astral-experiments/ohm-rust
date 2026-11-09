@@ -8,6 +8,7 @@ use rustc_ast as ast;
 use rustc_ast::tokenstream::TokenStream;
 use rustc_ast::{join_path_idents, token};
 use rustc_ast_pretty::pprust;
+use rustc_errors::ErrorGuaranteed;
 use rustc_expand::base::{
     DummyResult, ExpandResult, ExtCtxt, MacEager, MacResult, MacroExpanderResult,
 };
@@ -22,9 +23,7 @@ use rustc_span::{ByteSymbol, Pos, Span, Symbol};
 use smallvec::SmallVec;
 
 use crate::diagnostics;
-use crate::util::{
-    check_zero_tts, get_single_str_from_tts, get_single_str_spanned_from_tts, parse_expr,
-};
+use crate::util::{check_zero_tts, get_single_str_spanned_from_tts, parse_expr};
 
 /// Expand `line!()` to the current line number.
 pub(crate) fn expand_line(
@@ -69,10 +68,14 @@ pub(crate) fn expand_file(
     let loc = cx.source_map().lookup_char_pos(topmost.lo());
 
     use rustc_span::RemapPathScopeComponents;
-    ExpandResult::Ready(MacEager::expr(cx.expr_str(
-        topmost,
-        Symbol::intern(&loc.file.name.display(RemapPathScopeComponents::MACRO).to_string_lossy()),
-    )))
+    let filename = if cx.expanding_worktree_input {
+        loc.file.name.prefer_local_unconditionally()
+    } else {
+        loc.file.name.display(RemapPathScopeComponents::MACRO)
+    };
+    ExpandResult::Ready(MacEager::expr(
+        cx.expr_str(topmost, Symbol::intern(&filename.to_string_lossy())),
+    ))
 }
 
 /// Expand `stringify!($input)`.
@@ -100,6 +103,19 @@ pub(crate) fn expand_mod(
     ExpandResult::Ready(MacEager::expr(cx.expr_str(sp, Symbol::intern(&string))))
 }
 
+fn include_path(
+    cx: &mut ExtCtxt<'_>,
+    sp: Span,
+    tts: TokenStream,
+    name: &str,
+) -> ExpandResult<Result<(Symbol, Span), ErrorGuaranteed>, ()> {
+    let previous =
+        std::mem::replace(&mut cx.expanding_worktree_input, cx.sess.opts.ohm_worktree_input_paths);
+    let path = get_single_str_spanned_from_tts(cx, sp, tts, name);
+    cx.expanding_worktree_input = previous;
+    path
+}
+
 /// Expand `include!($input)`.
 ///
 /// This works in item and expression position. Notably, it doesn't work in pattern position.
@@ -109,10 +125,10 @@ pub(crate) fn expand_include<'cx>(
     tts: TokenStream,
 ) -> MacroExpanderResult<'cx> {
     let sp = cx.with_def_site_ctxt(sp);
-    let ExpandResult::Ready(mac) = get_single_str_from_tts(cx, sp, tts, "include!") else {
+    let ExpandResult::Ready(mac) = include_path(cx, sp, tts, "include!") else {
         return ExpandResult::Retry(());
     };
-    let path = match mac {
+    let (path, _) = match mac {
         Ok(path) => path,
         Err(guar) => return ExpandResult::Ready(DummyResult::any(sp, guar)),
     };
@@ -207,8 +223,7 @@ pub(crate) fn expand_include_str(
     tts: TokenStream,
 ) -> MacroExpanderResult<'static> {
     let sp = cx.with_def_site_ctxt(sp);
-    let ExpandResult::Ready(mac) = get_single_str_spanned_from_tts(cx, sp, tts, "include_str!")
-    else {
+    let ExpandResult::Ready(mac) = include_path(cx, sp, tts, "include_str!") else {
         return ExpandResult::Retry(());
     };
     let (path, path_span) = match mac {
@@ -241,8 +256,7 @@ pub(crate) fn expand_include_bytes(
     tts: TokenStream,
 ) -> MacroExpanderResult<'static> {
     let sp = cx.with_def_site_ctxt(sp);
-    let ExpandResult::Ready(mac) = get_single_str_spanned_from_tts(cx, sp, tts, "include_bytes!")
-    else {
+    let ExpandResult::Ready(mac) = include_path(cx, sp, tts, "include_bytes!") else {
         return ExpandResult::Retry(());
     };
     let (path, path_span) = match mac {
