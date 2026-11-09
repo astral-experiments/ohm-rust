@@ -251,6 +251,69 @@ pub struct TestDescAndFn {
     pub testfn: TestFn,
 }
 
+/// A descriptor read by the compiler-generated, panic-unwind test harness.
+#[doc(hidden)]
+pub trait StaticTestCase {
+    fn to_owned_test(&self) -> TestDescAndFn;
+}
+
+impl StaticTestCase for TestDescAndFn {
+    fn to_owned_test(&self) -> TestDescAndFn {
+        super::make_owned_test(&self)
+    }
+}
+
+/// A built-in unit test whose function returns `()`.
+#[doc(hidden)]
+pub struct StaticUnitTest {
+    desc: TestDesc,
+    function: fn(),
+}
+
+impl StaticTestCase for StaticUnitTest {
+    fn to_owned_test(&self) -> TestDescAndFn {
+        let function = self.function;
+        TestDescAndFn {
+            desc: self.desc.clone(),
+            testfn: DynTestFn(Box::new(move || {
+                function();
+                Ok(())
+            })),
+        }
+    }
+}
+
+impl StaticUnitTest {
+    pub const fn new(
+        name: &'static str,
+        source_file: &'static str,
+        start_line: usize,
+        start_col: usize,
+        end_line: usize,
+        end_col: usize,
+        test_type: TestType,
+        function: fn(),
+    ) -> Self {
+        Self {
+            desc: TestDesc {
+                name: StaticTestName(name),
+                ignore: false,
+                ignore_message: None,
+                source_file,
+                start_line,
+                start_col,
+                end_line,
+                end_col,
+                should_panic: options::ShouldPanic::No,
+                compile_fail: false,
+                no_run: false,
+                test_type,
+            },
+            function,
+        }
+    }
+}
+
 impl TestDescAndFn {
     pub const fn new_doctest(
         test_name: &'static str,

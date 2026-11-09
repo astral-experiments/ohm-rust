@@ -48,10 +48,13 @@ pub mod test {
     pub use crate::test_result::{TestResult, TrFailed, TrFailedMsg, TrIgnored, TrOk};
     pub use crate::time::{TestExecTime, TestTimeOptions};
     pub use crate::types::{
-        DynTestFn, DynTestName, StaticBenchFn, StaticTestFn, StaticTestName, TestDesc,
-        TestDescAndFn, TestId, TestList, TestListOrder, TestName, TestType,
+        DynTestFn, DynTestName, StaticBenchFn, StaticTestFn, StaticTestName, StaticUnitTest,
+        TestDesc, TestDescAndFn, TestId, TestList, TestListOrder, TestName, TestType,
     };
-    pub use crate::{assert_test_result, filter_tests, run_test, test_main, test_main_static};
+    pub use crate::{
+        assert_test_result, filter_tests, run_test, test_main, test_main_static,
+        test_main_static_integration,
+    };
 }
 
 use std::collections::VecDeque;
@@ -221,9 +224,15 @@ pub fn test_main_static_focused(tests: &[&TestDescAndFn], expected: &str) {
     test_main_static_inner(tests, Some(expected));
 }
 
-fn test_main_static_inner(tests: &[&TestDescAndFn], focused_test: Option<&str>) {
+/// Runs a built-in integration harness without a result-returning shim for each plain test.
+#[doc(hidden)]
+pub fn test_main_static_integration(tests: &[&dyn StaticTestCase]) {
+    test_main_static_inner(tests, None);
+}
+
+fn test_main_static_inner<T: StaticTestCase + ?Sized>(tests: &[&T], focused_test: Option<&str>) {
     let args = env::args().collect::<Vec<_>>();
-    let owned_tests: Vec<_> = tests.iter().map(make_owned_test).collect();
+    let owned_tests = tests.iter().map(|case| case.to_owned_test()).collect();
     // Tests are sorted by name at compile time by mk_tests_slice.
     let tests = TestList::new(owned_tests, TestListOrder::Sorted);
     test_main_inner(&args, tests, None, focused_test, || {})
