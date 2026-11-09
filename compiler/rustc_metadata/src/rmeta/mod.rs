@@ -380,7 +380,7 @@ impl RawDefId {
     }
 }
 
-#[derive(Encodable, BlobDecodable)]
+#[derive(Encodable, BlobDecodable, PartialEq)]
 pub(crate) struct CrateDep {
     pub name: Symbol,
     /// The dependency hash required by the writer's DefId encoding: public for RDR, full for raw indices.

@@ -1179,6 +1179,19 @@ impl CrateRoot {
         self.stable_crate_id
     }
 
+    /// Return the typed dependencies with the positions of their fixed-width SVHs.
+    pub(super) fn crate_deps_with_hash_positions<'a>(
+        &self,
+        metadata: &'a MetadataBlob,
+    ) -> impl ExactSizeIterator<Item = (CrateDep, usize)> + 'a {
+        let mut decoder = metadata.decoder(self.crate_deps.position.get());
+        (0..self.crate_deps.num_elems).map(move |_| {
+            let mut name = metadata.decoder(decoder.opaque.position());
+            let _ = name.decode_symbol();
+            (CrateDep::decode(&mut decoder), name.opaque.position())
+        })
+    }
+
     pub(crate) fn decode_crate_deps<'a>(
         &self,
         metadata: &'a MetadataBlob,
