@@ -11,5 +11,6 @@ fn main() {
     let expression = include!(sibling!(".expr"));
     let literal = include_str!(env!("LITERAL_INPUT"));
     assert_eq!(file!(), env!("DISPLAY_FILENAME"));
-    println!("{text} {} {expression} {literal}", bytes[0]);
+    let runtime = std::fs::read_to_string(format!("{}.text", file!())).unwrap();
+    println!("{text} {} {expression} {literal} {runtime}", bytes[0]);
 }

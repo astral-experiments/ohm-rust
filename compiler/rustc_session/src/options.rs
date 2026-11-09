@@ -388,6 +388,8 @@ top_level_options!(
         /// Cargo uses a checkout-independent prefix for artifacts, including `file!()` strings.
         /// Input paths expanded under this mode must still open the source in this checkout.
         ohm_worktree_input_paths: bool [TRACKED],
+        /// Preserve absolute source filenames a program can open at runtime.
+        ohm_worktree_source_paths: bool [TRACKED],
 
         unstable_opts: UnstableOptions [SUBSTRUCT] { TARGET_MODIFIER: UnstableOptions(UnstableOptionsTargetModifiers) },
         prints: Vec<PrintRequest> [UNTRACKED],
