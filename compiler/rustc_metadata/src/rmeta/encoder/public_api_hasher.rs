@@ -767,6 +767,7 @@ pub(super) struct ReachabilityGraphBuilder<'tcx> {
     nodes: FxIndexSet<Node<'tcx>>,
     edges: IndexVec<NodeIdx, SsoHashSet<NodeIdx>>,
     roots: FxHashSet<NodeIdx>,
+    retained: FxHashSet<NodeIdx>,
 }
 
 impl Default for ReachabilityGraphBuilder<'_> {
@@ -776,6 +777,7 @@ impl Default for ReachabilityGraphBuilder<'_> {
             nodes: Default::default(),
             edges: Default::default(),
             roots: Default::default(),
+            retained: Default::default(),
         };
         let crate_root = builder.node_index(CRATE_DEF_ID.into());
         builder.roots.insert(crate_root);
@@ -816,6 +818,12 @@ impl<'tcx> ReachabilityGraphBuilder<'tcx> {
         index
     }
 
+    /// Keep the per-definition hash available to metadata readers without treating it as a crate root.
+    pub(super) fn retain_public_hash(&mut self, node: Node<'tcx>) {
+        let index = self.node_index(node);
+        self.retained.insert(index);
+    }
+
     fn build_graph(mut self, hcx: &mut StableHashState<'_, true>) -> ReachabilityGraph<'tcx> {
         // ExpnId::root() contains CRATE_DEF_ID as its macro_def_id, but that isn't used for
         // anything.
@@ -831,10 +839,10 @@ impl<'tcx> ReachabilityGraphBuilder<'tcx> {
         #[allow(rustc::potential_query_instability)]
         let reachable = {
             let mut reachable = IndexVec::from_elem_n(false, self.nodes.len());
-            for &root in &self.roots {
+            let mut worklist: Vec<_> = self.roots.union(&self.retained).copied().collect();
+            for &root in &worklist {
                 reachable[root] = true;
             }
-            let mut worklist = self.roots.iter().copied().collect::<Vec<_>>();
             while let Some(node) = worklist.pop() {
                 worklist.extend(
                     self.edges[node]
