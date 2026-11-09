@@ -56,6 +56,7 @@ use rustc_data_structures::steal::Steal;
 use rustc_data_structures::tagged_ptr::TaggedRef;
 use rustc_errors::codes::*;
 use rustc_errors::{DiagArgFromDisplay, DiagCtxtHandle, ErrorGuaranteed};
+use rustc_hir::attrs::AttributeKind;
 use rustc_hir::def::{DefKind, Namespace, PerNS, Res};
 use rustc_hir::def_id::{DefId, LOCAL_CRATE, LocalDefId, LocalDefIdMap};
 use rustc_hir::definitions::PerParentDisambiguatorState;
@@ -250,7 +251,18 @@ impl<'a, 'hir> PerOwnerLoweringState<'a, 'hir> {
             tcx.hash_owner_nodes(node, &bodies, &attrs, define_opaque);
         let num_nodes = self.item_local_id_counter.as_usize();
         let (nodes, parenting) = index::index_hir(tcx, node, &bodies, num_nodes);
-        let nodes = hir::OwnerNodes { opt_hash: bodies_hash, nodes, bodies };
+        let has_loop_control_attrs = attrs.values().any(|attrs| {
+            attrs.iter().any(|attr| {
+                matches!(
+                    attr,
+                    hir::Attribute::Parsed(
+                        AttributeKind::LoopMatch(_) | AttributeKind::ConstContinue(_)
+                    )
+                )
+            })
+        });
+        let nodes =
+            hir::OwnerNodes { opt_hash: bodies_hash, nodes, bodies, has_loop_control_attrs };
         let attrs = hir::AttributeMap { map: attrs, opt_hash: attrs_hash, define_opaque };
 
         let opt_hash = tcx.needs_owner_info_hash().then(|| {
