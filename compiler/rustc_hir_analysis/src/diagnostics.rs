@@ -1148,7 +1148,7 @@ pub(crate) struct UnusedAssociatedTypeBounds {
 #[note(
     "we are soliciting feedback, see issue #121718 <https://github.com/rust-lang/rust/issues/121718> for more information"
 )]
-pub(crate) struct ReturnPositionImplTraitInTraitRefined {
+pub(crate) struct ReturnPositionImplTraitInTraitRefined<'a> {
     #[suggestion(
         "replace the return type so that it matches the trait",
         applicability = "maybe-incorrect",
@@ -1162,7 +1162,7 @@ pub(crate) struct ReturnPositionImplTraitInTraitRefined {
 
     pub pre: &'static str,
     pub post: &'static str,
-    pub return_ty: String,
+    pub return_ty: &'a dyn std::fmt::Display,
 }
 
 #[derive(Diagnostic)]
