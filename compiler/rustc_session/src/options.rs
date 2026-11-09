@@ -385,6 +385,10 @@ top_level_options!(
         /// their otherwise untracked configuration and implementation are compatible.
         incremental_driver_hash: Option<String> [TRACKED_NO_CRATE_HASH],
 
+        /// Cargo uses a checkout-independent prefix for artifacts, including `file!()` strings.
+        /// Input paths expanded under this mode must still open the source in this checkout.
+        ohm_worktree_input_paths: bool [TRACKED],
+
         unstable_opts: UnstableOptions [SUBSTRUCT] { TARGET_MODIFIER: UnstableOptions(UnstableOptionsTargetModifiers) },
         prints: Vec<PrintRequest> [UNTRACKED],
         cg: CodegenOptions [SUBSTRUCT] { TARGET_MODIFIER: CodegenOptions(CodegenOptionsTargetModifiers) },

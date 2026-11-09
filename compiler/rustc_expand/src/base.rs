@@ -1198,6 +1198,8 @@ pub struct ExtCtxt<'a> {
     /// Error recovery mode entered when expansion is stuck
     /// (or during eager expansion, but that's a hack).
     pub force_mode: bool,
+    /// Whether an eager macro argument is selecting a worktree source file to open.
+    pub expanding_worktree_input: bool,
     pub expansions: FxIndexMap<Span, Vec<String>>,
     /// Used for running pre-expansion lints on freshly loaded modules.
     pub(super) lint_store: LintStoreExpandDyn<'a>,
@@ -1236,6 +1238,7 @@ impl<'a> ExtCtxt<'a> {
                 is_trailing_mac: false,
             },
             force_mode: false,
+            expanding_worktree_input: false,
             expansions: FxIndexMap::default(),
             expanded_inert_attrs: MarkedAttrs::new(),
             buffered_early_lint: vec![],
