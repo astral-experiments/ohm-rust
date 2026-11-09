@@ -192,7 +192,11 @@ pub(crate) fn list_tests_console(opts: &TestOpts, tests: TestList<'_>) -> io::Re
         let TestDescAndFn { desc, testfn } = test;
 
         let fntype = match testfn {
-            StaticTestFn(..) | DynTestFn(..) | StaticBenchAsTestFn(..) | DynBenchAsTestFn(..) => {
+            StaticTestFn(..)
+            | StaticUnitFn(..)
+            | DynTestFn(..)
+            | StaticBenchAsTestFn(..)
+            | DynBenchAsTestFn(..) => {
                 st.tests += 1;
                 "test"
             }

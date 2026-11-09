@@ -85,6 +85,7 @@ impl fmt::Display for TestName {
 #[derive(Clone)]
 pub enum TestFn {
     StaticTestFn(fn() -> Result<(), String>),
+    StaticUnitFn(fn()),
     StaticBenchFn(fn(&mut Bencher) -> Result<(), String>),
     StaticBenchAsTestFn(fn(&mut Bencher) -> Result<(), String>),
     DynTestFn(Arc<dyn Fn() -> Result<(), String> + Send + Sync>),
@@ -95,7 +96,7 @@ pub enum TestFn {
 impl TestFn {
     pub fn padding(&self) -> NamePadding {
         match *self {
-            StaticTestFn(..) => PadNone,
+            StaticTestFn(..) | StaticUnitFn(..) => PadNone,
             StaticBenchFn(..) => PadOnRight,
             StaticBenchAsTestFn(..) => PadNone,
             DynTestFn(..) => PadNone,
@@ -107,6 +108,7 @@ impl TestFn {
     pub(crate) fn into_runnable(self) -> Runnable {
         match self {
             StaticTestFn(f) => Runnable::Test(RunnableTest::Static(f)),
+            StaticUnitFn(f) => Runnable::Test(RunnableTest::Unit(f)),
             StaticBenchFn(f) => Runnable::Bench(RunnableBench::Static(f)),
             StaticBenchAsTestFn(f) => Runnable::Test(RunnableTest::StaticBenchAsTest(f)),
             DynTestFn(f) => Runnable::Test(RunnableTest::Dynamic(f)),
@@ -120,6 +122,7 @@ impl fmt::Debug for TestFn {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match *self {
             StaticTestFn(..) => "StaticTestFn(..)",
+            StaticUnitFn(..) => "StaticUnitFn(..)",
             StaticBenchFn(..) => "StaticBenchFn(..)",
             StaticBenchAsTestFn(..) => "StaticBenchAsTestFn(..)",
             DynTestFn(..) => "DynTestFn(..)",
@@ -135,6 +138,7 @@ pub(crate) enum Runnable {
 }
 
 pub(crate) enum RunnableTest {
+    Unit(fn()),
     Static(fn() -> Result<(), String>),
     Dynamic(Arc<dyn Fn() -> Result<(), String> + Send + Sync>),
     StaticBenchAsTest(fn(&mut Bencher) -> Result<(), String>),
@@ -145,6 +149,10 @@ impl RunnableTest {
     pub(crate) fn run(self) -> Result<(), String> {
         match self {
             RunnableTest::Static(f) => __rust_begin_short_backtrace(f),
+            RunnableTest::Unit(f) => {
+                __rust_begin_short_backtrace(f);
+                Ok(())
+            }
             RunnableTest::Dynamic(f) => __rust_begin_short_backtrace(|| f()),
             RunnableTest::StaticBenchAsTest(f) => {
                 crate::bench::run_once(|b| __rust_begin_short_backtrace(|| f(b)))
@@ -157,7 +165,7 @@ impl RunnableTest {
 
     pub(crate) fn is_dynamic(&self) -> bool {
         match self {
-            RunnableTest::Static(_) => false,
+            RunnableTest::Static(_) | RunnableTest::Unit(_) => false,
             RunnableTest::StaticBenchAsTest(_) => false,
             RunnableTest::Dynamic(_) => true,
             RunnableTest::DynamicBenchAsTest(_) => true,
@@ -251,6 +259,42 @@ impl TestDesc {
 pub struct TestDescAndFn {
     pub desc: TestDesc,
     pub testfn: TestFn,
+}
+
+/// A built-in unit test whose function returns `()`.
+#[doc(hidden)]
+pub type StaticUnitTest = TestDescAndFn;
+
+impl TestDescAndFn {
+    #[doc(hidden)]
+    pub const fn new(
+        name: &'static str,
+        source_file: &'static str,
+        start_line: usize,
+        start_col: usize,
+        end_line: usize,
+        end_col: usize,
+        test_type: TestType,
+        function: fn(),
+    ) -> Self {
+        Self {
+            desc: TestDesc {
+                name: StaticTestName(name),
+                ignore: false,
+                ignore_message: None,
+                source_file,
+                start_line,
+                start_col,
+                end_line,
+                end_col,
+                should_panic: options::ShouldPanic::No,
+                compile_fail: false,
+                no_run: false,
+                test_type,
+            },
+            testfn: StaticUnitFn(function),
+        }
+    }
 }
 
 impl TestDescAndFn {
