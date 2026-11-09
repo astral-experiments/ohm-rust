@@ -620,7 +620,6 @@ rustc_queries! {
     query params_in_repr(key: DefId) -> &'tcx rustc_index::bit_set::DenseBitSet<u32> {
         desc { "finding type parameters in the representation" }
         arena_cache
-        no_hash
         separate_provide_extern
     }
 

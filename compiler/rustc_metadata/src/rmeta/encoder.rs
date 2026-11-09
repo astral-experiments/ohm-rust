@@ -2318,7 +2318,9 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             }
             if should_encode_visibility(def_kind) {
                 let vis = tcx.local_visibility(local_id);
-                record!(self.tables.visibility[def_id] <- vis.map_id(|mod_id| mod_id.to_local_def_id().local_def_index), hcx, vis);
+                // Accessibility depends on the restricted module's identity. Hash that identity
+                // and write the usual local index without pulling the module's contents into it.
+                record!(self.tables.visibility[def_id] <- vis.map_id(|mod_id| mod_id.to_local_def_id().local_def_index), hcx, vis, |_| RecordMode::None);
             }
             if should_encode_stability(def_kind) {
                 self.encode_stability(def_id, hcx);
@@ -3141,7 +3143,13 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
     ) -> Hashed<LazyArray<CrateDep>> {
         empty_proc_macro!(self);
 
-        let deps = crate_deps(self.tcx).collect::<Vec<_>>();
+        let refreshes_dependency_hashes = dependency_hash_refresh_allowed(self.tcx)
+            && self.metadata_prefix_manifest.is_some()
+            && MetadataPrefixManifest::clear_for_dependency_hashes(self.tcx.incr_comp_session);
+        if let Some(manifest) = &mut self.metadata_prefix_manifest {
+            manifest.refreshes_dependency_hashes = refreshes_dependency_hashes;
+        }
+        let deps = crate_deps(self.tcx, refreshes_dependency_hashes).collect::<Vec<_>>();
 
         {
             // Sanity-check the crate numbers
@@ -3700,7 +3708,8 @@ fn try_reuse_metadata_prefix(
         &changed_dep_node,
         DepKind::metadata_source_file_hash,
     )?;
-    let manifest = MetadataPrefixManifest::load(&manifest_path)?;
+    let (manifest, refreshes_dependency_hashes) =
+        MetadataPrefixManifest::load(&manifest_path, dependency_hash_refresh_allowed(tcx))?;
     let file = File::open(metadata_path).ok()?;
     // SAFETY: The previous work-product remains immutable; replacement metadata is written to a
     // freshly created inode and atomically renamed only after encoding completes.
@@ -3758,6 +3767,34 @@ fn try_reuse_metadata_prefix(
     {
         return None;
     }
+    let mut updated_hashes = Vec::new();
+    if previous_root.crate_deps.num_elems != tcx.crates(()).len() {
+        return None;
+    }
+    let preamble = METADATA_HEADER.len() + 8 + version_encoder.position();
+    let mut checked_end = preamble;
+    for ((mut previous, pos), (_, current, _)) in
+        previous_root.crate_deps_with_hash_positions(&metadata).zip(crate_deps(tcx, false))
+    {
+        let end = pos.checked_add(size_of::<u128>())?;
+        if pos < checked_end || end > manifest.prefix_position {
+            return None;
+        }
+        let old_svh = previous.hash;
+        if metadata.get(pos..end)? != old_svh.as_u128().to_le_bytes().as_slice() {
+            return None;
+        }
+        checked_end = end;
+        // A legacy v3 checksum covers only its payload. Verify its complete rows even if
+        // the previous graph appears green; only an authenticated v4 may rewrite a hash.
+        if old_svh != current.hash && refreshes_dependency_hashes {
+            previous.hash = current.hash;
+            updated_hashes.push((pos, current.hash.as_u128().to_le_bytes()));
+        }
+        if previous != current {
+            return None;
+        }
+    }
     let previous_rdr_hashes = previous_root.rdr_hashes.take()?;
     let local_hashes_range = previous_rdr_hashes.local.encoded_range(&metadata)?;
     let expn_hashes_range = previous_rdr_hashes.expn.encoded_range(&metadata)?;
@@ -3783,10 +3820,17 @@ fn try_reuse_metadata_prefix(
     let mut refreshed_source_files = FxIndexSet::default();
     with_encode_metadata_header::<DefPathHashDefIdEncoder<'_>>(tcx, temporary_file.path(), |ecx| {
         let preamble = ecx.position();
-        ecx.emit_raw_bytes(&metadata[preamble..prefix_position]);
+        let mut start = preamble;
+        for (pos, bytes) in updated_hashes {
+            ecx.emit_raw_bytes(&metadata[start..pos]);
+            ecx.emit_raw_bytes(&bytes);
+            start = pos + bytes.len();
+        }
+        ecx.emit_raw_bytes(&metadata[start..prefix_position]);
         ecx.required_source_files = Some(required_source_files);
         ecx.metadata_prefix_manifest = Some(MetadataPrefixManifestBuilder {
             manifest,
+            refreshes_dependency_hashes,
             protected_span_keys: FxIndexSet::default(),
             definition_span_hasher: StableHasher::new(),
         });
@@ -4013,7 +4057,9 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
     {
         builder.manifest.metadata_len = metadata.len();
         builder.manifest.metadata_fingerprint = metadata_fingerprint(&metadata);
-        if let Err(error) = builder.manifest.save(tcx.incr_comp_session) {
+        if let Err(error) =
+            builder.manifest.save(tcx.incr_comp_session, builder.refreshes_dependency_hashes)
+        {
             debug!(target: "ohm_metadata_reuse", ?error, "could not persist metadata prefix manifest");
         }
     }
@@ -4148,13 +4194,30 @@ pub fn rendered_const<'tcx>(tcx: TyCtxt<'tcx>, body: &hir::Body<'_>, def_id: Loc
     }
 }
 
-fn crate_deps(tcx: TyCtxt<'_>) -> impl Iterator<Item = (CrateNum, CrateDep, Fingerprint)> + '_ {
+fn dependency_hash_refresh_allowed(tcx: TyCtxt<'_>) -> bool {
+    tcx.dep_graph.is_fully_enabled()
+        && tcx.sess.opts.unstable_opts.public_api_hash
+        && !tcx.sess.opts.unstable_opts.incremental_ignore_spans
+        && !tcx.sess.opts.unstable_opts.meta_stats
+        && tcx.sess.opts.unstable_opts.embed_metadata
+        && !tcx.sess.opts.output_types.should_codegen()
+        && !tcx.crate_types().contains(&CrateType::ProcMacro)
+}
+
+fn crate_deps(
+    tcx: TyCtxt<'_>,
+    refreshes_dependency_hashes: bool,
+) -> impl Iterator<Item = (CrateNum, CrateDep, Fingerprint)> + '_ {
     tcx.crates(()).iter().map(move |&cnum| {
         let dep = CrateDep {
             name: tcx.crate_name(cnum),
             // Ordinary metadata encodes raw foreign DefIndices and must bind to the
             // exact producer. RDR metadata resolves foreign DefIds by DefPathHash.
-            hash: if tcx.sess.opts.unstable_opts.public_api_hash {
+            hash: if refreshes_dependency_hashes {
+                // This serialized field is separately refreshed. The mandatory local crate_hash
+                // covers the complete set of upstream identities and public SVHs in this mode.
+                tcx.dep_graph.with_ignore(|| tcx.public_api_hash(cnum))
+            } else if tcx.sess.opts.unstable_opts.public_api_hash {
                 tcx.public_api_hash(cnum)
             } else {
                 tcx.crate_hash(cnum)

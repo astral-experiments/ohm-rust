@@ -614,8 +614,12 @@ pub(super) fn crate_hashes<'tcx, 'h>(
     let mut hasher = StableHasher::default();
     // A legacy intermediate can retain positional expansion IDs into a public dependency.
     // Prevent it from accepting a new-format producer under the old equivalence relation.
-    let mut public_global_hash =
-        stable_hash(hcx.hcx_mut(), &(crate::rmeta::OHM_METADATA_EPOCH, root));
+    // Prior visibility tables also recorded the full restricted module as a dependency.
+    const VISIBILITY_REACHABILITY_VERSION: u8 = 1;
+    let mut public_global_hash = stable_hash(
+        hcx.hcx_mut(),
+        &(crate::rmeta::OHM_METADATA_EPOCH, VISIBILITY_REACHABILITY_VERSION, root),
+    );
     if tcx.sess.opts.unstable_opts.incremental_ignore_spans {
         // Per-item hashes omit spans in this mode. Invalidate readers on local source edits.
         public_global_hash =
