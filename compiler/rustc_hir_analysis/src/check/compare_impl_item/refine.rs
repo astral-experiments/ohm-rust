@@ -354,16 +354,10 @@ fn report_mismatched_rpitit_signature<'tcx>(
             hir::FnRetTy::Return(ty) => ty.span,
         });
 
-    // Use ForSignature mode to ensure RPITITs are printed as `impl Trait` rather than
-    // `impl Trait { T::method(..) }` when RTN is enabled.
-    //
-    // We use `with_no_trimmed_paths!` to avoid triggering the `trimmed_def_paths` query,
-    // which requires diagnostic context (via `must_produce_diag`). Since we're formatting
-    // the type before creating the diagnostic, we need to avoid this query. This is the
-    // standard approach used elsewhere in the compiler for formatting types in suggestions
-    // (e.g., see `rustc_hir_typeck/src/demand.rs`).
-    let return_ty_suggestion =
-        with_no_trimmed_paths!(with_types_for_signature!(format!("{return_ty}")));
+    // Keep RPITITs in signature form and look up their display paths only when emitting the lint.
+    let return_ty_suggestion = std::fmt::from_fn(|f| {
+        with_no_trimmed_paths!(with_types_for_signature!(std::fmt::Display::fmt(&return_ty, f)))
+    });
 
     let span = unmatched_bound.unwrap_or(span);
     tcx.emit_node_span_lint(
@@ -375,7 +369,7 @@ fn report_mismatched_rpitit_signature<'tcx>(
             trait_return_span,
             pre,
             post,
-            return_ty: return_ty_suggestion,
+            return_ty: &return_ty_suggestion,
             unmatched_bound,
         },
     );
