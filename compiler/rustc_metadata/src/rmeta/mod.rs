@@ -409,7 +409,7 @@ impl RawDefId {
 ///
 /// Note the absence of the dependency's `-C extra-filename`: it lives in
 /// [`CrateRootUnhashed::dep_extra_filenames`] instead, deliberately outside the hash.
-#[derive(Encodable, BlobDecodable)]
+#[derive(Encodable, BlobDecodable, PartialEq)]
 pub(crate) struct CrateDep {
     pub name: Symbol,
     /// The dependency hash required by the writer's DefId encoding: public for RDR, full for raw indices.
