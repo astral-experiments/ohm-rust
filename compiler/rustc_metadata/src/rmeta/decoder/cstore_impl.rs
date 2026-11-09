@@ -745,7 +745,8 @@ pub(in crate::rmeta) fn provide(providers: &mut Providers) {
     };
     provide_extern(&mut providers.extern_queries);
     providers.extern_queries.external_incoherent_impls_input = |tcx, cnum| {
-        let has_impls = !CStore::from_tcx(tcx).get_crate_data(cnum).incoherent_impls.is_empty();
+        let has_impls =
+            CStore::from_tcx(tcx).get_crate_data(cnum).root.incoherent_impls.num_elems != 0;
         has_impls.then(|| tcx.external_metadata_input_hash(cnum))
     };
 }
@@ -903,7 +904,15 @@ fn provide_cstore_hooks(providers: &mut Providers) {
         }
         let cstore = CStore::from_tcx(tcx);
         let cdata = cstore.get_crate_data(cnum);
-        if let Some(indices) = cdata.incoherent_impls.get(&simp) {
+        let by_receiver = cdata.incoherent_impls.get_or_init(|| {
+            cdata
+                .root
+                .incoherent_impls
+                .decode((cdata, tcx))
+                .map(|group| (group.self_ty.decode((cdata, tcx)), group.impls))
+                .collect()
+        });
+        if let Some(indices) = by_receiver.get(&simp) {
             impls.extend(indices.decode((cdata, tcx)).map(|index| cdata.local_def_id(index)));
         }
     };

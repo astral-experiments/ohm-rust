@@ -249,7 +249,7 @@ pub(crate) struct CrateMetadata {
     ///
     /// These can be introduced using either `#![rustc_coherence_is_core]`
     /// or `#[rustc_allow_incoherent_impl]`.
-    incoherent_impls: FxIndexMap<SimplifiedType, LazyArray<DefIndex>>,
+    incoherent_impls: OnceLock<FxIndexMap<SimplifiedType, LazyArray<DefIndex>>>,
     /// Proc macro function pointers for this crate, if it's a proc macro crate.
     raw_proc_macros: Option<&'static [ProcMacroClient]>,
     /// Source maps for code from the crate.
@@ -2260,7 +2260,6 @@ impl CrateMetadata {
 
 impl CrateMetadata {
     pub(crate) fn new(
-        tcx: TyCtxt<'_>,
         blob: MetadataBlob,
         root: CrateRoot,
         raw_proc_macros: Option<&'static [ProcMacroClient]>,
@@ -2307,7 +2306,7 @@ impl CrateMetadata {
         // that does not copy any data. It just does some data verification.
         let def_path_hash_map = root.def_path_hash_map.decode(&blob);
 
-        let mut cdata = CrateMetadata {
+        CrateMetadata {
             blob,
             root,
             trait_impls,
@@ -2327,18 +2326,7 @@ impl CrateMetadata {
             extern_crate: None,
             hygiene_context: Default::default(),
             def_key_cache: Default::default(),
-        };
-
-        cdata.incoherent_impls = cdata
-            .root
-            .incoherent_impls
-            .decode((&cdata, tcx))
-            .map(|incoherent_impls| {
-                (incoherent_impls.self_ty.decode((&cdata, tcx)), incoherent_impls.impls)
-            })
-            .collect();
-
-        cdata
+        }
     }
 
     pub(crate) fn dependencies(&self) -> impl Iterator<Item = CrateNum> {
