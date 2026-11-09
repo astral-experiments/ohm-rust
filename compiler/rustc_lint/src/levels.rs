@@ -277,7 +277,23 @@ impl LintLevelsProvider for LintLevelQueryMap<'_> {
         self.specs.specs.get(&self.cur.local_id).unwrap_or(&self.empty)
     }
 
-    fn insert(&mut self, id: LintId, level_spec: StableLevelSpec) {
+    fn insert(&mut self, id: LintId, mut level_spec: StableLevelSpec) {
+        // Moving an owner also moves its local lint settings. Keep their exact
+        // positions observable when a diagnostic uses the source of an Allow.
+        let owner = self.cur.owner;
+        if self.tcx.dep_graph.is_fully_enabled()
+            && owner != hir::CRATE_OWNER_ID
+            && level_spec.level() == Level::Allow
+            && let LintLevelSource::Node { span, .. } = &mut level_spec.src
+        {
+            let data = span.data_untracked();
+            if data.parent.is_none()
+                && !data.is_dummy()
+                && self.tcx.source_span(owner.def_id).data_untracked().contains(data)
+            {
+                *span = span.with_parent(Some(owner.def_id));
+            }
+        }
         self.specs.specs.get_mut_or_insert_default(self.cur.local_id).insert(id, level_spec);
     }
 
