@@ -45,6 +45,7 @@ use tracing::{debug, instrument};
 
 use crate::callee::{self, DeferredCallResolution, SplatLoweringInfo};
 use crate::diagnostics::{self, CtorIsPrivate};
+use crate::diverges::UnreachableCause;
 use crate::method::{self, MethodCallee};
 use crate::{BreakableCtxt, Diverges, Expectation, FnCtxt, LoweredTy};
 
@@ -84,16 +85,16 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
     /// Produces warning on the given node, if the current point in the
     /// function is unreachable, and there hasn't been another warning.
     pub(crate) fn warn_if_unreachable(&self, id: HirId, span: Span, kind: &str) {
-        struct UnreachableItem<'a, 'b> {
+        struct UnreachableItem<'a> {
             kind: &'a str,
             span: Span,
-            orig_span: Span,
-            custom_note: Option<&'b str>,
+            cause: UnreachableCause,
         }
 
-        impl<'a, 'b, 'c> Diagnostic<'a, ()> for UnreachableItem<'b, 'c> {
+        impl<'a> Diagnostic<'a, ()> for UnreachableItem<'_> {
             fn into_diag(self, dcx: DiagCtxtHandle<'a>, level: Level) -> Diag<'a, ()> {
-                let Self { kind, span, orig_span, custom_note } = self;
+                let Self { kind, span, cause } = self;
+                let (orig_span, custom_note) = cause.diagnostic();
                 let msg = format!("unreachable {kind}");
                 Diag::new(dcx, level, msg.clone()).with_span_label(span, msg).with_span_label(
                     orig_span,
@@ -123,12 +124,20 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
         // Don't emit the lint if we are in an impl marked as `#[automatically_derive]`.
         // This is relevant for deriving `Clone` and `PartialEq` on types containing `!`.
-        if self.tcx.is_automatically_derived(self.tcx.parent(id.owner.def_id.into())) {
+        // For an owner parent, only its attributes matter here.
+        let parent = self.tcx.parent(id.owner.def_id.into());
+        let hir_parent = self.tcx.hir_owner_parent(id.owner);
+        let derived = if hir_parent.local_id == hir::ItemLocalId::ZERO
+            && hir_parent.owner.def_id.to_def_id() == parent
+        {
+            hir::find_attr!(self.tcx, hir_parent, AutomaticallyDerived)
+        } else {
+            self.tcx.is_automatically_derived(parent)
+        };
+        if derived {
             return;
         }
 
-        // Only now do the diagnostic's choice of span and note become observable.
-        let (orig_span, custom_note) = cause.diagnostic();
         // Don't warn twice.
         self.diverges.set(Diverges::WarnedAlways);
 
@@ -138,7 +147,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             lint::builtin::UNREACHABLE_CODE,
             id,
             span,
-            UnreachableItem { kind, span, orig_span, custom_note },
+            UnreachableItem { kind, span, cause },
         );
     }
 
