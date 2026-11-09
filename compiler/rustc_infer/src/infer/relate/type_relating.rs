@@ -11,12 +11,40 @@ use crate::infer::relate::PredicateEmittingRelation;
 use crate::infer::{DefineOpaqueTypes, InferCtxt, SubregionOrigin, TypeTrace};
 use crate::traits::{Obligation, PredicateObligations};
 
+pub(crate) enum RelationTrace<'a, 'tcx> {
+    Ready(TypeTrace<'tcx>),
+    Deferred { span: Span, build: &'a dyn Fn() -> TypeTrace<'tcx> },
+}
+
+impl<'a, 'tcx> RelationTrace<'a, 'tcx> {
+    fn span(&self) -> Span {
+        match self {
+            Self::Ready(trace) => trace.span(),
+            Self::Deferred { span, .. } => *span,
+        }
+    }
+
+    fn materialize(&mut self) -> &TypeTrace<'tcx> {
+        if let Self::Deferred { build, .. } = self {
+            *self = Self::Ready(build());
+        }
+        let Self::Ready(trace) = self else { unreachable!() };
+        trace
+    }
+}
+
+impl<'a, 'tcx> From<TypeTrace<'tcx>> for RelationTrace<'a, 'tcx> {
+    fn from(trace: TypeTrace<'tcx>) -> Self {
+        Self::Ready(trace)
+    }
+}
+
 /// Enforce that `a` is equal to or a subtype of `b`.
 pub(crate) struct TypeRelating<'infcx, 'tcx> {
     infcx: &'infcx InferCtxt<'tcx>,
 
     // Immutable fields
-    trace: TypeTrace<'tcx>,
+    trace: RelationTrace<'infcx, 'tcx>,
     param_env: ty::ParamEnv<'tcx>,
     define_opaque_types: DefineOpaqueTypes,
 
@@ -51,7 +79,7 @@ pub(crate) struct TypeRelating<'infcx, 'tcx> {
 impl<'infcx, 'tcx> TypeRelating<'infcx, 'tcx> {
     pub(crate) fn new(
         infcx: &'infcx InferCtxt<'tcx>,
-        trace: TypeTrace<'tcx>,
+        trace: impl Into<RelationTrace<'infcx, 'tcx>>,
         param_env: ty::ParamEnv<'tcx>,
         define_opaque_types: DefineOpaqueTypes,
         ambient_variance: ty::Variance,
@@ -59,7 +87,7 @@ impl<'infcx, 'tcx> TypeRelating<'infcx, 'tcx> {
         assert!(!infcx.next_trait_solver);
         TypeRelating {
             infcx,
-            trace,
+            trace: trace.into(),
             param_env,
             define_opaque_types,
             ambient_variance,
@@ -142,7 +170,7 @@ impl<'tcx> TypeRelation<TyCtxt<'tcx>> for TypeRelating<'_, 'tcx> {
                         // type variables, so record an obligation.
                         self.obligations.push(Obligation::new(
                             self.cx(),
-                            self.trace.cause.clone(),
+                            self.trace.materialize().cause.clone(),
                             self.param_env,
                             ty::Binder::dummy(ty::PredicateKind::Subtype(ty::SubtypePredicate {
                                 a_is_expected: true,
@@ -156,7 +184,7 @@ impl<'tcx> TypeRelation<TyCtxt<'tcx>> for TypeRelating<'_, 'tcx> {
                         // type variables, so record an obligation.
                         self.obligations.push(Obligation::new(
                             self.cx(),
-                            self.trace.cause.clone(),
+                            self.trace.materialize().cause.clone(),
                             self.param_env,
                             ty::Binder::dummy(ty::PredicateKind::Subtype(ty::SubtypePredicate {
                                 a_is_expected: false,
@@ -201,7 +229,7 @@ impl<'tcx> TypeRelation<TyCtxt<'tcx>> for TypeRelating<'_, 'tcx> {
                 self.register_goals(infcx.handle_opaque_type(
                     a,
                     b,
-                    self.trace.cause.span,
+                    self.trace.span(),
                     self.param_env(),
                 )?);
             }
@@ -222,7 +250,7 @@ impl<'tcx> TypeRelation<TyCtxt<'tcx>> for TypeRelating<'_, 'tcx> {
         a: ty::Region<'tcx>,
         b: ty::Region<'tcx>,
     ) -> RelateResult<'tcx, ty::Region<'tcx>> {
-        let origin = SubregionOrigin::Subtype(Box::new(self.trace.clone()));
+        let origin = SubregionOrigin::Subtype(Box::new(self.trace.materialize().clone()));
 
         match self.ambient_variance {
             // Subtype(&'a u8, &'b u8) => Outlives('a: 'b) => SubRegion('b, 'a)
@@ -287,7 +315,7 @@ impl<'tcx> TypeRelation<TyCtxt<'tcx>> for TypeRelating<'_, 'tcx> {
         {
             self.relate(a, b)?;
         } else {
-            let span = self.trace.cause.span;
+            let span = self.trace.span();
             let infcx = self.infcx;
 
             match self.ambient_variance {
@@ -365,7 +393,12 @@ impl<'tcx> PredicateEmittingRelation<InferCtxt<'tcx>> for TypeRelating<'_, 'tcx>
         preds: impl IntoIterator<Item: ty::Upcast<TyCtxt<'tcx>, ty::Predicate<'tcx>>>,
     ) {
         self.obligations.extend(preds.into_iter().map(|pred| {
-            Obligation::new(self.infcx.tcx, self.trace.cause.clone(), self.param_env, pred)
+            Obligation::new(
+                self.infcx.tcx,
+                self.trace.materialize().cause.clone(),
+                self.param_env,
+                pred,
+            )
         }))
     }
 
@@ -373,7 +406,7 @@ impl<'tcx> PredicateEmittingRelation<InferCtxt<'tcx>> for TypeRelating<'_, 'tcx>
         self.obligations.extend(goals.into_iter().map(|goal| {
             Obligation::new(
                 self.infcx.tcx,
-                self.trace.cause.clone(),
+                self.trace.materialize().cause.clone(),
                 goal.param_env,
                 goal.predicate,
             )

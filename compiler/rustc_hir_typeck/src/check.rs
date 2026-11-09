@@ -14,6 +14,7 @@ use tracing::{debug, instrument};
 
 use crate::coercion::CoerceMany;
 use crate::gather_locals::GatherLocalsVisitor;
+use crate::pat::PatOrigin;
 use crate::{CoroutineTypes, Diverges, FnCtxt};
 
 /// Helper used for fns and closures. Does the grungy work of checking a function
@@ -90,7 +91,8 @@ pub(super) fn check_fn<'a, 'tcx>(
         // Check the pattern.
         let ty: Option<&hir::Ty<'_>> = inputs_hir.and_then(|h| h.get(idx));
         let ty_span = ty.map(|ty| ty.span);
-        fcx.check_pat_top(param.pat, param_ty, ty_span, None, None);
+        let origin = ty_span.map_or(PatOrigin::Unspecified, PatOrigin::Type);
+        fcx.check_pat_top(param.pat, param_ty, origin, None);
         if param.pat.is_never_pattern() {
             fcx.function_diverges_because_of_empty_arguments.set(Diverges::Always {
                 span: param.pat.span,
