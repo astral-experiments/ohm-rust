@@ -200,7 +200,15 @@ pub(crate) fn expand_test_or_bench(
         expr
     };
 
-    let test_fn = if is_bench {
+    let plain_integration_test = !is_bench
+        // Later attributes can change the function signature or add invocation requirements.
+        && item.attrs.is_empty()
+        && matches!(fn_.sig.decl.output, ast::FnRetTy::Default(_))
+        && matches!(fn_.sig.header.ext, ast::Extern::None)
+        && uses_integration_test_table(cx);
+    let test_fn = if plain_integration_test {
+        cx.expr_path(cx.path(sp, vec![fn_.ident]))
+    } else if is_bench {
         // avoid name collisions by using the function name within the identifier, see bug #148275
         let bencher_param =
             Ident::from_str_and_span(&format!("__bench_{}", fn_.ident.name), attr_sp);
@@ -263,6 +271,11 @@ pub(crate) fn expand_test_or_bench(
 
     let location_info = get_location_info(cx, &fn_);
 
+    let test_type = cx.expr_path(test_type_path(match test_type(cx) {
+        TestType::UnitTest => "UnitTest",
+        TestType::IntegrationTest => "IntegrationTest",
+        TestType::Unknown => "Unknown",
+    }));
     let mut test_const =
         cx.item(
             sp,
@@ -280,11 +293,43 @@ pub(crate) fn expand_test_or_bench(
                     defaultness: ast::Defaultness::Implicit,
                     ident: Ident::new(fn_.ident.name, sp),
                     generics: ast::Generics::default(),
-                    ty: cx.ty(sp, ast::TyKind::Path(None, test_path("TestDescAndFn"))),
+                    ty: cx.ty(
+                        sp,
+                        ast::TyKind::Path(
+                            None,
+                            test_path(if plain_integration_test {
+                                "StaticUnitTest"
+                            } else {
+                                "TestDescAndFn"
+                            }),
+                        ),
+                    ),
                     define_opaque: None,
                     kind: ast::ConstItemKind::Body,
-                    // test::TestDescAndFn {
-                    body: Some(
+                    body: Some(if plain_integration_test {
+                        let constructor = cx.path(
+                            sp,
+                            vec![
+                                test_ident,
+                                Ident::from_str_and_span("StaticUnitTest", sp),
+                                Ident::from_str_and_span("new", sp),
+                            ],
+                        );
+                        cx.expr_call(
+                            sp,
+                            cx.expr_path(constructor),
+                            thin_vec![
+                                cx.expr_str(sp, test_path_symbol),
+                                cx.expr_str(sp, location_info.0),
+                                cx.expr_usize(sp, location_info.1),
+                                cx.expr_usize(sp, location_info.2),
+                                cx.expr_usize(sp, location_info.3),
+                                cx.expr_usize(sp, location_info.4),
+                                test_type,
+                                test_fn,
+                            ],
+                        )
+                    } else {
                         cx.expr_struct(
                             sp,
                             test_path("TestDescAndFn"),
@@ -345,28 +390,15 @@ pub(crate) fn expand_test_or_bench(
                                     ),
                                 },),
                                 // test_type: ...
-                                field("test_type", match test_type(cx) {
-                                    // test::TestType::UnitTest
-                                    TestType::UnitTest => {
-                                        cx.expr_path(test_type_path("UnitTest"))
-                                    }
-                                    // test::TestType::IntegrationTest
-                                    TestType::IntegrationTest => {
-                                        cx.expr_path(test_type_path("IntegrationTest"))
-                                    }
-                                    // test::TestPath::Unknown
-                                    TestType::Unknown => {
-                                        cx.expr_path(test_type_path("Unknown"))
-                                    }
-                                },),
+                                field("test_type", test_type),
                                 // },
                             ],),
                         ),
                         // testfn: test::StaticTestFn(...) | test::StaticBenchFn(...)
                         field("testfn", test_fn), // }
                     ],
-                        ), // }
-                    ),
+                        )
+                    }),
                 }
                 .into(),
             ),
@@ -454,6 +486,17 @@ fn item_path(mod_path: &[Ident], item_ident: &Ident) -> String {
 enum ShouldPanic {
     No,
     Yes(Option<Symbol>),
+}
+
+pub(super) fn uses_integration_test_table(cx: &ExtCtxt<'_>) -> bool {
+    // Changing the shims of unit tests can repartition unrelated application code across CGUs.
+    matches!(&cx.sess.io.input, rustc_session::config::Input::File(path)
+        if path.parent().is_some_and(|path| path.ends_with("tests")))
+        && cx.sess.panic_strategy().unwinds()
+        && !cx.sess.instrument_coverage()
+        && cx.sess.opts.unstable_opts.test_harness_filter.is_none()
+        && !cx.ecfg.features.custom_test_frameworks()
+        && !cx.ecfg.features.rustc_attrs()
 }
 
 fn should_ignore(i: &ast::Item) -> bool {
