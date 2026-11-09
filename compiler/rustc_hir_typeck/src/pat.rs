@@ -18,7 +18,7 @@ use rustc_hir::{
     PatKind, expr_needs_parens,
 };
 use rustc_hir_analysis::autoderef::report_autoderef_recursion_limit_error;
-use rustc_infer::infer::RegionVariableOrigin;
+use rustc_infer::infer::{DefineOpaqueTypes, RegionVariableOrigin};
 use rustc_middle::traits::PatternOriginExpr;
 use rustc_middle::ty::{self, Pinnedness, Ty, TypeVisitableExt, Unnormalized};
 use rustc_middle::{bug, span_bug};
@@ -50,6 +50,37 @@ fn is_number(text: &str) -> bool {
     text.chars().all(|c: char| c.is_ascii_digit())
 }
 
+#[derive(Copy, Clone)]
+pub(crate) enum PatOrigin<'tcx> {
+    Unspecified,
+    Type(Span),
+    Expr { expr: &'tcx hir::Expr<'tcx>, enclosing: Span },
+}
+
+impl<'tcx> PatOrigin<'tcx> {
+    fn expr(self) -> Option<&'tcx hir::Expr<'tcx>> {
+        match self {
+            Self::Expr { expr, .. } => Some(expr),
+            Self::Unspecified | Self::Type(_) => None,
+        }
+    }
+
+    fn span(self) -> Option<Span> {
+        match self {
+            Self::Unspecified => None,
+            Self::Type(span) => Some(span),
+            Self::Expr { expr, enclosing } => {
+                let span = expr.span;
+                Some(if span.from_expansion() {
+                    span.find_ancestor_inside(enclosing).unwrap_or(span)
+                } else {
+                    span
+                })
+            }
+        }
+    }
+}
+
 /// Information about the expected type at the top level of type checking a pattern.
 ///
 /// **NOTE:** This is only for use by diagnostics. Do NOT use for type checking logic!
@@ -57,13 +88,9 @@ fn is_number(text: &str) -> bool {
 struct TopInfo<'tcx> {
     /// The `expected` type at the top level of type checking a pattern.
     expected: Ty<'tcx>,
-    /// Was the origin of the `span` from a scrutinee expression?
-    ///
-    /// Otherwise there is no scrutinee and it could be e.g. from the type of a formal parameter.
-    origin_expr: Option<&'tcx hir::Expr<'tcx>>,
     /// The span giving rise to the `expected` type, if one could be provided.
     ///
-    /// If `origin_expr` is `true`, then this is the span of the scrutinee as in:
+    /// For an expression this is the span of the scrutinee as in:
     ///
     /// - `match scrutinee { ... }`
     /// - `let _ = scrutinee;`
@@ -83,7 +110,7 @@ struct TopInfo<'tcx> {
     ///   = note: expected type `usize`
     ///              found type `std::result::Result<_, _>`
     /// ```
-    span: Option<Span>,
+    origin: PatOrigin<'tcx>,
     /// The [`HirId`] of the top-level pattern.
     hir_id: HirId,
 }
@@ -106,7 +133,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         // If span also exists, then span == origin_expr.span (although it doesn't need to exist).
         // In that case, we can peel away references from both and treat them
         // as the same.
-        let origin_expr_info = ti.origin_expr.map(|mut cur_expr| {
+        let origin_expr_info = ti.origin.expr().map(|mut cur_expr| {
             let mut count = 0;
 
             // cur_ty may have more layers of references than cur_expr.
@@ -125,7 +152,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         });
 
         let code = ObligationCauseCode::Pattern {
-            span: ti.span,
+            span: ti.origin.span(),
             root_ty: ti.expected,
             origin_expr: origin_expr_info,
         };
@@ -139,15 +166,41 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         actual: Ty<'tcx>,
         ti: &TopInfo<'tcx>,
     ) -> Result<(), Diag<'a>> {
-        self.demand_eqtype_with_origin(&self.pattern_cause(ti, cause_span), expected, actual)
-            .map_err(|mut diag| {
-                if let Some(expr) = ti.origin_expr {
+        self.relate_pattern_types(cause_span, ti, expected, ty::Invariant, actual).map_err(
+            |mut diag| {
+                if let Some(expr) = ti.origin.expr() {
                     self.suggest_fn_call(&mut diag, expr, expected, |output| {
                         self.can_eq(self.param_env, output, actual)
                     });
                 }
                 diag
-            })
+            },
+        )
+    }
+
+    /// Preserve the pattern origin when a constraint, obligation or diagnostic needs its cause.
+    fn relate_pattern_types(
+        &self,
+        span: Span,
+        info: &TopInfo<'tcx>,
+        expected: Ty<'tcx>,
+        variance: ty::Variance,
+        actual: Ty<'tcx>,
+    ) -> Result<(), Diag<'_>> {
+        let cause = || self.pattern_cause(info, span);
+        self.relate_types_with_deferred_cause(
+            self.param_env,
+            DefineOpaqueTypes::Yes,
+            expected,
+            variance,
+            actual,
+            span,
+            &cause,
+        )
+        .map(|result| self.register_infer_ok_obligations(result))
+        .map_err(|err| {
+            self.err_ctxt().report_mismatched_types(&cause(), self.param_env, expected, actual, err)
+        })
     }
 
     fn demand_eqtype_pat(
@@ -370,22 +423,14 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
     }
 
     /// Type check the given top level pattern against the `expected` type.
-    ///
-    /// If a `Some(span)` is provided and `origin_expr` holds,
-    /// then the `span` represents the scrutinee's span.
-    /// The scrutinee is found in e.g. `match scrutinee { ... }` and `let pat = scrutinee;`.
-    ///
-    /// Otherwise, `Some(span)` represents the span of a type expression
-    /// which originated the `expected` type.
     pub(crate) fn check_pat_top(
         &self,
         pat: &'tcx Pat<'tcx>,
         expected: Ty<'tcx>,
-        span: Option<Span>,
-        origin_expr: Option<&'tcx hir::Expr<'tcx>>,
+        origin: PatOrigin<'tcx>,
         decl_origin: Option<DeclOrigin<'tcx>>,
     ) {
-        let top_info = TopInfo { expected, origin_expr, span, hir_id: pat.hir_id };
+        let top_info = TopInfo { expected, origin, hir_id: pat.hir_id };
         let pat_info = PatInfo {
             binding_mode: ByRef::No,
             max_pinnedness: PinnednessCap::Not,
@@ -999,7 +1044,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 && self.tcx.is_lang_item(adt.did(), LangItem::String)
                 && pat_ty.is_ref()
                 && pat_ty.peel_refs().is_str()
-                && let Some(origin_expr) = ti.origin_expr
+                && let Some(origin_expr) = ti.origin.expr()
             {
                 err.span_suggestion_verbose(
                     origin_expr.span.shrink_to_hi(),
@@ -1640,7 +1685,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         ti: &TopInfo<'tcx>,
     ) -> Ty<'tcx> {
         if let Err(err) =
-            self.demand_suptype_with_origin(&self.pattern_cause(ti, span), expected, resolved.ty)
+            self.relate_pattern_types(span, ti, expected, ty::Contravariant, resolved.ty)
         {
             self.emit_bad_pat_path(err, pat_id_for_diag, span, resolved);
         }
@@ -3278,8 +3323,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             .autoderef(span, expected_ty)
             .silence_errors()
             .any(|(ty, _)| matches!(ty.kind(), ty::Slice(..) | ty::Array(..)))
-            && let Some(span) = ti.span
-            && let Some(_) = ti.origin_expr
+            && ti.origin.expr().is_some()
+            && let Some(span) = ti.origin.span()
         {
             let resolved_ty = self.resolve_vars_if_possible(ti.expected);
             let (is_slice_or_array_or_vector, resolved_ty) =
