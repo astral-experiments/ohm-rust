@@ -1,7 +1,7 @@
 //@ ignore-cross-compile
 //@ needs-target-std
 
-use run_make_support::{run, rust_lib_name, rustc};
+use run_make_support::{rfs, run, rust_lib_name, rustc};
 
 fn main() {
     rustc().input("owner.rs").crate_type("rlib").edition("2024").run();
@@ -61,4 +61,16 @@ fn main() {
         local.run();
         run("local").assert_stdout_equals(output);
     }
+
+    // Looking up incoherent impls for a local type must not read its attributes.
+    rustc()
+        .input("local.rs")
+        .edition("2024")
+        .incremental("local-lookup")
+        .arg("-Zquery-dep-graph")
+        .arg("-Zdump-dep-graph")
+        .run();
+    let edges = rfs::read_to_string("dep_graph.txt");
+    assert!(edges.lines().any(|edge| edge.starts_with("typeck_root -> ")));
+    assert!(!edges.lines().any(|edge| edge == "incoherent_impls -> hir_attr_map"));
 }
