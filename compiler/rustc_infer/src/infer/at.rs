@@ -31,7 +31,7 @@ use rustc_middle::ty::relate::solver_relating::RelateExt as NextSolverRelate;
 use rustc_middle::ty::{Const, TypingMode};
 
 use super::*;
-use crate::infer::relate::type_relating::TypeRelating;
+use crate::infer::relate::type_relating::{RelationTrace, TypeRelating};
 use crate::infer::relate::{Relate, TypeRelation};
 use crate::traits::Obligation;
 use crate::traits::solve::Goal;
@@ -54,6 +54,39 @@ pub struct At<'a, 'tcx> {
 }
 
 impl<'tcx> InferCtxt<'tcx> {
+    /// Relate two types, constructing the complete origin if it escapes into an obligation
+    /// or region constraint. Both solvers can use the primary span directly.
+    pub fn relate_types_with_deferred_cause(
+        &self,
+        param_env: ty::ParamEnv<'tcx>,
+        define_opaque_types: DefineOpaqueTypes,
+        expected: Ty<'tcx>,
+        variance: ty::Variance,
+        actual: Ty<'tcx>,
+        span: Span,
+        cause: &dyn Fn() -> ObligationCause<'tcx>,
+    ) -> InferResult<'tcx, ()> {
+        if self.next_trait_solver {
+            let goals =
+                NextSolverRelate::relate(self, param_env, expected, variance, actual, span)?;
+            if goals.is_empty() {
+                return Ok(InferOk { value: (), obligations: Default::default() });
+            }
+            return Ok(self.at(&cause(), param_env).goals_to_obligations(goals));
+        }
+
+        let build = || ToTrace::to_trace(&cause(), expected, actual);
+        let mut relation = TypeRelating::new(
+            self,
+            RelationTrace::Deferred { span, build: &build },
+            param_env,
+            define_opaque_types,
+            variance,
+        );
+        relation.relate(expected, actual)?;
+        Ok(InferOk { value: (), obligations: relation.into_obligations() })
+    }
+
     #[inline]
     pub fn at<'a>(
         &'a self,
