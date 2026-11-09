@@ -25,7 +25,13 @@ use super::{DefPathHashDefIdEncoder, EncodeContext, EncodedMetadata};
 use crate::rmeta::LazyTable;
 use crate::rmeta::table::FixedSizeEncoding;
 
-const METADATA_PREFIX_MAGIC: &[u8] = b"ohm-metadata-prefix-v3\0";
+fn manifest_magic(refreshes_dependency_hashes: bool) -> &'static [u8] {
+    if refreshes_dependency_hashes {
+        b"ohm-metadata-prefix-v4\0"
+    } else {
+        b"ohm-metadata-prefix-v3\0"
+    }
+}
 
 #[derive(Encodable, Decodable)]
 pub(super) struct MetadataProtectedSpan {
@@ -48,6 +54,7 @@ pub(super) struct MetadataPrefixManifest {
 }
 
 pub(super) struct MetadataPrefixManifestBuilder {
+    pub(super) refreshes_dependency_hashes: bool,
     pub(super) manifest: MetadataPrefixManifest,
     pub(super) protected_span_keys: FxIndexSet<(StableSourceFileId, u32, u32)>,
     pub(super) definition_span_hasher: StableHasher,
@@ -56,6 +63,17 @@ pub(super) struct MetadataPrefixManifestBuilder {
 pub(super) fn metadata_fingerprint(bytes: &[u8]) -> Fingerprint {
     let mut hasher = StableHasher::new();
     bytes.hash(&mut hasher);
+    hasher.finish()
+}
+
+// A v4 prefix may omit dependency-hash reads from the graph. Protect this capability
+// together with the payload. Released v3 manifests use the original payload-only hash.
+fn manifest_fingerprint(payload: &[u8], refreshes_dependency_hashes: bool) -> Fingerprint {
+    if !refreshes_dependency_hashes {
+        return metadata_fingerprint(payload);
+    }
+    let mut hasher = StableHasher::new();
+    (manifest_magic(true), payload).hash(&mut hasher);
     hasher.finish()
 }
 
@@ -246,6 +264,7 @@ impl MetadataPrefixManifestBuilder {
                 definition_span_count: 0,
                 definition_span_fingerprint: Fingerprint::ZERO,
             },
+            refreshes_dependency_hashes: false,
             protected_span_keys: FxIndexSet::default(),
             definition_span_hasher: StableHasher::new(),
         }
@@ -375,7 +394,7 @@ impl MetadataPrefixManifest {
         bytes.is_empty().then_some(())
     }
 
-    pub(super) fn load(path: &Path) -> Option<Self> {
+    pub(super) fn load(path: &Path, allow_dependency_hash_refresh: bool) -> Option<(Self, bool)> {
         const MAX_MANIFEST_SIZE: u64 = 16 * 1024 * 1024;
 
         let file = File::open(path).ok()?;
@@ -387,18 +406,46 @@ impl MetadataPrefixManifest {
         if bytes.len() > MAX_MANIFEST_SIZE as usize {
             return None;
         }
-        let payload = bytes.strip_prefix(METADATA_PREFIX_MAGIC)?;
+        // A v3 prefix keeps its original tracked dependency hashes. Only v4
+        // delegates those fields to the refresh below the immutable item data.
+        let (payload, refreshes_dependency_hashes) = if allow_dependency_hash_refresh
+            && let Some(payload) = bytes.strip_prefix(manifest_magic(true))
+        {
+            (payload, true)
+        } else {
+            (bytes.strip_prefix(manifest_magic(false))?, false)
+        };
         let (expected_fingerprint, payload) = payload.split_first_chunk::<16>()?;
-        if metadata_fingerprint(payload) != Fingerprint::from_le_bytes(*expected_fingerprint) {
+        if manifest_fingerprint(payload, refreshes_dependency_hashes)
+            != Fingerprint::from_le_bytes(*expected_fingerprint)
+        {
             return None;
         }
         Self::validate_payload(payload)?;
         let mut decoder = opaque::MemDecoder::new(payload, 0).ok()?;
         let manifest = Self::decode(&mut decoder);
-        (decoder.position() + opaque::MAGIC_END_BYTES.len() == payload.len()).then_some(manifest)
+        (decoder.position() + opaque::MAGIC_END_BYTES.len() == payload.len())
+            .then_some((manifest, refreshes_dependency_hashes))
     }
 
-    pub(super) fn save(&self, incr_comp_session: Option<&IncrCompSession>) -> std::io::Result<()> {
+    /// A fresh encoder which delegates dependency SVHs must never leave behind a usable v3
+    /// manifest if the new optional manifest cannot subsequently be written.
+    pub(super) fn clear_for_dependency_hashes(incr_comp_session: Option<&IncrCompSession>) -> bool {
+        let Some(path) = EncodedMetadata::prefix_manifest_path(incr_comp_session) else {
+            return false;
+        };
+        match std::fs::remove_file(path) {
+            Ok(()) => true,
+            Err(err) => err.kind() == std::io::ErrorKind::NotFound,
+        }
+    }
+
+    pub(super) fn save(
+        &self,
+        incr_comp_session: Option<&IncrCompSession>,
+        refreshes_dependency_hashes: bool,
+    ) -> std::io::Result<()> {
+        let magic = manifest_magic(refreshes_dependency_hashes);
         let Some(path) = EncodedMetadata::prefix_manifest_path(incr_comp_session) else {
             return Ok(());
         };
@@ -410,7 +457,7 @@ impl MetadataPrefixManifest {
         let temporary_file =
             tempfile::Builder::new().prefix(".ohm-metadata-prefix-").tempfile_in(directory)?;
         let mut encoder = opaque::FileEncoder::new(temporary_file.path())?;
-        encoder.emit_raw_bytes(METADATA_PREFIX_MAGIC);
+        encoder.emit_raw_bytes(magic);
         encoder.emit_raw_bytes(&[0; 16]);
         self.encode(&mut encoder);
         if let Err((_, error)) = encoder.finish() {
@@ -422,10 +469,10 @@ impl MetadataPrefixManifest {
             // SAFETY: This private temporary file has finished encoding and is not mutated while
             // its read-only mapping is alive.
             let manifest = unsafe { Mmap::map(file)? };
-            metadata_fingerprint(&manifest[METADATA_PREFIX_MAGIC.len() + 16..])
+            manifest_fingerprint(&manifest[magic.len() + 16..], refreshes_dependency_hashes)
         };
         let mut file = File::options().write(true).open(temporary_file.path())?;
-        file.seek(std::io::SeekFrom::Start(METADATA_PREFIX_MAGIC.len() as u64))?;
+        file.seek(std::io::SeekFrom::Start(magic.len() as u64))?;
         file.write_all(&fingerprint.to_le_bytes())?;
         file.flush()?;
         temporary_file.persist(path).map_err(|error| error.error)?;

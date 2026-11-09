@@ -28,8 +28,8 @@ const FILE_MAGIC: &[u8] = b"RSIC";
 /// Change this if the header format changes.
 // CGUs now encode a placement key separately from their versioned artifact identity.
 // Local built MIR now fingerprints the type-checking root's region annotation.
-// OwnerNodes now records whether it contains loop-control attributes.
-const HEADER_FORMAT_VERSION: u16 = 61340;
+// OwnerNodes records loop-control attributes and params_in_repr fingerprints the full bitset.
+const HEADER_FORMAT_VERSION: u16 = 61341;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);

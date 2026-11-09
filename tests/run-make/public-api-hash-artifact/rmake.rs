@@ -62,8 +62,12 @@ fn compile_and_read_public_api_hash_with_output(
 }
 
 fn metadata_work_product() -> PathBuf {
+    metadata_work_product_in("incremental")
+}
+
+fn metadata_work_product_in(directory: &str) -> PathBuf {
     let mut newest_metadata: Option<(SystemTime, PathBuf)> = None;
-    for crate_directory in rfs::read_dir("incremental") {
+    for crate_directory in rfs::read_dir(directory) {
         let crate_directory = crate_directory.expect("invalid incremental crate directory");
         if !crate_directory.path().is_dir() {
             continue;
@@ -176,7 +180,84 @@ fn downstream_exported_macro_value() -> u32 {
     run("macro-value-user").stdout_utf8().trim().parse().unwrap()
 }
 
+fn check_refreshed_dependency_hash() {
+    let compile = |name: &str, incremental: &str| {
+        let mut command = rustc();
+        command
+            .input(format!("{name}.rs"))
+            .crate_type("rlib")
+            .edition("2024")
+            .emit("metadata")
+            .arg("-Zpublic-api-hash")
+            .arg("-Zincremental-verify-ich")
+            .json("artifacts")
+            .error_format("json")
+            .incremental(incremental)
+            .env("RUSTC_LOG", "ohm_metadata_reuse=info");
+        command
+    };
+    let supplier = |incremental: &str| compile("refresh_supplier", incremental).run();
+    let facade = |incremental: &str| {
+        compile("refresh_facade", incremental)
+            .extern_("refresh_supplier", "librefresh_supplier.rmeta")
+            .run()
+    };
+    let reader = |facade_path: &str| {
+        let mut command = compile("refresh_reader", "refresh-reader");
+        command
+            .extern_("refresh_supplier", "librefresh_supplier.rmeta")
+            .extern_("refresh_facade", facade_path)
+            .arg("-Ldependency=.");
+        command
+    };
+
+    rfs::write("refresh_supplier.rs", "pub struct Marker;\n");
+    rfs::write("refresh_facade.rs", "pub use refresh_supplier::Marker;\n");
+    rfs::write(
+        "refresh_reader.rs",
+        "pub fn read(value: refresh_facade::Marker) -> refresh_supplier::Marker { value }\n",
+    );
+    supplier("refresh-supplier");
+    facade("refresh-facade");
+    rfs::create_dir("old-refresh-facade");
+    let old_facade = "old-refresh-facade/librefresh_facade.rmeta";
+    rfs::copy("librefresh_facade.rmeta", old_facade);
+
+    // The facade's exported item is unchanged, but its supplier now has a different crate hash.
+    rfs::write("refresh_supplier.rs", "pub struct Marker;\npub struct Addition;\n");
+    supplier("refresh-supplier");
+    facade("refresh-facade").assert_stderr_contains("reused metadata item prefix");
+    let warm_facade = rfs::read("librefresh_facade.rmeta");
+    reader("librefresh_facade.rmeta").run();
+    reader(old_facade).run_fail().assert_stderr_contains("E0460");
+
+    supplier("cold-refresh-supplier");
+    facade("cold-refresh-facade");
+    assert_eq!(warm_facade, rfs::read("librefresh_facade.rmeta"));
+
+    // A damaged version marker must not turn an untracked dependency into a trusted input.
+    let manifest = metadata_work_product_in("refresh-facade")
+        .with_file_name("metadata-prefix-v3.ohm-prefix-v3");
+    let mut manifest_bytes = rfs::read(&manifest);
+    let magic = b"ohm-metadata-prefix-v4\0";
+    assert!(manifest_bytes.starts_with(magic));
+    manifest_bytes[magic.len() - 2] = b'3';
+    rfs::write(&manifest, manifest_bytes);
+    rfs::write(
+        "refresh_supplier.rs",
+        "pub struct Marker;\npub struct Addition;\npub struct Another;\n",
+    );
+    supplier("refresh-supplier");
+    facade("refresh-facade").assert_stderr_not_contains("reused metadata item prefix");
+    let repaired = rfs::read("librefresh_facade.rmeta");
+    reader("librefresh_facade.rmeta").run();
+    supplier("repaired-cold-supplier");
+    facade("repaired-cold-facade");
+    assert_eq!(repaired, rfs::read("librefresh_facade.rmeta"));
+}
+
 fn main() {
+    check_refreshed_dependency_hash();
     let fresh_hash = compile_and_read_public_api_hash(false);
     let original_metadata = metadata_work_product();
     let prefix_manifest = original_metadata.with_file_name("metadata-prefix-v3.ohm-prefix-v3");
