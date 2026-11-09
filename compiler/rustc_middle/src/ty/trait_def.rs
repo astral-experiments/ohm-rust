@@ -546,8 +546,10 @@ pub(super) fn trait_impls_by_const_arg_provider(
 
 /// Query provider for `incoherent_impls`.
 pub(super) fn incoherent_impls_provider(tcx: TyCtxt<'_>, simp: SimplifiedType) -> &[DefId] {
+    // An inherent impl for a local definition is recorded by `inherent_impls`.
+    // Upstream crates cannot name this definition.
     if let Some(def_id) = simp.def()
-        && !find_attr!(tcx, def_id, RustcHasIncoherentInherentImpls)
+        && (def_id.is_local() || !find_attr!(tcx, def_id, RustcHasIncoherentInherentImpls))
     {
         return &[];
     }
