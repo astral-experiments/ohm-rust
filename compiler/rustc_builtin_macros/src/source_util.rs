@@ -70,12 +70,7 @@ pub(crate) fn expand_file(
     use rustc_span::RemapPathScopeComponents;
     let filename = if cx.expanding_worktree_input {
         loc.file.name.prefer_local_unconditionally()
-    } else if cx.sess.opts.ohm_worktree_source_paths
-        && let rustc_span::FileName::Real(name) = &loc.file.name
-        && let Some(path) = name.local_path()
-        && path.is_absolute()
-        && path != name.path(RemapPathScopeComponents::MACRO)
-    {
+    } else if loc.file.name.has_worktree_source_path() {
         // Cargo rechecks this input when importing the artifact into another checkout.
         let key = rustc_span::sym::ohm_worktree_source_paths;
         let root = std::env::var(key.as_str()).ok().map(|value| Symbol::intern(&value));
