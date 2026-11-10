@@ -2412,6 +2412,14 @@ unsafe extern "C" {
         M: &'a Module,
         DisableSimplifyLibCalls: bool,
     );
+    pub(crate) fn LLVMRustTryEarlyObject(
+        module: &Module,
+        tm: &TargetMachine,
+        output: *const c_char,
+        len: size_t,
+        ticket: *mut *mut c_void,
+    ) -> bool;
+    pub(crate) fn LLVMRustFinishEarlyObject(ticket: *mut c_void, completed: bool);
     pub(crate) fn LLVMRustWriteOutputFile<'a>(
         T: &'a TargetMachine,
         PM: *mut PassManager<'a>,
