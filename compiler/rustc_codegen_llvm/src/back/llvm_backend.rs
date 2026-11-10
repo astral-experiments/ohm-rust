@@ -452,6 +452,7 @@ impl CodegenBackend for LlvmCodegenBackend {
 pub struct ModuleLlvm {
     pub(crate) llcx: &'static mut llvm::Context,
     llmod_raw: *const llvm::Module,
+    pub(crate) early_object: Option<std::ptr::NonNull<std::ffi::c_void>>,
 
     // This field is `ManuallyDrop` because it is important that the `TargetMachine`
     // is disposed prior to the `Context` being disposed otherwise UAFs can occur.
@@ -462,6 +463,12 @@ unsafe impl Send for ModuleLlvm {}
 unsafe impl Sync for ModuleLlvm {}
 
 impl ModuleLlvm {
+    pub(crate) fn finish_early_object(&mut self, completed: bool) {
+        if let Some(ticket) = self.early_object.take() {
+            unsafe { llvm::LLVMRustFinishEarlyObject(ticket.as_ptr(), completed) }
+        }
+    }
+
     pub(crate) fn new(tcx: TyCtxt<'_>, mod_name: &str) -> Self {
         Self::new_with_target_machine(tcx, mod_name, || create_target_machine(tcx, mod_name))
     }
@@ -502,7 +509,7 @@ impl ModuleLlvm {
                 let llmod_raw = context::create_module(tcx, llcx, None, mod_name) as *const _;
                 (llmod_raw, create_target_machine())
             };
-            ModuleLlvm { llmod_raw, llcx, tm: ManuallyDrop::new(tm) }
+            ModuleLlvm { llmod_raw, llcx, tm: ManuallyDrop::new(tm), early_object: None }
         }
     }
 
@@ -519,7 +526,7 @@ impl ModuleLlvm {
             let llmod_raw = back::lto::parse_module(llcx, name, buffer, dcx);
             let tm = tm_factory(dcx, TargetMachineFactoryConfig::new(cgcx, name.to_str().unwrap()));
 
-            ModuleLlvm { llmod_raw, llcx, tm: ManuallyDrop::new(tm) }
+            ModuleLlvm { llmod_raw, llcx, tm: ManuallyDrop::new(tm), early_object: None }
         }
     }
 
@@ -530,6 +537,8 @@ impl ModuleLlvm {
 
 impl Drop for ModuleLlvm {
     fn drop(&mut self) {
+        // Finish the cache observation before disposing of its LLVM context.
+        self.finish_early_object(false);
         unsafe {
             ManuallyDrop::drop(&mut self.tm);
             llvm::LLVMContextDispose(&mut *(self.llcx as *mut _));
