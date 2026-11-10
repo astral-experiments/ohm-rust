@@ -103,7 +103,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
                         }
                     }));
                     break hir::PatKind::Struct(
-                        qpath,
+                        self.arena.alloc(hir::StructQPath::new(qpath)),
                         fs,
                         match etc {
                             ast::PatFieldsRest::Rest(sp) => Some(self.lower_span(*sp)),

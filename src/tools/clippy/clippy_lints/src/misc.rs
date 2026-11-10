@@ -1,6 +1,6 @@
 use clippy_utils::diagnostics::{span_lint_and_then, span_lint_hir_and_then};
 use clippy_utils::sugg::Sugg;
-use clippy_utils::{fulfill_or_allowed, in_automatically_derived};
+use clippy_utils::{fulfill_or_allowed, in_automatically_derived, resolved_path};
 use rustc_errors::Applicability;
 use rustc_hir::def::Res;
 use rustc_hir::def_id::LocalDefId;
@@ -193,8 +193,9 @@ fn check_used_underscore<'tcx>(cx: &LateContext<'tcx>, e: &'tcx Expr<'_>) {
         },
         ExprKind::MethodCall(path, ..) => (path.ident, Id::TyRel),
         ExprKind::Struct(path, ..) => match path {
-            QPath::Resolved(_, path)
-                if let Some(id) = Id::from_res(path.res)
+            qpath
+                if let Some(path) = resolved_path(qpath)
+                && let Some(id) = Id::from_res(path.res)
                     && let [.., seg] = path.segments =>
             {
                 (seg.ident, id)
