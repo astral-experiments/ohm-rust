@@ -302,7 +302,7 @@ impl<D: Decoder> Decodable<D> for RemapPathScopeComponents {
 /// Retrieving a path can be done in two main ways:
 ///  - by using [`RealFileName::path`] with a given scope (should be preferred)
 ///  - or by using [`RealFileName::embeddable_name`] with a given scope
-#[derive(Debug, Eq, PartialEq, Clone, Ord, PartialOrd, Decodable, Encodable)]
+#[derive(Debug, Eq, PartialEq, Clone, Ord, PartialOrd)]
 pub struct RealFileName {
     /// The local name (always present in the original crate)
     local: Option<InnerRealFileName>,
@@ -310,6 +310,8 @@ pub struct RealFileName {
     maybe_remapped: InnerRealFileName,
     /// The remapped scopes. Any active scope MUST use `maybe_virtual`
     scopes: RemapPathScopeComponents,
+    /// The defining crate kept the physical filename for runtime caller locations.
+    worktree_source_path: bool,
 }
 
 /// The inner workings of `RealFileName`.
@@ -325,6 +327,35 @@ struct InnerRealFileName {
     embeddable_name: PathBuf,
 }
 
+// Store the caller-path flag in the existing scope byte. Older sysroots have this bit clear.
+const WORKTREE_SOURCE_PATH_BIT: u8 = 1 << 7;
+const _: () = assert!(RemapPathScopeComponents::all().bits() & WORKTREE_SOURCE_PATH_BIT == 0);
+
+impl<E: SpanEncoder> Encodable<E> for RealFileName {
+    fn encode(&self, s: &mut E) {
+        self.local.encode(s);
+        self.maybe_remapped.encode(s);
+        let flag = if self.worktree_source_path { WORKTREE_SOURCE_PATH_BIT } else { 0 };
+        s.emit_u8(self.scopes.bits() | flag);
+    }
+}
+
+impl<D: SpanDecoder> Decodable<D> for RealFileName {
+    fn decode(s: &mut D) -> Self {
+        let local = Decodable::decode(s);
+        let maybe_remapped = Decodable::decode(s);
+        let bits = s.read_u8();
+        let scopes = RemapPathScopeComponents::from_bits(bits & !WORKTREE_SOURCE_PATH_BIT)
+            .expect("invalid bits for RemapPathScopeComponents");
+        Self {
+            local,
+            maybe_remapped,
+            scopes,
+            worktree_source_path: bits & WORKTREE_SOURCE_PATH_BIT != 0,
+        }
+    }
+}
+
 impl Hash for RealFileName {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -332,8 +363,11 @@ impl Hash for RealFileName {
         // remapped path if that exists. This is because remapped paths to
         // sysroot crates (/rust/$hash or /rust/$version) remain stable even
         // if the corresponding local path changes.
-        if !self.was_fully_remapped() {
+        if !self.was_fully_remapped() || self.worktree_source_path {
             self.local.hash(state);
+        }
+        if self.worktree_source_path {
+            true.hash(state);
         }
         self.maybe_remapped.hash(state);
         self.scopes.bits().hash(state);
@@ -455,6 +489,7 @@ impl RealFileName {
                 embeddable_name: PathBuf::new(),
             },
             scopes: RemapPathScopeComponents::empty(),
+            worktree_source_path: false,
         }
     }
 
@@ -467,16 +502,20 @@ impl RealFileName {
             embeddable_name: path.to_owned(),
             working_directory: PathBuf::new(),
         };
-        RealFileName { local: None, maybe_remapped: name, scopes: RemapPathScopeComponents::all() }
+        RealFileName {
+            local: None,
+            maybe_remapped: name,
+            scopes: RemapPathScopeComponents::all(),
+            worktree_source_path: false,
+        }
     }
 
     /// Update the filename for encoding in the crate metadata.
     ///
-    /// Currently it's about removing the local part when the filename
-    /// is either fully remapped or not remapped at all.
+    /// Keep the local name when a downstream generic can embed the producer's caller path.
     #[inline]
     pub fn update_for_crate_metadata(&mut self) {
-        if self.was_fully_remapped() || self.was_not_remapped() {
+        if !self.worktree_source_path && (self.was_fully_remapped() || self.was_not_remapped()) {
             // NOTE: This works because when the filename is fully
             // remapped, we don't care about the `local` part,
             // and when the filename is not remapped at all,
@@ -568,6 +607,11 @@ impl<'a> FileNameDisplay<'a> {
 }
 
 impl FileName {
+    /// Whether the defining crate retained its physical filename for runtime locations.
+    pub fn has_worktree_source_path(&self) -> bool {
+        matches!(self, FileName::Real(name) if name.worktree_source_path)
+    }
+
     pub fn is_real(&self) -> bool {
         use FileName::*;
         match *self {

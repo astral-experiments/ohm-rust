@@ -1527,12 +1527,24 @@ impl Options {
             || self.unstable_opts.query_dep_graph
     }
 
+    /// Cargo's automatic remap marks physical input and runtime filenames separately.
+    pub(crate) fn ohm_worktree_path_options(&self) -> (bool, bool) {
+        let inputs = self.unstable_opts.remap_cwd_prefix.is_some()
+            && std::env::var_os("__CARGO_OHM_WORKTREE_INPUT_PATHS").as_deref()
+                == Some(std::ffi::OsStr::new("1"));
+        let sources = inputs
+            && std::env::var_os("__CARGO_OHM_WORKTREE_SOURCE_PATHS")
+                .is_some_and(|root| Path::new(&root).is_absolute());
+        (inputs, sources)
+    }
+
     pub fn file_path_mapping(&self) -> FilePathMapping {
         file_path_mapping(
             self.remap_path_prefix.clone(),
             self.unstable_opts.remap_cwd_prefix.as_deref(),
             self.remap_path_scope,
         )
+        .with_worktree_source_paths(self.ohm_worktree_path_options().1)
     }
 
     /// Returns `true` if there will be an output file generated.

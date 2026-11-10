@@ -1176,6 +1176,7 @@ pub fn get_source_map() -> Option<Arc<SourceMap>> {
 
 #[derive(Clone, Debug)]
 pub struct FilePathMapping {
+    worktree_source_paths: bool,
     mapping: Vec<(PathBuf, PathBuf)>,
     filename_remapping_scopes: RemapPathScopeComponents,
 }
@@ -1189,7 +1190,13 @@ impl FilePathMapping {
         mapping: Vec<(PathBuf, PathBuf)>,
         filename_remapping_scopes: RemapPathScopeComponents,
     ) -> FilePathMapping {
-        FilePathMapping { mapping, filename_remapping_scopes }
+        FilePathMapping { mapping, filename_remapping_scopes, worktree_source_paths: false }
+    }
+
+    /// Retain physical runtime locations when Cargo supplied its automatic remap.
+    pub fn with_worktree_source_paths(mut self, enabled: bool) -> Self {
+        self.worktree_source_paths = enabled;
+        self
     }
 
     /// Applies any path prefix substitution as defined by the mapping.
@@ -1298,6 +1305,12 @@ impl FilePathMapping {
                 name: remapped_path.to_path_buf(),
             },
             local: Some(local),
+            // This must already participate in the local file identity. Adding it only
+            // at metadata export would change downstream spans without changing the crate hash.
+            worktree_source_path: self.worktree_source_paths
+                && local_path.is_absolute()
+                && self.filename_remapping_scopes.contains(RemapPathScopeComponents::MACRO)
+                && *local_path != *remapped_path,
             scopes: if was_remapped {
                 self.filename_remapping_scopes
             } else {

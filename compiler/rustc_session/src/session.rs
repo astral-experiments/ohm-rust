@@ -1314,13 +1314,8 @@ pub fn build_session(
     ice_file: Option<PathBuf>,
     using_internal_features: &'static AtomicBool,
 ) -> Session {
-    // Rustc and rustdoc both construct sessions, but parse their options separately.
-    sopts.ohm_worktree_input_paths = sopts.unstable_opts.remap_cwd_prefix.is_some()
-        && std::env::var_os("__CARGO_OHM_WORKTREE_INPUT_PATHS").as_deref()
-            == Some(std::ffi::OsStr::new("1"));
-    sopts.ohm_worktree_source_paths = sopts.ohm_worktree_input_paths
-        && std::env::var_os("__CARGO_OHM_WORKTREE_SOURCE_PATHS")
-            .is_some_and(|root| std::path::Path::new(&root).is_absolute());
+    (sopts.ohm_worktree_input_paths, sopts.ohm_worktree_source_paths) =
+        sopts.ohm_worktree_path_options();
     // FIXME: This is not general enough to make the warning lint completely override
     // normal diagnostic warnings, since the warning lint can also be denied and changed
     // later via the source code.
