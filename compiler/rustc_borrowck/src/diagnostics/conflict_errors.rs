@@ -1264,7 +1264,7 @@ impl<'diag, 'tcx> MirBorrowckCtxt<'_, 'diag, 'tcx> {
         else {
             return;
         };
-        let hir::QPath::Resolved(_, path) = struct_qpath else { return };
+        let hir::QPath::Resolved(_, path) = struct_qpath.qpath else { return };
         let hir::def::Res::Def(_, def_id) = path.res else { return };
         let Some(expr_ty) = typeck_results.node_type_opt(expr.hir_id) else { return };
         let ty::Adt(def, args) = expr_ty.kind() else { return };
@@ -2532,7 +2532,7 @@ impl<'diag, 'tcx> MirBorrowckCtxt<'_, 'diag, 'tcx> {
                     && let hir::ExprKind::Path(qpath) = path.kind
                     && self.tcx.qpath_is_lang_item(qpath, LangItem::IteratorNext)
                     && let hir::PatKind::Struct(qpath, [field, ..], _) = bind.pat.kind
-                    && self.tcx.qpath_is_lang_item(qpath, LangItem::OptionSome)
+                    && self.tcx.qpath_is_lang_item(qpath.qpath, LangItem::OptionSome)
                     && call.span.contains(self.issue_span)
                 {
                     // Find `<pat>` and the span for the whole `for` loop.

@@ -443,7 +443,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
                     StructRest::NoneWithError(guar) => hir::StructTailExpr::NoneWithError(guar),
                 };
                 hir::ExprKind::Struct(
-                    self.arena.alloc(self.lower_qpath(
+                    self.arena.alloc(hir::StructQPath::new(self.lower_qpath(
                         e.id,
                         &se.qself,
                         &se.path,
@@ -451,7 +451,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
                         AllowReturnTypeNotation::No,
                         ImplTraitContext::Disallowed(ImplTraitPosition::Path),
                         None,
-                    )),
+                    ))),
                     self.arena.alloc_from_iter(se.fields.iter().map(|x| self.lower_expr_field(x))),
                     rest,
                 )
@@ -1356,7 +1356,11 @@ impl<'hir> LoweringContext<'_, 'hir> {
                     StructRest::Rest(span) => Some(self.lower_span(*span)),
                     StructRest::None | StructRest::NoneWithError(_) => None,
                 };
-                let struct_pat = hir::PatKind::Struct(qpath, field_pats, fields_omitted);
+                let struct_pat = hir::PatKind::Struct(
+                    self.arena.alloc(hir::StructQPath::new(qpath)),
+                    field_pats,
+                    fields_omitted,
+                );
                 return self.pat_without_dbm(lhs.span, struct_pat);
             }
             // Tuples.
@@ -1508,7 +1512,8 @@ impl<'hir> LoweringContext<'_, 'hir> {
         );
 
         hir::ExprKind::Struct(
-            self.arena.alloc(self.make_lang_item_qpath(lang_item, span, None)),
+            self.arena
+                .alloc(hir::StructQPath::new(self.make_lang_item_qpath(lang_item, span, None))),
             fields,
             hir::StructTailExpr::None,
         )
@@ -2091,16 +2096,23 @@ impl<'hir> LoweringContext<'_, 'hir> {
     pub(super) fn expr_struct(
         &mut self,
         span: Span,
-        path: &'hir hir::QPath<'hir>,
+        path: hir::QPath<'hir>,
         fields: &'hir [hir::ExprField<'hir>],
     ) -> hir::Expr<'hir> {
-        self.expr(span, hir::ExprKind::Struct(path, fields, rustc_hir::StructTailExpr::None))
+        self.expr(
+            span,
+            hir::ExprKind::Struct(
+                self.arena.alloc(hir::StructQPath::new(path)),
+                fields,
+                rustc_hir::StructTailExpr::None,
+            ),
+        )
     }
 
     pub(super) fn expr_enum_variant(
         &mut self,
         span: Span,
-        path: &'hir hir::QPath<'hir>,
+        path: hir::QPath<'hir>,
         fields: &'hir [hir::Expr<'hir>],
     ) -> hir::Expr<'hir> {
         let fields = self.arena.alloc_from_iter(fields.into_iter().enumerate().map(|(i, f)| {
@@ -2121,7 +2133,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
         lang_item: LangItem,
         fields: &'hir [hir::Expr<'hir>],
     ) -> hir::Expr<'hir> {
-        let path = self.arena.alloc(self.make_lang_item_qpath(lang_item, span, None));
+        let path = self.make_lang_item_qpath(lang_item, span, None);
         self.expr_enum_variant(span, path, fields)
     }
 

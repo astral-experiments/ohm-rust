@@ -1157,10 +1157,18 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
     ) {
         match expr.peel_drop_temps().kind {
             hir::ExprKind::Struct(
-                hir::QPath::Resolved(
-                    None,
-                    hir::Path { res: hir::def::Res::SelfTyAlias { alias_to, .. }, span, .. },
-                ),
+                rustc_hir::StructQPath {
+                    qpath:
+                        hir::QPath::Resolved(
+                            None,
+                            hir::Path {
+                                res: hir::def::Res::SelfTyAlias { alias_to, .. },
+                                span,
+                                ..
+                            },
+                        ),
+                    ..
+                },
                 ..,
             )
             | hir::ExprKind::Call(

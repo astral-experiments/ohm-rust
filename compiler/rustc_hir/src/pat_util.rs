@@ -110,7 +110,10 @@ impl hir::Pat<'_> {
                 ..
             })
             | PatKind::TupleStruct(hir::QPath::Resolved(_, path), ..)
-            | PatKind::Struct(hir::QPath::Resolved(_, path), ..) => {
+            | PatKind::Struct(
+                crate::StructQPath { qpath: hir::QPath::Resolved(_, path), .. },
+                ..,
+            ) => {
                 if let Res::Def(DefKind::Variant | DefKind::Ctor(CtorOf::Variant, ..), id) =
                     path.res
                 {
