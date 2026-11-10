@@ -888,14 +888,19 @@ impl MetadataBlob {
 
         let found_version = self.encoded_compiler_version();
         if rustc_version(cfg_version) != found_version {
-            if found_version
-                == format!("rustc {cfg_version} (Ohm metadata {PREVIOUS_OHM_METADATA_EPOCH})")
+            // Rebuild user crates whose producer did not record physical caller paths.
+            if !is_sysroot_library() {
+                return Err(Some(found_version));
+            }
+            if COMPATIBLE_SYSROOT_EPOCHS
+                .iter()
+                .any(|epoch| found_version == format!("rustc {cfg_version} (Ohm metadata {epoch})"))
             {
                 return Ok(());
             }
             // Legacy foreign IDs are positional. Only the selected, internally consistent SDK
             // can use them. User libraries must be rebuilt even when their full hashes match.
-            if found_version != format!("rustc {cfg_version}") || !is_sysroot_library() {
+            if found_version != format!("rustc {cfg_version}") {
                 return Err(Some(found_version));
             }
             let hashes = self.get_header().hashes;

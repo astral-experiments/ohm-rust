@@ -3,7 +3,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 use rustc_abi::{HasDataLayout, Size};
 use rustc_hir::def_id::DefId;
 use rustc_macros::{Lift, StableHash, TyDecodable, TyEncodable, TypeFoldable, TypeVisitable};
-use rustc_span::{DUMMY_SP, RemapPathScopeComponents, Span, Symbol};
+use rustc_span::{DUMMY_SP, RemapPathScopeComponents, Span, Symbol, sym};
 use rustc_type_ir::TypeVisitableExt;
 
 use super::interpret::ReportedErrorInfo;
@@ -520,10 +520,16 @@ impl<'tcx> TyCtxt<'tcx> {
     pub fn span_as_caller_location(self, span: Span) -> ConstValue {
         let topmost = span.ctxt().outer_expn().expansion_cause().unwrap_or(span);
         let caller = self.sess.source_map().lookup_char_pos(topmost.lo());
+        let name = &caller.file.name;
+        let filename = if name.has_worktree_source_path() {
+            // Re-evaluate cached caller locations when a build moves to another checkout.
+            let _ = self.env_var_os(sym::ohm_worktree_source_paths.as_str().as_ref());
+            name.prefer_local_unconditionally()
+        } else {
+            name.display(RemapPathScopeComponents::MACRO)
+        };
         self.const_caller_location(
-            Symbol::intern(
-                &caller.file.name.display(RemapPathScopeComponents::MACRO).to_string_lossy(),
-            ),
+            Symbol::intern(&filename.to_string_lossy()),
             caller.line as u32,
             caller.col_display as u32 + 1,
         )

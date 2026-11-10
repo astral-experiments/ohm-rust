@@ -61,9 +61,9 @@ mod encoder;
 mod parameterized;
 mod table;
 
-/// The previous epoch has the same root layout and the original trait-directory variants.
-const PREVIOUS_OHM_METADATA_EPOCH: u32 = 3;
-const OHM_METADATA_EPOCH: u32 = 4;
+/// Older SDK source maps predate physical caller paths and use the same scope byte.
+const COMPATIBLE_SYSROOT_EPOCHS: [u32; 2] = [3, 4];
+const OHM_METADATA_EPOCH: u32 = 5;
 
 pub(crate) fn rustc_version(cfg_version: &'static str) -> String {
     format!("rustc {cfg_version} (Ohm metadata {OHM_METADATA_EPOCH})")

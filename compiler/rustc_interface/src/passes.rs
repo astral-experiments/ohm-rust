@@ -608,6 +608,18 @@ pub fn write_dep_info_with_relink_inputs(
     let deps_output = tcx.output_filenames(()).path(OutputType::DepInfo);
     let deps_filename = deps_output.as_path();
 
+    // Codegen can materialize a caller location after dep-info has already been written.
+    // A remapped absolute input can then embed the physical path of this checkout.
+    if sess.opts.ohm_worktree_source_paths
+        && sess
+            .source_map()
+            .files()
+            .iter()
+            .any(|file| !file.is_imported() && file.name.has_worktree_source_path())
+    {
+        let _ = tcx.env_var_os(sym::ohm_worktree_source_paths.as_str().as_ref());
+    }
+
     let result = try {
         // Build a list of files used to compile the output and
         // write Makefile-compatible dependency rules

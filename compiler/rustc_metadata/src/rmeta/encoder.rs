@@ -1188,6 +1188,10 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             match source_file.name {
                 FileName::Real(ref original_file_name) => {
                     let mut adapted_file_name = original_file_name.clone();
+                    if source_file.name.has_worktree_source_path() {
+                        let _ =
+                            self.tcx.env_var_os(sym::ohm_worktree_source_paths.as_str().as_ref());
+                    }
                     adapted_file_name.update_for_crate_metadata();
                     adapted_source_file.name = FileName::Real(adapted_file_name);
                 }
