@@ -913,6 +913,10 @@ pub(crate) fn optimize_and_codegen(
         }
         info!("ohm_observer_object_miss {}", module.name);
     }
+    match try_codegen_cached(cgcx, prof, module) {
+        Ok(compiled) => return compiled,
+        Err(original) => module = original,
+    }
     let diagnostics = entry.as_ref().map(|_| shared_emitter.diagnostic_count());
     optimize(cgcx, prof, shared_emitter, &mut module, config);
     let entry =
@@ -1014,11 +1018,66 @@ pub(crate) fn optimize(
     }
 }
 
+/// Reuse a native object or retain the LLVM input until ordinary codegen finishes.
+fn try_codegen_cached(
+    cgcx: &CodegenContext,
+    prof: &SelfProfilerRef,
+    mut module: ModuleCodegen<ModuleLlvm>,
+) -> Result<CompiledModule, ModuleCodegen<ModuleLlvm>> {
+    let config = &cgcx.module_config;
+    if config.opt_level != Some(config::OptLevel::Less)
+        || config.emit_pre_lto_bc
+        || module.kind != ModuleKind::Regular
+        || prof.enabled()
+        || cgcx.save_temps
+        || cgcx.msvc_imps_needed
+        || cgcx.remark_dir.is_some()
+        || cgcx.incr_comp_session_dir.is_none()
+        || config.emit_obj != EmitObj::ObjectCode(BitcodeSection::None)
+        || config.bitcode_needed()
+        || config.emit_asm
+        || config.emit_ir
+        || config.verify_llvm_ir
+        || config.lint_llvm_ir
+        || config.no_builtins
+        || config.no_prepopulate_passes
+        || !config.llvm_plugins.is_empty()
+        || !config.passes.is_empty()
+        || cgcx.split_debuginfo != SplitDebuginfo::Off
+    {
+        return Err(module);
+    }
+    let filenames = &cgcx.output_filenames;
+    let output = if filenames.stable_codegen_paths {
+        filenames.stable_temp_paths().temp_path_for_cgu(OutputType::Object, &module.name)
+    } else {
+        filenames.temp_path_for_cgu(OutputType::Object, &module.name)
+    };
+    let path = path_to_c_string(&output);
+    let mut ticket = std::ptr::null_mut();
+    let hit = unsafe {
+        llvm::LLVMRustTryEarlyObject(
+            module.module_llvm.llmod(),
+            module.module_llvm.tm.raw(),
+            path.as_ptr(),
+            path.as_bytes().len(),
+            &mut ticket,
+        )
+    };
+    if !hit {
+        module.module_llvm.early_object = std::ptr::NonNull::new(ticket);
+        return Err(module);
+    }
+    let mut compiled = module.into_compiled_module(true, false, false, false, false, filenames);
+    compiled.object = Some(output);
+    Ok(compiled)
+}
+
 pub(crate) fn codegen(
     cgcx: &CodegenContext,
     prof: &SelfProfilerRef,
     shared_emitter: &SharedEmitter,
-    module: ModuleCodegen<ModuleLlvm>,
+    mut module: ModuleCodegen<ModuleLlvm>,
     config: &ModuleConfig,
 ) -> CompiledModule {
     let _timer = prof.generic_activity_with_arg("LLVM_module_codegen", &*module.name);
@@ -1238,6 +1297,7 @@ pub(crate) fn codegen(
         && cgcx.target_can_use_split_dwarf
         && cgcx.split_debuginfo != SplitDebuginfo::Off
         && cgcx.split_dwarf_kind == SplitDwarfKind::Split;
+    module.module_llvm.finish_early_object(dcx.has_errors().is_none());
     let mut compiled = module.into_compiled_module(
         config.emit_obj != EmitObj::None,
         dwarf_object_emitted,

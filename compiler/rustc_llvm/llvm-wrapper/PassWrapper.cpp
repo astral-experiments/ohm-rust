@@ -1639,3 +1639,28 @@ extern "C" void LLVMRustComputeLTOCacheKey(RustStringRef KeyOut,
   auto OS = RawRustStringOstream(KeyOut);
   OS << Key.str();
 }
+
+// The optional interface is supplied by Ohm's LLVM. A system LLVM without it
+// continues through the existing object generation path.
+#if defined(__linux__) && defined(__x86_64__)
+extern "C" int ohm_early_object_begin_v1(LLVMModuleRef, LLVMTargetMachineRef,
+                                         const char *, size_t, void **)
+    __attribute__((weak));
+extern "C" void ohm_early_object_end_v1(void *, int) __attribute__((weak));
+#endif
+extern "C" bool LLVMRustTryEarlyObject(LLVMModuleRef M, LLVMTargetMachineRef TM,
+                                       const char *Output, size_t Length,
+                                       void **Ticket) {
+  *Ticket = nullptr;
+#if defined(__linux__) && defined(__x86_64__)
+  if (ohm_early_object_begin_v1 && ohm_early_object_end_v1)
+    return ohm_early_object_begin_v1(M, TM, Output, Length, Ticket);
+#endif
+  return false;
+}
+extern "C" void LLVMRustFinishEarlyObject(void *Ticket, bool Completed) {
+#if defined(__linux__) && defined(__x86_64__)
+  if (ohm_early_object_end_v1)
+    ohm_early_object_end_v1(Ticket, Completed);
+#endif
+}
