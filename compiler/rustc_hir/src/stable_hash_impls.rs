@@ -1,6 +1,6 @@
 use rustc_data_structures::stable_hash::{StableHash, StableHashCtxt, StableHasher};
 
-use crate::hir::{AttributeMap, OwnerInfo, OwnerNodes};
+use crate::hir::{AttributeMap, OwnerInfo, OwnerNodes, QPath, StructQPath};
 
 // The following implementations of StableHash for `ItemId`, `TraitItemId`, and
 // `ImplItemId` deserve special attention. Normally we do not hash `NodeId`s within
@@ -37,5 +37,16 @@ impl<'tcx> StableHash for OwnerInfo<'tcx> {
         // `opt_hash` which is hashed in the collector and used for the crate hash.
         let OwnerInfo { opt_hash, .. } = *self;
         opt_hash.unwrap().stable_hash(hcx, hasher);
+    }
+}
+
+impl StableHash for StructQPath<'_> {
+    fn stable_hash<Hcx: StableHashCtxt>(&self, hcx: &mut Hcx, hasher: &mut StableHasher) {
+        self.qpath.stable_hash(hcx, hasher);
+        if let QPath::TypeRelative(..) = self.qpath {
+            // Two independently moving parents can change the joined geometry
+            // even when both source-relative operand fingerprints stay equal.
+            self.joined_span.stable_hash(hcx, hasher);
+        }
     }
 }

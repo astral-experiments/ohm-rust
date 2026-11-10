@@ -1,0 +1,5 @@
+
+impl Value {
+    pub fn included_relative() -> Self { Self::Node { value: 6 } }
+    pub fn included_external() -> Self { qpath_support::mixed_node!(Self, 7) }
+}
