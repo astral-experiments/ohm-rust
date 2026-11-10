@@ -340,7 +340,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             && let ExprKind::Block(block, _) = then_expr.kind
             // Refutability checks occur on the MIR, so we approximate it here by checking
             // if we have an enum with a single variant or a struct in the pattern.
-            && let PatKind::TupleStruct(qpath, ..) | PatKind::Struct(qpath, ..) = pat.kind
+            && let PatKind::TupleStruct(qpath, ..) | PatKind::Struct(&hir::StructQPath { qpath, .. }, ..) = pat.kind
             && let hir::QPath::Resolved(_, path) = qpath
         {
             match path.res {

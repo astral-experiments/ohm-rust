@@ -240,12 +240,16 @@ impl<'tcx> LateLintPass<'tcx> for TyTyKind {
                         })
                         | hir::Node::Pat(hir::Pat {
                             kind:
-                                hir::PatKind::TupleStruct(qpath, ..) | hir::PatKind::Struct(qpath, ..),
+                                hir::PatKind::TupleStruct(qpath, ..)
+                                | hir::PatKind::Struct(hir::StructQPath { qpath, .. }, ..),
                             ..
                         })
                         | hir::Node::Expr(
                             hir::Expr { kind: hir::ExprKind::Path(qpath), .. }
-                            | &hir::Expr { kind: hir::ExprKind::Struct(qpath, ..), .. },
+                            | &hir::Expr {
+                                kind: hir::ExprKind::Struct(hir::StructQPath { qpath, .. }, ..),
+                                ..
+                            },
                         ) => {
                             if let hir::QPath::TypeRelative(qpath_ty, ..) = qpath
                                 && qpath_ty.hir_id == ty.hir_id

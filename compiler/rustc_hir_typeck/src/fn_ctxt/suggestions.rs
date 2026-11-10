@@ -1826,7 +1826,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             return false;
         }
         match expr.kind {
-            ExprKind::Struct(&qpath, [start, end], _)
+            ExprKind::Struct(&hir::StructQPath { qpath, .. }, [start, end], _)
                 if is_range_literal(expr)
                     && self.tcx.qpath_is_lang_item(qpath, LangItem::Range) =>
             {
@@ -1838,7 +1838,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 );
                 true
             }
-            ExprKind::Struct(&qpath, [arg], _)
+            ExprKind::Struct(&hir::StructQPath { qpath, .. }, [arg], _)
                 if is_range_literal(expr)
                     && let Some(qpath @ (LangItem::RangeFrom | LangItem::RangeTo)) =
                         self.tcx.qpath_lang_item(qpath) =>
@@ -3744,7 +3744,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         if !hir::is_range_literal(expr) {
             return;
         }
-        let hir::ExprKind::Struct(&qpath, [start, end], _) = expr.kind else {
+        let hir::ExprKind::Struct(&hir::StructQPath { qpath, .. }, [start, end], _) = expr.kind
+        else {
             return;
         };
         if !self.tcx.qpath_is_lang_item(qpath, LangItem::Range) {

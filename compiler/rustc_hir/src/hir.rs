@@ -1776,7 +1776,7 @@ pub enum PatKind<'hir> {
 
     /// A struct or struct variant pattern (e.g., `Variant {x, y, ..}`).
     /// The `Option` contains the span of a possible `..`.
-    Struct(QPath<'hir>, &'hir [PatField<'hir>], Option<Span>),
+    Struct(&'hir StructQPath<'hir>, &'hir [PatField<'hir>], Option<Span>),
 
     /// A tuple struct/variant pattern `Variant(x, y, .., z)`.
     /// If the `..` pattern fragment is present, then `DotDotPos` denotes its position.
@@ -2496,12 +2496,18 @@ impl Expr<'_> {
             ) => path1.res == path2.res,
             (
                 ExprKind::Struct(
-                    &QPath::Resolved(None, &Path { res: Res::Def(_, path1_def_id), .. }),
+                    &crate::StructQPath {
+                        qpath: QPath::Resolved(None, &Path { res: Res::Def(_, path1_def_id), .. }),
+                        ..
+                    },
                     args1,
                     StructTailExpr::None,
                 ),
                 ExprKind::Struct(
-                    &QPath::Resolved(None, &Path { res: Res::Def(_, path2_def_id), .. }),
+                    &crate::StructQPath {
+                        qpath: QPath::Resolved(None, &Path { res: Res::Def(_, path2_def_id), .. }),
+                        ..
+                    },
                     args2,
                     StructTailExpr::None,
                 ),
@@ -2528,7 +2534,11 @@ impl Expr<'_> {
 /// Checks if the specified expression is a built-in range literal.
 /// (See: `LoweringContext::lower_expr()`).
 pub fn is_range_literal(expr: &Expr<'_>) -> bool {
-    if let ExprKind::Struct(QPath::Resolved(None, path), _, StructTailExpr::None) = expr.kind
+    if let ExprKind::Struct(
+        crate::StructQPath { qpath: QPath::Resolved(None, path), .. },
+        _,
+        StructTailExpr::None,
+    ) = expr.kind
         && let [.., segment] = path.segments
         && let sym::RangeFrom
         | sym::RangeFull
@@ -2690,7 +2700,7 @@ pub enum ExprKind<'hir> {
     ///
     /// E.g., `Foo {x: 1, y: 2}`, or `Foo {x: 1, .. base}`,
     /// where `base` is the `Option<Expr>`.
-    Struct(&'hir QPath<'hir>, &'hir [ExprField<'hir>], StructTailExpr<'hir>),
+    Struct(&'hir StructQPath<'hir>, &'hir [ExprField<'hir>], StructTailExpr<'hir>),
 
     /// An array literal constructed from one repeated element.
     ///
@@ -2768,6 +2778,39 @@ impl<'hir> QPath<'hir> {
             QPath::Resolved(_, path) => path.span,
             QPath::TypeRelative(qself, _) => qself.span,
         }
+    }
+}
+
+/// The path of a struct literal or a struct pattern.
+#[derive(Debug, Clone, Copy)]
+pub struct StructQPath<'hir> {
+    pub qpath: QPath<'hir>,
+    pub(crate) joined_span: Span,
+}
+
+impl<'hir> StructQPath<'hir> {
+    pub fn new(qpath: QPath<'hir>) -> Self {
+        // Joining different syntax contexts can consult the metavariable span map.
+        // Keep that lookup at its original demand, including after the map freezes.
+        let joined_span = match qpath {
+            QPath::TypeRelative(qself, segment) if qself.span.eq_ctxt(segment.ident.span) => {
+                qself.span.to(segment.ident.span)
+            }
+            _ => DUMMY_SP,
+        };
+        Self { qpath, joined_span }
+    }
+
+    pub fn span(&self) -> Span {
+        if self.joined_span == DUMMY_SP { self.qpath.span() } else { self.joined_span }
+    }
+}
+
+impl<'hir> std::ops::Deref for StructQPath<'hir> {
+    type Target = QPath<'hir>;
+
+    fn deref(&self) -> &QPath<'hir> {
+        &self.qpath
     }
 }
 
@@ -5170,14 +5213,15 @@ mod size_asserts {
     static_assert_size!(ItemKind<'_>, 64);
     static_assert_size!(LetStmt<'_>, 64);
     static_assert_size!(Param<'_>, 32);
-    static_assert_size!(Pat<'_>, 80);
-    static_assert_size!(PatKind<'_>, 56);
+    static_assert_size!(Pat<'_>, 72);
+    static_assert_size!(PatKind<'_>, 48);
     static_assert_size!(Path<'_>, 40);
     static_assert_size!(PathSegment<'_>, 48);
     static_assert_size!(QPath<'_>, 24);
     static_assert_size!(Res, 12);
     static_assert_size!(Stmt<'_>, 32);
     static_assert_size!(StmtKind<'_>, 16);
+    static_assert_size!(StructQPath<'_>, 32);
     static_assert_size!(TraitImplHeader<'_>, 48);
     static_assert_size!(TraitItem<'_>, 88);
     static_assert_size!(TraitItemKind<'_>, 48);

@@ -3262,7 +3262,10 @@ impl<'hir> LoweringContext<'_, 'hir> {
         fields: &'hir [hir::PatField<'hir>],
     ) -> &'hir hir::Pat<'hir> {
         let path = self.make_lang_item_qpath(lang_item, self.lower_span(span), None);
-        self.pat(span, hir::PatKind::Struct(path, fields, None))
+        self.pat(
+            span,
+            hir::PatKind::Struct(self.arena.alloc(hir::StructQPath::new(path)), fields, None),
+        )
     }
 
     fn pat_ident(&mut self, span: Span, ident: Ident) -> (&'hir hir::Pat<'hir>, HirId) {

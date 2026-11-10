@@ -293,7 +293,12 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             })
             | hir::Node::Pat(&hir::Pat {
                 kind:
-                    hir::PatKind::Struct(QPath::TypeRelative(rcvr, segment), ..)
+                    hir::PatKind::Struct(
+                        &rustc_hir::StructQPath {
+                            qpath: QPath::TypeRelative(rcvr, segment), ..
+                        },
+                        ..,
+                    )
                     | hir::PatKind::TupleStruct(QPath::TypeRelative(rcvr, segment), ..),
                 span,
                 ..
@@ -2903,7 +2908,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         continue;
                     }
                     let lang_item = match parent_expr.kind {
-                        ExprKind::Struct(qpath, _, _) => match tcx.qpath_lang_item(*qpath) {
+                        ExprKind::Struct(qpath, _, _) => match tcx.qpath_lang_item(qpath.qpath) {
                             Some(
                                 lang_item @ (LangItem::Range
                                 | LangItem::RangeCopy
@@ -3808,7 +3813,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
     ) {
         let SelfSource::MethodCall(rcvr_expr) = source else { return };
         let hir::ExprKind::Struct(qpath, fields, _) = rcvr_expr.kind else { return };
-        let Some(lang_item) = self.tcx.qpath_lang_item(*qpath) else {
+        let Some(lang_item) = self.tcx.qpath_lang_item(qpath.qpath) else {
             return;
         };
         let is_inclusive = match lang_item {

@@ -1546,7 +1546,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
     fn resolve_pat_struct(
         &self,
         pat: &'tcx Pat<'tcx>,
-        qpath: &hir::QPath<'tcx>,
+        qpath: &hir::StructQPath<'tcx>,
     ) -> Result<ResolvedPat<'tcx>, ErrorGuaranteed> {
         // Resolve the path and check the definition for errors.
         let (variant, pat_ty) = self.check_struct_path(qpath, pat.hir_id)?;

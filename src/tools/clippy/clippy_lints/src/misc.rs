@@ -1,6 +1,6 @@
 use clippy_utils::diagnostics::{span_lint_and_then, span_lint_hir_and_then};
 use clippy_utils::sugg::Sugg;
-use clippy_utils::{SpanlessEq, fulfill_or_allowed, get_parent_expr, in_automatically_derived, last_path_segment};
+use clippy_utils::{SpanlessEq, fulfill_or_allowed, get_parent_expr, in_automatically_derived, last_path_segment, resolved_path};
 use rustc_errors::Applicability;
 use rustc_hir::def::Res;
 use rustc_hir::{BinOpKind, Expr, ExprKind, QPath, Stmt, StmtKind};
@@ -156,8 +156,9 @@ fn used_underscore_items<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx Expr<'_>) {
                 return;
             }
         },
-        ExprKind::Struct(QPath::Resolved(_, path), ..) => {
-            if let Some(last_segment) = path.segments.last()
+        ExprKind::Struct(qpath, ..) => {
+            if let Some(path) = resolved_path(qpath)
+                && let Some(last_segment) = path.segments.last()
                 && let Res::Def(_, def_id) = last_segment.res
             {
                 (def_id, last_segment.ident)

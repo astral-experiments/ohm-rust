@@ -444,7 +444,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
 
             // FIXME(fn_delegation): add default `..` for all other fields.
             let initializer = hir::ExprKind::Struct(
-                self.arena.alloc(path),
+                self.arena.alloc(hir::StructQPath::new(path)),
                 self.arena.alloc_slice(&[hir::ExprField {
                     hir_id: self.next_id(),
                     is_shorthand: false,

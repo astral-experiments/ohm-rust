@@ -1870,7 +1870,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         &self,
         expr: &hir::Expr<'tcx>,
         expected: Expectation<'tcx>,
-        qpath: &'tcx QPath<'tcx>,
+        qpath: &'tcx hir::StructQPath<'tcx>,
         fields: &'tcx [hir::ExprField<'tcx>],
         base_expr: &'tcx hir::StructTailExpr<'tcx>,
     ) -> Ty<'tcx> {
@@ -2417,7 +2417,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         mut err: Diag<'_>,
     ) {
         if is_range_literal(last_expr_field.expr)
-            && let ExprKind::Struct(&qpath, [range_start, range_end], _) = last_expr_field.expr.kind
+            && let ExprKind::Struct(&hir::StructQPath { qpath, .. }, [range_start, range_end], _) =
+                last_expr_field.expr.kind
             && self.tcx.qpath_is_lang_item(qpath, LangItem::Range)
             && let variant_field =
                 variant.fields.iter().find(|field| field.ident(self.tcx) == last_expr_field.ident)

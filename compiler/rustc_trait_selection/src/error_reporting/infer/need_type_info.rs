@@ -1122,7 +1122,7 @@ impl<'a, 'tcx> FindInferSourceVisitor<'a, 'tcx> {
             // impl is currently the `DefId` of `Output` in the trait definition
             // which makes this somewhat difficult and prevents us from just
             // using `self.path_inferred_arg_iter` here.
-            hir::ExprKind::Struct(&hir::QPath::Resolved(_self_ty, path), _, _)
+            hir::ExprKind::Struct(&rustc_hir::StructQPath { qpath: hir::QPath::Resolved(_self_ty, path), .. }, _, _)
             // FIXME(TaKO8Ki): Ideally we should support other kinds,
             // such as `TyAlias` or `AssocTy`. For that we have to map
             // back from the self type to the type alias though. That's difficult.

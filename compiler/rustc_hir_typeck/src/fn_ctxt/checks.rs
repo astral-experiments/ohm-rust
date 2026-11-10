@@ -1070,7 +1070,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
     pub(crate) fn check_struct_path(
         &self,
-        qpath: &QPath<'tcx>,
+        qpath: &hir::StructQPath<'tcx>,
         hir_id: HirId,
     ) -> Result<(&'tcx ty::VariantDef, Ty<'tcx>), ErrorGuaranteed> {
         let path_span = qpath.span();
@@ -2398,8 +2398,8 @@ impl<'a, 'tcx> FnCallDiagCtxt<'a, 'tcx> {
         if let ty::Adt(adt, _) = ty.kind()
             && self.tcx().is_lang_item(adt.did(), LangItem::RangeFull)
             && is_range_literal(expr)
-            && let hir::ExprKind::Struct(&path, [], _) = expr.kind
-            && self.tcx().qpath_is_lang_item(path, LangItem::RangeFull)
+            && let hir::ExprKind::Struct(path, [], _) = expr.kind
+            && self.tcx().qpath_is_lang_item(path.qpath, LangItem::RangeFull)
         {
             // We have `Foo(a, .., c)`, where the user might be trying to use the "rest" syntax
             // from default field values, which is not supported on tuples.
