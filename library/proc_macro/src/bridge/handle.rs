@@ -1,6 +1,5 @@
 //! Server-side handles and storage for per-handle data.
 
-use std::collections::BTreeMap;
 use std::hash::Hash;
 use std::num::NonZero;
 use std::ops::Index;
@@ -14,7 +13,7 @@ pub(super) type Handle = NonZero<u32>;
 /// be looked up using its handle.
 pub(super) struct OwnedStore<T: 'static> {
     counter: &'static AtomicU32,
-    data: BTreeMap<Handle, T>,
+    data: FxHashMap<Handle, T>,
 }
 
 impl<T> OwnedStore<T> {
@@ -23,7 +22,7 @@ impl<T> OwnedStore<T> {
         // when `NonZero::new` (aka `Handle::new`) is called in `alloc`.
         assert_ne!(counter.load(Ordering::Relaxed), 0);
 
-        OwnedStore { counter, data: BTreeMap::new() }
+        OwnedStore { counter, data: FxHashMap::default() }
     }
 }
 
@@ -51,19 +50,38 @@ impl<T> Index<Handle> for OwnedStore<T> {
 pub(super) struct InternedStore<T: 'static> {
     owned: OwnedStore<T>,
     interner: FxHashMap<T, Handle>,
+    last: Option<(T, Handle)>,
 }
 
 impl<T: Copy + Eq + Hash> InternedStore<T> {
     pub(super) fn new(counter: &'static AtomicU32) -> Self {
-        InternedStore { owned: OwnedStore::new(counter), interner: FxHashMap::default() }
+        InternedStore {
+            owned: OwnedStore::new(counter),
+            interner: FxHashMap::default(),
+            last: None,
+        }
     }
 
     pub(super) fn alloc(&mut self, x: T) -> Handle {
+        if let Some((previous, handle)) = self.last
+            && previous == x
+        {
+            return handle;
+        }
         let owned = &mut self.owned;
-        *self.interner.entry(x).or_insert_with(|| owned.alloc(x))
+        let handle = *self.interner.entry(x).or_insert_with(|| owned.alloc(x));
+        self.last = Some((x, handle));
+        handle
     }
 
     pub(super) fn copy(&mut self, h: Handle) -> T {
-        self.owned[h]
+        if let Some((value, handle)) = self.last
+            && h == handle
+        {
+            return value;
+        }
+        let value = self.owned[h];
+        self.last = Some((value, h));
+        value
     }
 }
