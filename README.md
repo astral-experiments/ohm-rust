@@ -11,6 +11,14 @@ Codex.
 Use Ohm only for local development, and at your own risk. Never use it for production builds or
 releases, and always verify your work with the official Rust toolchain.
 
+## Documentation comments in procedural macros
+
+Ohm can share a documentation comment's text with the string literal it passes to a procedural
+macro. When every byte is printable ASCII and the text contains no double quote, a macro sees
+`/// hello` as `#[doc = r" hello"]`. The string value is ` hello`. A macro that calls
+`Literal::to_string()` sees the raw string delimiters. An explicit `#[doc = "hello"]` attribute
+uses its written spelling.
+
 ## License
 
 Rust is primarily distributed under the terms of both the MIT license and the
