@@ -271,18 +271,22 @@ impl FromInternal<TokenStream> for Vec<TokenTree<TokenStream, Span, Symbol>> {
                     }));
                 }
                 tk::DocComment(_, attr_style, data) => {
-                    let mut escaped = String::new();
-                    for ch in data.as_str().chars() {
-                        escaped.extend(ch.escape_debug());
-                    }
-                    let stream = [
-                        tk::Ident(sym::doc, tk::IdentIsRaw::No),
-                        tk::Eq,
-                        tk::TokenKind::lit(tk::Str, Symbol::intern(&escaped), None),
-                    ]
-                    .into_iter()
-                    .map(|kind| tokenstream::TokenTree::token_alone(kind, span))
-                    .collect();
+                    // A doc comment has no source string delimiters. For printable, unquoted
+                    // text, a raw literal can share the original symbol and needs no escaping.
+                    let value =
+                        if data.as_str().bytes().all(|b| (b' '..=b'~').contains(&b) && b != b'"') {
+                            tk::TokenKind::lit(tk::StrRaw(0), data, None)
+                        } else {
+                            let mut escaped = String::new();
+                            for ch in data.as_str().chars() {
+                                escaped.extend(ch.escape_debug());
+                            }
+                            tk::TokenKind::lit(tk::Str, Symbol::intern(&escaped), None)
+                        };
+                    let stream = [tk::Ident(sym::doc, tk::IdentIsRaw::No), tk::Eq, value]
+                        .into_iter()
+                        .map(|kind| tokenstream::TokenTree::token_alone(kind, span))
+                        .collect();
                     trees.push(TokenTree::Punct(Punct { ch: b'#', joint: false, span }));
                     if attr_style == ast::AttrStyle::Inner {
                         trees.push(TokenTree::Punct(Punct { ch: b'!', joint: false, span }));
