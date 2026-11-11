@@ -12,7 +12,10 @@ fn main() {
         #[doc = r#"already raw"#]
     };
     assert_eq!(docs, &[
-        (r" A path C:\dev and an apostrophe's spelling.", r##"r" A path C:\dev and an apostrophe's spelling.""##),
+        (
+            r" A path C:\dev and an apostrophe's spelling.",
+            r##"r" A path C:\dev and an apostrophe's spelling.""##,
+        ),
         (r#" Say "hello"."#, r#"" Say \"hello\".""#),
         (" Greek λ.", r#"" Greek λ.""#),
         ("explicit", r#""explicit""#),
