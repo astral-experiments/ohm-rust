@@ -2115,9 +2115,9 @@ rustc_queries! {
         separate_provide_extern
     }
 
-    /// HIR contribution to the byte-derived metadata hash, tracked separately from the encoded items.
-    query ohm_metadata_hir_hash(_: ()) -> Fingerprint {
-        desc { "computing the HIR hash for metadata encoding" }
+    /// Local HIR and dependency identities that may change an otherwise reusable metadata prefix.
+    query ohm_metadata_input_hashes(_: ()) -> (Fingerprint, Fingerprint) {
+        desc { "hashing the inputs for incremental metadata encoding" }
     }
 
     /// Returns the public API hash from dependency metadata. Does not work for the local crate.
@@ -2617,6 +2617,11 @@ rustc_queries! {
     query ohm_can_reuse_asm_free_cgu(name: Symbol) -> bool {
         eval_always
         desc { "checking whether codegen unit `{name}` assembles independently of the other units" }
+    }
+
+    query ohm_instance_mir_has_asm(key: ty::InstanceKind<'tcx>) -> bool {
+        desc { "checking the MIR for inline assembly in `{}`", tcx.def_path_str(key.def_id()) }
+        cache_on_disk
     }
 
     query is_codegened_item(def_id: DefId) -> bool {
