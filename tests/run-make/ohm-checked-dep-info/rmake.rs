@@ -38,6 +38,7 @@ fn main() {
             "/dev/null/ohm-recheck-dependent-links:"
         };
         rfs::write("payload.bin", [0]);
+        rfs::write("nested.s", ".incbin \"payload.bin\"\n");
         // The same crate always emits a register barrier and ordinary instructions.
         let x86_cases = (target() == "x86_64-unknown-linux-gnu").then_some([
             "float_memory",
@@ -49,6 +50,12 @@ fn main() {
             "div_literal",
             "div_memory",
             "div_directive",
+            "integer_loop",
+            "integer_directive",
+            "integer_comment_cr",
+            "integer_macro",
+            "integer_spliced_register",
+            "integer_pointer",
         ]);
         let arm_cases = (target() == "aarch64-apple-darwin").then_some([
             "vector_modifier",
@@ -79,12 +86,9 @@ fn main() {
                 .emit("link,dep-info=-")
                 .run()
                 .stdout_utf8();
-            assert_eq!(rules.contains(MARKER), cfg != "ordinary", "{cfg}: {rules}");
-            assert_eq!(
-                rules.lines().any(|line| line == recheck_rule),
-                cfg == "ordinary",
-                "{cfg}: {rules}"
-            );
+            let tracked = matches!(cfg, "ordinary" | "integer_loop");
+            assert_eq!(rules.contains(MARKER), !tracked, "{cfg}: {rules}");
+            assert_eq!(rules.lines().any(|line| line == recheck_rule), tracked, "{cfg}: {rules}");
         }
 
         if target() == "aarch64-apple-darwin" {
