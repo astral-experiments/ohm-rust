@@ -2584,6 +2584,11 @@ rustc_queries! {
         desc { "checking whether codegen unit `{name}` assembles independently of the other units" }
     }
 
+    query ohm_instance_mir_has_asm(key: ty::InstanceKind<'tcx>) -> bool {
+        desc { "checking the MIR for inline assembly in `{}`", tcx.def_path_str(key.def_id()) }
+        cache_on_disk
+    }
+
     query is_codegened_item(def_id: DefId) -> bool {
         desc { "determining whether `{}` needs codegen", tcx.def_path_str(def_id) }
     }
