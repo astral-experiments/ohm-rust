@@ -784,6 +784,7 @@ pub(crate) unsafe fn llvm_optimize(
             &*module.module_llvm.tm.raw(),
             to_pass_builder_opt_level(opt_level),
             opt_stage,
+            config.compact_test_inlining,
             cgcx.use_linker_plugin_lto,
             config.no_prepopulate_passes,
             config.verify_llvm_ir,
