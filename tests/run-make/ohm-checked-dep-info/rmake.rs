@@ -31,6 +31,24 @@ fn main() {
         assert_eq!(rules.contains(MARKER), untracked, "{rules}");
     };
 
+    if matches!(target().as_str(), "aarch64-apple-darwin" | "aarch64-unknown-linux-gnu") {
+        rfs::write("integer-outer.s", ".include \"integer-inner.s\"\n");
+        rfs::write("integer-inner.s", ".incbin \"integer-payload.bin\"\n");
+        rfs::write("integer-payload.bin", [0; 4]);
+        for cfg in ["ordinary", "directive", "comment_cr", "opcode_macro", "spliced_immediate"] {
+            let rules = rustc()
+                .input("aarch64_integer.rs")
+                .cfg(cfg)
+                .arg("-Zohm-check-relink-inputs")
+                .emit("link,dep-info=-")
+                .run()
+                .stdout_utf8();
+            let tracked = cfg == "ordinary";
+            assert_eq!(rules.contains(MARKER), !tracked, "{cfg}: {rules}");
+            assert_eq!(rules.contains("ohm-recheck-dependent-links"), tracked, "{cfg}: {rules}");
+        }
+    }
+
     if matches!(target().as_str(), "x86_64-unknown-linux-gnu" | "aarch64-apple-darwin") {
         let recheck_rule = if target() == "aarch64-apple-darwin" {
             "/dev/null/ohm-recheck-dependent-links-v2:"

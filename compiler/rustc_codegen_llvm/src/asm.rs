@@ -1629,6 +1629,9 @@ fn file_free_inline_asm<'tcx>(
 ) -> bool {
     let TargetTuple::TargetTuple(target) = &tcx.sess.opts.target_triple else { return false };
     let gnu_aarch64 = target.as_str() == "aarch64-unknown-linux-gnu";
+    let aarch64_integer = (gnu_aarch64 || target.as_str() == "aarch64-apple-darwin")
+        && options
+            == (InlineAsmOptions::READONLY | InlineAsmOptions::PURE | InlineAsmOptions::NOSTACK);
     let arch = match target.as_str() {
         "x86_64-unknown-linux-gnu" => InlineAsmArch::X86_64,
         "x86_64-unknown-linux-musl" => {
@@ -1680,7 +1683,8 @@ fn file_free_inline_asm<'tcx>(
             {
                 return true;
             }
-            if options != InlineAsmOptions::NOSTACK
+            if !aarch64_integer
+                && options != InlineAsmOptions::NOSTACK
                 && options != (InlineAsmOptions::NOSTACK | InlineAsmOptions::PRESERVES_FLAGS)
             {
                 return false;
@@ -1714,7 +1718,7 @@ fn file_free_inline_asm<'tcx>(
                 || reg.reg_class() == InlineAsmRegClass::AArch64(AArch64InlineAsmRegClass::reg)
         }
         InlineAsmOperand::Const { value } => {
-            arch == InlineAsmArch::X86_64 && value.ty().is_integral()
+            (arch == InlineAsmArch::X86_64 || aarch64_integer) && value.ty().is_integral()
         }
         _ => false,
     }) {
@@ -1769,8 +1773,17 @@ fn file_free_inline_asm<'tcx>(
             _ => return false,
         }
     }
+    if aarch64_integer
+        && text.contains('@')
+        && text
+            .split('\n')
+            .all(|line| file_free_aarch64_integer_line(line.trim_matches([' ', '\t'])))
+    {
+        return true;
+    }
     if gnu_aarch64 {
-        return text.contains('@')
+        return !aarch64_integer
+            && text.contains('@')
             && text
                 .split('\n')
                 .all(|line| file_free_aarch64_atomic_line(line.trim_matches([' ', '\t'])));
@@ -1807,6 +1820,28 @@ fn file_free_aarch64_atomic_line(line: &str) -> bool {
             | ("stlxp" | "stxp", "@, @, @, [@]")
             | ("casp" | "caspa" | "caspal" | "caspl", "x6, x7, x4, x5, [@]")
     )
+}
+
+/// These integer operations take register names, complete numeric immediates and local labels.
+/// The one memory form uses two registers; assembler expressions and directives are excluded.
+fn file_free_aarch64_integer_line(line: &str) -> bool {
+    if line.is_empty() || file_free_line_comment(line) {
+        return true;
+    }
+    let (opcode, args) = line.split_once([' ', '\t']).unwrap_or((line, ""));
+    let args = args.trim_start_matches([' ', '\t']);
+    let immediate = |arg: &str| arg.strip_prefix('#').is_some_and(|v| v == "~" || asm_decimal(v));
+    match opcode {
+        "mov" => args.strip_prefix("@, ").is_some_and(immediate),
+        "cmp" => args == "@, @",
+        "add" | "lsl" | "lsr" | "orr" | "subs" => {
+            args.strip_prefix("@, @, ").is_some_and(|last| last == "@" || immediate(last))
+        }
+        "csel" => matches!(args, "@, @, @, hi" | "@, @, @, hs"),
+        "ldrb" => args == "@, [@, @]",
+        "b.hs" | "b.ne" => args.strip_suffix(['b', 'f']).is_some_and(asm_decimal),
+        label => args.is_empty() && label.strip_suffix(':').is_some_and(asm_decimal),
+    }
 }
 
 /// LLVM replaces the sole unmodified register placeholder with a register name.
@@ -1847,15 +1882,16 @@ fn aarch64_register_comment(
         )
 }
 
+fn file_free_line_comment(line: &str) -> bool {
+    // LLVM's lexer ends these comments at LF or CR. A hidden CR could introduce a directive.
+    line.starts_with("//")
+        && !line.contains(['\\', '@', '~'])
+        && line.bytes().all(|b| b.is_ascii_graphic() || matches!(b, b' ' | b'\t'))
+}
+
 fn file_free_asm_line(arch: InlineAsmArch, line: &str, verify_native_link: &mut bool) -> bool {
-    if line.is_empty() {
+    if line.is_empty() || (arch == InlineAsmArch::X86_64 && file_free_line_comment(line)) {
         return true;
-    }
-    if arch == InlineAsmArch::X86_64 && line.starts_with("//") {
-        // The x86 ELF lexer ends these comments at LF *or* CR. A hidden CR could
-        // introduce an assembler directive inside what looks like a single line.
-        return !line.contains(['\\', '@', '~'])
-            && line.bytes().all(|b| b.is_ascii_graphic() || matches!(b, b' ' | b'\t'));
     }
     if let Some(comment) = line.strip_prefix("/*").and_then(|s| s.strip_suffix("*/")) {
         return comment
