@@ -1,4 +1,58 @@
 #![crate_type = "rlib"]
+#![cfg_attr(integer_pointer, feature(asm_const_ptr))]
+
+#[cfg(any(integer_loop, integer_macro))]
+pub unsafe fn integer_loop(base: *const u8, pos: usize) -> u32 {
+    unsafe fn shift<const BITS: u32>(base: *const u8, pos: usize) -> u32 {
+        let value: u32;
+        core::arch::asm!(
+            "// Shift the byte, then compare it with (1 << 8).",
+            "lea    {address}, [{base} + 1]",
+            "movzx  {value:e}, byte ptr [{address} + {pos}]",
+            "shl    {value:e}, {bits}",
+            "cmp    {value:e}, {limit}",
+            "jae    2f",
+            "shr    {value:e}, 1",
+            "2:",
+            "cmovg  {value:e}, {pos:e}",
+            "cmovs  {value:e}, {pos:e}",
+            "cmovns {value:e}, {pos:e}",
+            "inc    {value:e}",
+            "dec    {value:e}",
+            "jnz    3f",
+            "3:",
+            value = out(reg) value, address = out(reg) _, base = in(reg) base,
+            pos = in(reg) pos, bits = const BITS, limit = const (1_i32 << 8),
+            options(nostack, readonly, pure),
+        );
+        value
+    }
+    shift::<3>(base, pos)
+}
+
+#[cfg(integer_macro)]
+core::arch::global_asm!(".macro shl a, b", ".include \"nested.s\"", ".endm");
+
+#[cfg(integer_directive)]
+pub unsafe fn integer_directive() {
+    core::arch::asm!("shl eax, {0}; .include \"nested.s\"", const 1, out("eax") _);
+}
+
+#[cfg(integer_comment_cr)]
+pub unsafe fn integer_comment_cr() {
+    core::arch::asm!("// comment\r.incbin \"payload.bin\"");
+}
+
+#[cfg(integer_spliced_register)]
+pub unsafe fn integer_spliced_register() {
+    core::arch::asm!("mov r{0}, r{0}", const 8, out("r8") _);
+}
+
+#[cfg(integer_pointer)]
+pub unsafe fn integer_pointer() {
+    static VALUE: u8 = 7;
+    core::arch::asm!("mov {0}, {1}", out(reg) _, const &VALUE);
+}
 
 #[cfg(global_macro)]
 core::arch::global_asm!(".macro nop", ".incbin \"payload.bin\"", ".endm");
