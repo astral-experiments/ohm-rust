@@ -1211,6 +1211,12 @@ impl CrateInfo {
 }
 
 pub(crate) fn provide(providers: &mut Providers) {
+    providers.ohm_instance_mir_has_asm = |tcx, instance| {
+        tcx.instance_mir(instance)
+            .basic_blocks
+            .iter()
+            .any(|block| matches!(block.terminator().kind, TerminatorKind::InlineAsm { .. }))
+    };
     providers.ohm_can_reuse_asm_free_cgu = |_, _| false;
     providers.ohm_untracked_relink_inputs =
         |tcx, ()| tcx.ohm_relink_inputs(()) == RelinkInputs::Rebuild;
@@ -1290,12 +1296,12 @@ fn cgu_has_untracked_asm<'tcx>(
 ) -> bool {
     cgu.items().keys().any(|item| match *item {
         MonoItem::GlobalAsm(..) => true,
-        MonoItem::Fn(instance) => tcx
+        MonoItem::Fn(instance) if tcx.ohm_instance_mir_has_asm(instance.def) => tcx
             .instance_mir(instance.def)
             .basic_blocks
             .iter()
             .any(|block| asm_has_untracked_inputs(&block.terminator().kind)),
-        MonoItem::Static(_) => false,
+        MonoItem::Fn(_) | MonoItem::Static(_) => false,
     })
 }
 
