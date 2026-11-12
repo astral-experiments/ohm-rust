@@ -1221,8 +1221,9 @@ pub(crate) fn provide(providers: &mut Providers) {
     providers.ohm_untracked_relink_inputs =
         |tcx, ()| tcx.ohm_relink_inputs(()) == RelinkInputs::Rebuild;
     providers.ohm_relink_inputs = |tcx, ()| {
-        if has_untracked_relink_inputs(tcx, |kind| matches!(kind, TerminatorKind::InlineAsm { .. }))
-        {
+        if has_untracked_relink_inputs(tcx, |_, kind| {
+            matches!(kind, TerminatorKind::InlineAsm { .. })
+        }) {
             RelinkInputs::Rebuild
         } else {
             RelinkInputs::Tracked
@@ -1266,7 +1267,7 @@ pub(crate) fn provide(providers: &mut Providers) {
 /// generic function is instantiated in this codegen unit.
 pub fn has_untracked_relink_inputs<'tcx>(
     tcx: TyCtxt<'tcx>,
-    mut asm_has_untracked_inputs: impl FnMut(&TerminatorKind<'tcx>) -> bool,
+    mut asm_has_untracked_inputs: impl FnMut(Instance<'tcx>, &TerminatorKind<'tcx>) -> bool,
 ) -> bool {
     if !matches!(tcx.sess.lto(), config::Lto::No | config::Lto::ThinLocal)
         || has_custom_codegen_inputs(tcx.sess)
@@ -1292,7 +1293,7 @@ fn has_custom_codegen_inputs(sess: &Session) -> bool {
 fn cgu_has_untracked_asm<'tcx>(
     tcx: TyCtxt<'tcx>,
     cgu: &CodegenUnit<'tcx>,
-    mut asm_has_untracked_inputs: impl FnMut(&TerminatorKind<'tcx>) -> bool,
+    mut asm_has_untracked_inputs: impl FnMut(Instance<'tcx>, &TerminatorKind<'tcx>) -> bool,
 ) -> bool {
     cgu.items().keys().any(|item| match *item {
         MonoItem::GlobalAsm(..) => true,
@@ -1300,7 +1301,7 @@ fn cgu_has_untracked_asm<'tcx>(
             .instance_mir(instance.def)
             .basic_blocks
             .iter()
-            .any(|block| asm_has_untracked_inputs(&block.terminator().kind)),
+            .any(|block| asm_has_untracked_inputs(instance, &block.terminator().kind)),
         MonoItem::Fn(_) | MonoItem::Static(_) => false,
     })
 }
@@ -1323,7 +1324,7 @@ pub fn can_reuse_asm_free_cgu(tcx: TyCtxt<'_>, name: Symbol) -> bool {
         && sess.opts.unstable_opts.profile_sample_use.is_none()
         && sess.opts.unstable_opts.sanitizer_dataflow_abilist.is_empty()
         && tcx.native_libraries(LOCAL_CRATE).is_empty()
-        && !cgu_has_untracked_asm(tcx, tcx.codegen_unit(name), |kind| {
+        && !cgu_has_untracked_asm(tcx, tcx.codegen_unit(name), |_, kind| {
             matches!(kind, TerminatorKind::InlineAsm { .. })
         })
 }

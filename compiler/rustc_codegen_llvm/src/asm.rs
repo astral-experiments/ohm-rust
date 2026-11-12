@@ -11,7 +11,7 @@ use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_middle::mir::interpret::{PointerArithmetic, Scalar as ConstScalar};
 use rustc_middle::mir::{InlineAsmMacro, InlineAsmOperand, Operand, RelinkInputs, TerminatorKind};
 use rustc_middle::ty::layout::TyAndLayout;
-use rustc_middle::ty::{Instance, TyCtxt};
+use rustc_middle::ty::{self, Instance, TyCtxt};
 use rustc_middle::{bug, span_bug};
 use rustc_session::config::CrateType;
 use rustc_span::{Pos, Span, Symbol, sym};
@@ -1581,7 +1581,7 @@ fn llvm_fixup_output_type<'ll, 'tcx>(
 pub(crate) fn relink_inputs(tcx: TyCtxt<'_>, (): ()) -> RelinkInputs {
     let mut saw_asm = false;
     let mut verify_native_link = false;
-    let untracked = rustc_codegen_ssa::base::has_untracked_relink_inputs(tcx, |kind| {
+    let untracked = rustc_codegen_ssa::base::has_untracked_relink_inputs(tcx, |instance, kind| {
         let TerminatorKind::InlineAsm { asm_macro, template, operands, options, .. } = kind else {
             return false;
         };
@@ -1589,7 +1589,8 @@ pub(crate) fn relink_inputs(tcx: TyCtxt<'_>, (): ()) -> RelinkInputs {
         *asm_macro != InlineAsmMacro::Asm
             || options.intersects(InlineAsmOptions::RAW | InlineAsmOptions::ATT_SYNTAX)
             || !file_free_inline_asm(
-                &tcx.sess.opts.target_triple,
+                tcx,
+                instance,
                 template,
                 operands,
                 *options,
@@ -1618,14 +1619,15 @@ pub(crate) fn relink_inputs(tcx: TyCtxt<'_>, (): ()) -> RelinkInputs {
 
 /// Recognize complete instruction lines. Unknown assembly anywhere in the crate still forces a
 /// rebuild: an assembler macro in one block could redefine an instruction used in another.
-fn file_free_inline_asm(
-    target: &TargetTuple,
+fn file_free_inline_asm<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    instance: Instance<'tcx>,
     template: &[InlineAsmTemplatePiece],
-    operands: &[InlineAsmOperand<'_>],
+    operands: &[InlineAsmOperand<'tcx>],
     options: InlineAsmOptions,
     verify_native_link: &mut bool,
 ) -> bool {
-    let TargetTuple::TargetTuple(target) = target else { return false };
+    let TargetTuple::TargetTuple(target) = &tcx.sess.opts.target_triple else { return false };
     let gnu_aarch64 = target.as_str() == "aarch64-unknown-linux-gnu";
     let arch = match target.as_str() {
         "x86_64-unknown-linux-gnu" => InlineAsmArch::X86_64,
@@ -1711,22 +1713,42 @@ fn file_free_inline_asm(
             !gnu_aarch64
                 || reg.reg_class() == InlineAsmRegClass::AArch64(AArch64InlineAsmRegClass::reg)
         }
+        InlineAsmOperand::Const { value } => {
+            arch == InlineAsmArch::X86_64 && value.ty().is_integral()
+        }
         _ => false,
     }) {
         return false;
     }
 
-    // Mark a substituted register as a single token. LLVM prints only a register name for these
-    // classes and modifiers. Reject a literal marker so it cannot impersonate a register.
+    // Keep substitutions separate from literal assembly. Only a whole operand can match the
+    // integer marker, so its sign and digits cannot become part of a directive or opcode.
     let mut text = String::new();
     for piece in template {
         match piece {
-            InlineAsmTemplatePiece::String(s) if !s.contains('@') => text.push_str(s),
+            InlineAsmTemplatePiece::String(s) if !s.contains(['@', '~']) => text.push_str(s),
             InlineAsmTemplatePiece::Placeholder { operand_idx, modifier, .. } => {
                 let reg = match &operands[*operand_idx] {
                     InlineAsmOperand::In { reg, .. }
                     | InlineAsmOperand::Out { reg, .. }
                     | InlineAsmOperand::InOut { reg, .. } => reg.reg_class(),
+                    InlineAsmOperand::Const { value } if modifier.is_none() => {
+                        // Codegen emits scalar integers as decimal text. A pointer can instead
+                        // expand to a linker symbol, so check the value of this mono instance.
+                        let env = ty::TypingEnv::fully_monomorphized();
+                        let Ok(value) = instance.try_instantiate_mir_and_normalize_erasing_regions(
+                            tcx,
+                            env,
+                            ty::EarlyBinder::bind(tcx, value.const_),
+                        ) else {
+                            return false;
+                        };
+                        if value.try_eval_scalar_int(tcx, env).is_none() {
+                            return false;
+                        }
+                        text.push('~');
+                        continue;
+                    }
                     _ => return false,
                 };
                 if !matches!(
@@ -1829,6 +1851,12 @@ fn file_free_asm_line(arch: InlineAsmArch, line: &str, verify_native_link: &mut 
     if line.is_empty() {
         return true;
     }
+    if arch == InlineAsmArch::X86_64 && line.starts_with("//") {
+        // The x86 ELF lexer ends these comments at LF *or* CR. A hidden CR could
+        // introduce an assembler directive inside what looks like a single line.
+        return !line.contains(['\\', '@', '~'])
+            && line.bytes().all(|b| b.is_ascii_graphic() || matches!(b, b' ' | b'\t'));
+    }
     if let Some(comment) = line.strip_prefix("/*").and_then(|s| s.strip_suffix("*/")) {
         return comment
             .bytes()
@@ -1871,12 +1899,15 @@ fn file_free_x86_instruction(opcode: &str, args: &str) -> bool {
             let Some((op, arg)) = args.split_once([' ', '\t']) else { return false };
             matches!(op, "cmpxchg16b" | "not" | "neg") && file_free_x86_operand(arg)
         }
-        "neg" | "not" | "sete" | "setne" => file_free_x86_operand(args),
-        "add" | "adc" | "and" | "cmovae" | "cmovb" | "cmovge" | "cmovl" | "cmp" | "mov" | "or"
-        | "rol" | "sbb" | "sub" | "vmovdqa" | "xchg" | "xor" => args
+        "dec" | "inc" | "neg" | "not" | "sete" | "setne" => file_free_x86_operand(args),
+        "add" | "adc" | "and" | "cmovae" | "cmovb" | "cmovg" | "cmovge" | "cmovl" | "cmovns"
+        | "cmovs" | "cmp" | "lea" | "mov" | "movzx" | "or" | "rol" | "sbb" | "shl" | "shr"
+        | "sub" | "vmovdqa" | "xchg" | "xor" => args
             .split_once(',')
             .is_some_and(|(dst, src)| file_free_x86_operand(dst) && file_free_x86_operand(src)),
-        "jne" => args.strip_suffix(['b', 'f']).is_some_and(asm_decimal),
+        "jae" | "jne" | "jnz" => {
+            args.trim_start_matches([' ', '\t']).strip_suffix(['b', 'f']).is_some_and(asm_decimal)
+        }
         label => args.is_empty() && label.strip_suffix(':').is_some_and(asm_decimal),
     }
 }
@@ -1885,18 +1916,25 @@ fn asm_decimal(s: &str) -> bool {
     !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())
 }
 
-/// Accept literal registers, immediates, and an address consisting of a register and optional displacement.
+/// Accept registers, integers and addresses composed of registers and a literal displacement.
 fn file_free_x86_operand(arg: &str) -> bool {
     let reg = |s: &str| s == "@" || X86InlineAsmReg::parse(s).is_ok();
     let arg = arg.trim_matches([' ', '\t']);
-    if reg(arg) || asm_decimal(arg) {
+    if reg(arg) || arg == "~" || asm_decimal(arg) {
         return true;
     }
-    let Some((size, address)) = arg.split_once(" ptr [") else { return false };
+    let address = if let Some(address) = arg.strip_prefix('[') {
+        address
+    } else if let Some((size, address)) = arg.split_once(" ptr [")
+        && matches!(size, "byte" | "word" | "dword" | "qword" | "xmmword")
+    {
+        address
+    } else {
+        return false;
+    };
     let Some(address) = address.strip_suffix(']') else { return false };
-    matches!(size, "byte" | "word" | "dword" | "qword" | "xmmword")
-        && match address.split_once(" + ") {
-            Some((base, offset)) => reg(base) && asm_decimal(offset),
-            None => reg(address),
-        }
+    match address.split_once(" + ") {
+        Some((base, offset)) => reg(base) && (reg(offset) || asm_decimal(offset)),
+        None => reg(address),
+    }
 }
