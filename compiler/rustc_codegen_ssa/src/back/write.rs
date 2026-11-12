@@ -79,6 +79,7 @@ pub struct ModuleConfig {
     /// Some(level) to optimize at a certain level, or None to run
     /// absolutely no optimizations (used for the allocator module).
     pub opt_level: Option<config::OptLevel>,
+    pub compact_test_inlining: bool,
 
     pub pgo_gen: SwitchWithOptPath,
     pub pgo_use: Option<PathBuf>,
@@ -178,6 +179,10 @@ impl ModuleConfig {
             passes: if_regular!(sess.opts.cg.passes.clone(), vec![]),
 
             opt_level: opt_level_and_size,
+            compact_test_inlining: sess.opts.test
+                && opt_level_and_size == Some(config::OptLevel::Less)
+                && sess.opts.cg.llvm_args.is_empty()
+                && sess.target.llvm_args.is_empty(),
 
             pgo_gen: if_regular!(
                 sess.opts.cg.profile_generate.clone(),

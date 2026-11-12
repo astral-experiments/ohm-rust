@@ -2434,6 +2434,7 @@ unsafe extern "C" {
         TM: &'a TargetMachine,
         OptLevel: PassBuilderOptLevel,
         OptStage: OptStage,
+        CompactTestInlining: bool,
         IsLinkerPluginLTO: bool,
         NoPrepopulatePasses: bool,
         VerifyIR: bool,

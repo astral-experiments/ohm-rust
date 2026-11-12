@@ -4,6 +4,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Analysis/InlineAdvisor.h"
 #include "llvm/Analysis/Lint.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #if LLVM_VERSION_GE(22, 0)
@@ -626,10 +627,22 @@ static void forceFullLTOSummary(Module *M) {
   M->addModuleFlag(Module::Error, "ThinLTO", Zero);
 }
 
+static InlineAdvisor *createTestInlineAdvisor(Module &M,
+                                              FunctionAnalysisManager &FAM,
+                                              InlineParams Params,
+                                              InlineContext Context) {
+  Params.DefaultThreshold = 50;
+  Params.HintThreshold = 75;
+#if LLVM_VERSION_GE(23, 0)
+  Params.OptSizeHintThreshold = 75;
+#endif
+  return new DefaultInlineAdvisor(M, FAM, Params, Context);
+}
+
 extern "C" LLVMRustResult LLVMRustOptimize(
     LLVMModuleRef ModuleRef, LLVMTargetMachineRef TMRef,
     LLVMRustPassBuilderOptLevel OptLevelRust, LLVMRustOptStage OptStage,
-    bool IsLinkerPluginLTO, bool NoPrepopulatePasses, bool VerifyIR,
+    bool CompactTestInlining, bool IsLinkerPluginLTO, bool NoPrepopulatePasses, bool VerifyIR,
     bool LintIR, LLVMRustBuffer **ThinLTOBufferRef,
     LLVMRustBuffer **ThinLTOSummaryBufferRef, bool MergeFunctions,
     bool UnrollLoops, bool SLPVectorize, bool LoopVectorize,
@@ -740,6 +753,13 @@ extern "C" LLVMRustResult LLVMRustOptimize(
   FAM.registerPass([&] { return TargetLibraryAnalysis(*TLII); });
 
   PB.registerModuleAnalyses(MAM);
+  if (CompactTestInlining && OptLevel == OptimizationLevel::O1 && !PGOOpt &&
+      !InstrumentCoverage && LLVMPluginsLen == 0 && ExtraPassesLen == 0) {
+    // Keep the budget local to this harness, including in a process that also
+    // compiles ordinary modules.
+    MAM.registerPass(
+        [] { return PluginInlineAdvisorAnalysis(createTestInlineAdvisor); });
+  }
   PB.registerCGSCCAnalyses(CGAM);
   PB.registerFunctionAnalyses(FAM);
   PB.registerLoopAnalyses(LAM);
