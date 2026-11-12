@@ -1242,11 +1242,12 @@ fn analysis_interfaces(tcx: TyCtxt<'_>, (): ()) {
     if tcx.sess.opts.unstable_opts.public_api_hash
         && tcx.dep_graph.is_fully_enabled()
         && tcx.crate_types() == [CrateType::Rlib]
-        && !tcx.codegen_output_mode(()).0
+        && (!tcx.codegen_output_mode(()).0 || tcx.sess.opts.unstable_opts.embed_metadata)
     {
         // These queries allocate definition indices for captured lifetimes and anonymous
         // associated types. Visit their owners in HIR order before interface checking can
-        // allocate the same definitions in a different order during an incremental check.
+        // allocate the same definitions in a different order during incremental compilation.
+        // Native rlibs with embedded metadata can reuse the same item prefix.
         for opaque in tcx.hir_crate_items(()).opaques() {
             let owner = tcx.local_def_id_to_hir_id(opaque).owner;
             let _ = tcx.resolve_bound_vars(owner);
