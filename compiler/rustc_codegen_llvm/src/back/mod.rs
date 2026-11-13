@@ -1,4 +1,7 @@
 pub(crate) mod archive;
+mod dwarf_cache;
+mod dwarf_certificate;
+mod dwarf_patch;
 pub(crate) mod llvm_backend;
 pub(crate) mod lto;
 pub(crate) mod owned_mc_subtarget_info;
