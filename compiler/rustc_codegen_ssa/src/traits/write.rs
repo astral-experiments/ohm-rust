@@ -30,6 +30,10 @@ pub trait WriteBackendMethods: Clone + 'static {
     fn object_cache_library_addresses(&self) -> Option<[usize; 2]> {
         None
     }
+    /// Whether this backend can certify ordered LLVM inputs for line-table reuse.
+    fn supports_dwarf_line_certificates(&self) -> bool {
+        false
+    }
     fn thread_profiler() -> Box<dyn Any> {
         Box::new(())
     }
