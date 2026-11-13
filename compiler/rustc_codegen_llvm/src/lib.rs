@@ -133,6 +133,10 @@ impl WriteBackendMethods for LlvmCodegenBackend {
         ])
     }
 
+    fn supports_dwarf_line_certificates(&self) -> bool {
+        unsafe { llvm::LLVMRustHasDwarfLineCertificate() }
+    }
+
     fn thread_profiler() -> Box<dyn Any> {
         Box::new(TimeTraceProfiler::new())
     }

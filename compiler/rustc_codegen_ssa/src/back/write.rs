@@ -369,6 +369,7 @@ pub struct CodegenContext {
     pub thinlto_cache_dir: Option<PathBuf>,
     /// Per-output cache of quiet non-LTO objects following a foreign-span observation.
     pub observer_object_cache: Option<(PathBuf, Fingerprint)>,
+    pub dwarf_line_cache: Option<Fingerprint>,
     /// `Some(limit)` if the codegen should be run in parallel.
     ///
     /// Depends on [`WriteBackendMethods::supports_parallel()`] and `--jobs-backend`.
@@ -1429,6 +1430,25 @@ fn start_executing_work<B: WriteBackendMethods>(
     })
     .flatten();
 
+    let dwarf_line_cache = (cfg!(target_os = "linux")
+        && sess.target.llvm_target == "x86_64-unknown-linux-gnu"
+        && sess.opts.unstable_opts.ohm_check_relink_inputs
+        && sess.opts.incremental.is_some()
+        && std::env::var_os("CARGO_PRIMARY_PACKAGE").is_some()
+        && sess.opts.optimize == OptLevel::Less
+        && sess.opts.debuginfo == rustc_session::config::DebugInfo::LineTablesOnly
+        && sess.lto() == Lto::No
+        && sess.opts.cg.target_cpu.as_deref() != Some("native")
+        && sess.opts.cg.llvm_args.is_empty()
+        && sess.opts.unstable_opts.codegen_backend.is_none()
+        && ["LD_PRELOAD", "LD_AUDIT"]
+            .iter()
+            .all(|key| std::env::var_os(key).is_none_or(|v| v.is_empty()))
+        && backend.supports_dwarf_line_certificates()
+        && !tcx.ohm_untracked_relink_inputs(()))
+    .then(cache_configuration)
+    .flatten();
+
     let cgcx = CodegenContext {
         crate_types: tcx.crate_types().to_vec(),
         lto: sess.lto(),
@@ -1446,6 +1466,7 @@ fn start_executing_work<B: WriteBackendMethods>(
             .map(|incr_comp_session| incr_comp_session.session_directory.clone()),
         thinlto_cache_dir,
         observer_object_cache,
+        dwarf_line_cache,
         output_filenames: Arc::clone(tcx.output_filenames(())),
         module_config: regular_config,
         opt_level,

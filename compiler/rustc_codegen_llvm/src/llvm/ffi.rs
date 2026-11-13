@@ -2540,6 +2540,9 @@ unsafe extern "C" {
     pub(crate) fn LLVMRustObserverModuleHash(M: &Module, digest: *mut u8);
     pub(crate) fn LLVMRustObserverContextHash(M: &Module, digest: *mut u8)
     -> LLVMRustClosedContext;
+    pub(crate) fn LLVMRustHasDwarfLineCertificate() -> bool;
+    pub(crate) fn LLVMRustDwarfLineCertificate(M: &Module) -> Option<&'static mut Buffer>;
+    pub(crate) fn LLVMRustDwarfDigest(data: *const u8, size: usize, digest: *mut u8);
     pub(crate) fn LLVMRustModuleSerialize(M: &Module, is_thin: bool) -> &'static mut Buffer;
     pub(crate) fn LLVMRustCreateThinLTOData(
         Modules: *const ThinLTOModule,
