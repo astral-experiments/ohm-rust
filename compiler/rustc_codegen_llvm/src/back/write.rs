@@ -922,7 +922,6 @@ pub(crate) fn optimize_and_codegen(
     if let Some(e) = &dwarf
         && let Some(cached) = e.load()
     {
-        e.store(&cached);
         return cached;
     }
     let diagnostics =
