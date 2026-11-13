@@ -903,6 +903,7 @@ pub(crate) fn optimize_and_codegen(
     cgcx: &CodegenContext,
     prof: &SelfProfilerRef,
     shared_emitter: &SharedEmitter,
+    tm_factory: TargetMachineFactoryFn<LlvmCodegenBackend>,
     mut module: ModuleCodegen<ModuleLlvm>,
     config: &ModuleConfig,
 ) -> CompiledModule {
@@ -929,8 +930,36 @@ pub(crate) fn optimize_and_codegen(
     optimize(cgcx, prof, shared_emitter, &mut module, config);
     let entry =
         entry.filter(|_| unsafe { !llvm::LLVMRustModuleHasInlineAsm(module.module_llvm.llmod()) });
-    let dwarf =
+    let mut dwarf =
         dwarf.filter(|_| unsafe { !llvm::LLVMRustModuleHasInlineAsm(module.module_llvm.llmod()) });
+    let emission = dwarf
+        .as_mut()
+        // A pending early-object entry records the output of the original target machine.
+        .filter(|_| cgcx.try_optimized_dwarf && module.module_llvm.early_object.is_none())
+        .filter(|_| unsafe { llvm::LLVMRustCanReplayDwarfLineScopes() })
+        .filter(|_| Some(shared_emitter.diagnostic_count()) == diagnostics)
+        .and_then(|e| {
+            // The optimizer can leave users, metadata and target-machine state outside
+            // the bitcode. Both the proof and emission must observe the read-back input.
+            let dcx = DiagCtxt::new(Box::new(shared_emitter.clone()));
+            let input = module.module_llvm.read_back_for_object(
+                cgcx,
+                &tm_factory,
+                &module.name,
+                dcx.handle(),
+            )?;
+            e.record_optimized(&input)?;
+            Some(input)
+        });
+    if let Some(e) = &dwarf
+        && Some(shared_emitter.diagnostic_count()) == diagnostics
+        && let Some(cached) = e.load_optimized()
+    {
+        return cached;
+    }
+    if let Some(emission) = emission {
+        module.module_llvm = emission;
+    }
     let compiled = codegen(cgcx, prof, shared_emitter, module, config);
     if let Some(entry) = entry
         && Some(shared_emitter.diagnostic_count()) == diagnostics

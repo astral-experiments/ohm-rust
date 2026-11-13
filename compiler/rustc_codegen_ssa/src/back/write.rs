@@ -370,6 +370,8 @@ pub struct CodegenContext {
     /// Per-output cache of quiet non-LTO objects following a foreign-span observation.
     pub observer_object_cache: Option<(PathBuf, Fingerprint)>,
     pub dwarf_line_cache: Option<Fingerprint>,
+    /// Native emission can start in a fresh target machine for this primary package.
+    pub try_optimized_dwarf: bool,
     /// `Some(limit)` if the codegen should be run in parallel.
     ///
     /// Depends on [`WriteBackendMethods::supports_parallel()`] and `--jobs-backend`.
@@ -440,6 +442,7 @@ pub(crate) fn start_async_codegen<B: WriteBackendMethods>(
     backend: B,
     tcx: TyCtxt<'_>,
     allocator_module: Option<ModuleCodegen<B::Module>>,
+    try_dwarf_line_reuse: bool,
 ) -> OngoingCodegen<B> {
     let (coordinator_send, coordinator_receive) = channel();
 
@@ -461,6 +464,7 @@ pub(crate) fn start_async_codegen<B: WriteBackendMethods>(
         Arc::new(allocator_config),
         allocator_module,
         coordinator_send.clone(),
+        try_dwarf_line_reuse,
     );
 
     OngoingCodegen {
@@ -840,6 +844,7 @@ fn execute_optimize_work_item<B: WriteBackendMethods>(
     cgcx: &CodegenContext,
     prof: &SelfProfilerRef,
     shared_emitter: SharedEmitter,
+    tm_factory: TargetMachineFactoryFn<B>,
     mut module: ModuleCodegen<B::Module>,
 ) -> WorkItemResult<B> {
     let _timer = prof.generic_activity_with_arg("codegen_module_optimize", &*module.name);
@@ -856,6 +861,7 @@ fn execute_optimize_work_item<B: WriteBackendMethods>(
             cgcx,
             prof,
             &shared_emitter,
+            tm_factory,
             module,
             &cgcx.module_config,
         ));
@@ -1285,6 +1291,7 @@ fn start_executing_work<B: WriteBackendMethods>(
     allocator_config: Arc<ModuleConfig>,
     mut allocator_module: Option<ModuleCodegen<B::Module>>,
     coordinator_send: Sender<Message<B>>,
+    try_dwarf_line_reuse: bool,
 ) -> thread::JoinHandle<Result<MaybeLtoModules<B>, ()>> {
     let sess = tcx.sess;
     let prof = sess.prof.clone();
@@ -1430,6 +1437,13 @@ fn start_executing_work<B: WriteBackendMethods>(
     })
     .flatten();
 
+    let try_optimized_dwarf = try_dwarf_line_reuse
+        && std::env::var_os("CARGO_PRIMARY_PACKAGE").is_some()
+        && matches!(&sess.opts.target_triple, rustc_target::spec::TargetTuple::TargetTuple(t)
+                    if t.as_str() == "x86_64-unknown-linux-gnu")
+        && sess.opts.cg.target_cpu.is_none()
+        && sess.opts.cg.target_feature.is_empty()
+        && sess.opts.unstable_opts.llvm_target_feature.is_empty();
     let dwarf_line_cache = (cfg!(target_os = "linux")
         && sess.target.llvm_target == "x86_64-unknown-linux-gnu"
         && sess.opts.unstable_opts.ohm_check_relink_inputs
@@ -1453,13 +1467,13 @@ fn start_executing_work<B: WriteBackendMethods>(
         && backend.supports_dwarf_line_certificates()
         && !tcx.ohm_untracked_relink_inputs(()))
     .then(|| {
-        let cfg = cache_configuration()?;
+        let mut hasher = StableHasher::new();
+        cache_configuration()?.hash(&mut hasher);
+        try_optimized_dwarf.hash(&mut hasher);
         if sess.split_debuginfo() != rustc_target::spec::SplitDebuginfo::Off {
-            return Some(cfg);
+            return Some(hasher.finish());
         }
         // Relative compilation directories in embedded DWARF use the process cwd.
-        let mut hasher = StableHasher::new();
-        cfg.hash(&mut hasher);
         std::env::current_dir().ok()?.hash(&mut hasher);
         Some(hasher.finish())
     })
@@ -1483,6 +1497,7 @@ fn start_executing_work<B: WriteBackendMethods>(
         thinlto_cache_dir,
         observer_object_cache,
         dwarf_line_cache,
+        try_optimized_dwarf,
         output_filenames: Arc::clone(tcx.output_filenames(())),
         module_config: regular_config,
         opt_level,
@@ -1722,6 +1737,7 @@ fn start_executing_work<B: WriteBackendMethods>(
                         spawn_work(
                             &cgcx,
                             &prof,
+                            &tm_factory,
                             shared_emitter.clone(),
                             coordinator_send.clone(),
                             &mut llvm_start_time,
@@ -1747,6 +1763,7 @@ fn start_executing_work<B: WriteBackendMethods>(
                             spawn_work(
                                 &cgcx,
                                 &prof,
+                                &tm_factory,
                                 shared_emitter.clone(),
                                 coordinator_send.clone(),
                                 &mut llvm_start_time,
@@ -1790,6 +1807,7 @@ fn start_executing_work<B: WriteBackendMethods>(
                     spawn_work(
                         &cgcx,
                         &prof,
+                        &tm_factory,
                         shared_emitter.clone(),
                         coordinator_send.clone(),
                         &mut llvm_start_time,
@@ -2053,6 +2071,7 @@ pub(crate) struct WorkerFatalError;
 fn spawn_work<'a, B: WriteBackendMethods>(
     cgcx: &CodegenContext,
     prof: &'a SelfProfilerRef,
+    tm_factory: &TargetMachineFactoryFn<B>,
     shared_emitter: SharedEmitter,
     coordinator_send: Sender<Message<B>>,
     llvm_start_time: &mut Option<VerboseTimingGuard<'a>>,
@@ -2062,6 +2081,7 @@ fn spawn_work<'a, B: WriteBackendMethods>(
         *llvm_start_time = Some(prof.verbose_generic_activity("LLVM_passes"));
     }
 
+    let tm_factory = Arc::clone(tm_factory);
     let cgcx = cgcx.clone();
     let prof = prof.clone();
 
@@ -2070,7 +2090,9 @@ fn spawn_work<'a, B: WriteBackendMethods>(
         let _profiler = if cgcx.time_trace { B::thread_profiler() } else { Box::new(()) };
 
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| match work {
-            WorkItem::Optimize(m) => execute_optimize_work_item(&cgcx, &prof, shared_emitter, m),
+            WorkItem::Optimize(m) => {
+                execute_optimize_work_item(&cgcx, &prof, shared_emitter, tm_factory, m)
+            }
             WorkItem::CopyPostLtoArtifacts(m) => WorkItemResult::Finished(
                 execute_copy_from_cache_work_item(&cgcx, &prof, shared_emitter, m),
             ),

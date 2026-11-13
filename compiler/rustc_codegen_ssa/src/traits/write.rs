@@ -76,6 +76,7 @@ pub trait WriteBackendMethods: Clone + 'static {
         cgcx: &CodegenContext,
         prof: &SelfProfilerRef,
         shared_emitter: &SharedEmitter,
+        _tm_factory: TargetMachineFactoryFn<Self>,
         mut module: ModuleCodegen<Self::Module>,
         config: &ModuleConfig,
     ) -> CompiledModule {

@@ -2543,6 +2543,7 @@ unsafe extern "C" {
     pub(crate) fn LLVMRustClosedModuleHash(M: &Module, digest: *mut u8) -> bool;
     pub(crate) fn LLVMRustCanReplayDwarfLineScopes() -> bool;
     pub(crate) fn LLVMRustHasDwarfLineCertificate() -> bool;
+    pub(crate) fn LLVMRustReadBackObjectModule(M: &Module, C: &Context) -> Option<&'static Module>;
     pub(crate) fn LLVMRustDwarfLineCertificate(M: &Module) -> Option<&'static mut Buffer>;
     pub(crate) fn LLVMRustDwarfDigest(data: *const u8, size: usize, digest: *mut u8);
     pub(crate) fn LLVMRustModuleSerialize(M: &Module, is_thin: bool) -> &'static mut Buffer;

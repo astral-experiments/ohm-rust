@@ -212,10 +212,11 @@ impl WriteBackendMethods for LlvmCodegenBackend {
         cgcx: &CodegenContext,
         prof: &SelfProfilerRef,
         shared_emitter: &SharedEmitter,
+        tm_factory: TargetMachineFactoryFn<Self>,
         module: ModuleCodegen<Self::Module>,
         config: &ModuleConfig,
     ) -> CompiledModule {
-        back::write::optimize_and_codegen(cgcx, prof, shared_emitter, module, config)
+        back::write::optimize_and_codegen(cgcx, prof, shared_emitter, tm_factory, module, config)
     }
     fn codegen(
         cgcx: &CodegenContext,
@@ -563,6 +564,28 @@ impl ModuleLlvm {
     fn finish_early_object(&mut self, completed: bool) {
         if let Some(ticket) = self.early_object.take() {
             unsafe { llvm::LLVMRustFinishEarlyObject(ticket.as_ptr(), completed) }
+        }
+    }
+
+    /// Make the read-back module the complete input to a fresh native emitter.
+    fn read_back_for_object(
+        &self,
+        cgcx: &CodegenContext,
+        tm_factory: &TargetMachineFactoryFn<LlvmCodegenBackend>,
+        name: &str,
+        dcx: DiagCtxtHandle<'_>,
+    ) -> Option<Self> {
+        unsafe {
+            let llcx = llvm::LLVMContextCreate();
+            let Some(llmod) = llvm::LLVMRustReadBackObjectModule(self.llmod(), llcx) else {
+                llvm::LLVMContextDispose(llcx);
+                return None;
+            };
+            let mut config = TargetMachineFactoryConfig::new(cgcx, name);
+            // The ordinary x86-64 ELF target machine only sets the split DWARF path.
+            config.output_obj_file = None;
+            let tm = tm_factory(dcx, config);
+            Some(Self { llmod_raw: llmod, llcx, tm: ManuallyDrop::new(tm), early_object: None })
         }
     }
 
