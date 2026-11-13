@@ -768,14 +768,6 @@ pub fn codegen_crate<
     let bitcode_needed = regular_module_config.bitcode_needed();
     let allocator_module_config = ModuleConfig::new(ModuleKind::Allocator, tcx, no_builtins);
 
-    let ongoing_codegen = start_async_codegen(
-        backend.clone(),
-        tcx,
-        Arc::new(regular_module_config),
-        Arc::new(allocator_module_config),
-        allocator_module,
-    );
-
     // For better throughput during parallel processing by LLVM, we used to sort
     // CGUs largest to smallest. This would lead to better thread utilization
     // by, for example, preventing a large CGU from being processed last and
@@ -799,6 +791,18 @@ pub fn codegen_crate<
     let cgu_reuse = tcx.sess.time("find_cgu_reuse", || {
         codegen_units.iter().map(|cgu| determine_cgu_reuse(tcx, cgu)).collect::<Vec<_>>()
     });
+    // A line shift commonly invalidates several otherwise unchanged codegen units.
+    // Compile an isolated dirty unit directly in a crate with other reusable work.
+    let try_dwarf_line_reuse = cgu_reuse.len() == 1
+        || cgu_reuse.iter().filter(|reuse| **reuse == CguReuse::No).nth(1).is_some();
+    let ongoing_codegen = start_async_codegen(
+        backend.clone(),
+        tcx,
+        Arc::new(regular_module_config),
+        Arc::new(allocator_module_config),
+        allocator_module,
+        try_dwarf_line_reuse,
+    );
 
     crate::assert_module_sources::assert_module_sources(tcx, &|cgu_reuse_tracker| {
         for (i, cgu) in codegen_units.iter().enumerate() {
