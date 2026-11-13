@@ -918,15 +918,30 @@ pub(crate) fn optimize_and_codegen(
         Ok(compiled) => return compiled,
         Err(original) => module = original,
     }
-    let diagnostics = entry.as_ref().map(|_| shared_emitter.diagnostic_count());
+    let dwarf = super::dwarf_cache::Entry::new(cgcx, &module, config);
+    if let Some(e) = &dwarf
+        && let Some(cached) = e.load()
+    {
+        e.store(&cached);
+        return cached;
+    }
+    let diagnostics =
+        (entry.is_some() || dwarf.is_some()).then(|| shared_emitter.diagnostic_count());
     optimize(cgcx, prof, shared_emitter, &mut module, config);
     let entry =
         entry.filter(|_| unsafe { !llvm::LLVMRustModuleHasInlineAsm(module.module_llvm.llmod()) });
+    let dwarf =
+        dwarf.filter(|_| unsafe { !llvm::LLVMRustModuleHasInlineAsm(module.module_llvm.llmod()) });
     let compiled = codegen(cgcx, prof, shared_emitter, module, config);
     if let Some(entry) = entry
         && Some(shared_emitter.diagnostic_count()) == diagnostics
     {
         entry.store(&compiled);
+    }
+    if let Some(e) = dwarf
+        && Some(shared_emitter.diagnostic_count()) == diagnostics
+    {
+        e.store(&compiled);
     }
     compiled
 }

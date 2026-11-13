@@ -12,6 +12,9 @@
 #endif
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Support/BLAKE3.h"
+#if __has_include("llvm/Bitcode/DwarfLineCertificate.h")
+#include "llvm/Bitcode/DwarfLineCertificate.h"
+#endif
 #include "llvm/Bitcode/BitcodeWriterPass.h"
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/IR/AssemblyAnnotationWriter.h"
@@ -1558,6 +1561,30 @@ LLVMRustObserverContextHash(LLVMModuleRef M, uint8_t *Digest) {
 #else
   return LLVMRustClosedContext::Unavailable;
 #endif
+}
+
+extern "C" bool LLVMRustHasDwarfLineCertificate() {
+#ifdef LLVM_OHM_CLOSED_DWARF_LINE_CERTIFICATE_V1
+  return true;
+#else
+  return false;
+#endif
+}
+
+extern "C" LLVMRustBuffer *LLVMRustDwarfLineCertificate(LLVMModuleRef M) {
+#ifdef LLVM_OHM_CLOSED_DWARF_LINE_CERTIFICATE_V1
+  auto Buffer = std::make_unique<LLVMRustBuffer>();
+  llvm::raw_string_ostream OS(Buffer->data);
+  if (llvm::writeClosedDwarfLineCertificateV1(*unwrap(M), OS))
+    return Buffer.release();
+#endif
+  return nullptr;
+}
+
+extern "C" void LLVMRustDwarfDigest(const uint8_t *Data, size_t Size,
+                                    uint8_t *Digest) {
+  auto Hash = BLAKE3::hash<32>(ArrayRef(Data, Size));
+  memcpy(Digest, Hash.data(), Hash.size());
 }
 
 extern "C" LLVMRustBuffer *LLVMRustModuleSerialize(LLVMModuleRef M,

@@ -54,10 +54,13 @@ impl CacheEntry {
     }
 
     fn unsupported(cgcx: &CodegenContext) -> bool {
+        cgcx.incr_comp_session_dir.is_some() || Self::unsupported_effects(cgcx)
+    }
+
+    pub(super) fn unsupported_effects(cgcx: &CodegenContext) -> bool {
         let config = &cgcx.module_config;
         !matches!(config.emit_obj, EmitObj::ObjectCode(_))
             || config.emit_pre_lto_bc
-            || cgcx.incr_comp_session_dir.is_some()
             || config.emit_thin_lto_summary
             || config.emit_bc
             || config.emit_ir
