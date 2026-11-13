@@ -65,7 +65,7 @@ pub(crate) fn delete_workproduct_files(
 ) {
     // A missing debug-line certificate never invalidates an otherwise usable
     // native product. Its lifetime still ends when that work product is removed.
-    if work_product.saved_files.contains_key("dwo") {
+    if work_product.saved_files.contains_key("o") || work_product.saved_files.contains_key("dwo") {
         let certificate = format!("{}.dwarf-lines", work_product.cgu_name);
         let _ = std_fs::remove_file(in_incr_comp_dir_sess(incr_comp_session, &certificate));
     }

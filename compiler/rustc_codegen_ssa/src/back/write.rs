@@ -1434,7 +1434,13 @@ fn start_executing_work<B: WriteBackendMethods>(
         && sess.target.llvm_target == "x86_64-unknown-linux-gnu"
         && sess.opts.unstable_opts.ohm_check_relink_inputs
         && sess.opts.incremental.is_some()
-        && std::env::var_os("CARGO_PRIMARY_PACKAGE").is_some()
+        && match sess.split_debuginfo() {
+            rustc_target::spec::SplitDebuginfo::Off => tcx.crate_types() == [CrateType::Rlib],
+            rustc_target::spec::SplitDebuginfo::Unpacked => {
+                std::env::var_os("CARGO_PRIMARY_PACKAGE").is_some()
+            }
+            _ => false,
+        }
         && sess.opts.optimize == OptLevel::Less
         && sess.opts.debuginfo == rustc_session::config::DebugInfo::LineTablesOnly
         && sess.lto() == Lto::No
@@ -1446,7 +1452,17 @@ fn start_executing_work<B: WriteBackendMethods>(
             .all(|key| std::env::var_os(key).is_none_or(|v| v.is_empty()))
         && backend.supports_dwarf_line_certificates()
         && !tcx.ohm_untracked_relink_inputs(()))
-    .then(cache_configuration)
+    .then(|| {
+        let cfg = cache_configuration()?;
+        if sess.split_debuginfo() != rustc_target::spec::SplitDebuginfo::Off {
+            return Some(cfg);
+        }
+        // Relative compilation directories in embedded DWARF use the process cwd.
+        let mut hasher = StableHasher::new();
+        cfg.hash(&mut hasher);
+        std::env::current_dir().ok()?.hash(&mut hasher);
+        Some(hasher.finish())
+    })
     .flatten();
 
     let cgcx = CodegenContext {

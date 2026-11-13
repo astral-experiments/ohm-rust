@@ -15,6 +15,9 @@
 #if __has_include("llvm/Bitcode/DwarfLineCertificate.h")
 #include "llvm/Bitcode/DwarfLineCertificate.h"
 #endif
+#if __has_include("llvm/Bitcode/ClosedModuleHash.h")
+#include "llvm/Bitcode/ClosedModuleHash.h"
+#endif
 #include "llvm/Bitcode/BitcodeWriterPass.h"
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/IR/AssemblyAnnotationWriter.h"
@@ -1565,6 +1568,26 @@ LLVMRustObserverContextHash(LLVMModuleRef M, uint8_t *Digest) {
 
 extern "C" bool LLVMRustHasDwarfLineCertificate() {
 #ifdef LLVM_OHM_CLOSED_DWARF_LINE_CERTIFICATE_V1
+  return true;
+#else
+  return false;
+#endif
+}
+
+extern "C" bool LLVMRustClosedModuleHash(LLVMModuleRef M, uint8_t *Digest) {
+#ifdef LLVM_OHM_CLOSED_MODULE_HASH_V1
+  std::array<uint8_t, 32> Result;
+  if (!getClosedModuleHashV1(*unwrap(M), Result))
+    return false;
+  memcpy(Digest, Result.data(), Result.size());
+  return true;
+#else
+  return false;
+#endif
+}
+
+extern "C" bool LLVMRustCanReplayDwarfLineScopes() {
+#ifdef LLVM_OHM_REPLAYABLE_DWARF_LINE_SCOPES_V1
   return true;
 #else
   return false;
