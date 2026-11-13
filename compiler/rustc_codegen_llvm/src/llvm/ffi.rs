@@ -116,6 +116,14 @@ pub(crate) enum LLVMRustResult {
     Failure,
 }
 
+#[repr(C)]
+#[allow(dead_code)] // Variants constructed by C++.
+pub(crate) enum LLVMRustClosedContext {
+    Complete,
+    Unsupported,
+    Unavailable,
+}
+
 /// Must match the layout of `LLVMRustModuleFlagMergeBehavior`.
 ///
 /// When merging modules (e.g. during LTO), their metadata flags are combined. Conflicts are
@@ -2530,6 +2538,8 @@ unsafe extern "C" {
     pub(crate) fn LLVMRustModuleInstructionStats(M: &Module) -> u64;
 
     pub(crate) fn LLVMRustObserverModuleHash(M: &Module, digest: *mut u8);
+    pub(crate) fn LLVMRustObserverContextHash(M: &Module, digest: *mut u8)
+    -> LLVMRustClosedContext;
     pub(crate) fn LLVMRustModuleSerialize(M: &Module, is_thin: bool) -> &'static mut Buffer;
     pub(crate) fn LLVMRustCreateThinLTOData(
         Modules: *const ThinLTOModule,

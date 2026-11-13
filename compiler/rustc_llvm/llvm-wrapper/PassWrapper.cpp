@@ -16,6 +16,9 @@
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/IR/AssemblyAnnotationWriter.h"
 #include "llvm/IR/AutoUpgrade.h"
+#if __has_include("llvm/IR/ClosedOptimizerContext.h")
+#include "llvm/IR/ClosedOptimizerContext.h"
+#endif
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Verifier.h"
@@ -1540,6 +1543,21 @@ extern "C" void LLVMRustObserverModuleHash(LLVMModuleRef M, uint8_t *Digest) {
   auto Hash = BLAKE3::hash<32>(ArrayRef(
       reinterpret_cast<const uint8_t *>(Bytes.data()), Bytes.size()));
   memcpy(Digest, Hash.data(), Hash.size());
+}
+
+enum class LLVMRustClosedContext { Complete, Unsupported, Unavailable };
+
+extern "C" LLVMRustClosedContext
+LLVMRustObserverContextHash(LLVMModuleRef M, uint8_t *Digest) {
+#ifdef LLVM_OHM_CLOSED_OPTIMIZER_CONTEXT_V1
+  std::array<uint8_t, 32> Context;
+  if (!llvm::getClosedOptimizerContextV1(*unwrap(M), Context))
+    return LLVMRustClosedContext::Unsupported;
+  memcpy(Digest, Context.data(), Context.size());
+  return LLVMRustClosedContext::Complete;
+#else
+  return LLVMRustClosedContext::Unavailable;
+#endif
 }
 
 extern "C" LLVMRustBuffer *LLVMRustModuleSerialize(LLVMModuleRef M,
