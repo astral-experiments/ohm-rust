@@ -10,6 +10,7 @@
 #if LLVM_VERSION_GE(22, 0)
 #include "llvm/Analysis/RuntimeLibcallInfo.h"
 #endif
+#include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Support/BLAKE3.h"
 #if __has_include("llvm/Bitcode/DwarfLineCertificate.h")
@@ -1564,6 +1565,47 @@ LLVMRustObserverContextHash(LLVMModuleRef M, uint8_t *Digest) {
 #else
   return LLVMRustClosedContext::Unavailable;
 #endif
+}
+
+// V1 rejects the unowned tracking slot of a function operand in a distinct
+// inline-history tuple. Ordered bitcode preserves that tuple and its attachment.
+static bool hasUnrepresentedInlineHistory(const Module &M) {
+#if LLVM_VERSION_GE(23, 0)
+  if (llvm::none_of(M, [](const Function &F) { return F.isUsedByMetadata(); }))
+    return false;
+  for (const Function &F : M)
+    for (const BasicBlock &BB : F)
+      for (const Instruction &I : BB) {
+        const MDNode *History = I.getMetadata(LLVMContext::MD_inline_history);
+        if (!History || !isa<MDTuple>(History) || !History->isDistinct())
+          continue;
+        for (const MDOperand &Op : History->operands())
+          if (auto *V = dyn_cast_if_present<ConstantAsMetadata>(Op.get()))
+            if (isa<Function>(V->getValue()))
+              return true;
+      }
+#endif
+  return false;
+}
+
+extern "C" LLVMModuleRef LLVMRustReadBackObjectModule(LLVMModuleRef M,
+                                                      LLVMContextRef C) {
+  Module &Input = *unwrap(M);
+  if (hasUnrepresentedInlineHistory(Input))
+    return nullptr;
+  LLVMContext &Context = *unwrap(C);
+  Context.setDiscardValueNames(Input.getContext().shouldDiscardValueNames());
+  SmallVector<char, 0> Bytes;
+  raw_svector_ostream OS(Bytes);
+  WriteBitcodeToFile(Input, OS, /*ShouldPreserveUseListOrder=*/true);
+  MemoryBufferRef Buffer(StringRef(Bytes.data(), Bytes.size()),
+                         Input.getModuleIdentifier());
+  auto Result = parseBitcodeFile(Buffer, Context);
+  if (!Result) {
+    consumeError(Result.takeError());
+    return nullptr;
+  }
+  return wrap(Result->release());
 }
 
 extern "C" bool LLVMRustHasDwarfLineCertificate() {

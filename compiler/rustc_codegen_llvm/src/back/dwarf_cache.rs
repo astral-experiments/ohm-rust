@@ -15,9 +15,8 @@ use rustc_target::spec::SplitDebuginfo;
 use super::{dwarf_certificate, dwarf_patch, thinlto_cache};
 use crate::{ModuleLlvm, llvm};
 
-// Earlier split records allowed merged locations from different source files.
-const MAGIC: &[u8; 8] = b"OHMDWLF4";
-const EMBEDDED_MAGIC: &[u8; 8] = b"OHMDWLE2";
+const MAGIC: &[u8; 8] = b"OHMDWLF5";
+const EMBEDDED_MAGIC: &[u8; 8] = b"OHMDWLE3";
 const MAXIMUM: usize = 128 * 1024 * 1024;
 
 fn digest(bytes: &[u8]) -> [u8; 32] {
@@ -43,7 +42,7 @@ fn read_file(path: &Path) -> Option<Vec<u8>> {
 
 fn read_certificate(path: &Path, magic: &[u8; 8], configuration: Fingerprint) -> Option<Vec<u8>> {
     let mut bytes = read_file(path)?;
-    if bytes.len() < 120 || bytes[..8] != magic[..] || bytes[8..24] != configuration.to_le_bytes() {
+    if bytes.len() < 124 || bytes[..8] != magic[..] || bytes[8..24] != configuration.to_le_bytes() {
         return None;
     }
     let integrity: [u8; 32] = bytes[24..56].try_into().ok()?;
@@ -51,8 +50,14 @@ fn read_certificate(path: &Path, magic: &[u8; 8], configuration: Fingerprint) ->
     (digest(&bytes) == integrity).then_some(bytes)
 }
 
+fn proofs(bytes: &[u8]) -> Option<(&[u8], &[u8])> {
+    let before = u32::from_le_bytes(bytes.get(120..124)?.try_into().ok()?) as usize;
+    bytes.get(124..)?.split_at_checked(before)
+}
+
 pub(super) struct Entry {
     proof: Vec<u8>,
+    optimized: Option<Vec<u8>>,
     exact: Option<[u8; 32]>,
     previous: Option<Vec<u8>>,
     configuration: Fingerprint,
@@ -63,10 +68,10 @@ pub(super) struct Entry {
     split: Option<(PathBuf, PathBuf)>,
 }
 
-fn line_proof(module: &ModuleCodegen<ModuleLlvm>) -> Option<Vec<u8>> {
-    let buffer = unsafe { llvm::LLVMRustDwarfLineCertificate(module.module_llvm.llmod()) }?;
+fn line_proof(module: &llvm::Module, budget: usize) -> Option<Vec<u8>> {
+    let buffer = unsafe { llvm::LLVMRustDwarfLineCertificate(module) }?;
     let size = unsafe { llvm::LLVMRustBufferLen(buffer) };
-    let proof = (size <= MAXIMUM - 120).then(|| unsafe {
+    let proof = (size <= budget).then(|| unsafe {
         slice::from_raw_parts(llvm::LLVMRustBufferPtr(buffer), size).to_owned()
     });
     unsafe { llvm::LLVMRustBufferFree(buffer) };
@@ -108,7 +113,12 @@ impl Entry {
                     session.join(format!("{}.dwo", module.name)),
                     stable_outputs.temp_path_dwo_for_cgu(&module.name),
                 );
-                (&stable_outputs, Some(split), None, line_proof(module)?)
+                (
+                    &stable_outputs,
+                    Some(split),
+                    None,
+                    line_proof(module.module_llvm.llmod(), MAXIMUM - 124)?,
+                )
             }
             SplitDebuginfo::Off => {
                 let mut exact = [0; 32];
@@ -121,10 +131,11 @@ impl Entry {
                 // This also avoids serializing the same module a second time.
                 let lines = if let Some(old) = &previous
                     && old[88..120] == exact
+                    && let Some((before, _)) = proofs(old)
                 {
-                    old[120..].to_owned()
+                    before.to_owned()
                 } else if unsafe { llvm::LLVMRustCanReplayDwarfLineScopes() } {
-                    line_proof(module).unwrap_or_default()
+                    line_proof(module.module_llvm.llmod(), MAXIMUM - 124).unwrap_or_default()
                 } else {
                     Vec::new()
                 };
@@ -134,6 +145,7 @@ impl Entry {
         };
         Some(Self {
             proof,
+            optimized: None,
             exact,
             previous,
             configuration,
@@ -150,13 +162,30 @@ impl Entry {
     }
 
     pub(super) fn load(&self) -> Option<CompiledModule> {
+        self.replay(false)
+    }
+
+    pub(super) fn record_optimized(&mut self, module: &ModuleLlvm) -> Option<()> {
+        self.optimized = Some(line_proof(module.llmod(), MAXIMUM - 124 - self.proof.len())?);
+        Some(())
+    }
+
+    pub(super) fn load_optimized(&self) -> Option<CompiledModule> {
+        self.replay(true)
+    }
+
+    fn replay(&self, after_optimization: bool) -> Option<CompiledModule> {
         let bytes = self.previous.as_deref()?;
+        let (before, after) = proofs(bytes)?;
         let secondary = bytes.get(88..120)?;
-        let exact_hit = self.exact.as_ref().is_some_and(|hash| secondary == hash);
+        let exact_hit =
+            !after_optimization && self.exact.as_ref().is_some_and(|hash| secondary == hash);
         let changes = if exact_hit {
             None
+        } else if after_optimization {
+            Some(dwarf_certificate::compare(after, self.optimized.as_deref()?)?)
         } else {
-            Some(dwarf_certificate::compare(bytes.get(120..)?, &self.proof)?)
+            Some(dwarf_certificate::compare(before, &self.proof)?)
         };
 
         // rustc already carried the previous work products into this session.
@@ -193,6 +222,9 @@ impl Entry {
             None
         };
         tracing::info!("ohm_dwarf_line_hit {} exact={exact_hit}", self.name);
+        if after_optimization {
+            tracing::info!("ohm_dwarf_postopt_hit {}", self.name);
+        }
         let module = CompiledModule {
             name: self.name.clone(),
             kind: ModuleKind::Regular,
@@ -224,13 +256,16 @@ impl Entry {
             (None, Some(path)) => digest(&read_file(path)?),
             _ => return None,
         };
-        let mut bytes = Vec::with_capacity(120 + self.proof.len());
+        let optimized = self.optimized.as_deref().unwrap_or_default();
+        let mut bytes = Vec::with_capacity(124 + self.proof.len() + optimized.len());
         bytes.extend(self.magic());
         bytes.extend(self.configuration.to_le_bytes());
         bytes.extend([0; 32]);
         bytes.extend(object);
         bytes.extend(secondary);
+        bytes.extend((self.proof.len() as u32).to_le_bytes());
         bytes.extend_from_slice(&self.proof);
+        bytes.extend_from_slice(optimized);
         let integrity = digest(&bytes);
         bytes[24..56].copy_from_slice(&integrity);
         // A killed compiler cannot publish its in-progress incremental session.

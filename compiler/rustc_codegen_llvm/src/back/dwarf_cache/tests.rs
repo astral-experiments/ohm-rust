@@ -8,6 +8,7 @@ fn embedded_receipt_binds_the_input_and_donor_object() {
         configuration: Fingerprint::ZERO,
         exact: Some([19; 32]),
         proof: Vec::new(),
+        optimized: None,
         previous: None,
         object: dir.path().join("current.o"),
         donor_object: dir.path().join("previous.o"),
@@ -35,6 +36,10 @@ fn embedded_receipt_binds_the_input_and_donor_object() {
     );
     entry.previous = read_certificate(&entry.certificate, EMBEDDED_MAGIC, entry.configuration);
     entry.load().unwrap();
+    assert!(entry.load_optimized().is_none());
+    let mut truncated = entry.previous.clone().unwrap();
+    truncated[120..124].copy_from_slice(&1_u32.to_le_bytes());
+    assert!(proofs(&truncated).is_none());
     assert_eq!(fs::read(&entry.object).unwrap(), b"previous object");
     entry.exact = Some([20; 32]);
     assert!(entry.load().is_none());
