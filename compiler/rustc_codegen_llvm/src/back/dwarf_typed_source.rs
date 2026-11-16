@@ -98,8 +98,11 @@ fn source_rows(old: &[u8], new: &[u8]) -> Option<(usize, usize, Vec<[usize; 2]>,
     }
     let old_count = rows(old).take(1_000_001).count();
     let new_count = rows(new).take(1_000_001).count();
-    if old_count == 0 || new_count == 0 || old_count == new_count
-        || old_count.max(new_count) > 1_000_000 {
+    if old_count == 0
+        || new_count == 0
+        || old_count == new_count
+        || old_count.max(new_count) > 1_000_000
+    {
         return None;
     }
     let prefix = rows(old).zip(rows(new)).take_while(|(a, b)| a == b).count();
