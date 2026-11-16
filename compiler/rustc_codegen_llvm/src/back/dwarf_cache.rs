@@ -19,7 +19,24 @@ const MAGIC: &[u8; 8] = b"OHMDWLF5";
 const EMBEDDED_MAGIC: &[u8; 8] = b"OHMDWLE3";
 // An embedded record whose only authority is the complete normalized proof.
 const NORMALIZED_MAGIC: &[u8; 8] = b"OHMDWLN1";
+const RAW_ROSTER_MAGIC: &[u8; 8] = b"OHMDWGR1";
+const NORMALIZED_ROSTER_MAGIC: &[u8; 8] = b"OHMDWGN1";
 const MAXIMUM: usize = 128 * 1024 * 1024;
+
+fn has_roster(bytes: &[u8]) -> bool {
+    bytes.starts_with(RAW_ROSTER_MAGIC) || bytes.starts_with(NORMALIZED_ROSTER_MAGIC)
+}
+
+fn has_exact_key(bytes: &[u8]) -> bool {
+    bytes.starts_with(EMBEDDED_MAGIC) || bytes.starts_with(RAW_ROSTER_MAGIC)
+}
+
+fn decline_changed_roster(path: &Path, previous: Option<&[u8]>, roster: Option<u64>) -> bool {
+    let (Some(old), Some(current)) = (previous, roster) else { return false };
+    // Unlink only this session's inherited receipt. An absent receipt enrolls
+    // the next dirty generation. Failed unlinks take the ordinary lookup path.
+    has_roster(old) && !old.ends_with(&current.to_le_bytes()) && fs::remove_file(path).is_ok()
+}
 
 pub(super) fn digest(bytes: &[u8]) -> [u8; 32] {
     let mut result = [0; 32];
@@ -49,9 +66,11 @@ pub(super) fn read_file(path: &Path) -> Option<Vec<u8>> {
 
 fn read_certificate(path: &Path, magic: &[u8; 8], configuration: Fingerprint) -> Option<Vec<u8>> {
     let mut bytes = read_file(path)?;
-    if bytes.len() < 124
+    let min_size = 124 + if has_roster(&bytes) { size_of::<u64>() } else { 0 };
+    if bytes.len() < min_size
         || (bytes[..8] != magic[..]
-            && !(magic == EMBEDDED_MAGIC && bytes[..8] == NORMALIZED_MAGIC[..]))
+            && !(magic == EMBEDDED_MAGIC
+                && (bytes.starts_with(NORMALIZED_MAGIC) || has_roster(&bytes))))
         || bytes[8..24] != configuration.to_le_bytes()
     {
         return None;
@@ -63,7 +82,8 @@ fn read_certificate(path: &Path, magic: &[u8; 8], configuration: Fingerprint) ->
 
 fn proofs(bytes: &[u8]) -> Option<(&[u8], &[u8])> {
     let before = u32::from_le_bytes(bytes.get(120..124)?.try_into().ok()?) as usize;
-    bytes.get(124..)?.split_at_checked(before)
+    let end = bytes.len().checked_sub(if has_roster(bytes) { size_of::<u64>() } else { 0 })?;
+    bytes.get(124..end)?.split_at_checked(before)
 }
 
 pub(super) struct Entry {
@@ -78,6 +98,7 @@ pub(super) struct Entry {
     object: PathBuf,
     split: Option<(PathBuf, PathBuf)>,
     register_comment: bool,
+    roster: Option<u64>,
 }
 
 fn line_proof(module: &llvm::Module, budget: usize, register_comment: bool) -> Option<Vec<u8>> {
@@ -123,6 +144,14 @@ impl Entry {
         let magic =
             if cgcx.split_debuginfo == SplitDebuginfo::Off { EMBEDDED_MAGIC } else { MAGIC };
         let previous = read_certificate(&certificate, magic, configuration);
+        let roster = (cgcx.split_debuginfo == SplitDebuginfo::Off
+            && !register_comment
+            && unsafe { llvm::LLVMRustCanReplayDwarfLineScopes() })
+        .then(|| unsafe { llvm::LLVMRustDwarfGlobalRoster(llmod) });
+        if decline_changed_roster(&certificate, previous.as_deref(), roster) {
+            return None;
+        }
+        let budget = MAXIMUM - 124 - if roster.is_some() { size_of::<u64>() } else { 0 };
         let stable_outputs;
         let (outputs, split, exact, proof) = match cgcx.split_debuginfo {
             SplitDebuginfo::Unpacked
@@ -136,18 +165,13 @@ impl Entry {
                     session.join(format!("{}.dwo", module.name)),
                     stable_outputs.temp_path_dwo_for_cgu(&module.name),
                 );
-                (
-                    &stable_outputs,
-                    Some(split),
-                    None,
-                    line_proof(llmod, MAXIMUM - 124, false)?,
-                )
+                (&stable_outputs, Some(split), None, line_proof(llmod, budget, false)?)
             }
             SplitDebuginfo::Off => {
                 let (exact, lines) = if register_comment {
-                    (None, line_proof(llmod, MAXIMUM - 124, true)?)
+                    (None, line_proof(llmod, budget, true)?)
                 } else if unsafe { llvm::LLVMRustCanReplayDwarfLineScopes() }
-                    && let Some(lines) = line_proof(llmod, MAXIMUM - 124, false)
+                    && let Some(lines) = line_proof(llmod, budget, false)
                 {
                     // A matching normalized proof still passes through the full native-object
                     // and DWARF validators in replay. No synthetic exact key is stored.
@@ -165,7 +189,7 @@ impl Entry {
                     let lines = previous
                         .as_ref()
                         .and_then(|old| {
-                            (old[..8] == EMBEDDED_MAGIC[..] && old[88..120] == exact)
+                            (has_exact_key(old) && old[88..120] == exact)
                                 .then(|| proofs(old))
                                 .flatten()
                                 .map(|(before, _)| before.to_owned())
@@ -189,6 +213,7 @@ impl Entry {
             object: outputs.temp_path_for_cgu(OutputType::Object, &module.name),
             split,
             register_comment,
+            roster,
         })
     }
 
@@ -207,6 +232,8 @@ impl Entry {
     fn magic(&self) -> &[u8; 8] {
         if self.split.is_some() {
             MAGIC
+        } else if self.roster.is_some() {
+            if self.exact.is_some() { RAW_ROSTER_MAGIC } else { NORMALIZED_ROSTER_MAGIC }
         } else if self.exact.is_some() {
             EMBEDDED_MAGIC
         } else {
@@ -219,7 +246,9 @@ impl Entry {
     }
 
     pub(super) fn record_optimized(&mut self, module: &ModuleLlvm) -> Option<()> {
-        self.optimized = Some(line_proof(module.llmod(), MAXIMUM - 124 - self.proof.len(), false)?);
+        let footer = if self.roster.is_some() { size_of::<u64>() } else { 0 };
+        self.optimized =
+            Some(line_proof(module.llmod(), MAXIMUM - 124 - footer - self.proof.len(), false)?);
         Some(())
     }
 
@@ -232,7 +261,7 @@ impl Entry {
         let (before, after) = proofs(bytes)?;
         let secondary = bytes.get(88..120)?;
         let exact_hit = !after_optimization
-            && bytes[..8] == EMBEDDED_MAGIC[..]
+            && has_exact_key(bytes)
             && self.exact.as_ref().is_some_and(|hash| secondary == hash);
         let changes = if exact_hit {
             None
@@ -301,7 +330,7 @@ impl Entry {
     }
 
     pub(super) fn typed_session(&self) -> Option<(&Path, [u8; 16], &str, bool)> {
-        if self.register_comment || self.split.is_some() || self.magic() != NORMALIZED_MAGIC {
+        if self.register_comment || self.split.is_some() || self.exact.is_some() {
             return None;
         }
         Some((
@@ -346,7 +375,8 @@ impl Entry {
             _ => return None,
         };
         let optimized = self.optimized.as_deref().unwrap_or_default();
-        let mut bytes = Vec::with_capacity(124 + self.proof.len() + optimized.len());
+        let footer = if self.roster.is_some() { size_of::<u64>() } else { 0 };
+        let mut bytes = Vec::with_capacity(124 + self.proof.len() + optimized.len() + footer);
         bytes.extend(self.magic());
         bytes.extend(self.configuration.to_le_bytes());
         bytes.extend([0; 32]);
@@ -355,6 +385,9 @@ impl Entry {
         bytes.extend((self.proof.len() as u32).to_le_bytes());
         bytes.extend_from_slice(&self.proof);
         bytes.extend_from_slice(optimized);
+        if let Some(roster) = self.roster {
+            bytes.extend(roster.to_le_bytes());
+        }
         let integrity = digest(&bytes);
         bytes[24..56].copy_from_slice(&integrity);
         // A killed compiler cannot publish its in-progress incremental session.

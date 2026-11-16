@@ -941,7 +941,8 @@ pub(crate) fn optimize_and_codegen(
         .as_mut()
         // A pending early-object entry records the output of the original target machine.
         .filter(|e| {
-            cgcx.try_optimized_dwarf && module.module_llvm.early_object.is_none()
+            cgcx.try_optimized_dwarf
+                && module.module_llvm.early_object.is_none()
                 && e.can_replay_optimized()
         })
         .filter(|_| unsafe { llvm::LLVMRustCanReplayDwarfLineScopes() })

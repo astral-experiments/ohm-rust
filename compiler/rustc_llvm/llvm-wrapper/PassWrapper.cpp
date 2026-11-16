@@ -1678,6 +1678,31 @@ extern "C" LLVMRustBuffer *LLVMRustDwarfLineCertificate(LLVMModuleRef M) {
   return nullptr;
 }
 
+// Different global rosters can decline a speculative lookup. A roster match
+// still requires the ordinary input and native-object verification.
+extern "C" uint64_t LLVMRustDwarfGlobalRoster(LLVMModuleRef M) {
+  const Module &Mod = *unwrap(M);
+  uint64_t Hash = UINT64_C(14695981039346656037);
+  auto Word = [&](uint64_t W) { Hash = (Hash ^ W) * UINT64_C(1099511628211); };
+  auto Add = [&](const GlobalValue &G) {
+    StringRef Name = G.getName();
+    Word(Name.size());
+    for (unsigned char C : Name.bytes())
+      Word(C);
+    Word(G.getLinkage());
+    Word(G.isDeclaration());
+  };
+  for (const auto &G : Mod.globals())
+    Add(G);
+  for (const auto &A : Mod.aliases())
+    Add(A);
+  for (const auto &I : Mod.ifuncs())
+    Add(I);
+  for (const auto &F : Mod)
+    Add(F);
+  return Hash;
+}
+
 extern "C" void LLVMRustDwarfDigest(const uint8_t *Data, size_t Size,
                                     uint8_t *Digest) {
   auto Hash = BLAKE3::hash<32>(ArrayRef(Data, Size));

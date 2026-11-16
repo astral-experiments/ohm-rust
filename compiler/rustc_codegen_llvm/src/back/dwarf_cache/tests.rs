@@ -15,6 +15,7 @@ fn embedded_receipt_binds_the_input_and_donor_object() {
         certificate: dir.path().join("worker.dwarf-lines"),
         split: None,
         register_comment: false,
+        roster: None,
     };
     let module = CompiledModule {
         name: entry.name.clone(),
@@ -56,4 +57,24 @@ fn embedded_receipt_binds_the_input_and_donor_object() {
     bytes[88] ^= 1;
     fs::write(&entry.certificate, bytes).unwrap();
     assert!(read_certificate(&entry.certificate, EMBEDDED_MAGIC, entry.configuration).is_none());
+}
+
+#[test]
+fn changed_roster_declines_one_generation_and_preserves_the_old_session() {
+    let dir = TempDirBuilder::new().tempdir_in(std::env::temp_dir()).unwrap();
+    let old = dir.path().join("old.dwarf-lines");
+    let new = dir.path().join("new.dwarf-lines");
+    let mut receipt = vec![0; 124];
+    receipt[..8].copy_from_slice(NORMALIZED_ROSTER_MAGIC);
+    receipt.extend(9u64.to_le_bytes());
+    fs::write(&old, &receipt).unwrap();
+    fs::hard_link(&old, &new).unwrap();
+    assert!(!decline_changed_roster(&new, Some(&receipt), Some(9)));
+    assert!(decline_changed_roster(&new, Some(&receipt), Some(10)));
+    assert!(!new.exists());
+    assert_eq!(fs::read(&old).unwrap(), receipt);
+    assert!(!decline_changed_roster(&new, None, Some(10)));
+    assert!(!decline_changed_roster(&new, Some(&receipt), Some(10)));
+    assert_eq!(proofs(&receipt), Some((&[][..], &[][..])));
+    assert!(!has_exact_key(&receipt));
 }
