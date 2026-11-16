@@ -2547,6 +2547,13 @@ unsafe extern "C" {
     pub(crate) fn LLVMRustDwarfTypedShape(M: &Module, TM: &TargetMachine, shape: *mut u64) -> bool;
     pub(crate) fn LLVMRustDwarfTypedContext(M: &Module, digest: *mut u8) -> bool;
     pub(crate) fn LLVMRustDwarfTypedSnapshot(M: &Module) -> Option<&'static mut Buffer>;
+    pub(crate) fn LLVMRustDwarfStartEmittedNames(m: &Module) -> *mut std::ffi::c_void;
+    pub(crate) fn LLVMRustDwarfDropEmittedNames(capture: *mut std::ffi::c_void);
+    pub(crate) fn LLVMRustDwarfFinishEmittedNames(
+        capture: *mut std::ffi::c_void,
+        returned: *const u8,
+        size: usize,
+    ) -> Option<&'static mut Buffer>;
     pub(crate) fn LLVMRustDwarfTypedMatch(
         M: &Module,
         ordered: *const u8,

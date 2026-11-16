@@ -86,6 +86,34 @@ fn insertion(old: &[u8], new: &[u8]) -> Option<(usize, usize, Vec<[usize; 2]>, V
     Some((old_len, new_len, pairs, (first..left).map(|i| i + 1).collect()))
 }
 
+/// Prove byte-identical full rows anchored at each file boundary. The middle
+/// may contain an arbitrary replacement. Overlapping endpoints leave the source
+/// correspondence ambiguous and require the stricter insertion proof.
+fn source_rows(old: &[u8], new: &[u8]) -> Option<(usize, usize, Vec<[usize; 2]>, Vec<usize>)> {
+    if let Some(insertion) = insertion(old, new) {
+        return Some(insertion);
+    }
+    fn rows(src: &[u8]) -> impl DoubleEndedIterator<Item = &[u8]> {
+        src.split_inclusive(|byte| *byte == b'\n')
+    }
+    let old_count = rows(old).take(1_000_001).count();
+    let new_count = rows(new).take(1_000_001).count();
+    if old_count == 0 || new_count == 0 || old_count == new_count
+        || old_count.max(new_count) > 1_000_000 {
+        return None;
+    }
+    let prefix = rows(old).zip(rows(new)).take_while(|(a, b)| a == b).count();
+    let suffix = rows(old).rev().zip(rows(new).rev()).take_while(|(a, b)| a == b).count();
+    if suffix == 0 || prefix + suffix > old_count.min(new_count) {
+        return None;
+    }
+    let pairs = (1..=prefix)
+        .map(|i| [i, i])
+        .chain((0..suffix).map(|i| [old_count - suffix + i + 1, new_count - suffix + i + 1]))
+        .collect();
+    Some((old_count, new_count, pairs, Vec::new()))
+}
+
 pub(super) fn mapping(
     mut sources: &[u8],
     inventory: &[DwarfSourceFile],
@@ -105,7 +133,7 @@ pub(super) fn mapping(
             continue;
         }
         let Some(now) = current(file) else { continue };
-        let Some((old_lines, new_lines, lines, ambiguous)) = insertion(prior, &now) else {
+        let Some((old_lines, new_lines, lines, ambiguous)) = source_rows(prior, &now) else {
             continue;
         };
         maps.push(
@@ -137,6 +165,16 @@ mod tests {
         assert_eq!(ambiguous, [2, 3]);
         assert!(insertion(b"a\nb\n", b"a\nc\n").is_none());
         assert!(insertion(b"a\nb\n", b"c\nx\nb\n").is_none());
+    }
+
+    #[test]
+    fn replaces_only_between_disjoint_unchanged_boundaries() {
+        let (_, _, rows, ambiguous) =
+            source_rows(b"prefix\nold1\nold2\nlast\n", b"prefix\nnew\nlast\n").unwrap();
+        assert_eq!(rows, [[1, 1], [4, 3]]);
+        assert!(ambiguous.is_empty());
+        assert!(source_rows(b"a\nb\nb\nb\nc\n", b"a\nb\nb\nc\n").is_none());
+        assert!(source_rows(b"a\nz\n", b"a\nc\nd\n").is_none());
     }
 
     #[test]
