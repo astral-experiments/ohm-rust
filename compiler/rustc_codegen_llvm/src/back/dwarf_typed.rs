@@ -22,6 +22,7 @@ fn replay(
     donor: Donor<'_>,
     files: &[DwarfSourceFile],
     entry: &Entry,
+    store: &Store,
 ) -> Option<CompiledModule> {
     let m = module.llmod();
     let mut context = [0u8; 32];
@@ -37,8 +38,9 @@ fn replay(
     if entry.bound_donor()?.as_slice() != donor.object {
         return None;
     }
-    let result = buffer(unsafe {
-        llvm::LLVMRustDwarfTypedMatch(
+    let mut next = None;
+    let result = unsafe {
+        llvm::LLVMRustDwarfTypedMatchAndSnapshot(
             m,
             donor.ordered.as_ptr(),
             donor.ordered.len(),
@@ -50,13 +52,26 @@ fn replay(
             proof.len(),
             donor.object.as_ptr(),
             donor.object.len(),
+            &mut next,
         )
-    })?;
-    entry.install_typed(&result)
+    };
+    let next = buffer(next);
+    let result = buffer(result)?;
+    let (compiled, stored) = entry.install_typed(&result)?;
+    if stored && let Some(packet) = next.and_then(|bytes| packet(&bytes, files)) {
+        // Advance the typed donor only after the ordinary object and its
+        // certificate have been installed for this incremental session.
+        store.publish(&packet, &result);
+    }
+    Some(compiled)
 }
 
 fn snapshot(module: &ModuleLlvm, files: &[DwarfSourceFile]) -> Option<Packet> {
     let bytes = buffer(unsafe { llvm::LLVMRustDwarfTypedSnapshot(module.llmod()) })?;
+    packet(&bytes, files)
+}
+
+fn packet(bytes: &[u8], files: &[DwarfSourceFile]) -> Option<Packet> {
     let (context, mut rest) = bytes.split_at_checked(32)?;
     let ordered = take(&mut rest)?.to_vec();
     let owners = take(&mut rest)?.to_vec();
@@ -122,7 +137,7 @@ impl Attempt {
         let store = Store::new(session, configuration, name, shape);
         if let Some(bytes) = store.read()
             && let Some(donor) = Store::donor(&bytes)
-            && let Some(compiled) = replay(module, donor, &cgcx.dwarf_typed_sources, entry)
+            && let Some(compiled) = replay(module, donor, &cgcx.dwarf_typed_sources, entry, &store)
         {
             return (Some(compiled), None);
         }
