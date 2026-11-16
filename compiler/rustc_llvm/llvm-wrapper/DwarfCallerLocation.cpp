@@ -17,6 +17,12 @@
 #include "llvm/Support/CBindingWrapping.h"
 #include "llvm/Support/JSON.h"
 #include "llvm/Target/TargetMachine.h"
+#if __has_include("llvm/CodeGen/OhmEmittedGlobals.h")
+#define OHM_EMITTED_GLOBALS
+#include "llvm/CodeGen/AsmPrinter.h"
+#include "llvm/CodeGen/OhmEmittedGlobals.h"
+#include "llvm/MC/MCSymbol.h"
+#endif
 #include <array>
 #include <cstring>
 #include <elf.h>
@@ -132,6 +138,56 @@ bool privateName(StringRef n) {
       return false;
   return true;
 }
+#ifdef OHM_EMITTED_GLOBALS
+using LocationKey = std::tuple<std::string, uint32_t, uint32_t>;
+using NativeOwner = std::pair<std::string, std::string>;
+
+struct EmittedNames {
+  std::map<LocationKey, NativeOwner> names;
+  bool seen = false;
+  bool invalid = false;
+  llvm::ohm::ScopedEmittedGlobals observer;
+
+  explicit EmittedNames(const llvm::Module &module)
+      : observer(module, capture, this) {}
+
+  static void capture(void *context, const llvm::AsmPrinter &printer,
+                      const llvm::Module &module) {
+    auto &self = *static_cast<EmittedNames *>(context);
+    if (self.seen) {
+      self.invalid = true;
+      return;
+    }
+    self.seen = true;
+    for (const auto &g : module.globals()) {
+      auto r = llvm::ohm_location::readRecord(g);
+      if (!r || !r->HasColumn)
+        continue;
+      auto *symbol = printer.getSymbol(&g);
+      auto *file = printer.getSymbol(r->File);
+      if (!symbol->isDefined() || !file->isDefined())
+        continue;
+      auto global = symbol->getName(), filename = file->getName();
+      if (!global.consume_front(".L") || !filename.consume_front(".L") ||
+          !privateName(global) || !privateName(filename))
+        continue;
+      auto data = r->Tail->getAsString();
+      LocationKey key(r->Path.str(),
+                      llvm::support::endian::read32le(data.data() + 8),
+                      llvm::support::endian::read32le(data.data() + 12));
+      auto [it, inserted] = self.names.try_emplace(
+          std::move(key), NativeOwner(global.str(), filename.str()));
+      if (!inserted)
+        it->second = {}; // A coalesced/ambiguous address cannot prove identity.
+      if (self.names.size() > 65536) {
+        self.invalid = true;
+        return;
+      }
+    }
+  }
+};
+#endif
+
 struct Ref {
   unsigned section;
   Elf64_Rela r;
@@ -244,77 +300,101 @@ struct Check {
   LLVMMemoryBufferRef result = nullptr;
   unsigned calls = 0;
   int check(StringRef raw) {
-    ++calls;
-    if (calls != 1)
+    if (++calls != 1)
       return 0;
-    auto j = llvm::json::parse(raw);
-    if (!j) {
-      llvm::consumeError(j.takeError());
+    auto proposed = llvm::json::parse(raw);
+    auto enrolled = llvm::json::parse(roster);
+    if (!proposed || !enrolled) {
+      if (!proposed)
+        llvm::consumeError(proposed.takeError());
+      if (!enrolled)
+        llvm::consumeError(enrolled.takeError());
       return 0;
     }
-    auto *arr = j->getAsArray();
-    if (!arr || arr->size() != 1)
-      return 0;
-    auto *o = (*arr)[0].getAsObject();
-    if (!o)
-      return 0;
-    auto global = o->getString("global");
-    if (!global)
-      return 0;
-    std::string fixed;
-    if (global->empty()) {
-      auto file = o->getString("file");
-      auto before = o->getInteger("old_line"),
-           after = o->getInteger("new_line");
-      auto fglobal = o->getString("file_global");
-      auto *column = o->get("column");
-      if (!file || !before || !after || *before < 0 || *before > UINT32_MAX ||
-          *after < 0 || *after > UINT32_MAX || !fglobal || !fglobal->empty() ||
-          !column || column->kind() != llvm::json::Value::Null)
+    const auto *legacy = enrolled->getAsArray();
+    const llvm::json::Array *named = nullptr;
+    if (!legacy) {
+      const auto *v = enrolled->getAsObject();
+      if (!v || v->getInteger("version") != 2 ||
+          !(legacy = v->getArray("returned")) ||
+          !(named = v->getArray("native")) || named->size() > 65536)
         return 0;
-      auto listed = llvm::json::parse(roster);
-      if (!listed) {
-        llvm::consumeError(listed.takeError());
-        return 0;
-      }
-      auto *ls = listed->getAsArray();
-      if (!ls)
-        return 0;
-      std::optional<StringRef> own;
-      for (auto &v : *ls) {
-        auto *x = v.getAsObject();
-        if (!x)
+    }
+    std::map<std::tuple<StringRef, uint32_t, uint32_t>,
+             std::pair<StringRef, StringRef>> positions;
+    if (named) {
+      for (const auto &v : *named) {
+        const auto *row = v.getAsArray();
+        if (!row || row->size() != 5)
           return 0;
-        if (x->getString("file") == file && x->getInteger("line") == before) {
-          if (own)
-            return 0;
-          own = x->getString("owner");
-          if (!own)
-            return 0;
-        }
+        auto path = (*row)[0].getAsString(), global = (*row)[3].getAsString(),
+             filename = (*row)[4].getAsString();
+        auto line = (*row)[1].getAsInteger(), col = (*row)[2].getAsInteger();
+        if (!path || !line || *line <= 0 || *line > UINT32_MAX || !col ||
+            *col < 0 || *col > UINT32_MAX || !global || !filename ||
+            !privateName(*global) || !privateName(*filename) ||
+            !positions.emplace(std::make_tuple(*path, *line, *col),
+                               std::make_pair(*global, *filename)).second)
+          return 0;
       }
-      char now[4096];
-      if (!own ||
-          !returnOwner(current, file->str().c_str(), *after, now,
-                       sizeof(now)) ||
-          *own != StringRef(now))
+    }
+    auto *rows = proposed->getAsArray();
+    if (!rows || rows->empty() || rows->size() > 65536)
+      return 0;
+    for (auto &row : *rows) {
+      auto *o = row.getAsObject();
+      if (!o)
+        return 0;
+      auto global = o->getString("global");
+      if (!global)
+        return 0;
+      if (!global->empty())
+        continue;
+      auto file = o->getString("file"), fileGlobal = o->getString("file_global");
+      auto before = o->getInteger("old_line"), after = o->getInteger("new_line");
+      if (!file || !before || *before < 1 || *before > UINT32_MAX || !after ||
+          *after < 1 || *after > UINT32_MAX || !fileGlobal || !fileGlobal->empty())
         return 0;
       StringRef record, filename;
-      if (!resolve(native, *own, record, filename))
-        return 0;
+      if (auto col = o->getInteger("column")) {
+        if (*col < 0 || *col > UINT32_MAX)
+          return 0;
+        auto it = positions.find(std::make_tuple(*file, *before, *col));
+        if (it == positions.end())
+          return 0;
+        std::tie(record, filename) = it->second;
+      } else {
+        const auto *column = o->get("column");
+        if (!column || column->kind() != llvm::json::Value::Null)
+          return 0;
+        std::optional<StringRef> owner;
+        for (const auto &r : *legacy) {
+          const auto *x = r.getAsObject();
+          if (!x)
+            return 0;
+          if (x->getString("file") == file && x->getInteger("line") == before) {
+            if (owner || !(owner = x->getString("owner")))
+              return 0;
+          }
+        }
+        char now[4096];
+        if (!owner || !returnOwner(current, file->str().c_str(), *after, now,
+                                    sizeof(now)) || *owner != now ||
+            !resolve(native, *owner, record, filename))
+          return 0;
+      }
       (*o)["global"] = record.str();
       (*o)["file_global"] = filename.str();
-      llvm::raw_string_ostream(fixed) << *j;
-      raw = fixed;
     }
+    std::string fixed;
+    llvm::raw_string_ostream(fixed) << *proposed;
     const char *reason = nullptr;
-    int rc = ohm_debug_rebase_locations_v1(
-        mapping.data(), mapping.size(), raw.data(), raw.size(), native.data(),
-        native.size(), &result, &reason);
-    if (rc != 0 || !result)
-      return 0;
-    return 1;
+    return ohm_debug_rebase_locations_v1(mapping.data(), mapping.size(),
+                                         fixed.data(), fixed.size(), native.data(),
+                                         native.size(), &result, &reason) == 0 &&
+           result;
   }
+
 };
 int callback(void *ctx, const char *p, size_t n) {
   return static_cast<Check *>(ctx)->check(StringRef(p, n));
@@ -362,7 +442,7 @@ std::set<SourceKey> sourceKeys(const llvm::Module &M) {
     if (!R || !G.getInitializer()->hasOneUse() ||
         G.getInitializer()->isUsedByMetadata())
       continue;
-    bool Usable = R->HasColumn ? G.hasName() && R->File->hasName() &&
+    bool Usable = R->HasColumn ? G.hasName() == R->File->hasName() &&
                                      llvm::ohm_location::addressOnly(G)
                                : llvm::ohm_location::returnedAddress(G);
     if (Usable)
@@ -543,3 +623,49 @@ extern "C" LLVMRustBuffer *LLVMRustDwarfTypedMatch(LLVMModuleRef, const char *,
   return nullptr;
 }
 #endif
+
+extern "C" void *LLVMRustDwarfStartEmittedNames(LLVMModuleRef m) {
+#ifdef OHM_EMITTED_GLOBALS
+  return new EmittedNames(*llvm::unwrap(m));
+#else
+  return nullptr;
+#endif
+}
+
+extern "C" void LLVMRustDwarfDropEmittedNames(void *capture) {
+#ifdef OHM_EMITTED_GLOBALS
+  delete static_cast<EmittedNames *>(capture);
+#endif
+}
+
+extern "C" LLVMRustBuffer *LLVMRustDwarfFinishEmittedNames(
+    void *capture, const char *returned, size_t size) {
+#ifdef OHM_EMITTED_GLOBALS
+  const auto &names = *static_cast<EmittedNames *>(capture);
+  if (!names.seen || names.invalid || names.names.empty())
+    return nullptr;
+  auto old = llvm::json::parse(StringRef(returned, size));
+  if (!old) {
+    llvm::consumeError(old.takeError());
+    return nullptr;
+  }
+  if (!old->getAsArray())
+    return nullptr;
+  llvm::json::Array native;
+  for (const auto &[key, pair] : names.names) {
+    if (pair.first.empty())
+      continue;
+    const auto &[path, line, column] = key;
+    native.emplace_back(llvm::json::Array{
+        path, int64_t(line), int64_t(column), pair.first, pair.second});
+  }
+  if (native.empty())
+    return nullptr;
+  auto out = std::make_unique<LLVMRustBuffer>();
+  llvm::raw_string_ostream(out->data) << llvm::json::Value(llvm::json::Object{
+      {"version", 2}, {"returned", std::move(*old)}, {"native", std::move(native)}});
+  return out.release();
+#else
+  return nullptr;
+#endif
+}
