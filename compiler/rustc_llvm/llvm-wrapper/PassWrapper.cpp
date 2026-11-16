@@ -1636,6 +1636,38 @@ extern "C" bool LLVMRustCanReplayDwarfLineScopes() {
 #endif
 }
 
+// Ohm's LLVM supplies this checked writer. An older or system ELF provider
+// continues through the ordinary backend for modules containing assembly.
+#if defined(__linux__) && defined(__x86_64__)
+namespace llvm {
+bool hasOnlyX86RegisterCommentAsmV1(const Module &) __attribute__((weak));
+bool writeX86RegisterCommentDwarfCertificateV1(const Module &, raw_ostream &)
+    __attribute__((weak));
+} // namespace llvm
+#endif
+
+extern "C" bool LLVMRustHasOnlyX86RegisterCommentAsm(LLVMModuleRef M) {
+#if defined(__linux__) && defined(__x86_64__)
+  return llvm::hasOnlyX86RegisterCommentAsmV1 &&
+         llvm::writeX86RegisterCommentDwarfCertificateV1 &&
+         llvm::hasOnlyX86RegisterCommentAsmV1(*unwrap(M));
+#else
+  return false;
+#endif
+}
+
+extern "C" LLVMRustBuffer *LLVMRustDwarfRegisterCommentCertificate(LLVMModuleRef M) {
+#if defined(__linux__) && defined(__x86_64__)
+  if (llvm::writeX86RegisterCommentDwarfCertificateV1) {
+    auto Buffer = std::make_unique<LLVMRustBuffer>();
+    llvm::raw_string_ostream OS(Buffer->data);
+    if (llvm::writeX86RegisterCommentDwarfCertificateV1(*unwrap(M), OS))
+      return Buffer.release();
+  }
+#endif
+  return nullptr;
+}
+
 extern "C" LLVMRustBuffer *LLVMRustDwarfLineCertificate(LLVMModuleRef M) {
 #ifdef LLVM_OHM_CLOSED_DWARF_LINE_CERTIFICATE_V1
   auto Buffer = std::make_unique<LLVMRustBuffer>();
