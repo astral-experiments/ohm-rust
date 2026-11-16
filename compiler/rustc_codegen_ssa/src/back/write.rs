@@ -332,6 +332,16 @@ pub type TargetMachineFactoryFn<B> = Arc<
 >;
 
 /// Additional resources used by optimize_and_codegen (not module specific)
+/// A local file identity supplied by the frontend that produced the debug info.
+/// The bytes are fetched lazily and must still match the frontend's source hash.
+#[derive(Clone, Encodable, Decodable)]
+pub struct DwarfSourceFile {
+    pub directory: String,
+    pub filename: String,
+    pub path: PathBuf,
+    pub hash: rustc_span::SourceFileHash,
+}
+
 #[derive(Clone, Encodable, Decodable)]
 pub struct CodegenContext {
     // Resources needed when running LTO
@@ -370,6 +380,7 @@ pub struct CodegenContext {
     /// Per-output cache of quiet non-LTO objects following a foreign-span observation.
     pub observer_object_cache: Option<(PathBuf, Fingerprint)>,
     pub dwarf_line_cache: Option<Fingerprint>,
+    pub dwarf_typed_sources: Arc<Vec<DwarfSourceFile>>,
     /// Native emission can start in a fresh target machine for this primary package.
     pub try_optimized_dwarf: bool,
     /// `Some(limit)` if the codegen should be run in parallel.
@@ -1479,6 +1490,27 @@ fn start_executing_work<B: WriteBackendMethods>(
     })
     .flatten();
 
+    let mut dwarf_typed_sources = Vec::new();
+    if dwarf_line_cache.is_some()
+        && sess.split_debuginfo() == rustc_target::spec::SplitDebuginfo::Off
+    {
+        for file in sess.source_map().files().iter() {
+            let rustc_span::FileName::Real(name) = &file.name else { continue };
+            let Some(path) = name.local_path() else { continue };
+            if file.src.is_none() {
+                continue;
+            }
+            let (directory, filename) = name.debuginfo_directory_and_filename();
+            if let (Some(directory), Some(filename)) = (directory.to_str(), filename.to_str()) {
+                dwarf_typed_sources.push(DwarfSourceFile {
+                    directory: directory.to_owned(),
+                    filename: filename.to_owned(),
+                    path: path.to_owned(),
+                    hash: file.src_hash,
+                });
+            }
+        }
+    }
     let cgcx = CodegenContext {
         crate_types: tcx.crate_types().to_vec(),
         lto: sess.lto(),
@@ -1497,6 +1529,7 @@ fn start_executing_work<B: WriteBackendMethods>(
         thinlto_cache_dir,
         observer_object_cache,
         dwarf_line_cache,
+        dwarf_typed_sources: Arc::new(dwarf_typed_sources),
         try_optimized_dwarf,
         output_filenames: Arc::clone(tcx.output_filenames(())),
         module_config: regular_config,

@@ -17,15 +17,17 @@ use crate::{ModuleLlvm, llvm};
 
 const MAGIC: &[u8; 8] = b"OHMDWLF5";
 const EMBEDDED_MAGIC: &[u8; 8] = b"OHMDWLE3";
+// An embedded record whose only authority is the complete normalized proof.
+const NORMALIZED_MAGIC: &[u8; 8] = b"OHMDWLN1";
 const MAXIMUM: usize = 128 * 1024 * 1024;
 
-fn digest(bytes: &[u8]) -> [u8; 32] {
+pub(super) fn digest(bytes: &[u8]) -> [u8; 32] {
     let mut result = [0; 32];
     unsafe { llvm::LLVMRustDwarfDigest(bytes.as_ptr(), bytes.len(), result.as_mut_ptr()) };
     result
 }
 
-fn read_file(path: &Path) -> Option<Vec<u8>> {
+pub(super) fn open_file(path: &Path) -> Option<(File, usize)> {
     let mut options = File::options();
     options.read(true);
     #[cfg(unix)]
@@ -35,14 +37,23 @@ fn read_file(path: &Path) -> Option<Vec<u8>> {
     if !metadata.is_file() || metadata.len() > MAXIMUM as u64 {
         return None;
     }
-    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    Some((file, metadata.len() as usize))
+}
+
+pub(super) fn read_file(path: &Path) -> Option<Vec<u8>> {
+    let (file, size) = open_file(path)?;
+    let mut bytes = Vec::with_capacity(size);
     file.take(MAXIMUM as u64 + 1).read_to_end(&mut bytes).ok()?;
     (bytes.len() <= MAXIMUM).then_some(bytes)
 }
 
 fn read_certificate(path: &Path, magic: &[u8; 8], configuration: Fingerprint) -> Option<Vec<u8>> {
     let mut bytes = read_file(path)?;
-    if bytes.len() < 124 || bytes[..8] != magic[..] || bytes[8..24] != configuration.to_le_bytes() {
+    if bytes.len() < 124
+        || (bytes[..8] != magic[..]
+            && !(magic == EMBEDDED_MAGIC && bytes[..8] == NORMALIZED_MAGIC[..]))
+        || bytes[8..24] != configuration.to_le_bytes()
+    {
         return None;
     }
     let integrity: [u8; 32] = bytes[24..56].try_into().ok()?;
@@ -121,25 +132,34 @@ impl Entry {
                 )
             }
             SplitDebuginfo::Off => {
-                let mut exact = [0; 32];
-                if !unsafe {
-                    llvm::LLVMRustClosedModuleHash(module.module_llvm.llmod(), exact.as_mut_ptr())
-                } {
-                    return None;
-                }
-                // An equal raw input can carry its existing line proof forward.
-                // This also avoids serializing the same module a second time.
-                let lines = if let Some(old) = &previous
-                    && old[88..120] == exact
-                    && let Some((before, _)) = proofs(old)
+                let (exact, lines) = if unsafe { llvm::LLVMRustCanReplayDwarfLineScopes() }
+                    && let Some(lines) = line_proof(module.module_llvm.llmod(), MAXIMUM - 124)
                 {
-                    before.to_owned()
-                } else if unsafe { llvm::LLVMRustCanReplayDwarfLineScopes() } {
-                    line_proof(module.module_llvm.llmod(), MAXIMUM - 124).unwrap_or_default()
+                    // A matching normalized proof still passes through the full native-object
+                    // and DWARF validators in replay. No synthetic exact key is stored.
+                    (None, lines)
                 } else {
-                    Vec::new()
+                    let mut exact = [0; 32];
+                    if !unsafe {
+                        llvm::LLVMRustClosedModuleHash(
+                            module.module_llvm.llmod(),
+                            exact.as_mut_ptr(),
+                        )
+                    } {
+                        return None;
+                    }
+                    let lines = previous
+                        .as_ref()
+                        .and_then(|old| {
+                            (old[..8] == EMBEDDED_MAGIC[..] && old[88..120] == exact)
+                                .then(|| proofs(old))
+                                .flatten()
+                                .map(|(before, _)| before.to_owned())
+                        })
+                        .unwrap_or_default();
+                    (Some(exact), lines)
                 };
-                (&*cgcx.output_filenames, None, Some(exact), lines)
+                (&*cgcx.output_filenames, None, exact, lines)
             }
             _ => return None,
         };
@@ -158,7 +178,13 @@ impl Entry {
     }
 
     fn magic(&self) -> &[u8; 8] {
-        if self.exact.is_some() { EMBEDDED_MAGIC } else { MAGIC }
+        if self.split.is_some() {
+            MAGIC
+        } else if self.exact.is_some() {
+            EMBEDDED_MAGIC
+        } else {
+            NORMALIZED_MAGIC
+        }
     }
 
     pub(super) fn load(&self) -> Option<CompiledModule> {
@@ -178,8 +204,9 @@ impl Entry {
         let bytes = self.previous.as_deref()?;
         let (before, after) = proofs(bytes)?;
         let secondary = bytes.get(88..120)?;
-        let exact_hit =
-            !after_optimization && self.exact.as_ref().is_some_and(|hash| secondary == hash);
+        let exact_hit = !after_optimization
+            && bytes[..8] == EMBEDDED_MAGIC[..]
+            && self.exact.as_ref().is_some_and(|hash| secondary == hash);
         let changes = if exact_hit {
             None
         } else if after_optimization {
@@ -225,7 +252,15 @@ impl Entry {
         if after_optimization {
             tracing::info!("ohm_dwarf_postopt_hit {}", self.name);
         }
-        let module = CompiledModule {
+        let module = self.compiled(dwarf_object);
+        if !exact_hit {
+            self.store(&module);
+        }
+        Some(module)
+    }
+
+    fn compiled(&self, dwarf_object: Option<PathBuf>) -> CompiledModule {
+        CompiledModule {
             name: self.name.clone(),
             kind: ModuleKind::Regular,
             object: Some(self.object.clone()),
@@ -235,10 +270,36 @@ impl Entry {
             assembly: None,
             llvm_ir: None,
             links_from_incr_cache: Vec::new(),
-        };
-        if !exact_hit {
-            self.store(&module);
         }
+    }
+
+    pub(super) fn typed_session(&self) -> Option<(&Path, [u8; 16], &str, bool)> {
+        if self.split.is_some() || self.magic() != NORMALIZED_MAGIC {
+            return None;
+        }
+        Some((
+            self.certificate.parent()?,
+            self.configuration.to_le_bytes(),
+            &self.name,
+            self.previous.is_none(),
+        ))
+    }
+
+    pub(super) fn bound_donor(&self) -> Option<Vec<u8>> {
+        let expected = self.previous.as_ref()?.get(56..88)?;
+        let object = read_file(&self.donor_object)?;
+        (expected == digest(&object)).then_some(object)
+    }
+
+    pub(super) fn install_typed(&self, bytes: &[u8]) -> Option<CompiledModule> {
+        let temp =
+            TempDirBuilder::new().prefix("ohm-dwarf-").tempdir_in(self.object.parent()?).ok()?;
+        let staged = temp.path().join("object");
+        fs::write(&staged, bytes).ok()?;
+        fs::rename(staged, &self.object).ok()?;
+        let module = self.compiled(None);
+        self.store(&module);
+        tracing::info!("ohm_dwarf_typed_hit {}", self.name);
         Some(module)
     }
 
@@ -254,6 +315,7 @@ impl Entry {
         let secondary = match (self.exact, module.dwarf_object.as_deref()) {
             (Some(hash), None) => hash,
             (None, Some(path)) => digest(&read_file(path)?),
+            (None, None) if self.split.is_none() => [0u8; 32],
             _ => return None,
         };
         let optimized = self.optimized.as_deref().unwrap_or_default();

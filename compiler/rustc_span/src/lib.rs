@@ -420,6 +420,16 @@ impl RealFileName {
         }
     }
 
+    /// The two path fields written to a DWARF `DIFile`. Splitting a remapped path
+    /// at the working directory also keeps relative remapped paths unambiguous.
+    pub fn debuginfo_directory_and_filename(&self) -> (&Path, &Path) {
+        let (directory, name) = self.embeddable_name(RemapPathScopeComponents::DEBUGINFO);
+        match name.strip_prefix(directory) {
+            Ok(relative) => (directory, relative),
+            Err(_) => (Path::new(""), name),
+        }
+    }
+
     /// Returns the path suitable for reading from the file system on the local host,
     /// if this information exists.
     ///
