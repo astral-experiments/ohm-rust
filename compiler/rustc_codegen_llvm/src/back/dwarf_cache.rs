@@ -32,7 +32,9 @@ fn has_exact_key(bytes: &[u8]) -> bool {
 }
 
 fn decline_changed_roster(path: &Path, previous: Option<&[u8]>, roster: Option<u64>) -> bool {
-    let (Some(old), Some(current)) = (previous, roster) else { return false };
+    let (Some(old), Some(current)) = (previous, roster) else {
+        return false;
+    };
     // Unlink only this session's inherited receipt. An absent receipt enrolls
     // the next dirty generation. Failed unlinks take the ordinary lookup path.
     has_roster(old) && !old.ends_with(&current.to_le_bytes()) && fs::remove_file(path).is_ok()
@@ -66,7 +68,12 @@ pub(super) fn read_file(path: &Path) -> Option<Vec<u8>> {
 
 fn read_certificate(path: &Path, magic: &[u8; 8], configuration: Fingerprint) -> Option<Vec<u8>> {
     let mut bytes = read_file(path)?;
-    let min_size = 124 + if has_roster(&bytes) { size_of::<u64>() } else { 0 };
+    let min_size = 124
+        + if has_roster(&bytes) {
+            size_of::<u64>()
+        } else {
+            0
+        };
     if bytes.len() < min_size
         || (bytes[..8] != magic[..]
             && !(magic == EMBEDDED_MAGIC
@@ -82,8 +89,21 @@ fn read_certificate(path: &Path, magic: &[u8; 8], configuration: Fingerprint) ->
 
 fn proofs(bytes: &[u8]) -> Option<(&[u8], &[u8])> {
     let before = u32::from_le_bytes(bytes.get(120..124)?.try_into().ok()?) as usize;
-    let end = bytes.len().checked_sub(if has_roster(bytes) { size_of::<u64>() } else { 0 })?;
+    let end = bytes.len().checked_sub(if has_roster(bytes) {
+        size_of::<u64>()
+    } else {
+        0
+    })?;
     bytes.get(124..end)?.split_at_checked(before)
+}
+
+fn reusable_exact_proof<'a>(old: &'a [u8], exact: &[u8; 32], budget: usize) -> Option<&'a [u8]> {
+    if !has_exact_key(old) || old.get(88..120)? != exact {
+        return None;
+    }
+    let (before, _) = proofs(old)?;
+    // A legacy receipt can devote the new roster footer's eight bytes to its proof.
+    (before.len() <= budget).then_some(before)
 }
 
 pub(super) struct Entry {
@@ -141,8 +161,11 @@ impl Entry {
 
         let session = cgcx.incr_comp_session_dir.as_deref()?;
         let certificate = session.join(format!("{}.dwarf-lines", module.name));
-        let magic =
-            if cgcx.split_debuginfo == SplitDebuginfo::Off { EMBEDDED_MAGIC } else { MAGIC };
+        let magic = if cgcx.split_debuginfo == SplitDebuginfo::Off {
+            EMBEDDED_MAGIC
+        } else {
+            MAGIC
+        };
         let previous = read_certificate(&certificate, magic, configuration);
         let roster = (cgcx.split_debuginfo == SplitDebuginfo::Off
             && !register_comment
@@ -151,7 +174,13 @@ impl Entry {
         if decline_changed_roster(&certificate, previous.as_deref(), roster) {
             return None;
         }
-        let budget = MAXIMUM - 124 - if roster.is_some() { size_of::<u64>() } else { 0 };
+        let budget = MAXIMUM
+            - 124
+            - if roster.is_some() {
+                size_of::<u64>()
+            } else {
+                0
+            };
         let stable_outputs;
         let (outputs, split, exact, proof) = match cgcx.split_debuginfo {
             SplitDebuginfo::Unpacked
@@ -165,7 +194,12 @@ impl Entry {
                     session.join(format!("{}.dwo", module.name)),
                     stable_outputs.temp_path_dwo_for_cgu(&module.name),
                 );
-                (&stable_outputs, Some(split), None, line_proof(llmod, budget, false)?)
+                (
+                    &stable_outputs,
+                    Some(split),
+                    None,
+                    line_proof(llmod, budget, false)?,
+                )
             }
             SplitDebuginfo::Off => {
                 let (exact, lines) = if register_comment {
@@ -187,14 +221,10 @@ impl Entry {
                         return None;
                     }
                     let lines = previous
-                        .as_ref()
-                        .and_then(|old| {
-                            (has_exact_key(old) && old[88..120] == exact)
-                                .then(|| proofs(old))
-                                .flatten()
-                                .map(|(before, _)| before.to_owned())
-                        })
-                        .unwrap_or_default();
+                        .as_deref()
+                        .and_then(|old| reusable_exact_proof(old, &exact, budget))
+                        .unwrap_or_default()
+                        .to_owned();
                     (Some(exact), lines)
                 };
                 (&*cgcx.output_filenames, None, exact, lines)
@@ -233,7 +263,11 @@ impl Entry {
         if self.split.is_some() {
             MAGIC
         } else if self.roster.is_some() {
-            if self.exact.is_some() { RAW_ROSTER_MAGIC } else { NORMALIZED_ROSTER_MAGIC }
+            if self.exact.is_some() {
+                RAW_ROSTER_MAGIC
+            } else {
+                NORMALIZED_ROSTER_MAGIC
+            }
         } else if self.exact.is_some() {
             EMBEDDED_MAGIC
         } else {
@@ -246,9 +280,13 @@ impl Entry {
     }
 
     pub(super) fn record_optimized(&mut self, module: &ModuleLlvm) -> Option<()> {
-        let footer = if self.roster.is_some() { size_of::<u64>() } else { 0 };
-        self.optimized =
-            Some(line_proof(module.llmod(), MAXIMUM - 124 - footer - self.proof.len(), false)?);
+        let footer = if self.roster.is_some() {
+            size_of::<u64>()
+        } else {
+            0
+        };
+        let budget = (MAXIMUM - 124 - footer).checked_sub(self.proof.len())?;
+        self.optimized = Some(line_proof(module.llmod(), budget, false)?);
         Some(())
     }
 
@@ -266,7 +304,10 @@ impl Entry {
         let changes = if exact_hit {
             None
         } else if after_optimization {
-            Some(dwarf_certificate::compare(after, self.optimized.as_deref()?)?)
+            Some(dwarf_certificate::compare(
+                after,
+                self.optimized.as_deref()?,
+            )?)
         } else {
             Some(dwarf_certificate::compare(before, &self.proof)?)
         };
@@ -278,8 +319,10 @@ impl Entry {
         if bytes.get(56..88)? != digest(&object) {
             return None;
         }
-        let temp =
-            TempDirBuilder::new().prefix("ohm-dwarf-").tempdir_in(self.object.parent()?).ok()?;
+        let temp = TempDirBuilder::new()
+            .prefix("ohm-dwarf-")
+            .tempdir_in(self.object.parent()?)
+            .ok()?;
         let staged_dwo = if let Some((donor, output)) = &self.split {
             let mut dwo = read_file(donor)?;
             if secondary != digest(&dwo) {
@@ -348,8 +391,10 @@ impl Entry {
     }
 
     pub(super) fn install_typed(&self, bytes: &[u8]) -> Option<CompiledModule> {
-        let temp =
-            TempDirBuilder::new().prefix("ohm-dwarf-").tempdir_in(self.object.parent()?).ok()?;
+        let temp = TempDirBuilder::new()
+            .prefix("ohm-dwarf-")
+            .tempdir_in(self.object.parent()?)
+            .ok()?;
         let staged = temp.path().join("object");
         fs::write(&staged, bytes).ok()?;
         fs::rename(staged, &self.object).ok()?;
@@ -375,8 +420,16 @@ impl Entry {
             _ => return None,
         };
         let optimized = self.optimized.as_deref().unwrap_or_default();
-        let footer = if self.roster.is_some() { size_of::<u64>() } else { 0 };
-        let mut bytes = Vec::with_capacity(124 + self.proof.len() + optimized.len() + footer);
+        let footer = if self.roster.is_some() {
+            size_of::<u64>()
+        } else {
+            0
+        };
+        let size = 124 + self.proof.len() + optimized.len() + footer;
+        if size > MAXIMUM {
+            return None;
+        }
+        let mut bytes = Vec::with_capacity(size);
         bytes.extend(self.magic());
         bytes.extend(self.configuration.to_le_bytes());
         bytes.extend([0; 32]);

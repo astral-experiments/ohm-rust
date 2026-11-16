@@ -2,7 +2,9 @@ use super::*;
 
 #[test]
 fn embedded_receipt_binds_the_input_and_donor_object() {
-    let dir = TempDirBuilder::new().tempdir_in(std::env::temp_dir()).unwrap();
+    let dir = TempDirBuilder::new()
+        .tempdir_in(std::env::temp_dir())
+        .unwrap();
     let mut entry = Entry {
         name: "worker".into(),
         configuration: Fingerprint::ZERO,
@@ -33,8 +35,12 @@ fn embedded_receipt_binds_the_input_and_donor_object() {
     fs::rename(&entry.object, &entry.donor_object).unwrap();
     assert!(read_certificate(&entry.certificate, MAGIC, entry.configuration).is_none());
     assert!(
-        read_certificate(&entry.certificate, EMBEDDED_MAGIC, Fingerprint::from_le_bytes([1; 16]))
-            .is_none()
+        read_certificate(
+            &entry.certificate,
+            EMBEDDED_MAGIC,
+            Fingerprint::from_le_bytes([1; 16])
+        )
+        .is_none()
     );
     entry.previous = read_certificate(&entry.certificate, EMBEDDED_MAGIC, entry.configuration);
     entry.load().unwrap();
@@ -61,7 +67,9 @@ fn embedded_receipt_binds_the_input_and_donor_object() {
 
 #[test]
 fn changed_roster_declines_one_generation_and_preserves_the_old_session() {
-    let dir = TempDirBuilder::new().tempdir_in(std::env::temp_dir()).unwrap();
+    let dir = TempDirBuilder::new()
+        .tempdir_in(std::env::temp_dir())
+        .unwrap();
     let old = dir.path().join("old.dwarf-lines");
     let new = dir.path().join("new.dwarf-lines");
     let mut receipt = vec![0; 124];
@@ -77,4 +85,21 @@ fn changed_roster_declines_one_generation_and_preserves_the_old_session() {
     assert!(!decline_changed_roster(&new, Some(&receipt), Some(10)));
     assert_eq!(proofs(&receipt), Some((&[][..], &[][..])));
     assert!(!has_exact_key(&receipt));
+}
+
+#[test]
+fn migrating_a_legacy_proof_reserves_the_roster_footer() {
+    let mut record = vec![0; 124];
+    record[..8].copy_from_slice(EMBEDDED_MAGIC);
+    record[88..120].fill(19);
+    record[120..124].copy_from_slice(&16_u32.to_le_bytes());
+    record.extend_from_slice(&[3; 16]);
+    assert_eq!(
+        reusable_exact_proof(&record, &[19; 32], 16),
+        Some(&[3; 16][..])
+    );
+    assert!(reusable_exact_proof(&record, &[19; 32], 8).is_none());
+    assert!(reusable_exact_proof(&record, &[20; 32], 16).is_none());
+    record[..8].copy_from_slice(NORMALIZED_MAGIC);
+    assert!(reusable_exact_proof(&record, &[19; 32], 16).is_none());
 }
