@@ -3,11 +3,11 @@ use rustc_codegen_ssa::CompiledModule;
 use rustc_codegen_ssa::back::write::{CodegenContext, DwarfSourceFile};
 
 use super::dwarf_cache::{Entry, read_file};
-use super::dwarf_typed_source as source;
 use super::dwarf_typed_store::{Donor, Packet, Store, take};
+use super::{dwarf_caller, dwarf_typed_source as source};
 use crate::{ModuleLlvm, llvm};
 
-fn buffer(value: Option<&'static mut llvm::Buffer>) -> Option<Vec<u8>> {
+pub(super) fn buffer(value: Option<&'static mut llvm::Buffer>) -> Option<Vec<u8>> {
     let value = value?;
     let size = unsafe { llvm::LLVMRustBufferLen(value) };
     let bytes = (size <= 128 << 20).then(|| unsafe {
@@ -31,7 +31,7 @@ fn replay(
     {
         return None;
     }
-    let (mapping, proof) = source::mapping(donor.sources, files)?;
+    let mapping = source::mapping(donor.sources, files)?;
     // The previous native is a regular work product whose complete hash was
     // checked by the existing line certificate. A two-miss refresh can leave a
     // still-valid, older packet behind. Refuse to pair it with today's `.o`.
@@ -39,21 +39,42 @@ fn replay(
         return None;
     }
     let mut next = None;
-    let result = unsafe {
-        llvm::LLVMRustDwarfTypedMatchAndSnapshot(
-            m,
-            donor.ordered.as_ptr(),
-            donor.ordered.len(),
-            donor.owners.as_ptr(),
-            donor.owners.len(),
-            mapping.as_ptr(),
-            mapping.len(),
-            proof.as_ptr(),
-            proof.len(),
-            donor.object.as_ptr(),
-            donor.object.len(),
-            &mut next,
-        )
+    let result = if dwarf_caller::is_projected(donor.ordered) {
+        let current = entry.caller.as_deref()?;
+        let changes = dwarf_caller::changes(donor.ordered, current, &mapping)?;
+        unsafe {
+            llvm::LLVMRustDwarfApplyCallerChanges(
+                m,
+                current.as_ptr(),
+                current.len(),
+                donor.owners.as_ptr(),
+                donor.owners.len(),
+                mapping.bytes.as_ptr(),
+                mapping.bytes.len(),
+                changes.as_ptr(),
+                changes.len(),
+                donor.object.as_ptr(),
+                donor.object.len(),
+                &mut next,
+            )
+        }
+    } else {
+        unsafe {
+            llvm::LLVMRustDwarfTypedMatchAndSnapshot(
+                m,
+                donor.ordered.as_ptr(),
+                donor.ordered.len(),
+                donor.owners.as_ptr(),
+                donor.owners.len(),
+                mapping.bytes.as_ptr(),
+                mapping.bytes.len(),
+                mapping.witness.as_ptr(),
+                mapping.witness.len(),
+                donor.object.as_ptr(),
+                donor.object.len(),
+                &mut next,
+            )
+        }
     };
     let next = buffer(next);
     let result = buffer(result)?;
@@ -66,8 +87,19 @@ fn replay(
     Some(compiled)
 }
 
-fn snapshot(module: &ModuleLlvm, files: &[DwarfSourceFile]) -> Option<Packet> {
-    let bytes = buffer(unsafe { llvm::LLVMRustDwarfTypedSnapshot(module.llmod()) })?;
+fn snapshot(
+    module: &ModuleLlvm,
+    files: &[DwarfSourceFile],
+    caller: Option<&[u8]>,
+) -> Option<Packet> {
+    let bytes = buffer(unsafe {
+        match caller {
+            Some(proof) => {
+                llvm::LLVMRustDwarfProjectedSnapshot(module.llmod(), proof.as_ptr(), proof.len())
+            }
+            None => llvm::LLVMRustDwarfTypedSnapshot(module.llmod()),
+        }
+    })?;
     packet(&bytes, files)
 }
 
@@ -142,7 +174,8 @@ impl Attempt {
             return (Some(compiled), None);
         }
         let update = if store.should_enroll(cold) {
-            let Some(packet) = snapshot(module, &cgcx.dwarf_typed_sources) else {
+            let Some(packet) = snapshot(module, &cgcx.dwarf_typed_sources, entry.caller.as_deref())
+            else {
                 return (None, None);
             };
             Update::Enroll(packet, None)

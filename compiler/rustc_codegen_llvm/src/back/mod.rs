@@ -1,5 +1,6 @@
 pub(crate) mod archive;
 mod dwarf_cache;
+mod dwarf_caller;
 mod dwarf_certificate;
 mod dwarf_patch;
 mod dwarf_typed;
