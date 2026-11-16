@@ -2569,6 +2569,22 @@ unsafe extern "C" {
     pub(crate) fn LLVMRustCanReplayDwarfLineScopes() -> bool;
     pub(crate) fn LLVMRustHasDwarfLineCertificate() -> bool;
     pub(crate) fn LLVMRustReadBackObjectModule(M: &Module, C: &Context) -> Option<&'static Module>;
+    pub(crate) fn LLVMRustDwarfTypedShape(M: &Module, TM: &TargetMachine, shape: *mut u64) -> bool;
+    pub(crate) fn LLVMRustDwarfTypedContext(M: &Module, digest: *mut u8) -> bool;
+    pub(crate) fn LLVMRustDwarfTypedSnapshot(M: &Module) -> Option<&'static mut Buffer>;
+    pub(crate) fn LLVMRustDwarfTypedMatch(
+        M: &Module,
+        ordered: *const u8,
+        ordered_len: usize,
+        owners: *const u8,
+        owners_len: usize,
+        mapping: *const u8,
+        mapping_len: usize,
+        witness: *const u8,
+        witness_len: usize,
+        object: *const u8,
+        object_len: usize,
+    ) -> Option<&'static mut Buffer>;
     pub(crate) fn LLVMRustDwarfLineCertificate(M: &Module) -> Option<&'static mut Buffer>;
     pub(crate) fn LLVMRustDwarfDigest(data: *const u8, size: usize, digest: *mut u8);
     pub(crate) fn LLVMRustModuleSerialize(M: &Module, is_thin: bool) -> &'static mut Buffer;

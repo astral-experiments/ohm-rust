@@ -115,7 +115,7 @@ fn mapped(files: &Files<'_>, file: usize, value: i64) -> Option<i64> {
     }
 }
 
-fn lines<'a>(data: &mut [u8], map: &'a LineMap) -> Option<Files<'a>> {
+fn line_header<'a>(data: &[u8], map: &'a LineMap) -> Option<(Files<'a>, usize)> {
     if number(data, 0, 4)? + 4 != data.len() as u64 || number(data, 4, 2)? != 4 {
         return None;
     }
@@ -145,7 +145,11 @@ fn lines<'a>(data: &mut [u8], map: &'a LineMap) -> Option<Files<'a>> {
     if p + 1 != start {
         return None;
     }
-    p = start;
+    Some((files, start))
+}
+
+fn lines<'a>(data: &mut [u8], map: &'a LineMap) -> Option<Files<'a>> {
+    let (files, mut p) = line_header(data, map)?;
     let (mut orig, mut new, mut file) = (1i64, 1i64, 1usize);
     let mut editable = None;
     while p < data.len() {
@@ -215,6 +219,249 @@ fn lines<'a>(data: &mut [u8], map: &'a LineMap) -> Option<Files<'a>> {
         }
     }
     (p == data.len()).then_some(files)
+}
+
+// LLVM's ordinary x86-64 DWARF4 line encoding uses a 14-line range with base -5.
+fn append_leb(mut value: i64, signed: bool, out: &mut Vec<u8>) {
+    loop {
+        let low = (value & 127) as u8;
+        value >>= 7;
+        let done = if signed {
+            (value == 0 && low & 64 == 0) || (value == -1 && low & 64 != 0)
+        } else {
+            value == 0
+        };
+        out.push(if done { low } else { low | 128 });
+        if done {
+            break;
+        }
+    }
+}
+
+fn encode_row(mut line: i64, address: i64, end: bool, out: &mut Vec<u8>) -> Option<()> {
+    if address < 0 || (end && line != 0) {
+        return None;
+    }
+    if end {
+        match address {
+            0 => {}
+            17 => out.push(8),
+            _ => {
+                out.push(2);
+                append_leb(address, false, out);
+            }
+        }
+        out.extend_from_slice(&[0, 1, 1]);
+        return Some(());
+    }
+    let advance_line = !(-5..9).contains(&line);
+    if advance_line {
+        out.push(3);
+        append_leb(line, true, out);
+        line = 0;
+    }
+    if line == 0 && address == 0 {
+        out.push(1);
+        return Some(());
+    }
+    let first = 18 + line;
+    if address < 273 {
+        if let Ok(byte) = u8::try_from(first + address * 14) {
+            out.push(byte);
+            return Some(());
+        }
+        if let Ok(byte) = u8::try_from(first + (address - 17) * 14) {
+            out.extend_from_slice(&[8, byte]);
+            return Some(());
+        }
+    }
+    out.push(2);
+    append_leb(address, false, out);
+    out.push(if advance_line { 1 } else { first as u8 });
+    Some(())
+}
+
+fn canonical_program(
+    data: &[u8],
+    files: &Files<'_>,
+    mut p: usize,
+    mut relocated: std::collections::BTreeSet<usize>,
+) -> Option<Vec<u8>> {
+    let mut out = data.get(..p)?.to_vec();
+    let (mut old, mut new, mut file) = (1i64, 1i64, 1usize);
+    let mut check = Vec::with_capacity(24);
+    while p < data.len() {
+        let row = p;
+        let op = *data.get(p)?;
+        p += 1;
+        match op {
+            4 | 5 | 12 => {
+                let arg = leb(data, &mut p, false)?;
+                if op == 4 {
+                    file = arg.try_into().ok()?;
+                }
+                out.extend_from_slice(data.get(row..p)?);
+                continue;
+            }
+            6 | 7 | 10 | 11 => {
+                out.push(op);
+                continue;
+            }
+            0 => {
+                let len = usize::try_from(leb(data, &mut p, false)?).ok()?;
+                let ext = *data.get(p)?;
+                if matches!(ext, 2 | 4) {
+                    if len == 0
+                        || (ext == 2
+                            && (len != 9
+                                || out.len() != row
+                                || !relocated.remove(&p.checked_add(1)?)))
+                    {
+                        return None;
+                    }
+                    p = p.checked_add(len)?;
+                    out.extend_from_slice(data.get(row..p)?);
+                    continue;
+                }
+                if ext != 1 {
+                    return None;
+                }
+            }
+            _ => {}
+        }
+        p = row;
+        let mut delta = 0;
+        let mut address = 0i64;
+        if *data.get(p)? == 3 {
+            p += 1;
+            delta = leb(data, &mut p, true)?;
+        }
+        match *data.get(p)? {
+            8 => {
+                p += 1;
+                address = 17;
+            }
+            2 => {
+                p += 1;
+                address = leb(data, &mut p, false)?;
+            }
+            _ => {}
+        }
+        let op = *data.get(p)?;
+        p += 1;
+        let end = op == 0;
+        match op {
+            0 => {
+                if data.get(p..p.checked_add(2)?)? != [1, 1] || delta != 0 {
+                    return None;
+                }
+                p += 2;
+            }
+            1 => {}
+            13.. => {
+                address = address.checked_add(i64::from((op - 13) / 14))?;
+                delta = delta.checked_add(i64::from((op - 13) % 14) - 5)?;
+            }
+            _ => return None,
+        }
+        check.clear();
+        encode_row(delta, address, end, &mut check)?;
+        if data.get(row..p)? != check {
+            return None;
+        }
+        old = old.checked_add(delta)?;
+        let target = mapped(files, file, old)?;
+        encode_row(target.checked_sub(new)?, address, end, &mut out)?;
+        new = target;
+        if end {
+            (old, new, file) = (1, 1, 1);
+        }
+    }
+    (relocated.is_empty() && out.len() == data.len()).then_some(out)
+}
+
+fn line_relocations(data: &[u8], line: Range<usize>) -> Option<std::collections::BTreeSet<usize>> {
+    let at = usize::try_from(number(data, 40, 8)?).ok()?;
+    let count = number(data, 60, 2)? as usize;
+    if number(data, 16, 2)? != 1 || number(data, 58, 2)? != 64 {
+        return None;
+    }
+    let headers = data.get(at..at.checked_add(count.checked_mul(64)?)?)?;
+    let header =
+        |index: usize| headers.get(index.checked_mul(64)?..index.checked_add(1)?.checked_mul(64)?);
+    let bytes = |h: &[u8]| {
+        let p = usize::try_from(number(h, 24, 8)?).ok()?;
+        let size = usize::try_from(number(h, 32, 8)?).ok()?;
+        data.get(p..p.checked_add(size)?)
+    };
+    let mut lines = headers.chunks_exact(64).enumerate().filter(|(_, h)| {
+        number(h, 4, 4) == Some(1)
+            && number(h, 24, 8) == Some(line.start as u64)
+            && number(h, 32, 8) == Some(line.len() as u64)
+    });
+    let index = lines.next()?.0;
+    if lines.next().is_some() {
+        return None;
+    }
+    let mut result = std::collections::BTreeSet::new();
+    for h in headers.chunks_exact(64) {
+        match number(h, 4, 4)? {
+            2 => {
+                if number(h, 56, 8)? != 24 {
+                    return None;
+                }
+                let table = bytes(h)?;
+                if table.len() % 24 != 0 {
+                    return None;
+                }
+                for s in table.chunks_exact(24) {
+                    let sec = number(s, 6, 2)?;
+                    if sec == 0xffff
+                        || (sec == index as u64
+                            && (number(s, 8, 8)? != 0 || number(s, 16, 8)? != 0))
+                    {
+                        return None;
+                    }
+                }
+            }
+            4 => {
+                if number(h, 56, 8)? != 24 {
+                    return None;
+                }
+                let sym = header(number(h, 40, 4)? as usize)?;
+                if number(sym, 4, 4)? != 2 || number(sym, 56, 8)? != 24 {
+                    return None;
+                }
+                let symbols = bytes(sym)?;
+                let entries = bytes(h)?;
+                if entries.len() % 24 != 0 {
+                    return None;
+                }
+                for r in entries.chunks_exact(24) {
+                    let symbol = (number(r, 8, 8)? >> 32) as usize;
+                    let field = symbol.checked_mul(24)?;
+                    let s = symbols.get(field..field.checked_add(24)?)?;
+                    let kind = number(r, 8, 4)?;
+                    if number(h, 44, 4)? == index as u64
+                        && (kind != 1 || !result.insert(usize::try_from(number(r, 0, 8)?).ok()?))
+                    {
+                        return None;
+                    }
+                    if number(s, 6, 2)? == index as u64
+                        && (!matches!(kind, 1 | 10)
+                            || number(r, 16, 8)? != 0
+                            || number(s, 8, 8)? != 0)
+                    {
+                        return None;
+                    }
+                }
+            }
+            // REL, dynamic symbols and extended symbol section indices are outside this layout.
+            9 | 11 | 18 | 19 => return None,
+            _ => {}
+        }
+    }
+    Some(result)
 }
 
 fn abbrevs(data: &[u8]) -> Option<Vec<Vec<(u64, u64)>>> {
@@ -386,7 +633,18 @@ pub(super) fn replay_embedded(object: &mut [u8], map: &LineMap) -> Option<()> {
     }) {
         return None;
     }
-    let files = lines(object.get_mut(o.get(".debug_line")?.clone())?, map)?;
+    let line = o.get(".debug_line")?.clone();
+    let mut bytes = object.get(line.clone())?.to_vec();
+    let files = if let Some(files) = lines(&mut bytes, map) {
+        files
+    } else {
+        let original = &object[line.clone()];
+        let (files, start) = line_header(original, map)?;
+        let relocated = line_relocations(object, line.clone())?;
+        bytes = canonical_program(original, &files, start, relocated)?;
+        files
+    };
+    object.get_mut(line)?.copy_from_slice(&bytes);
     let ab = abbrevs(object.get(o.get(".debug_abbrev")?.clone())?)?;
     info(object.get_mut(o.get(".debug_info")?.clone())?, &ab, &files, UnitKind::Embedded)?
         .is_none()
