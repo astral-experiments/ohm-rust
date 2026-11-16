@@ -267,9 +267,10 @@ struct Check {
       auto before = o->getInteger("old_line"),
            after = o->getInteger("new_line");
       auto fglobal = o->getString("file_global");
+      auto *column = o->get("column");
       if (!file || !before || !after || *before < 0 || *before > UINT32_MAX ||
           *after < 0 || *after > UINT32_MAX || !fglobal || !fglobal->empty() ||
-          !o->getNull("column"))
+          !column || column->kind() != llvm::json::Value::Null)
         return 0;
       auto listed = llvm::json::parse(roster);
       if (!listed) {
