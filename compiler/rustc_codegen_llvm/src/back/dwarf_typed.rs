@@ -52,9 +52,6 @@ fn replay(
             donor.object.len(),
         )
     })?;
-    if result.len() != donor.object.len() {
-        return None;
-    }
     entry.install_typed(&result)
 }
 

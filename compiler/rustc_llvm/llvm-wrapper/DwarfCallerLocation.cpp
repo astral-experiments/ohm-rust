@@ -598,10 +598,11 @@ LLVMRustDwarfTypedMatch(LLVMModuleRef M, const char *Old, size_t N,
     return nullptr;
   std::unique_ptr<LLVMOpaqueMemoryBuffer, decltype(&LLVMDisposeMemoryBuffer)>
       Buf(C.result, LLVMDisposeMemoryBuffer);
-  if (Code != 2 || C.calls != 1 || LLVMGetBufferSize(Buf.get()) != NBinary)
+  const size_t OutputSize = LLVMGetBufferSize(Buf.get());
+  if (Code != 2 || C.calls != 1 || !OutputSize || OutputSize > 128u << 20)
     return nullptr;
   auto Out = std::make_unique<LLVMRustBuffer>();
-  Out->data.assign(LLVMGetBufferStart(Buf.get()), NBinary);
+  Out->data.assign(LLVMGetBufferStart(Buf.get()), OutputSize);
   return Out.release();
 }
 #else
