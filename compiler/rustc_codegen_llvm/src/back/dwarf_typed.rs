@@ -67,8 +67,35 @@ fn snapshot(module: &ModuleLlvm, files: &[DwarfSourceFile]) -> Option<Packet> {
     Some(Packet { context: context.try_into().ok()?, ordered, owners, sources })
 }
 
+struct EmittedNames(std::ptr::NonNull<std::ffi::c_void>);
+
+impl Drop for EmittedNames {
+    fn drop(&mut self) {
+        unsafe { llvm::LLVMRustDwarfDropEmittedNames(self.0.as_ptr()) }
+    }
+}
+
+impl EmittedNames {
+    fn start(module: &ModuleLlvm) -> Option<Self> {
+        std::ptr::NonNull::new(unsafe { llvm::LLVMRustDwarfStartEmittedNames(module.llmod()) })
+            .map(Self)
+    }
+
+    fn bind(&self, packet: &mut Packet) {
+        if let Some(names) = buffer(unsafe {
+            llvm::LLVMRustDwarfFinishEmittedNames(
+                self.0.as_ptr(),
+                packet.owners.as_ptr(),
+                packet.owners.len(),
+            )
+        }) {
+            packet.owners = names;
+        }
+    }
+}
+
 enum Update {
-    Enroll(Packet),
+    Enroll(Packet, Option<EmittedNames>),
     Defer,
 }
 
@@ -106,11 +133,18 @@ impl Attempt {
             let Some(packet) = snapshot(module, &cgcx.dwarf_typed_sources) else {
                 return (None, None);
             };
-            Update::Enroll(packet)
+            Update::Enroll(packet, None)
         } else {
             Update::Defer
         };
         (None, Some(Self { store, update }))
+    }
+
+    /// Bind native names only to the module actually selected for emission.
+    pub(super) fn observe_emission(&mut self, module: &ModuleLlvm) {
+        if let Update::Enroll(_, capture) = &mut self.update {
+            *capture = EmittedNames::start(module);
+        }
     }
 
     /// Publish only after rustc has successfully emitted the same module with no
@@ -121,8 +155,11 @@ impl Attempt {
         }
         let Some(path) = &module.object else { return };
         match self.update {
-            Update::Enroll(packet) => {
+            Update::Enroll(mut packet, names) => {
                 if let Some(object) = read_file(path) {
+                    if let Some(names) = names {
+                        names.bind(&mut packet);
+                    }
                     self.store.publish(&packet, &object);
                 }
             }
