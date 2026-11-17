@@ -666,9 +666,21 @@ impl<O: ForestObligation> ObligationForest<O> {
     /// must be run beforehand to remove any cycles on `Success` nodes.
     #[inline(never)]
     fn compress(&mut self, mut outcome_cb: impl FnMut(&O)) {
+        debug_assert!(self.reused_node_vec.is_empty());
+        // When every node completed, there are no surviving indices to rewrite.
+        // Clearing the active cache also removes keys changed during processing.
+        if self.nodes.iter().all(|node| node.state.get() == NodeState::Done) {
+            for node in &self.nodes {
+                self.done_cache.insert(node.obligation.as_cache_key());
+                outcome_cb(&node.obligation);
+            }
+            self.nodes.clear();
+            self.active_cache.clear();
+            return;
+        }
+
         let orig_nodes_len = self.nodes.len();
         let mut node_rewrites: Vec<_> = std::mem::take(&mut self.reused_node_vec);
-        debug_assert!(node_rewrites.is_empty());
         node_rewrites.extend(0..orig_nodes_len);
         let mut dead_nodes = 0;
 
