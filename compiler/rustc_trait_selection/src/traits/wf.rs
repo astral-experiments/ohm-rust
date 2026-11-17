@@ -15,6 +15,7 @@ use rustc_middle::ty::{
 use rustc_session::diagnostics::feature_err;
 use rustc_span::def_id::{DefId, LocalDefId};
 use rustc_span::{Span, bug, sym};
+use smallvec::SmallVec;
 use tracing::{debug, instrument};
 
 use crate::infer::InferCtxt;
@@ -599,7 +600,7 @@ impl<'a, 'tcx> WfPredicates<'a, 'tcx> {
 
         let tcx = self.tcx();
         let mut head = (def_id, tcx.clauses_of(def_id));
-        let mut inner_levels = Vec::new(); // only allocates if a parent chain exists
+        let mut inner_levels = SmallVec::<[_; 4]>::new();
         while let Some(parent) = head.1.parent {
             inner_levels.push(head);
             head = (parent, tcx.clauses_of(parent));
