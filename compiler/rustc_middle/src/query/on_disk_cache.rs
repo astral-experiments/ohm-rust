@@ -9,7 +9,9 @@ use rustc_data_structures::memmap::Mmap;
 use rustc_data_structures::sync::{HashMapExt, Lock, RwLock};
 use rustc_data_structures::unhash::UnhashMap;
 use rustc_data_structures::unord::{UnordMap, UnordSet};
-use rustc_hir::def_id::{CrateNum, DefId, DefIndex, LOCAL_CRATE, LocalDefId, StableCrateId};
+use rustc_hir::def_id::{
+    CrateNum, DefId, DefIdSet, DefIndex, LOCAL_CRATE, LocalDefId, StableCrateId,
+};
 use rustc_hir::definitions::DefPathHash;
 use rustc_index::IndexVec;
 use rustc_macros::{Decodable, Encodable};
@@ -27,7 +29,7 @@ use rustc_span::{
 use crate::dep_graph::{DepNodeIndex, QuerySideEffect, SerializedDepNodeIndex};
 use crate::mir::interpret::{AllocDecodingSession, AllocDecodingState};
 use crate::mir::{self, interpret};
-use crate::mono::MonoItem;
+use crate::mono::{CodegenUnit, MonoItem};
 use crate::ty::codec::{RefDecodable, TyDecoder, TyEncoder, forward_all_decoder_methods_to};
 use crate::ty::{self, Ty, TyCtxt};
 
