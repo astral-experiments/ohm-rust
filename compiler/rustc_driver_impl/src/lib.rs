@@ -313,6 +313,7 @@ pub fn run_compiler(at_args: &[String], callbacks: &mut (dyn Callbacks + Send)) 
                 return None;
             }
 
+            let mut early_metadata = rustc_metadata::fs::write_early_metadata(tcx);
             tcx.ensure_ok().analysis(());
 
             if callbacks.after_analysis(compiler, tcx) == Compilation::Stop {
@@ -325,7 +326,9 @@ pub fn run_compiler(at_args: &[String], callbacks: &mut (dyn Callbacks + Send)) 
                 }
             }
 
-            let linker = Linker::codegen_and_build_linker(tcx, codegen_backend);
+            tcx.dcx().abort_if_errors();
+            let linker =
+                Linker::codegen_and_build_linker(tcx, codegen_backend, early_metadata.take());
 
             if let Some(metrics_dir) = &sess.opts.unstable_opts.metrics_dir {
                 dump_feature_usage_metrics(tcx, metrics_dir);
