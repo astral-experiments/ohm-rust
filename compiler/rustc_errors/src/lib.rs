@@ -871,6 +871,14 @@ impl<'a> DiagCtxtHandle<'a> {
         self.dcx.inner.borrow_mut().emitter.emit_artifact_notification(path, artifact_type);
     }
 
+    pub fn emit_metadata_artifact_notification(&self, path: &Path, public_api_hash: Option<&str>) {
+        self.dcx
+            .inner
+            .borrow_mut()
+            .emitter
+            .emit_metadata_artifact_notification(path, public_api_hash);
+    }
+
     pub fn emit_timing_section_start(&self, record: TimingRecord) {
         self.dcx.inner.borrow_mut().emitter.emit_timing_section(record, TimingEvent::Start);
     }

@@ -66,6 +66,7 @@ mod abi_map;
 mod base;
 mod consistency;
 mod json;
+mod stable_hash;
 mod tuple;
 
 pub use abi_map::{AbiMap, AbiMapping};
