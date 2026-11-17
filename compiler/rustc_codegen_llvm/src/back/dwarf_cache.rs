@@ -291,16 +291,16 @@ impl Entry {
         (expected == digest(&object)).then_some(object)
     }
 
-    pub(super) fn install_typed(&self, bytes: &[u8]) -> Option<CompiledModule> {
+    pub(super) fn install_typed(&self, bytes: &[u8]) -> Option<(CompiledModule, bool)> {
         let temp =
             TempDirBuilder::new().prefix("ohm-dwarf-").tempdir_in(self.object.parent()?).ok()?;
         let staged = temp.path().join("object");
         fs::write(&staged, bytes).ok()?;
         fs::rename(staged, &self.object).ok()?;
         let module = self.compiled(None);
-        self.store(&module);
+        let stored = self.try_store(&module).is_some();
         tracing::info!("ohm_dwarf_typed_hit {}", self.name);
-        Some(module)
+        Some((module, stored))
     }
 
     pub(super) fn store(&self, module: &CompiledModule) {

@@ -299,6 +299,7 @@ struct Check {
   StringRef native;
   LLVMMemoryBufferRef result = nullptr;
   unsigned calls = 0;
+  llvm::json::Array replayedNames;
   int check(StringRef raw) {
     if (++calls != 1)
       return 0;
@@ -363,6 +364,10 @@ struct Check {
         if (it == positions.end())
           return 0;
         std::tie(record, filename) = it->second;
+        // A successful full rebase preserves both symbols and writes the new
+        // position into this exact native record. Carry only names it checked.
+        replayedNames.emplace_back(llvm::json::Array{
+            file->str(), *after, *col, record.str(), filename.str()});
       } else {
         const auto *column = o->get("column");
         if (!column || column->kind() != llvm::json::Value::Null)
@@ -399,7 +404,7 @@ struct Check {
 int callback(void *ctx, const char *p, size_t n) {
   return static_cast<Check *>(ctx)->check(StringRef(p, n));
 }
-bool returnedOwners(llvm::Module *M, char **result, size_t *len) {
+llvm::json::Array returnedOwners(llvm::Module *M) {
   llvm::json::Array arr;
   std::set<std::pair<std::string, uint32_t>> seen;
   for (auto &g : M->globals()) {
@@ -417,15 +422,14 @@ bool returnedOwners(llvm::Module *M, char **result, size_t *len) {
                                        {"line", int64_t(line)},
                                        {"owner", std::string(owner)}});
   }
-  std::string s;
-  llvm::raw_string_ostream(s) << llvm::json::Value(std::move(arr));
-  auto bytes = static_cast<char *>(std::malloc(s.size()));
-  if (!bytes)
-    return false;
-  std::memcpy(bytes, s.data(), s.size());
-  *result = bytes;
-  *len = s.size();
-  return true;
+  return arr;
+}
+
+llvm::json::Value ownerRoster(llvm::json::Array returned, llvm::json::Array native) {
+  if (native.empty())
+    return std::move(returned);
+  return llvm::json::Object{{"version", 2}, {"returned", std::move(returned)},
+                            {"native", std::move(native)}};
 }
 
 using SourceKey = std::pair<std::string, std::string>;
@@ -549,7 +553,7 @@ extern "C" bool LLVMRustDwarfTypedContext(LLVMModuleRef M, uint8_t *Digest) {
   return true;
 }
 
-extern "C" LLVMRustBuffer *LLVMRustDwarfTypedSnapshot(LLVMModuleRef Ref) {
+static LLVMRustBuffer *snapshot(LLVMModuleRef Ref, llvm::json::Array Native) {
   auto *M = llvm::unwrap(Ref);
   auto Files = sourceKeys(*M);
   if (Files.empty())
@@ -565,18 +569,15 @@ extern "C" LLVMRustBuffer *LLVMRustDwarfTypedSnapshot(LLVMModuleRef Ref) {
                                                            ohm_bc_free_v1);
   if (!N || N > 128u << 20)
     return nullptr;
-  char *Names = nullptr;
-  size_t Count = 0;
-  if (!returnedOwners(M, &Names, &Count))
-    return nullptr;
-  std::unique_ptr<char, decltype(&std::free)> Owners(Names, std::free);
-  if (Count > 128u << 20)
+  std::string Owners;
+  llvm::raw_string_ostream(Owners) << ownerRoster(returnedOwners(M), std::move(Native));
+  if (Owners.size() > 128u << 20)
     return nullptr;
   auto Out = std::make_unique<LLVMRustBuffer>();
   Out->data.append(reinterpret_cast<const char *>(Context.data()),
                    Context.size());
   append(Out->data, StringRef(Ordered.get(), N));
-  append(Out->data, StringRef(Owners.get(), Count));
+  append(Out->data, Owners);
   for (const auto &[Dir, File] : Files) {
     append(Out->data, Dir);
     append(Out->data, File);
@@ -584,11 +585,17 @@ extern "C" LLVMRustBuffer *LLVMRustDwarfTypedSnapshot(LLVMModuleRef Ref) {
   return Out.release();
 }
 
+extern "C" LLVMRustBuffer *LLVMRustDwarfTypedSnapshot(LLVMModuleRef Ref) {
+  return snapshot(Ref, {});
+}
+
 extern "C" LLVMRustBuffer *
-LLVMRustDwarfTypedMatch(LLVMModuleRef M, const char *Old, size_t N,
+LLVMRustDwarfTypedMatchAndSnapshot(LLVMModuleRef M, const char *Old, size_t N,
                         const char *Owners, size_t NOwners, const char *Map,
                         size_t NMap, const char *Proof, size_t NProof,
-                        const char *Binary, size_t NBinary) {
+                        const char *Binary, size_t NBinary,
+                        LLVMRustBuffer **Next) {
+  *Next = nullptr;
   if (!canMove(*llvm::unwrap(M), {Map, NMap}))
     return nullptr;
   Check C{llvm::unwrap(M), {Owners, NOwners}, {Map, NMap}, {Binary, NBinary}};
@@ -603,6 +610,7 @@ LLVMRustDwarfTypedMatch(LLVMModuleRef M, const char *Old, size_t N,
     return nullptr;
   auto Out = std::make_unique<LLVMRustBuffer>();
   Out->data.assign(LLVMGetBufferStart(Buf.get()), OutputSize);
+  *Next = snapshot(M, std::move(C.replayedNames));
   return Out.release();
 }
 #else
@@ -616,11 +624,13 @@ extern "C" bool LLVMRustDwarfTypedContext(LLVMModuleRef, uint8_t *) {
 extern "C" LLVMRustBuffer *LLVMRustDwarfTypedSnapshot(LLVMModuleRef) {
   return nullptr;
 }
-extern "C" LLVMRustBuffer *LLVMRustDwarfTypedMatch(LLVMModuleRef, const char *,
+extern "C" LLVMRustBuffer *LLVMRustDwarfTypedMatchAndSnapshot(LLVMModuleRef, const char *,
                                                    size_t, const char *, size_t,
                                                    const char *, size_t,
                                                    const char *, size_t,
-                                                   const char *, size_t) {
+                                                   const char *, size_t,
+                                                   LLVMRustBuffer **Next) {
+  *Next = nullptr;
   return nullptr;
 }
 #endif
@@ -663,8 +673,8 @@ extern "C" LLVMRustBuffer *LLVMRustDwarfFinishEmittedNames(
   if (native.empty())
     return nullptr;
   auto out = std::make_unique<LLVMRustBuffer>();
-  llvm::raw_string_ostream(out->data) << llvm::json::Value(llvm::json::Object{
-      {"version", 2}, {"returned", std::move(*old)}, {"native", std::move(native)}});
+  llvm::raw_string_ostream(out->data) << ownerRoster(std::move(*old->getAsArray()),
+                                                     std::move(native));
   return out.release();
 #else
   return nullptr;

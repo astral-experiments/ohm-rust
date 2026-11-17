@@ -1,0 +1,17 @@
+[workspace]
+members = ["opaque", "probe"]
+resolver = "3"
+
+[package]
+name = "app"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+probe = { path = "probe" }
+
+[profile.dev]
+opt-level = 1
+debug = "line-tables-only"
+split-debuginfo = "off"
+lto = "off"

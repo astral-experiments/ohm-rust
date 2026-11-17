@@ -2554,7 +2554,7 @@ unsafe extern "C" {
         returned: *const u8,
         size: usize,
     ) -> Option<&'static mut Buffer>;
-    pub(crate) fn LLVMRustDwarfTypedMatch(
+    pub(crate) fn LLVMRustDwarfTypedMatchAndSnapshot(
         M: &Module,
         ordered: *const u8,
         ordered_len: usize,
@@ -2566,6 +2566,7 @@ unsafe extern "C" {
         witness_len: usize,
         object: *const u8,
         object_len: usize,
+        next: &mut Option<&'static mut Buffer>,
     ) -> Option<&'static mut Buffer>;
     pub(crate) fn LLVMRustDwarfLineCertificate(M: &Module) -> Option<&'static mut Buffer>;
     pub(crate) fn LLVMRustDwarfDigest(data: *const u8, size: usize, digest: *mut u8);
