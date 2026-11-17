@@ -45,7 +45,7 @@ fn session_dir() -> PathBuf {
     }
 
     let crate_dir = directories(Path::new("incr")).next().unwrap();
-    // GC can retain the newest prior session alongside the current one. Session names
-    // start with fixed-width timestamps, so the newest directory sorts last.
-    directories(&crate_dir).max().unwrap()
+    let sessions: Vec<_> = directories(&crate_dir).collect();
+    assert_eq!(sessions.len(), 1, "expected only the newest completed session: {sessions:?}");
+    sessions.into_iter().next().unwrap()
 }
