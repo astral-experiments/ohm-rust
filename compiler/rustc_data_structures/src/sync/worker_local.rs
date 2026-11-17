@@ -23,9 +23,15 @@ impl RegistryId {
     /// Note that there's a race possible where the identifier in `THREAD_DATA` could be reused
     /// so this can succeed from a different registry.
     fn verify(self) -> usize {
+        self.try_verify()
+            .unwrap_or_else(|| outline(|| panic!("Unable to verify registry association")))
+    }
+
+    #[inline(always)]
+    fn try_verify(self) -> Option<usize> {
         let (id, index) = THREAD_DATA.with(|data| (data.registry_id.get(), data.index.get()));
 
-        if id == self { index } else { outline(|| panic!("Unable to verify registry association")) }
+        if id == self { Some(index) } else { None }
     }
 }
 
@@ -124,6 +130,14 @@ impl<T> WorkerLocal<T> {
         }
     }
 
+    /// Returns this thread's local value if it is registered with this worker local's registry.
+    /// Returns `None` for unregistered threads or threads associated with another registry.
+    #[inline]
+    pub fn get_if_registered(&self) -> Option<&T> {
+        let index = self.registry.id().try_verify()?;
+        self.locals.get(index).map(|local| &local.0)
+    }
+
     /// Returns the worker-local values for each thread
     #[inline]
     pub fn into_inner(self) -> impl Iterator<Item = T> {
@@ -147,3 +161,6 @@ impl<T: Default> Default for WorkerLocal<T> {
         WorkerLocal::new(|_| T::default())
     }
 }
+
+#[cfg(test)]
+mod tests;
