@@ -295,17 +295,8 @@ pub(crate) fn expand_test_or_bench(
             ast::ItemKind::Static(
                 ast::StaticItem {
                     ident: Ident::new(fn_.ident.name, sp),
-                    ty: cx.ty(
-                        sp,
-                        ast::TyKind::Path(
-                            None,
-                            test_path(if plain_integration_test {
-                                "StaticUnitTest"
-                            } else {
-                                "TestDescAndFn"
-                            }),
-                        ),
-                    ),
+                    // Clippy identifies test functions from the descriptor's struct path in HIR.
+                    ty: cx.ty(sp, ast::TyKind::Path(None, test_path("TestDescAndFn"))),
                     safety: Safety::Default,
                     mutability: Mutability::Not,
                     define_opaque: None,
