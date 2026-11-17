@@ -15,9 +15,8 @@ use crate::{BorrowSet, PlaceConflictBias, PlaceExt, RegionInferenceContext, plac
 #[cfg(test)]
 mod tests;
 
-// This analysis is different to most others. Its results aren't computed with
-// `iterate_to_fixpoint`, but are instead composed from the results of three sub-analyses that are
-// computed individually with `iterate_to_fixpoint`. Because it's faster that way than having a
+// These analyses converge independently. Combine their results for a single visit without
+// making changes in one analysis requeue work for the others. Because it's faster that way than having a
 // single analysis where the domain has three components.
 pub(crate) struct Borrowck<'a, 'tcx> {
     pub(crate) borrows: Borrows<'a, 'tcx>,
@@ -49,7 +48,9 @@ impl<'a, 'tcx> Analysis<'tcx> for Borrowck<'a, 'tcx> {
         stmt: &mir::Statement<'tcx>,
         loc: Location,
     ) {
-        self.borrows.apply_early_statement_effect(&mut state.borrows, stmt, loc);
+        if self.borrows.borrow_set.len() != 0 {
+            self.borrows.apply_early_statement_effect(&mut state.borrows, stmt, loc);
+        }
         self.uninits.apply_early_statement_effect(&mut state.uninits, stmt, loc);
         self.ever_inits.apply_early_statement_effect(&mut state.ever_inits, stmt, loc);
     }
@@ -60,7 +61,9 @@ impl<'a, 'tcx> Analysis<'tcx> for Borrowck<'a, 'tcx> {
         stmt: &mir::Statement<'tcx>,
         loc: Location,
     ) {
-        self.borrows.apply_primary_statement_effect(&mut state.borrows, stmt, loc);
+        if self.borrows.borrow_set.len() != 0 {
+            self.borrows.apply_primary_statement_effect(&mut state.borrows, stmt, loc);
+        }
         self.uninits.apply_primary_statement_effect(&mut state.uninits, stmt, loc);
         self.ever_inits.apply_primary_statement_effect(&mut state.ever_inits, stmt, loc);
     }
@@ -71,7 +74,9 @@ impl<'a, 'tcx> Analysis<'tcx> for Borrowck<'a, 'tcx> {
         term: &mir::Terminator<'tcx>,
         loc: Location,
     ) {
-        self.borrows.apply_early_terminator_effect(&mut state.borrows, term, loc);
+        if self.borrows.borrow_set.len() != 0 {
+            self.borrows.apply_early_terminator_effect(&mut state.borrows, term, loc);
+        }
         self.uninits.apply_early_terminator_effect(&mut state.uninits, term, loc);
         self.ever_inits.apply_early_terminator_effect(&mut state.ever_inits, term, loc);
     }
@@ -82,7 +87,9 @@ impl<'a, 'tcx> Analysis<'tcx> for Borrowck<'a, 'tcx> {
         term: &mir::Terminator<'tcx>,
         loc: Location,
     ) {
-        self.borrows.apply_primary_terminator_effect(&mut state.borrows, term, loc);
+        if self.borrows.borrow_set.len() != 0 {
+            self.borrows.apply_primary_terminator_effect(&mut state.borrows, term, loc);
+        }
         self.uninits.apply_primary_terminator_effect(&mut state.uninits, term, loc);
         self.ever_inits.apply_primary_terminator_effect(&mut state.ever_inits, term, loc);
     }
