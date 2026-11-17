@@ -22,17 +22,17 @@ By passing the [`--test` option] to `rustc`, the compiler will build the crate
 in a special mode to construct an executable that will run the tests in the
 crate. The `--test` flag will make the following changes:
 
-* The crate will be built as a `bin` [crate type], forcing it to be an
+- The crate will be built as a `bin` [crate type], forcing it to be an
   executable.
-* Links the executable with [`libtest`], the test harness that is part of the
+- Links the executable with [`libtest`], the test harness that is part of the
   standard library, which handles running the tests.
-* Synthesizes a [`main` function] which will process command-line arguments
+- Synthesizes a [`main` function] which will process command-line arguments
   and run the tests. This new `main` function will replace any existing `main`
   function as the entry point of the executable, though the existing `main`
   will still be compiled.
-* Enables the [`test` cfg option], which allows your code to use conditional
+- Enables the [`test` cfg option], which allows your code to use conditional
   compilation to detect if it is being built as a test.
-* Enables building of functions annotated with the [`test`][attribute-test]
+- Enables building of functions annotated with the [`test`][attribute-test]
   and [`bench`](#benchmarks) attributes, which will be run by the test
   harness.
 
@@ -64,13 +64,13 @@ Tests are indicated using attributes on free functions. The following
 attributes are used for testing, see the linked documentation for more
 details:
 
-* [`#[test]`][attribute-test] — Indicates a function is a test to be run.
-* `#[bench]` — Indicates a function is a benchmark to be
+- [`#[test]`][attribute-test] — Indicates a function is a test to be run.
+- `#[bench]` — Indicates a function is a benchmark to be
   run. Benchmarks are currently unstable and only available in the nightly
   channel, see the [unstable docs][bench-docs] for more details.
-* [`#[should_panic]`][attribute-should_panic] — Indicates that the test
+- [`#[should_panic]`][attribute-should_panic] — Indicates that the test
   function will only pass if the function [panics][panic].
-* [`#[ignore]`][attribute-ignore] — Indicates that the test function will be
+- [`#[ignore]`][attribute-ignore] — Indicates that the test function will be
   compiled, but not run by default. See the [`--ignored`](#--ignored) and
   [`--include-ignored`](#--include-ignored) options to run these tests.
 
@@ -94,6 +94,22 @@ if the test function `it_works` is located in the module
 
 See [Selection options](#selection-options) for more options to control which
 tests are run.
+
+### Experimental focused test harnesses
+
+The explicitly requested `-Ztest-harness-filter=FULL_TEST_NAME` compiler option
+builds a smaller built-in harness containing one exactly named test. Its
+executable requires the same complete name together with `--exact`; discovery,
+missing or different names, and multiple selections fail instead of silently
+omitting tests. Custom test frameworks and instrumented coverage retain the
+ordinary complete harness.
+
+Unselected tests are still parsed, typechecked, and linted, but their code is
+not generated, so backend and linker diagnostics can disappear and reported
+filtered-out counts differ. The option is an explicit semantic opt-in, not a
+transparent optimization or a replacement for normal Cargo and nextest test
+discovery. Pass it only to the selected terminal test crate, never through
+global `RUSTFLAGS`.
 
 ### Action options
 
@@ -253,7 +269,7 @@ variable to anything but `0`.
 Displays the stdout and stderr of successful tests after all tests have run.
 
 Contrast this with [`--no-capture`](#--no-capture) which allows tests to print
-*while they are running*, which can cause interleaved output if there are
+_while they are running_, which can cause interleaved output if there are
 multiple tests running in parallel, `--show-output` ensures the output is
 contiguous, but requires waiting for all tests to finish.
 
@@ -261,19 +277,19 @@ contiguous, but requires waiting for all tests to finish.
 
 Control when colored terminal output is used. Valid options:
 
-* `auto`: Colorize if stdout is a tty and [`--no-capture`](#--no-capture) is not
+- `auto`: Colorize if stdout is a tty and [`--no-capture`](#--no-capture) is not
   used. This is the default.
-* `always`: Always colorize the output.
-* `never`: Never colorize the output.
+- `always`: Always colorize the output.
+- `never`: Never colorize the output.
 
 #### `--format` _FORMAT_
 
 Controls the format of the output. Valid options:
 
-* `pretty`: This is the default format, with one line per test.
-* `terse`: Displays only a single character per test. [`--quiet`](#-q---quiet)
+- `pretty`: This is the default format, with one line per test.
+- `terse`: Displays only a single character per test. [`--quiet`](#-q---quiet)
   is an alias for this option.
-* `json`: Emits JSON objects, one per line. ⚠️ 🚧 This option is
+- `json`: Emits JSON objects, one per line. ⚠️ 🚧 This option is
   [unstable](#unstable-options), and requires the `-Z unstable-options` flag.
   See [tracking issue #49359](https://github.com/rust-lang/rust/issues/49359)
   for more information.
