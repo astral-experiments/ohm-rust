@@ -1,5 +1,6 @@
 //! Derive a checked line correspondence from the source bytes used by each compiler.
 use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 
 use rustc_codegen_ssa::back::write::DwarfSourceFile;
 use rustc_span::{SourceFileHash, SourceFileHashAlgorithm};
@@ -117,11 +118,62 @@ fn source_rows(old: &[u8], new: &[u8]) -> Option<(usize, usize, Vec<[usize; 2]>,
     Some((old_count, new_count, pairs, Vec::new()))
 }
 
-pub(super) fn mapping(
-    mut sources: &[u8],
-    inventory: &[DwarfSourceFile],
-) -> Option<(Vec<u8>, Vec<u8>)> {
+pub(super) struct Mapping {
+    pub(super) bytes: Vec<u8>,
+    pub(super) witness: Vec<u8>,
+    files: Vec<MappedFile>,
+}
+
+struct MappedFile {
+    directory: String,
+    filename: String,
+    path: PathBuf,
+    old: Value,
+    new: Value,
+    rows: Vec<[usize; 2]>,
+    ambiguous: Vec<usize>,
+}
+
+impl Mapping {
+    fn unique(&self, accept: impl Fn(&MappedFile) -> bool) -> Option<&MappedFile> {
+        let mut found = self.files.iter().filter(|f| accept(f));
+        let first = found.next()?;
+        found.next().is_none().then_some(first)
+    }
+
+    pub(super) fn checksums(&self, path: &Path, old: &str, new: &str) -> bool {
+        self.unique(|f| path == f.path || path == Path::new(&f.filename)).is_some_and(|f| {
+            ["md5", "sha1", "sha256"]
+                .iter()
+                .any(|&k| f.old[k].as_str() == Some(old) && f.new[k].as_str() == Some(new))
+        })
+    }
+
+    pub(super) fn debug_row(&self, path: &Path, old: u32, new: u32) -> bool {
+        self.unique(|f| path == f.path || path == Path::new(&f.filename))
+            .is_some_and(|f| f.maps(old, new))
+    }
+
+    pub(super) fn caller_row(&self, directory: &str, filename: &str, old: u32, new: u32) -> bool {
+        self.unique(|f| f.directory == directory && f.filename == filename)
+            .is_some_and(|f| f.maps(old, new))
+    }
+}
+
+impl MappedFile {
+    fn maps(&self, old: u32, new: u32) -> bool {
+        let old = old as usize;
+        self.ambiguous.binary_search(&old).is_err()
+            && self
+                .rows
+                .binary_search_by_key(&old, |p| p[0])
+                .is_ok_and(|i| self.rows[i][1] == new as usize)
+    }
+}
+
+pub(super) fn mapping(mut sources: &[u8], inventory: &[DwarfSourceFile]) -> Option<Mapping> {
     let mut maps = Vec::new();
+    let mut matched = Vec::new();
     let mut witnesses = Vec::new();
     let mut seen = BTreeSet::new();
     while !sources.is_empty() {
@@ -142,9 +194,20 @@ pub(super) fn mapping(
         maps.push(
             json!({ "directory": file.directory, "filename": file.filename, "lines": lines }),
         );
+        let old = hashes(prior);
+        let new = hashes(&now);
         witnesses.push(json!({ "directory": file.directory, "filename": file.filename,
-            "old_lines": old_lines, "new_lines": new_lines, "old": hashes(prior), "new": hashes(&now),
+            "old_lines": old_lines, "new_lines": new_lines, "old": old, "new": new,
             "ambiguous_old_lines": ambiguous }));
+        matched.push(MappedFile {
+            directory: file.directory.clone(),
+            filename: file.filename.clone(),
+            path: Path::new(&file.directory).join(&file.filename),
+            old,
+            new,
+            rows: lines,
+            ambiguous,
+        });
     }
     if maps.is_empty() {
         return None;
@@ -154,7 +217,7 @@ pub(super) fn mapping(
     let witness =
         serde_json::to_vec(&json!({"version": 2, "map_sha256": mapping_hash, "files": witnesses}))
             .ok()?;
-    Some((mapping, witness))
+    Some(Mapping { bytes: mapping, witness, files: matched })
 }
 
 #[cfg(test)]

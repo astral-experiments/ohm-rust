@@ -30,6 +30,14 @@ impl<'a> Reader<'a> {
 /// Compare complete ordered LLVM inputs, allowing only consistent changes to
 /// line coordinates of files whose checksum also changed.
 pub(super) fn compare(previous: &[u8], current: &[u8]) -> Option<LineMap> {
+    compare_checksums(previous, current, |_, _, _| true)
+}
+
+pub(super) fn compare_checksums(
+    previous: &[u8],
+    current: &[u8],
+    mut validate: impl FnMut(&Path, &str, &str) -> bool,
+) -> Option<LineMap> {
     let mut old = Reader(previous);
     let mut new = Reader(current);
     let cwd = Path::new(new.string()?);
@@ -55,7 +63,7 @@ pub(super) fn compare(previous: &[u8], current: &[u8]) -> Option<LineMap> {
             return None;
         }
         if pair.0 != pair.1 {
-            if pair.0.is_empty() || pair.1.is_empty() {
+            if pair.0.is_empty() || pair.1.is_empty() || !validate(name, pair.0, pair.1) {
                 return None;
             }
             changed.entry(name.to_owned()).or_insert_with(BTreeMap::new);

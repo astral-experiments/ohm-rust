@@ -12,7 +12,7 @@ use rustc_fs_util::TempDirBuilder;
 use rustc_session::config::{OutputType, SplitDwarfKind};
 use rustc_target::spec::SplitDebuginfo;
 
-use super::{dwarf_certificate, dwarf_patch, thinlto_cache};
+use super::{dwarf_caller, dwarf_certificate, dwarf_patch, dwarf_typed, thinlto_cache};
 use crate::{ModuleLlvm, llvm};
 
 const MAGIC: &[u8; 8] = b"OHMDWLF5";
@@ -68,6 +68,7 @@ fn proofs(bytes: &[u8]) -> Option<(&[u8], &[u8])> {
 
 pub(super) struct Entry {
     proof: Vec<u8>,
+    pub(super) caller: Option<Vec<u8>>,
     optimized: Option<Vec<u8>>,
     exact: Option<[u8; 32]>,
     previous: Option<Vec<u8>>,
@@ -77,6 +78,24 @@ pub(super) struct Entry {
     donor_object: PathBuf,
     object: PathBuf,
     split: Option<(PathBuf, PathBuf)>,
+}
+
+fn caller_line_proof(
+    module: &llvm::Module,
+    budget: usize,
+    enabled: bool,
+    caller: &mut Option<Vec<u8>>,
+) -> Option<Vec<u8>> {
+    if enabled
+        && let Some(value) =
+            dwarf_typed::buffer(unsafe { llvm::LLVMRustDwarfCallerLineCertificate(module) })
+        && let Some(key) = dwarf_caller::ordinary(&value)
+        && key.len() <= budget
+    {
+        *caller = Some(value);
+        return Some(key);
+    }
+    line_proof(module, budget)
 }
 
 fn line_proof(module: &llvm::Module, budget: usize) -> Option<Vec<u8>> {
@@ -112,6 +131,7 @@ impl Entry {
             if cgcx.split_debuginfo == SplitDebuginfo::Off { EMBEDDED_MAGIC } else { MAGIC };
         let previous = read_certificate(&certificate, magic, configuration);
         let stable_outputs;
+        let mut caller = None;
         let (outputs, split, exact, proof) = match cgcx.split_debuginfo {
             SplitDebuginfo::Unpacked
                 if cgcx.target_can_use_split_dwarf
@@ -133,8 +153,12 @@ impl Entry {
             }
             SplitDebuginfo::Off => {
                 let (exact, lines) = if unsafe { llvm::LLVMRustCanReplayDwarfLineScopes() }
-                    && let Some(lines) = line_proof(module.module_llvm.llmod(), MAXIMUM - 124)
-                {
+                    && let Some(lines) = caller_line_proof(
+                        module.module_llvm.llmod(),
+                        MAXIMUM - 124,
+                        !cgcx.dwarf_typed_sources.is_empty(),
+                        &mut caller,
+                    ) {
                     // A matching normalized proof still passes through the full native-object
                     // and DWARF validators in replay. No synthetic exact key is stored.
                     (None, lines)
@@ -165,6 +189,7 @@ impl Entry {
         };
         Some(Self {
             proof,
+            caller,
             optimized: None,
             exact,
             previous,

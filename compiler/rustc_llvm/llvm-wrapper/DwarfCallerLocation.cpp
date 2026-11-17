@@ -10,6 +10,9 @@
             "../../../src/llvm-project/llvm/lib/Bitcode/Writer/OhmCallerLocationProof.h")
 #include "../../../src/llvm-project/llvm/lib/Bitcode/Writer/OhmCallerLocationProof.h"
 #include "llvm-c/Core.h"
+#if __has_include("llvm/Bitcode/DwarfLineCertificate.h")
+#include "llvm/Bitcode/DwarfLineCertificate.h"
+#endif
 #include "llvm/Bitcode/OhmDebugObjectSignature.h"
 #include "llvm/DebugInfo/DWARF/OhmRuntimeLocations.h"
 #include "llvm/IR/ClosedOptimizerContext.h"
@@ -553,7 +556,8 @@ extern "C" bool LLVMRustDwarfTypedContext(LLVMModuleRef M, uint8_t *Digest) {
   return true;
 }
 
-static LLVMRustBuffer *snapshot(LLVMModuleRef Ref, llvm::json::Array Native) {
+static LLVMRustBuffer *snapshot(LLVMModuleRef Ref, llvm::json::Array Native,
+                                StringRef Projection = {}) {
   auto *M = llvm::unwrap(Ref);
   auto Files = sourceKeys(*M);
   if (Files.empty())
@@ -563,11 +567,12 @@ static LLVMRustBuffer *snapshot(LLVMModuleRef Ref, llvm::json::Array Native) {
     return nullptr;
   char *Saved = nullptr;
   size_t N = 0;
-  if (!ohm_bc_save_v1(Ref, &Saved, &N) || !Saved)
+  if (Projection.empty() && (!ohm_bc_save_v1(Ref, &Saved, &N) || !Saved))
     return nullptr;
   std::unique_ptr<char, decltype(&ohm_bc_free_v1)> Ordered(Saved,
                                                            ohm_bc_free_v1);
-  if (!N || N > 128u << 20)
+  StringRef Input = Projection.empty() ? StringRef(Ordered.get(), N) : Projection;
+  if (Input.empty() || Input.size() > 128u << 20)
     return nullptr;
   std::string Owners;
   llvm::raw_string_ostream(Owners) << ownerRoster(returnedOwners(M), std::move(Native));
@@ -576,7 +581,7 @@ static LLVMRustBuffer *snapshot(LLVMModuleRef Ref, llvm::json::Array Native) {
   auto Out = std::make_unique<LLVMRustBuffer>();
   Out->data.append(reinterpret_cast<const char *>(Context.data()),
                    Context.size());
-  append(Out->data, StringRef(Ordered.get(), N));
+  append(Out->data, Input);
   append(Out->data, Owners);
   for (const auto &[Dir, File] : Files) {
     append(Out->data, Dir);
@@ -587,6 +592,21 @@ static LLVMRustBuffer *snapshot(LLVMModuleRef Ref, llvm::json::Array Native) {
 
 extern "C" LLVMRustBuffer *LLVMRustDwarfTypedSnapshot(LLVMModuleRef Ref) {
   return snapshot(Ref, {});
+}
+
+static LLVMRustBuffer *finishMatch(LLVMModuleRef M, Check &C, bool Verified,
+                                   StringRef Projection, LLVMRustBuffer **Next) {
+  if (!C.result)
+    return nullptr;
+  std::unique_ptr<LLVMOpaqueMemoryBuffer, decltype(&LLVMDisposeMemoryBuffer)>
+      Buf(C.result, LLVMDisposeMemoryBuffer);
+  const size_t OutputSize = LLVMGetBufferSize(Buf.get());
+  if (!Verified || C.calls != 1 || !OutputSize || OutputSize > 128u << 20)
+    return nullptr;
+  auto Out = std::make_unique<LLVMRustBuffer>();
+  Out->data.assign(LLVMGetBufferStart(Buf.get()), OutputSize);
+  *Next = snapshot(M, std::move(C.replayedNames), Projection);
+  return Out.release();
 }
 
 extern "C" LLVMRustBuffer *
@@ -601,17 +621,7 @@ LLVMRustDwarfTypedMatchAndSnapshot(LLVMModuleRef M, const char *Old, size_t N,
   Check C{llvm::unwrap(M), {Owners, NOwners}, {Map, NMap}, {Binary, NBinary}};
   int Code = ohm_bc_match_relocatable_v1(M, Old, N, Map, NMap, Proof, NProof,
                                          callback, &C);
-  if (!C.result)
-    return nullptr;
-  std::unique_ptr<LLVMOpaqueMemoryBuffer, decltype(&LLVMDisposeMemoryBuffer)>
-      Buf(C.result, LLVMDisposeMemoryBuffer);
-  const size_t OutputSize = LLVMGetBufferSize(Buf.get());
-  if (Code != 2 || C.calls != 1 || !OutputSize || OutputSize > 128u << 20)
-    return nullptr;
-  auto Out = std::make_unique<LLVMRustBuffer>();
-  Out->data.assign(LLVMGetBufferStart(Buf.get()), OutputSize);
-  *Next = snapshot(M, std::move(C.replayedNames));
-  return Out.release();
+  return finishMatch(M, C, Code == 2, {}, Next);
 }
 #else
 extern "C" bool LLVMRustDwarfTypedShape(LLVMModuleRef, LLVMTargetMachineRef,
@@ -634,6 +644,45 @@ extern "C" LLVMRustBuffer *LLVMRustDwarfTypedMatchAndSnapshot(LLVMModuleRef, con
   return nullptr;
 }
 #endif
+
+extern "C" LLVMRustBuffer *LLVMRustDwarfCallerLineCertificate(LLVMModuleRef M) {
+#ifdef LLVM_OHM_CALLER_LINE_CERTIFICATE_V1
+  auto Out = std::make_unique<LLVMRustBuffer>();
+  llvm::raw_string_ostream Stream(Out->data);
+  if (llvm::writeClosedCallerLineCertificateV1(*llvm::unwrap(M), Stream))
+    return Out.release();
+#endif
+  return nullptr;
+}
+
+extern "C" LLVMRustBuffer *
+LLVMRustDwarfProjectedSnapshot(LLVMModuleRef M, const char *Current, size_t N) {
+#ifdef LLVM_OHM_CALLER_LINE_CERTIFICATE_V1
+  StringRef Input(Current, N);
+  if (Input.starts_with("OHMTLC01"))
+    return snapshot(M, {}, Input);
+#endif
+  return nullptr;
+}
+
+extern "C" LLVMRustBuffer *LLVMRustDwarfApplyCallerChanges(
+    LLVMModuleRef M, const char *Current, size_t N, const char *Owners,
+    size_t NOwners, const char *Map, size_t NMap, const char *Changes,
+    size_t NChanges, const char *Binary, size_t NBinary, LLVMRustBuffer **Next) {
+  *Next = nullptr;
+#ifdef LLVM_OHM_CALLER_LINE_CERTIFICATE_V1
+  StringRef Input(Current, N);
+  if (!Input.starts_with("OHMTLC01"))
+    return nullptr;
+  Check C{llvm::unwrap(M), {Owners, NOwners}, {Map, NMap}, {Binary, NBinary}};
+  // Rust has verified the two complete inputs and source coordinates.
+  // Resolve each old native owner and validate its actual data and DWARF.
+  bool Verified = C.check({Changes, NChanges}) != 0;
+  return finishMatch(M, C, Verified, Input, Next);
+#else
+  return nullptr;
+#endif
+}
 
 extern "C" void *LLVMRustDwarfStartEmittedNames(LLVMModuleRef m) {
 #ifdef OHM_EMITTED_GLOBALS
