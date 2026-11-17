@@ -1,13 +1,13 @@
 #![allow(rustc::symbol_intern_string_literal)]
 
-use rustc_session::lint::{LintId, RegisteredTools};
+use rustc_lint_defs::{LintId, RegisteredTools, declare_tool_lint};
 use rustc_span::{Ident, Symbol, create_default_session_globals_then};
 
 use crate::builtin::is_hexagon_register_span;
 use crate::context::{CheckLintNameResult, LintStore};
 use crate::levels::parse_lint_and_tool_name;
 
-rustc_session::declare_tool_lint! {
+declare_tool_lint! {
     tool::KNOWN,
     Warn,
     "lint for scoped-name registration tests"
