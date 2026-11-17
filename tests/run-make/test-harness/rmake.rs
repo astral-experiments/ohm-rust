@@ -30,6 +30,7 @@ fn main() {
         .assert_stdout_contains("ignored ... ignored");
 
     let expanded = rustc().arg("--test").arg("-Zunpretty=expanded").input("tests/plain.rs").run();
+    expanded.assert_stdout_contains("static ordinary: test::TestDescAndFn =");
     expanded.assert_stdout_contains("test::StaticUnitTest::new(");
     expanded.assert_stdout_contains("test::StaticTestFn(");
 }
