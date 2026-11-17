@@ -1163,9 +1163,7 @@ fn run_required_analyses(tcx: TyCtxt<'_>) {
             // If we need to codegen, ensure that we emit all errors from
             // `mir_drops_elaborated_and_const_checked` now, to avoid discovering
             // them later during codegen.
-            if tcx.sess.opts.output_types.should_codegen()
-                || tcx.hir_body_const_context(def_id).is_some()
-            {
+            if tcx.codegen_output_mode(()).0 || tcx.hir_body_const_context(def_id).is_some() {
                 tcx.ensure_ok().mir_drops_elaborated_and_const_checked(def_id);
             }
             if tcx.is_coroutine(def_id.to_def_id())
@@ -1288,7 +1286,7 @@ pub(crate) fn start_codegen<'tcx>(
 
     // Don't run this test assertions when not doing codegen. Compiletest tries to build
     // build-fail tests in check mode first and expects it to not give an error in that case.
-    if tcx.sess.opts.output_types.should_codegen() {
+    if tcx.codegen_output_mode(()).0 {
         rustc_symbol_mangling::test::dump_symbol_names_and_def_paths(tcx);
     }
 
@@ -1318,7 +1316,7 @@ pub(crate) fn start_codegen<'tcx>(
 
     let codegen = tcx.sess.time("codegen_crate", || {
         if tcx.sess.opts.unstable_opts.no_codegen
-            || !tcx.sess.opts.output_types.should_codegen()
+            || !tcx.codegen_output_mode(()).0
             || is_host_metadata
         {
             tcx.sess.dcx().abort_if_errors();

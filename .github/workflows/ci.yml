@@ -211,11 +211,11 @@ jobs:
           tests/incremental/promote-cached-query-value.rs
           tests/incremental/forward-cached-query-value.rs
 
-      - name: Run retained allocation identity test
+      - name: Run retained allocation and check-index tests
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 compiler/rustc_middle
-          --test-args aliases_preserve_allocation_identity
+          --test-args 'aliases_preserve_allocation_identity check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges'
 
       - name: Run incremental directory copy tests
         run: >-
@@ -248,6 +248,7 @@ jobs:
             tests/run-make/public-api-hash*
             tests/run-make/rdr-public-hash*
             tests/run-make/ohm-early-metadata
+            tests/run-make/ohm-shared-stages
             tests/run-make/ohm-thinlto-cache
             tests/run-make/caller-local-codegen
             tests/run-make/unused-externs-transparent
