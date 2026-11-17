@@ -263,7 +263,7 @@ fn main() {
     rfs::write("lib.rs", public_source.replace("-> u32", "-> u64"));
     assert_ne!(fresh_hash, compile_and_read_public_api_hash(false));
 
-    // Span stable hashing retains only eight column bits. Move an entire tracked function by
+    // Move an entire tracked function by
     // exactly 256 columns while keeping every line boundary and definition length unchanged.
     rfs::write("private.rs", private_source);
     let public_source = rfs::read_to_string("lib.rs");
@@ -294,7 +294,7 @@ fn main() {
     rfs::write("lib.rs", &moved_source);
     change_private_value(6, 7);
     let (moved_hash, _) = compile_and_read_public_api_hash_with_output(false, &[], "metadata,link");
-    assert_eq!(tracked_hash, moved_hash, "moving by 256 columns must collide under stable hashing");
+    assert_ne!(tracked_hash, moved_hash);
     assert_eq!(downstream_tracked_caller_column(), original_column + 256);
 
     change_private_value(7, 8);
@@ -327,15 +327,14 @@ fn main() {
     assert_eq!(diagnostic_source.len(), moved_diagnostic_source.len());
     rfs::write("lib.rs", &moved_diagnostic_source);
     change_private_value(9, 1);
-    assert_eq!(
-        diagnostic_hash,
-        compile_and_read_public_api_hash_with_output(false, &[], "metadata,link").0,
-    );
+    let (moved_diagnostic_hash, _) =
+        compile_and_read_public_api_hash_with_output(false, &[], "metadata,link");
+    assert_ne!(diagnostic_hash, moved_diagnostic_hash);
     assert_eq!(downstream_private_method_column(), original_diagnostic_column + 256);
 
     change_private_value(1, 2);
     assert_eq!(
-        diagnostic_hash,
+        moved_diagnostic_hash,
         compile_and_read_public_api_hash_with_output(true, &[], "metadata,link").0,
     );
     assert_eq!(downstream_private_method_column(), original_diagnostic_column + 256);
@@ -464,11 +463,10 @@ fn main() {
 
     let moved_macro_source = macro_source.replacen(&original_line, &moved_line, 1);
     assert_eq!(macro_source.len(), moved_macro_source.len());
-    rfs::write("lib.rs", moved_macro_source);
+    rfs::write("lib.rs", &moved_macro_source);
     change_private_value(2, 3);
-    assert_eq!(
-        macro_hash,
-        compile_and_read_public_api_hash_with_output(false, &[], "metadata,link").0,
-    );
+    let (moved_macro_hash, _) =
+        compile_and_read_public_api_hash_with_output(false, &[], "metadata,link");
+    assert_ne!(macro_hash, moved_macro_hash);
     assert_eq!(downstream_exported_macro_column(), original_macro_column + 256);
 }
