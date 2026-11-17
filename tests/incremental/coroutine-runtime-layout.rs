@@ -1,6 +1,7 @@
 //@ revisions: rpass1 rpass2 rpass3
 //@ compile-flags: -Zincremental-verify-ich
 //@ ignore-backends: gcc
+//@ edition: 2021
 
 // The second revision reuses an unchanged coroutine. The third changes the
 // size of a local held across suspension, requiring the cached layout to agree
@@ -8,10 +9,12 @@
 
 #![feature(coroutines, coroutine_trait)]
 
+use std::future::Future;
 use std::mem::size_of_val;
 use std::ops::{Coroutine, CoroutineState};
-use std::pin::Pin;
+use std::pin::{Pin, pin};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::task::{Context, Poll, Waker};
 
 #[cfg(not(rpass3))]
 const BYTES: usize = 16;
@@ -59,4 +62,26 @@ fn main() {
     assert_eq!(DROPS.load(Ordering::SeqCst), 2);
     drop(completed);
     assert_eq!(DROPS.load(Ordering::SeqCst), 2);
+
+    // One closure has both a borrowing call body and a by-move call body.
+    // Their captured-field layouts differ, even with the same coroutine DefId.
+    let value = String::from("saved");
+    let closure = async move || {
+        std::future::ready(()).await;
+        value.len()
+    };
+    assert_eq!(poll_ready(closure()), 5);
+    assert_eq!(poll_ready(call_once(closure)), 5);
+}
+
+async fn call_once(f: impl AsyncFnOnce() -> usize) -> usize {
+    f().await
+}
+
+fn poll_ready(future: impl Future<Output = usize>) -> usize {
+    let mut future = pin!(future);
+    match future.as_mut().poll(&mut Context::from_waker(Waker::noop())) {
+        Poll::Ready(value) => value,
+        Poll::Pending => panic!("the fixture only awaits an immediately ready future"),
+    }
 }
