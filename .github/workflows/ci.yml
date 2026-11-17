@@ -94,6 +94,7 @@ jobs:
           tests/incremental/mono_item_partition_caller_local_body_change.rs
           tests/incremental/mono_item_partition_library_body_change.rs
           tests/incremental/mono_item_partition_library_distinct_edges.rs
+          tests/incremental/mono_item_partition_stable_merging.rs
           tests/incremental/mono_item_partition_unreachable_const.rs
           tests/incremental/mono_item_partition_unreachable_const_cached.rs
 
@@ -106,6 +107,7 @@ jobs:
             tests/run-make/caller-local-codegen
             tests/run-make/unused-externs-transparent
             tests/run-make/reset-codegen-1
+            tests/run-make/stable-cgu-merging
             tests/run-make/test-harness-exact-filter
           )
           selected=()
