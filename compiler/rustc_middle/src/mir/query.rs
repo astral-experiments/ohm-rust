@@ -5,11 +5,11 @@ use std::fmt::{self, Debug};
 use rustc_abi::{FieldIdx, VariantIdx};
 use rustc_errors::ErrorGuaranteed;
 use rustc_index::IndexVec;
-use rustc_index::bit_set::BitMatrix;
+use rustc_index::bit_set::{BitMatrix, DenseBitSet};
 use rustc_macros::{StableHash, TyDecodable, TyEncodable, TypeFoldable, TypeVisitable};
 use rustc_span::{Span, Symbol};
 
-use super::{ConstValue, SourceInfo};
+use super::{BasicBlock, ConstValue, Local, SourceInfo};
 use crate::ty::{self, CoroutineArgsExt, Ty};
 
 rustc_index::newtype_index! {
@@ -52,6 +52,26 @@ pub struct CoroutineLayout<'tcx> {
     #[type_foldable(identity)]
     #[type_visitable(ignore)]
     pub storage_conflicts: BitMatrix<CoroutineSavedLocal, CoroutineSavedLocal>,
+}
+
+/// Coroutine information that does not require constructing executable MIR.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(TyEncodable, TyDecodable, StableHash, TypeFoldable, TypeVisitable)]
+pub struct CoroutineRuntimeInfo<'tcx> {
+    pub layout: CoroutineLayout<'tcx>,
+    pub has_async_drop: bool,
+}
+
+/// State retained between computing a coroutine's layout and lowering its body.
+/// This stays local to the compilation and is consumed when executable MIR is requested.
+#[derive(Debug)]
+pub struct CoroutineLayoutPreparation<'tcx> {
+    pub remap: IndexVec<Local, Option<(Ty<'tcx>, VariantIdx, FieldIdx)>>,
+    pub layout: CoroutineLayout<'tcx>,
+    pub storage_liveness: IndexVec<BasicBlock, Option<DenseBitSet<Local>>>,
+    pub always_live_locals: DenseBitSet<Local>,
+    pub has_async_drop: bool,
+    pub new_ret_ty: Ty<'tcx>,
 }
 
 impl Debug for CoroutineLayout<'_> {
