@@ -25,6 +25,9 @@ pub trait WriteBackendMethods: Clone + 'static {
     fn supports_parallel(&self) -> bool {
         true
     }
+    fn embedded_line_providers(&self) -> Option<[usize; 2]> {
+        None
+    }
     fn thread_profiler() -> Box<dyn Any> {
         Box::new(())
     }
@@ -63,6 +66,13 @@ pub trait WriteBackendMethods: Clone + 'static {
         module: &mut ModuleCodegen<Self::Module>,
         config: &ModuleConfig,
     );
+    fn optimize_and_codegen(
+        cgcx: &CodegenContext, prof: &SelfProfilerRef, emitter: &SharedEmitter,
+        mut module: ModuleCodegen<Self::Module>, config: &ModuleConfig,
+    ) -> CompiledModule {
+        Self::optimize(cgcx, prof, emitter, &mut module, config);
+        Self::codegen(cgcx, prof, emitter, module, config)
+    }
     fn optimize_and_codegen_thin(
         cgcx: &CodegenContext,
         prof: &SelfProfilerRef,

@@ -2556,6 +2556,13 @@ unsafe extern "C" {
     pub(crate) fn LLVMRustLinkerFree<'a>(linker: &'a mut Linker<'a>);
     pub(crate) fn LLVMRustThinLTOHasModuleHashes(data: &ThinLTOData) -> bool;
     pub(crate) fn LLVMRustModuleHasInlineAsm(module: &Module) -> bool;
+    pub(crate) fn LLVMRustCanReplayEmbeddedLines() -> bool;
+    pub(crate) fn LLVMRustEmbeddedLineProof(module: &Module, physical: bool) -> Option<&'static mut Buffer>;
+    pub(crate) fn LLVMRustBeginEmbeddedLineDecisions();
+    pub(crate) fn LLVMRustEndEmbeddedLineDecisions() -> Option<&'static mut Buffer>;
+    pub(crate) fn LLVMRustReplayEmbeddedLines(object: *const u8, object_len: usize, decisions: *const u8, decisions_len: usize,
+        file_map: *const u8, file_map_len: usize) -> Option<&'static mut Buffer>;
+    pub(crate) fn LLVMRustEmbeddedDigest(data: *const u8, len: usize, output: *mut u8);
     pub(crate) fn LLVMRustComputeLTOCacheKey(
         key_out: &RustString,
         mod_id: *const c_char,

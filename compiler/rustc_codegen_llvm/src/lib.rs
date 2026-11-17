@@ -123,6 +123,11 @@ impl WriteBackendMethods for LlvmCodegenBackend {
     type TargetMachine = OwnedTargetMachine;
     type ThinData = back::lto::ThinData;
 
+    fn embedded_line_providers(&self) -> Option<[usize; 2]> {
+        (rustc_llvm::SINGLE_CODEGEN_PROVIDER && unsafe { llvm::LLVMRustCanReplayEmbeddedLines() })
+            .then_some([llvm::LLVMRustEmbeddedLineProof as *const () as usize,
+                        llvm::LLVMContextCreate as *const () as usize])
+    }
     fn thread_profiler() -> Box<dyn Any> {
         Box::new(TimeTraceProfiler::new())
     }
@@ -184,6 +189,25 @@ impl WriteBackendMethods for LlvmCodegenBackend {
         config: &ModuleConfig,
     ) {
         back::write::optimize(cgcx, prof, shared_emitter, module, config)
+    }
+    fn optimize_and_codegen(
+        cgcx: &CodegenContext, prof: &SelfProfilerRef, emitter: &SharedEmitter,
+        mut module: ModuleCodegen<Self::Module>, config: &ModuleConfig,
+    ) -> CompiledModule {
+        let entry = back::embedded_lines::Entry::new(cgcx, &module, config);
+        if let Some(hit) = entry.as_ref().and_then(|e| e.replay()) {
+            return hit;
+        }
+        let diagnostics = emitter.diagnostic_count();
+        back::write::optimize(cgcx, prof, emitter, &mut module, config);
+        let entry = entry.filter(|_| !unsafe { llvm::LLVMRustModuleHasInlineAsm(module.module_llvm.llmod()) });
+        let recording = entry.as_ref().map(|_| back::embedded_lines::Recording::start());
+        let compiled = back::write::codegen(cgcx, prof, emitter, module, config);
+        let decisions = recording.and_then(|r| r.finish());
+        if let Some(entry) = entry && emitter.diagnostic_count() == diagnostics {
+            entry.store(&compiled, decisions);
+        }
+        compiled
     }
     fn optimize_and_codegen_thin(
         cgcx: &CodegenContext,

@@ -1629,3 +1629,83 @@ extern "C" void LLVMRustComputeLTOCacheKey(RustStringRef KeyOut,
   auto OS = RawRustStringOstream(KeyOut);
   OS << Key.str();
 }
+// Rust keeps certificates within its incremental work-product session.
+#include "llvm/Support/BLAKE3.h"
+#if __has_include("llvm/Bitcode/DwarfLineCertificate.h")
+#include "llvm/Bitcode/DwarfLineCertificate.h"
+#endif
+#if defined(__linux__) && defined(LLVM_OHM_CLOSED_DWARF_LINE_CERTIFICATE_V1)
+#include "DwarfPhysicalFiles.h"
+extern "C" {
+void ohm_line_certificate_begin_v1() __attribute__((weak));
+LLVMMemoryBufferRef ohm_line_certificate_end_v1() __attribute__((weak));
+int ohm_line_certificate_check_v1(const void *, size_t, const char *, size_t) __attribute__((weak));
+int ohm_debug_rebase_locations_v1(const char *, size_t, const char *, size_t,
+                                  const void *, size_t, LLVMMemoryBufferRef *,
+                                  const char **) __attribute__((weak));
+}
+#endif
+
+extern "C" bool LLVMRustCanReplayEmbeddedLines() {
+#if defined(__linux__) && defined(LLVM_OHM_REPLAYABLE_DWARF_LINE_SCOPES_V1) && defined(LLVM_OHM_CLOSED_DWARF_LINE_CERTIFICATE_V1)
+  return ohm_line_certificate_begin_v1 && ohm_line_certificate_end_v1 &&
+         ohm_line_certificate_check_v1 && ohm_debug_rebase_locations_v1;
+#else
+  return false;
+#endif
+}
+
+extern "C" LLVMRustBuffer *LLVMRustEmbeddedLineProof(LLVMModuleRef Ref, bool Physical) {
+#if defined(__linux__) && defined(LLVM_OHM_CLOSED_DWARF_LINE_CERTIFICATE_V1)
+  auto Buffer = std::make_unique<LLVMRustBuffer>();
+  llvm::raw_string_ostream OS(Buffer->data);
+  const llvm::Module &M = *llvm::unwrap(Ref);
+  if (Physical ? ohm_installed_dwarf::physicalFiles(M, OS) :
+                 llvm::writeClosedDwarfLineCertificateV1(M, OS))
+    return Buffer.release();
+#endif
+  return nullptr;
+}
+
+extern "C" void LLVMRustBeginEmbeddedLineDecisions() {
+#if defined(__linux__) && defined(LLVM_OHM_CLOSED_DWARF_LINE_CERTIFICATE_V1)
+  ohm_line_certificate_begin_v1();
+#endif
+}
+
+extern "C" LLVMRustBuffer *LLVMRustEndEmbeddedLineDecisions() {
+#if defined(__linux__) && defined(LLVM_OHM_CLOSED_DWARF_LINE_CERTIFICATE_V1)
+  LLVMMemoryBufferRef Data = ohm_line_certificate_end_v1();
+  if (!Data)
+    return nullptr;
+  auto Result = std::make_unique<LLVMRustBuffer>();
+  Result->data.assign(LLVMGetBufferStart(Data), LLVMGetBufferSize(Data));
+  LLVMDisposeMemoryBuffer(Data);
+  return Result.release();
+#else
+  return nullptr;
+#endif
+}
+
+extern "C" LLVMRustBuffer *LLVMRustReplayEmbeddedLines(const uint8_t *Object, size_t N,
+    const uint8_t *Decisions, size_t D, const char *Map, size_t M) {
+#if defined(__linux__) && defined(LLVM_OHM_CLOSED_DWARF_LINE_CERTIFICATE_V1)
+  if (ohm_line_certificate_check_v1(Decisions, D, Map, M) != 0)
+    return nullptr;
+  LLVMMemoryBufferRef Output = nullptr;
+  const char *Reason = nullptr;
+  if (ohm_debug_rebase_locations_v1(Map, M, "[]", 2, Object, N, &Output, &Reason))
+    return nullptr;
+  auto Result = std::make_unique<LLVMRustBuffer>();
+  Result->data.assign(LLVMGetBufferStart(Output), LLVMGetBufferSize(Output));
+  LLVMDisposeMemoryBuffer(Output);
+  return Result.release();
+#else
+  return nullptr;
+#endif
+}
+
+extern "C" void LLVMRustEmbeddedDigest(const uint8_t *Data, size_t N, uint8_t *Output) {
+  auto Hash = llvm::BLAKE3::hash<32>(llvm::ArrayRef<uint8_t>(Data, N));
+  memcpy(Output, Hash.data(), Hash.size());
+}

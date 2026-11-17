@@ -3837,6 +3837,7 @@ dependencies = [
  "rustc_target",
  "smallvec",
  "tracing",
+ "serde_json",
 ]
 
 [[package]]

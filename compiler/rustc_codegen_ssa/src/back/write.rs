@@ -362,6 +362,7 @@ pub struct CodegenContext {
     /// compiling incrementally
     pub incr_comp_session_dir: Option<PathBuf>,
     pub thinlto_cache_dir: Option<PathBuf>,
+    pub embedded_line_cache: Option<Fingerprint>,
     /// `Some(limit)` if the codegen should be run in parallel.
     ///
     /// Depends on [`WriteBackendMethods::supports_parallel()`] and `--jobs-backend`.
@@ -836,6 +837,13 @@ fn execute_optimize_work_item<B: WriteBackendMethods>(
 ) -> WorkItemResult<B> {
     let _timer = prof.generic_activity_with_arg("codegen_module_optimize", &*module.name);
 
+    let lto_type =
+        compute_per_cgu_lto_type(&cgcx.lto, cgcx.use_linker_plugin_lto, &cgcx.crate_types);
+    if matches!(lto_type, ComputedLtoType::No) {
+        return WorkItemResult::Finished(B::optimize_and_codegen(
+            cgcx, prof, &shared_emitter, module, &cgcx.module_config,
+        ));
+    }
     B::optimize(cgcx, prof, &shared_emitter, &mut module, &cgcx.module_config);
 
     // After we've done the initial round of optimizations we need to
@@ -843,8 +851,6 @@ fn execute_optimize_work_item<B: WriteBackendMethods>(
     // back to the coordinator thread for further LTO processing (which
     // has to wait for all the initial modules to be optimized).
 
-    let lto_type =
-        compute_per_cgu_lto_type(&cgcx.lto, cgcx.use_linker_plugin_lto, &cgcx.crate_types);
 
     // If we're doing some form of incremental LTO then we need to be sure to
     // save our module to disk first.
@@ -856,10 +862,7 @@ fn execute_optimize_work_item<B: WriteBackendMethods>(
     };
 
     match lto_type {
-        ComputedLtoType::No => {
-            let module = B::codegen(cgcx, &prof, &shared_emitter, module, &cgcx.module_config);
-            WorkItemResult::Finished(module)
-        }
+        ComputedLtoType::No => unreachable!(),
         ComputedLtoType::Thin => {
             let thin_buffer = B::serialize_module(module.module_llvm, true);
             if let Some(path) = bitcode {
@@ -1366,6 +1369,39 @@ fn start_executing_work<B: WriteBackendMethods>(
         Some(root.join(format!("{:032x}", u128::from_le_bytes(key.to_le_bytes()))))
     });
 
+    #[cfg(target_os = "linux")]
+    let embedded_line_cache = (sess.target.llvm_target == "x86_64-unknown-linux-gnu"
+        && sess.opts.unstable_opts.ohm_check_relink_inputs && sess.opts.incremental.is_some()
+        && tcx.crate_types() == [CrateType::Rlib]
+        && sess.split_debuginfo() == rustc_target::spec::SplitDebuginfo::Off
+        && sess.opts.optimize == OptLevel::Less
+        && sess.opts.debuginfo == rustc_session::config::DebugInfo::LineTablesOnly
+        && sess.lto() == Lto::No
+        && sess.opts.cg.target_cpu.as_deref() != Some("native") && sess.opts.cg.llvm_args.is_empty()
+        && sess.opts.unstable_opts.codegen_backend.is_none()
+        && ["LD_PRELOAD","LD_AUDIT"].iter().all(|k| std::env::var_os(k).is_none_or(|v| v.is_empty()))
+        && !tcx.ohm_untracked_relink_inputs(()))
+    .then(|| {
+        use std::os::unix::fs::MetadataExt;
+        let [bridge, llvm] = backend.embedded_line_providers()?;
+        let driver = rustc_session::filesearch::dll_path as *const () as usize;
+        let mut h = StableHasher::new();
+        "ohm-embedded-line-producer-v1".hash(&mut h);
+        super::loaded_libraries::cache_providers([driver,bridge,llvm])?.hash(&mut h);
+        let exe = std::env::current_exe().ok()?;
+        let meta=exe.metadata().ok()?;
+        (exe,meta.dev(),meta.ino(),meta.len(),meta.ctime(),meta.ctime_nsec()).hash(&mut h);
+        std::env::current_dir().ok()?.hash(&mut h);
+        sess.cfg_version.hash(&mut h);
+        sess.opts.dep_tracking_hash(false).hash(&mut h);
+        format!("{:?}", sess.target).hash(&mut h);
+        backend_features.hash(&mut h);
+        std::env::args_os().collect::<Vec<_>>().hash(&mut h);
+        Some(h.finish())
+    }).flatten();
+    #[cfg(not(target_os = "linux"))]
+    let embedded_line_cache = None;
+
     let cgcx = CodegenContext {
         crate_types: tcx.crate_types().to_vec(),
         lto: sess.lto(),
@@ -1382,6 +1418,7 @@ fn start_executing_work<B: WriteBackendMethods>(
             .as_ref()
             .map(|incr_comp_session| incr_comp_session.session_directory.clone()),
         thinlto_cache_dir,
+        embedded_line_cache,
         output_filenames: Arc::clone(tcx.output_filenames(())),
         module_config: regular_config,
         opt_level,

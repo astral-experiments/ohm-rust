@@ -63,6 +63,10 @@ pub(crate) fn delete_workproduct_files(
     incr_comp_session: &IncrCompSession,
     work_product: &WorkProduct,
 ) {
+    if work_product.saved_files.contains_key("o") {
+        let sidecar = format!("{}.dwarf-machine-lines", work_product.cgu_name);
+        let _ = std_fs::remove_file(in_incr_comp_dir_sess(incr_comp_session, &sidecar));
+    }
     for (_, path) in work_product.saved_files.items().into_sorted_stable_ord() {
         let path = in_incr_comp_dir_sess(incr_comp_session, path);
         if let Err(err) = std_fs::remove_file(&path)
