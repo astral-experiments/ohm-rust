@@ -936,12 +936,14 @@ pub(crate) fn optimize_and_codegen(
     optimize(cgcx, prof, shared_emitter, &mut module, config);
     let entry =
         entry.filter(|_| unsafe { !llvm::LLVMRustModuleHasInlineAsm(module.module_llvm.llmod()) });
-    let mut dwarf =
-        dwarf.filter(|_| unsafe { !llvm::LLVMRustModuleHasInlineAsm(module.module_llvm.llmod()) });
+    let mut dwarf = dwarf.filter(|entry| entry.can_store(&module.module_llvm));
     let emission = dwarf
         .as_mut()
         // A pending early-object entry records the output of the original target machine.
-        .filter(|_| cgcx.try_optimized_dwarf && module.module_llvm.early_object.is_none())
+        .filter(|e| {
+            cgcx.try_optimized_dwarf && module.module_llvm.early_object.is_none()
+                && e.can_replay_optimized()
+        })
         .filter(|_| unsafe { llvm::LLVMRustCanReplayDwarfLineScopes() })
         .filter(|_| Some(shared_emitter.diagnostic_count()) == diagnostics)
         .and_then(|e| {

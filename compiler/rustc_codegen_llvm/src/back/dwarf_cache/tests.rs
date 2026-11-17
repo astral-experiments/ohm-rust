@@ -14,6 +14,7 @@ fn embedded_receipt_binds_the_input_and_donor_object() {
         donor_object: dir.path().join("previous.o"),
         certificate: dir.path().join("worker.dwarf-lines"),
         split: None,
+        register_comment: false,
     };
     let module = CompiledModule {
         name: entry.name.clone(),

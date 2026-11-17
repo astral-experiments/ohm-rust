@@ -2542,6 +2542,10 @@ unsafe extern "C" {
     -> LLVMRustClosedContext;
     pub(crate) fn LLVMRustClosedModuleHash(M: &Module, digest: *mut u8) -> bool;
     pub(crate) fn LLVMRustCanReplayDwarfLineScopes() -> bool;
+    pub(crate) fn LLVMRustHasOnlyX86RegisterCommentAsm(M: &Module) -> bool;
+    pub(crate) fn LLVMRustDwarfRegisterCommentCertificate(
+        M: &Module,
+    ) -> Option<&'static mut Buffer>;
     pub(crate) fn LLVMRustHasDwarfLineCertificate() -> bool;
     pub(crate) fn LLVMRustReadBackObjectModule(M: &Module, C: &Context) -> Option<&'static Module>;
     pub(crate) fn LLVMRustDwarfTypedShape(M: &Module, TM: &TargetMachine, shape: *mut u64) -> bool;

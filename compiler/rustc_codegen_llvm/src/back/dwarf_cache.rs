@@ -77,10 +77,15 @@ pub(super) struct Entry {
     donor_object: PathBuf,
     object: PathBuf,
     split: Option<(PathBuf, PathBuf)>,
+    register_comment: bool,
 }
 
-fn line_proof(module: &llvm::Module, budget: usize) -> Option<Vec<u8>> {
-    let buffer = unsafe { llvm::LLVMRustDwarfLineCertificate(module) }?;
+fn line_proof(module: &llvm::Module, budget: usize, register_comment: bool) -> Option<Vec<u8>> {
+    let buffer = if register_comment {
+        unsafe { llvm::LLVMRustDwarfRegisterCommentCertificate(module) }
+    } else {
+        unsafe { llvm::LLVMRustDwarfLineCertificate(module) }
+    }?;
     let size = unsafe { llvm::LLVMRustBufferLen(buffer) };
     let proof = (size <= budget).then(|| unsafe {
         slice::from_raw_parts(llvm::LLVMRustBufferPtr(buffer), size).to_owned()
@@ -101,7 +106,14 @@ impl Entry {
             || thinlto_cache::CacheEntry::unsupported_effects(cgcx)
             || !matches!(config.emit_obj, EmitObj::ObjectCode(BitcodeSection::None))
             || config.debug_info_for_profiling
-            || unsafe { llvm::LLVMRustModuleHasInlineAsm(module.module_llvm.llmod()) }
+        {
+            return None;
+        }
+        let llmod = module.module_llvm.llmod();
+        let register_comment = unsafe { llvm::LLVMRustModuleHasInlineAsm(llmod) };
+        if register_comment
+            && (cgcx.split_debuginfo != SplitDebuginfo::Off
+                || !unsafe { llvm::LLVMRustHasOnlyX86RegisterCommentAsm(llmod) })
         {
             return None;
         }
@@ -128,12 +140,14 @@ impl Entry {
                     &stable_outputs,
                     Some(split),
                     None,
-                    line_proof(module.module_llvm.llmod(), MAXIMUM - 124)?,
+                    line_proof(llmod, MAXIMUM - 124, false)?,
                 )
             }
             SplitDebuginfo::Off => {
-                let (exact, lines) = if unsafe { llvm::LLVMRustCanReplayDwarfLineScopes() }
-                    && let Some(lines) = line_proof(module.module_llvm.llmod(), MAXIMUM - 124)
+                let (exact, lines) = if register_comment {
+                    (None, line_proof(llmod, MAXIMUM - 124, true)?)
+                } else if unsafe { llvm::LLVMRustCanReplayDwarfLineScopes() }
+                    && let Some(lines) = line_proof(llmod, MAXIMUM - 124, false)
                 {
                     // A matching normalized proof still passes through the full native-object
                     // and DWARF validators in replay. No synthetic exact key is stored.
@@ -174,7 +188,20 @@ impl Entry {
             donor_object: session.join(format!("{}.o", module.name)),
             object: outputs.temp_path_for_cgu(OutputType::Object, &module.name),
             split,
+            register_comment,
         })
+    }
+
+    pub(super) fn can_store(&self, module: &ModuleLlvm) -> bool {
+        let llmod = module.llmod();
+        unsafe {
+            !llvm::LLVMRustModuleHasInlineAsm(llmod)
+                || (self.register_comment && llvm::LLVMRustHasOnlyX86RegisterCommentAsm(llmod))
+        }
+    }
+
+    pub(super) fn can_replay_optimized(&self) -> bool {
+        !self.register_comment
     }
 
     fn magic(&self) -> &[u8; 8] {
@@ -192,7 +219,7 @@ impl Entry {
     }
 
     pub(super) fn record_optimized(&mut self, module: &ModuleLlvm) -> Option<()> {
-        self.optimized = Some(line_proof(module.llmod(), MAXIMUM - 124 - self.proof.len())?);
+        self.optimized = Some(line_proof(module.llmod(), MAXIMUM - 124 - self.proof.len(), false)?);
         Some(())
     }
 
@@ -274,7 +301,7 @@ impl Entry {
     }
 
     pub(super) fn typed_session(&self) -> Option<(&Path, [u8; 16], &str, bool)> {
-        if self.split.is_some() || self.magic() != NORMALIZED_MAGIC {
+        if self.register_comment || self.split.is_some() || self.magic() != NORMALIZED_MAGIC {
             return None;
         }
         Some((
