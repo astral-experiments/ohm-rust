@@ -98,6 +98,8 @@ pub trait ForestObligation: Clone + Debug {
 
 pub trait ObligationProcessor {
     type Obligation: ForestObligation;
+    /// Children may use a smaller representation until they enter the forest.
+    type Child;
     type Error: Debug;
     type OUT: OutcomeTrait<Obligation = Self::Obligation, Error = Error<Self::Obligation, Self::Error>>;
 
@@ -116,7 +118,14 @@ pub trait ObligationProcessor {
     fn process_obligation(
         &mut self,
         obligation: &mut Self::Obligation,
-    ) -> ProcessResult<Self::Obligation, Self::Error>;
+    ) -> ProcessResult<Self::Child, Self::Error>;
+
+    /// Prepares a child for insertion, or returns `None` if it is already satisfied.
+    fn prepare_child(
+        &self,
+        parent: &Self::Obligation,
+        child: Self::Child,
+    ) -> Option<Self::Obligation>;
 
     /// As we do the cycle check, we invoke this callback when we
     /// encounter an actual cycle. `cycle` is an iterator that starts
@@ -483,6 +492,11 @@ impl<O: ForestObligation> ObligationForest<O> {
                         node.state.set(NodeState::Success);
 
                         for child in children {
+                            let Some(child) =
+                                processor.prepare_child(&self.nodes[index].obligation, child)
+                            else {
+                                continue;
+                            };
                             let st = self.register_obligation_at(child, Some(index));
                             if let Err(()) = st {
                                 // Error already reported - propagate it

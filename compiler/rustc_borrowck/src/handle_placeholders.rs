@@ -61,6 +61,27 @@ impl scc::Annotations<RegionVid> for SccAnnotations<'_, '_, RegionTracker> {
     type SccIdx = ConstraintSccIndex;
 }
 
+/// Uses compact annotations during the walk while storing the usual output type.
+struct NoPlaceholderSccAnnotations<'d, 'tcx>(SccAnnotations<'d, 'tcx, RegionTracker>);
+
+impl scc::Annotations<RegionVid> for NoPlaceholderSccAnnotations<'_, '_> {
+    fn new(&self, element: RegionVid) -> NoPlaceholderRegionTracker {
+        let definition = &self.0.definitions[element];
+        NoPlaceholderRegionTracker {
+            max_nameable_universe: (definition.universe, element),
+            representative: Representative::new(element, definition),
+        }
+    }
+
+    fn annotate_scc(&mut self, scc: ConstraintSccIndex, annotation: NoPlaceholderRegionTracker) {
+        let idx = self.0.scc_to_annotation.push(annotation.into());
+        assert!(idx == scc);
+    }
+
+    type Ann = NoPlaceholderRegionTracker;
+    type SccIdx = ConstraintSccIndex;
+}
+
 #[derive(Copy, Debug, Clone, PartialEq, Eq)]
 struct PlaceholderReachability {
     /// The largest-universed placeholder we can reach
@@ -84,7 +105,7 @@ impl PlaceholderReachability {
 
 /// An annotation for region graph SCCs that tracks
 /// the values of its elements. This annotates a single SCC.
-#[derive(Copy, Debug, Clone)]
+#[derive(Copy, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RegionTracker {
     reachable_placeholders: Option<PlaceholderReachability>,
 
@@ -95,6 +116,35 @@ pub(crate) struct RegionTracker {
 
     /// The representative Region Variable Id for this SCC.
     pub(crate) representative: Representative,
+}
+
+/// The SCC annotation when no region definition contains a placeholder. Keeping
+/// the unused reachability data out of the DFS reduces per-edge copies.
+#[derive(Copy, Debug, Clone)]
+struct NoPlaceholderRegionTracker {
+    max_nameable_universe: (UniverseIndex, RegionVid),
+    representative: Representative,
+}
+
+impl scc::Annotation for NoPlaceholderRegionTracker {
+    fn update_scc(&mut self, other: &Self) {
+        self.representative = self.representative.min(other.representative);
+        self.update_reachable(other);
+    }
+
+    fn update_reachable(&mut self, other: &Self) {
+        self.max_nameable_universe = self.max_nameable_universe.min(other.max_nameable_universe);
+    }
+}
+
+impl From<NoPlaceholderRegionTracker> for RegionTracker {
+    fn from(annotation: NoPlaceholderRegionTracker) -> Self {
+        Self {
+            reachable_placeholders: None,
+            max_nameable_universe: annotation.max_nameable_universe,
+            representative: annotation.representative,
+        }
+    }
 }
 
 impl RegionTracker {
@@ -249,6 +299,29 @@ pub(crate) fn compute_sccs_applying_placeholder_outlives_constraints<'tcx>(
     } = constraints;
 
     let fr_static = universal_regions.fr_static;
+    if !has_placeholders {
+        debug!("No placeholder regions found; skipping rewriting logic!");
+
+        let mut scc_annotations = NoPlaceholderSccAnnotations(SccAnnotations::init(&definitions));
+        let constraint_sccs = ConstraintSccs::new_with_annotation(
+            &outlives_constraints
+                .graph(definitions.len())
+                .region_graph(&outlives_constraints, fr_static),
+            &mut scc_annotations,
+        );
+
+        return LoweredConstraints {
+            type_tests,
+            constraint_sccs,
+            scc_annotations: scc_annotations.0.scc_to_annotation,
+            definitions,
+            outlives_constraints: Frozen::freeze(outlives_constraints),
+            liveness_constraints,
+            universe_causes,
+            placeholder_indices,
+        };
+    }
+
     let compute_sccs =
         |constraints: &OutlivesConstraintSet<'tcx>,
          annotations: &mut SccAnnotations<'_, 'tcx, RegionTracker>| {
@@ -261,23 +334,6 @@ pub(crate) fn compute_sccs_applying_placeholder_outlives_constraints<'tcx>(
     let mut scc_annotations = SccAnnotations::init(&definitions);
     let constraint_sccs = compute_sccs(&outlives_constraints, &mut scc_annotations);
 
-    // This code structure is a bit convoluted because it allows for a planned
-    // future change where the early return here has a different type of annotation
-    // that does much less work.
-    if !has_placeholders {
-        debug!("No placeholder regions found; skipping rewriting logic!");
-
-        return LoweredConstraints {
-            type_tests,
-            constraint_sccs,
-            scc_annotations: scc_annotations.scc_to_annotation,
-            definitions,
-            outlives_constraints: Frozen::freeze(outlives_constraints),
-            liveness_constraints,
-            universe_causes,
-            placeholder_indices,
-        };
-    }
     debug!("Placeholders present; activating placeholder handling logic!");
 
     let added_constraints = rewrite_placeholder_outlives(
@@ -382,3 +438,6 @@ pub(crate) fn rewrite_placeholder_outlives<'tcx>(
     }
     added_constraints
 }
+
+#[cfg(test)]
+mod tests;
