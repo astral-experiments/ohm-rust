@@ -64,24 +64,22 @@ pub(crate) fn save_dep_graph(tcx: TyCtxt<'_>) {
                     let on_disk_cache = tcx.query_system.on_disk_cache.as_ref().unwrap();
 
                     // For every green dep node that has a disk-cached value from the
-                    // previous session, make sure the value is loaded into the memory
-                    // cache, so that it will be serialized as part of this session.
+                    // previous session, retain its value in this session's cache.
+                    // Promotion either loads the value for re-encoding or carries its
+                    // serialized bytes forward with their original decoding context.
                     //
                     // This reads data from the previous session, so it needs to happen
                     // before dropping the mmap.
                     //
-                    // FIXME(Zalathar): This step is intended to be cheap, but still does
-                    // quite a lot of work, especially in builds with few or no changes.
-                    // Can we be smarter about how we identify values that need promotion?
-                    // Can we promote values without decoding them into the memory cache?
                     tcx.dep_graph.exec_cache_promotions(tcx);
+                    let promotion = on_disk_cache.take_query_cache_promotion();
 
                     // Drop the memory map so that we can remove the file and write to it.
                     on_disk_cache.close_serialized_data_mmap();
 
                     file_format::save_in(sess, query_cache_path, "query cache", |encoder| {
                         tcx.sess.time("incr_comp_serialize_result_cache", || {
-                            on_disk_cache::OnDiskCache::serialize(tcx, encoder)
+                            on_disk_cache::OnDiskCache::serialize(tcx, encoder, promotion)
                         })
                     });
                 });

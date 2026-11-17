@@ -1099,11 +1099,9 @@ impl DepGraph {
         }
     }
 
-    /// This method loads all on-disk cacheable query results into memory, so
-    /// they can be written out to the new cache file again. Most query results
-    /// will already be in memory but in the case where we marked something as
-    /// green but then did not need the value, that value will never have been
-    /// loaded from disk.
+    /// Preserves disk-cached results for green queries whose values were not
+    /// needed in this session. Promotion can retain their serialized bytes or
+    /// load them into memory for re-encoding when compacting the cache.
     ///
     /// This method will only load queries that will end up in the disk cache.
     /// Other queries will not be executed.
