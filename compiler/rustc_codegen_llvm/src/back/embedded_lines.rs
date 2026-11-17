@@ -138,7 +138,7 @@ fn prior(data: &mut [u8], key: Fingerprint) -> Option<Prior<'_>> {
     (!decisions.is_empty()).then_some(Prior { object: &data[56..88], proof, physical, decisions })
 }
 
-pub(super) struct Entry {
+pub(crate) struct Entry {
     key: Fingerprint,
     name: String,
     packet: PathBuf,
@@ -149,7 +149,7 @@ pub(super) struct Entry {
 }
 
 impl Entry {
-    pub(super) fn new(
+    pub(crate) fn new(
         cgcx: &CodegenContext,
         module: &ModuleCodegen<ModuleLlvm>,
         config: &ModuleConfig,
@@ -212,7 +212,7 @@ impl Entry {
         })
     }
 
-    pub(super) fn replay(&self) -> Option<CompiledModule> {
+    pub(crate) fn replay(&self) -> Option<CompiledModule> {
         let mut packet = read_file(&self.packet)?;
         let previous = prior(&mut packet, self.key)?;
         let map = file_map(previous.proof, &self.proof, previous.physical, &self.physical)?;
@@ -251,7 +251,7 @@ impl Entry {
         })
     }
 
-    pub(super) fn store(
+    pub(crate) fn store(
         &self,
         compiled: &CompiledModule,
         decisions: Option<Vec<u8>>,
@@ -286,17 +286,17 @@ impl Entry {
     }
 }
 
-pub(super) struct Recording {
+pub(crate) struct Recording {
     finished: bool,
 }
 
 impl Recording {
-    pub(super) fn start() -> Self {
+    pub(crate) fn start() -> Self {
         unsafe { llvm::LLVMRustBeginEmbeddedLineDecisions() };
         Self { finished: false }
     }
 
-    pub(super) fn finish(mut self) -> Option<Vec<u8>> {
+    pub(crate) fn finish(mut self) -> Option<Vec<u8>> {
         self.finished = true;
         take_buffer(unsafe { llvm::LLVMRustEndEmbeddedLineDecisions() })
     }
