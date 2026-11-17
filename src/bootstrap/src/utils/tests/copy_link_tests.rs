@@ -1,13 +1,13 @@
 use std::fs;
 
 use super::TestCtx;
-use crate::Build;
 use crate::core::config::DryRun;
+use crate::core::session::Session;
 
-fn build(ctx: &TestCtx) -> Build {
-    let mut build = Build::new(ctx.config("setup").create_config());
-    build.config.set_dry_run(DryRun::Disabled);
-    build
+fn session(ctx: &TestCtx) -> Session {
+    let mut sess = Session::new(ctx.config("setup").create_config());
+    sess.config.set_dry_run(DryRun::Disabled);
+    sess
 }
 
 #[test]
@@ -23,7 +23,7 @@ fn cp_link_r_merges_existing_directories() {
     fs::create_dir_all(src.join("new/empty")).unwrap();
     fs::write(src.join("new/file"), "new subtree").unwrap();
 
-    build(&ctx).cp_link_r(&src, &dst);
+    session(&ctx).cp_link_r(&src, &dst);
 
     assert_eq!(fs::read_to_string(dst.join("nested/replace")).unwrap(), "new");
     assert_eq!(fs::read_to_string(dst.join("nested/keep")).unwrap(), "keep");
@@ -39,7 +39,7 @@ fn cp_link_r_creates_destination() {
     fs::create_dir_all(src.join("empty")).unwrap();
     fs::write(src.join("file"), "contents").unwrap();
 
-    build(&ctx).cp_link_r(&src, &dst);
+    session(&ctx).cp_link_r(&src, &dst);
 
     assert_eq!(fs::read_to_string(dst.join("file")).unwrap(), "contents");
     assert!(dst.join("empty").is_dir());
@@ -52,10 +52,10 @@ fn cp_link_r_dry_run_does_not_create_destination() {
     let dst = ctx.dir().join("new-parent/dst");
     fs::create_dir(&src).unwrap();
     fs::write(src.join("file"), "contents").unwrap();
-    let mut build = build(&ctx);
-    build.config.set_dry_run(DryRun::UserSelected);
+    let mut sess = session(&ctx);
+    sess.config.set_dry_run(DryRun::UserSelected);
 
-    build.cp_link_r(&src, &dst);
+    sess.cp_link_r(&src, &dst);
 
     assert!(!dst.parent().unwrap().exists());
 }
@@ -67,7 +67,7 @@ fn cp_link_r_rejects_file_source() {
     let src = ctx.dir().join("src");
     fs::write(&src, "file, not a directory").unwrap();
 
-    build(&ctx).cp_link_r(&src, &ctx.dir().join("dst"));
+    session(&ctx).cp_link_r(&src, &ctx.dir().join("dst"));
 }
 
 #[cfg(unix)]
@@ -81,7 +81,7 @@ fn cp_link_r_keeps_destination_directories_writable() {
     fs::create_dir_all(src_file.parent().unwrap()).unwrap();
     fs::write(&src_file, "original").unwrap();
     fs::set_permissions(&src_file, fs::Permissions::from_mode(0o444)).unwrap();
-    let build = build(&ctx);
+    let sess = session(&ctx);
 
     for source_mode in [0o755, 0o555] {
         let dst = ctx.dir().join(format!("dst-{source_mode:o}"));
@@ -90,7 +90,7 @@ fn cp_link_r_keeps_destination_directories_writable() {
             .unwrap();
         fs::set_permissions(&src, fs::Permissions::from_mode(source_mode)).unwrap();
 
-        build.cp_link_r(&src, &dst);
+        sess.cp_link_r(&src, &dst);
 
         let directories_are_writable = [&dst, &dst.join("nested/readonly")]
             .iter()
@@ -138,7 +138,7 @@ fn cp_link_r_clones_fresh_tree() {
         return;
     }
 
-    build(&ctx).cp_link_r(&source_link, &dst);
+    session(&ctx).cp_link_r(&source_link, &dst);
 
     assert!(dst.is_dir());
     assert!(!dst.is_symlink());

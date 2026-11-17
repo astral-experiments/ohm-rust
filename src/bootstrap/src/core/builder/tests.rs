@@ -7,6 +7,7 @@ use llvm::get_llvm_build_status;
 use super::*;
 use crate::core::build_steps::llvm::LlvmKind;
 use crate::core::config::Config;
+use crate::core::metadata::Crate;
 use crate::utils::cache::ExecutedStep;
 use crate::utils::helpers::get_host_target;
 use crate::utils::tests::git::{GitCtx, git_test};
@@ -37,14 +38,14 @@ fn allocator_features_keep_jemalloc_in_other_tools() {
         .config("setup")
         .with_default_toml_config(r#"build.allocator = "jemalloc""#)
         .create_config();
-    let mut build = Build::new(config);
+    let mut sess = Session::new(config);
     for (name, features) in [
         ("rustc-main", vec!["jemalloc".into(), "jemalloc-sys".into(), "mimalloc".into()]),
         ("rustdoc-tool", vec!["jemalloc".into()]),
     ] {
-        build.crates.insert(
+        sess.crates.insert(
             name.into(),
-            crate::Crate {
+            Crate {
                 name: name.into(),
                 deps: Default::default(),
                 path: Default::default(),
@@ -60,14 +61,14 @@ fn allocator_features_keep_jemalloc_in_other_tools() {
         ("aarch64-apple-darwin", false, true),
     ] {
         let target = TargetSelection::from_user(target);
-        build.config.mimalloc = mimalloc;
-        build.config.allocator = Some(if jemalloc {
+        sess.config.mimalloc = mimalloc;
+        sess.config.allocator = Some(if jemalloc {
             crate::core::config::Allocator::Jemalloc
         } else {
             crate::core::config::Allocator::System
         });
-        let rustc = build.rustc_features(Kind::Build, target, &["rustc-main".into()]);
-        let rustdoc = build.rustc_features(Kind::Build, target, &["rustdoc-tool".into()]);
+        let rustc = sess.rustc_features(Kind::Build, target, &["rustc-main".into()]);
+        let rustdoc = sess.rustc_features(Kind::Build, target, &["rustdoc-tool".into()]);
         assert_eq!(rustc.split_whitespace().any(|feature| feature == "mimalloc"), mimalloc);
         assert_eq!(
             rustc.split_whitespace().any(|feature| feature == "jemalloc"),
@@ -80,7 +81,7 @@ fn allocator_features_keep_jemalloc_in_other_tools() {
         assert_eq!(rustdoc.split_whitespace().any(|feature| feature == "jemalloc"), jemalloc);
         assert!(!rustdoc.split_whitespace().any(|feature| feature == "mimalloc"));
         assert_eq!(
-            build.config.allocator(target) == crate::core::config::Allocator::Jemalloc,
+            sess.config.allocator(target) == crate::core::config::Allocator::Jemalloc,
             jemalloc
         );
     }
@@ -422,12 +423,13 @@ mod snapshot {
     use super::run_build;
     use crate::core::build_steps::{dist, doc, test};
     use crate::core::builder::tests::{RenderConfig, TEST_TRIPLE_1, TEST_TRIPLE_2, host_target};
-    use crate::core::builder::{Kind, StepMetadata};
+    use crate::core::builder::{Builder, Kind, StepMetadata};
     use crate::core::compiler::Compiler;
     use crate::core::config::TargetSelection;
     use crate::core::config::toml::target::{
         DefaultLinuxLinkerOverride, with_default_linux_linker_overrides,
     };
+    use crate::core::session::Session;
     use crate::utils::tests::{ConfigBuilder, TestCtx};
 
     #[test]
@@ -1214,8 +1216,13 @@ mod snapshot {
                     "build.docs=true",
                 ])
                 .create_config();
-            let docs = config.out.join(&host);
-            let cache = run_build(&[PathBuf::from("extended")], config);
+            let sess = Session::new(config);
+            let builder = Builder::new(&sess);
+            builder.run_step_descriptions(
+                &Builder::get_step_descriptions(builder.kind),
+                &builder.paths,
+            );
+            let cache = builder.cache;
             let mut expected = vec![host.clone(), "wasm32-unknown-unknown".to_owned()];
             expected.sort();
             assert_eq!(
@@ -1224,7 +1231,10 @@ mod snapshot {
             );
             assert_eq!(
                 cache.inspect_all_steps_of_type::<doc::Std, _>(|_, output| output.clone()),
-                vec![docs.join("doc"), docs.join("json-doc")],
+                vec![
+                    sess.doc_out(sess.config.host_target),
+                    sess.json_doc_out(sess.config.host_target)
+                ],
             );
         }
     }
