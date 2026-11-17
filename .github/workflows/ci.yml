@@ -91,6 +91,8 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/incremental/rdr
           tests/incremental/mono_item_partition_body_change.rs
+          tests/incremental/mono_item_partition_library_body_change.rs
+          tests/incremental/mono_item_partition_library_distinct_edges.rs
           tests/incremental/mono_item_partition_unreachable_const.rs
           tests/incremental/mono_item_partition_unreachable_const_cached.rs
 
