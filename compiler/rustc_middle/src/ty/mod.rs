@@ -536,10 +536,12 @@ impl<'tcx> rustc_type_ir::inherent::IntoKind for Ty<'tcx> {
 }
 
 impl<'tcx> rustc_type_ir::Flags for Ty<'tcx> {
+    #[inline]
     fn flags(&self) -> TypeFlags {
         self.0.flags
     }
 
+    #[inline]
     fn outer_exclusive_binder(&self) -> DebruijnIndex {
         self.0.outer_exclusive_binder
     }
@@ -1010,10 +1012,12 @@ impl<'tcx> DefinitionSiteHiddenType<'tcx> {
 pub type Clauses<'tcx> = &'tcx ListWithCachedTypeInfo<Clause<'tcx>>;
 
 impl<'tcx> rustc_type_ir::Flags for Clauses<'tcx> {
+    #[inline]
     fn flags(&self) -> TypeFlags {
         (**self).flags()
     }
 
+    #[inline]
     fn outer_exclusive_binder(&self) -> DebruijnIndex {
         (**self).outer_exclusive_binder()
     }
