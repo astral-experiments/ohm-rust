@@ -5,6 +5,7 @@ use rustc_data_structures::stable_hash::{StableHash, StableHasher};
 use rustc_hir::def_id::{CrateNum, DefId, LOCAL_CRATE, LocalDefId, LocalModId, ModId};
 use rustc_hir::definitions::DefPathHash;
 use rustc_hir::{HirId, ItemLocalId, OwnerId};
+use rustc_span::StableSourceFileId;
 
 use crate::dep_graph::{DepNode, KeyFingerprintStyle};
 use crate::ty::TyCtxt;
@@ -48,6 +49,25 @@ where
     #[inline(always)]
     default fn try_recover_key(_: TyCtxt<'tcx>, _: &DepNode) -> Option<Self> {
         None
+    }
+}
+
+impl<'tcx> DepNodeKey<'tcx> for StableSourceFileId {
+    fn key_fingerprint_style() -> KeyFingerprintStyle {
+        KeyFingerprintStyle::SourceFileId
+    }
+
+    fn to_fingerprint(&self, _: TyCtxt<'tcx>) -> Fingerprint {
+        let value = self.as_u128();
+        Fingerprint::new(value as u64, (value >> 64) as u64)
+    }
+
+    fn try_recover_key(tcx: TyCtxt<'tcx>, dep_node: &DepNode) -> Option<Self> {
+        let (lo, hi) = Fingerprint::from(dep_node.key_fingerprint).split();
+        let id = Self::from_u128(u128::from(lo.as_u64()) | (u128::from(hi.as_u64()) << 64));
+        // A missing file must invalidate the consumer without caching an absent input:
+        // another query could still load that file later in this compilation.
+        tcx.sess.source_map().source_file_by_stable_id(id).map(|_| id)
     }
 }
 
