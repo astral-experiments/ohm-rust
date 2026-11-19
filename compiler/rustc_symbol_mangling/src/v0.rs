@@ -968,6 +968,7 @@ impl<'tcx> Printer<'tcx> for V0SymbolMangler<'tcx> {
             // These should never show up as `print_path_with_simple` arguments.
             DefPathData::CrateRoot
             | DefPathData::Use
+            | DefPathData::NamedUse(_)
             | DefPathData::Impl
             | DefPathData::MacroNs(_)
             | DefPathData::LifetimeNs(_)

@@ -124,7 +124,9 @@ impl DisambiguatedDefPathData {
                 }
             }
             DefPathDataName::Anon { namespace } => {
-                if let DefPathData::AnonAssocTy(method) = self.data {
+                if let DefPathData::NamedUse(name) = self.data {
+                    Symbol::intern(&format!("{{use {name}#{}}}", self.disambiguator))
+                } else if let DefPathData::AnonAssocTy(method) = self.data {
                     Symbol::intern(&format!("{}::{{{}#{}}}", method, namespace, self.disambiguator))
                 } else {
                     Symbol::intern(&format!("{{{}#{}}}", namespace, self.disambiguator))
@@ -213,7 +215,7 @@ pub enum DefPathData {
     Impl,
     /// An `extern` block.
     ForeignMod,
-    /// A `use` item.
+    /// A `use` item without a path prefix.
     Use,
     /// A global asm item.
     GlobalAsm,
@@ -246,6 +248,8 @@ pub enum DefPathData {
     SyntheticCoroutineBody,
     /// Additional static data referred to by a static.
     NestedStatic,
+    /// A `use` item, identified by the last segment of its path prefix.
+    NamedUse(Symbol),
 }
 
 impl Definitions {
@@ -441,6 +445,7 @@ impl DefPathData {
             | ForeignMod
             | CrateRoot
             | Use
+            | NamedUse(_)
             | GlobalAsm
             | Closure
             | Ctor
@@ -457,7 +462,7 @@ impl DefPathData {
         use self::DefPathData::*;
         match *self {
             TypeNs(name) | ValueNs(name) | MacroNs(name) | LifetimeNs(name) | AnonAssocTy(name)
-            | OpaqueLifetime(name) => Some(name),
+            | NamedUse(name) | OpaqueLifetime(name) => Some(name),
 
             Impl
             | ForeignMod
@@ -483,7 +488,7 @@ impl DefPathData {
             CrateRoot => DefPathDataName::Anon { namespace: kw::Crate },
             Impl => DefPathDataName::Anon { namespace: kw::Impl },
             ForeignMod => DefPathDataName::Anon { namespace: kw::Extern },
-            Use => DefPathDataName::Anon { namespace: kw::Use },
+            Use | NamedUse(_) => DefPathDataName::Anon { namespace: kw::Use },
             GlobalAsm => DefPathDataName::Anon { namespace: sym::global_asm },
             Closure => DefPathDataName::Anon { namespace: sym::closure },
             Ctor => DefPathDataName::Anon { namespace: sym::constructor },
