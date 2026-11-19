@@ -981,7 +981,7 @@ impl DepGraph {
             return None;
         }
         let mut trait_input = None;
-        let mut adt_input = None;
+        let mut receiver_input = None;
         let mut direct_bucket_inputs = false;
         for input in previous.edge_targets_from(index).map(|i| *previous.index_to_node(i)) {
             match input.kind {
@@ -990,8 +990,8 @@ impl DepGraph {
                         return None;
                     }
                 }
-                DepKind::trait_impl_receiver_adt => {
-                    if adt_input.replace(input).is_some() {
+                DepKind::trait_impl_receiver_def => {
+                    if receiver_input.replace(input).is_some() {
                         return None;
                     }
                 }
@@ -1006,7 +1006,7 @@ impl DepGraph {
         if trait_input.kind == DepKind::trait_impls_of && direct_bucket_inputs {
             return None;
         }
-        Some((trait_input, adt_input))
+        Some((trait_input, receiver_input))
     }
 
     /// Returns the old edges except those which the caller will read again after rewriting its suffix.
