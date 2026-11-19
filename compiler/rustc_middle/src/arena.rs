@@ -215,6 +215,8 @@ impl_ref_decodable_into_arena! {
     rustc_data_structures::unord::UnordSet<rustc_span::def_id::LocalDefId>,
     rustc_hir::def_id::DefIdSet,
     rustc_index::IndexVec<rustc_middle::mir::Promoted, rustc_middle::mir::Body<'tcx>>,
+    rustc_middle::middle::dead_code::BodyUses<'tcx>,
+    rustc_middle::middle::dead_code::SymbolUse,
     rustc_middle::middle::deduced_param_attrs::DeducedParamAttrs,
     rustc_middle::mir::Body<'tcx>,
     rustc_middle::mono::CodegenUnit<'tcx>,

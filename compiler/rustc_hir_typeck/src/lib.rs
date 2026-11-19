@@ -42,7 +42,6 @@ mod writeback;
 pub use coercion::can_coerce;
 use fn_ctxt::FnCtxt;
 use rustc_ast as ast;
-use rustc_data_structures::unord::UnordSet;
 use rustc_errors::codes::*;
 use rustc_errors::{Applicability, Diag, ErrorGuaranteed, struct_span_code_err};
 use rustc_hir as hir;
@@ -78,10 +77,6 @@ macro_rules! type_error_struct {
 
         err
     })
-}
-
-fn used_trait_imports(tcx: TyCtxt<'_>, def_id: LocalDefId) -> &UnordSet<LocalDefId> {
-    &tcx.typeck(def_id).used_trait_imports
 }
 
 fn typeck_root<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) -> &'tcx ty::TypeckResults<'tcx> {
@@ -749,7 +744,6 @@ pub fn provide(providers: &mut Providers) {
     *providers = Providers {
         method_autoderef_steps: method::probe::method_autoderef_steps,
         typeck_root,
-        used_trait_imports,
         check_transmutes: intrinsicck::check_transmutes,
         check_offloads: intrinsicck::check_offloads,
         ..*providers

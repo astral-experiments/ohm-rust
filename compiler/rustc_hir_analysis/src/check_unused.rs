@@ -31,7 +31,7 @@ pub(super) fn check_unused_traits(tcx: TyCtxt<'_>, (): ()) {
     // Doing so at current will produce queries cycle errors because it may typeck
     // on anon constants directly.
     for item_def_id in tcx.hir_body_owners() {
-        let imports = tcx.used_trait_imports(item_def_id);
+        let imports = tcx.body_uses(item_def_id).trait_imports;
         debug!("GatherVisitor: item_def_id={:?} with imports {:#?}", item_def_id, imports);
         used_trait_imports.extend_unord(imports.items().copied());
     }
