@@ -30,7 +30,7 @@ const FILE_MAGIC: &[u8] = b"RSIC";
 // Local built MIR now fingerprints the type-checking root's region annotation.
 // OwnerNodes records loop-control attributes and params_in_repr fingerprints the full bitset.
 // Source maps retain physical caller paths from the defining checkout.
-const HEADER_FORMAT_VERSION: u16 = 61342;
+const HEADER_FORMAT_VERSION: u16 = 61343;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);

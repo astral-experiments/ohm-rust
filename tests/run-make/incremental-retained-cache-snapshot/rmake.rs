@@ -11,7 +11,7 @@ fn main() {
     let mut snapshots: Vec<(PathBuf, Vec<u8>)> = Vec::new();
     let mut retained = 0;
     let mut compacted = 0;
-    for revision in 1..=7 {
+    for revision in 1..=10 {
         rustc()
             .input("main.rs")
             .cfg(&format!("rpass{revision}"))
@@ -31,6 +31,13 @@ fn main() {
         for (snapshot, original) in &snapshots {
             assert_eq!(fs::read(snapshot).unwrap(), *original);
             assert_ne!(fs::metadata(snapshot).unwrap().ino(), fs::metadata(&cache).unwrap().ino());
+        }
+        if revision == 4 {
+            assert!(bytes.starts_with(&snapshots[0].1), "lost the base generation");
+            assert!(!bytes.starts_with(&snapshots[1].1), "kept the intermediate generation");
+        }
+        if revision == 10 {
+            assert!(!bytes.starts_with(&snapshots[0].1), "failed to reclaim the base generation");
         }
         if let Some((_, previous)) = snapshots.last() {
             if bytes.starts_with(previous) {

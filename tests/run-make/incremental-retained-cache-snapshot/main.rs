@@ -10,6 +10,6 @@ fn main() {
     assert_eq!(value, 42);
     #[cfg(any(rpass4, rpass5, rpass6))]
     assert_eq!(value + 1, 43);
-    #[cfg(rpass7)]
+    #[cfg(any(rpass7, rpass8, rpass9, rpass10))]
     assert_eq!(value + 2, 44);
 }

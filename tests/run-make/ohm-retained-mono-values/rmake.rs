@@ -18,10 +18,10 @@ fn compile(original: &str, mode: &str, revision: usize) -> String {
     let value = match revision {
         1 => 1,
         2 | 3 => 2,
-        _ => 3,
+        _ => revision - 1,
     };
     let (ty, size) = match revision {
-        1 | 2 => ("u8", 1),
+        1 | 2 | 11 => ("u8", 1),
         3 | 4 => ("u16", 2),
         _ => ("u32", 4),
     };
@@ -72,12 +72,19 @@ fn main() {
         // Changing the generic call must still produce the new program.
         compile(&original, mode, 3);
         if enabled {
-            // The retained cache reaches its generation limit and declines
-            // forwarding. A further call-graph edit must compile correctly.
+            // Partial compaction keeps values in the base generation.
             let fourth = compile(&original, mode, 4);
-            assert_eq!(count(&fourth, "retained"), 0, "{fourth}");
+            assert!(count(&fourth, "retained") > 0, "{fourth}");
             assert!(count(&fourth, "unpromoted") > 0, "{fourth}");
-            compile(&original, mode, 5);
+            for revision in 5..=9 {
+                compile(&original, mode, revision);
+            }
+
+            // Full compaction stops forwarding. Check a call-graph edit afterward.
+            let tenth = compile(&original, mode, 10);
+            assert_eq!(count(&tenth, "retained"), 0, "{tenth}");
+            assert!(count(&tenth, "unpromoted") > 0, "{tenth}");
+            compile(&original, mode, 11);
         }
     }
 }

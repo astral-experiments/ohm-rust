@@ -38,6 +38,10 @@ use crate::ty::{self, Ty, TyCtxt};
 
 const TAG_FILE_FOOTER: u128 = 0xC0FFEE_C0FFEE_C0FFEE_C0FFEE_C0FFEE;
 const MAX_CACHE_GENERATIONS: usize = 3;
+
+// Compact the recent generations first. Reclaim obsolete values from the
+// original generation after three ordinary compaction intervals.
+const MAX_BASE_AGE: u8 = 9;
 static NEXT_CACHE_ID: AtomicU32 = AtomicU32::new(1);
 
 // A normal span encoded with both location information and a `SyntaxContext`
@@ -62,8 +66,9 @@ const SYMBOL_PREDEFINED: u8 = 2;
 /// Green values can remain in their original serialized form. Each retained
 /// generation is a prefix of the file with its own footer and decoding context;
 /// aliases map current dependency-node indices to indices in the previous generation.
-/// Keeping absolute byte positions preserves type and symbol shorthands. After
-/// `MAX_CACHE_GENERATIONS`, normal promotion re-encodes live values into a fresh file.
+/// Keeping absolute byte positions preserves type and symbol shorthands. At
+/// `MAX_CACHE_GENERATIONS` we compact the newer generations while retaining
+/// green values in the original one. At `MAX_BASE_AGE` we compact the whole file.
 pub struct OnDiskCache {
     /// Type shorthands are offsets in one cache lineage, not process-global keys.
     cache_id: u32,
@@ -72,6 +77,7 @@ pub struct OnDiskCache {
     start_pos: usize,
     data_len: usize,
     generation_count: usize,
+    base_age: u8,
     previous_cache: Option<Box<OnDiskCache>>,
     forwarded_query_values: FxHashMap<SerializedDepNodeIndex, SerializedDepNodeIndex>,
     loaded_query_values: Lock<GrowableBitSet<SerializedDepNodeIndex>>,
@@ -121,6 +127,7 @@ pub struct OnDiskCache {
 #[derive(Encodable, Decodable)]
 struct Footer {
     previous_cache_len: Option<usize>,
+    base_age: u8,
     forwarded_query_values: Vec<(SerializedDepNodeIndex, SerializedDepNodeIndex)>,
     forwarded_allocations: Vec<(usize, usize, usize)>,
     file_index_to_stable_id: FxHashMap<SourceFileIndex, EncodedSourceFileId>,
@@ -238,6 +245,9 @@ impl OnDiskCache {
         };
         let generation_count =
             previous_cache.as_ref().map_or(1, |cache| cache.generation_count + 1);
+        if usize::from(footer.base_age) < generation_count || footer.base_age > MAX_BASE_AGE {
+            return Err(());
+        }
         let mut aliases = if footer.forwarded_allocations.is_empty() {
             Vec::new()
         } else {
@@ -270,6 +280,7 @@ impl OnDiskCache {
             start_pos,
             data_len,
             generation_count,
+            base_age: footer.base_age,
             previous_cache,
             forwarded_query_values: footer.forwarded_query_values.into_iter().collect(),
             loaded_query_values: Default::default(),
@@ -293,6 +304,7 @@ impl OnDiskCache {
             start_pos: 0,
             data_len: 0,
             generation_count: 0,
+            base_age: 0,
             previous_cache: None,
             forwarded_query_values: Default::default(),
             loaded_query_values: Default::default(),
@@ -324,15 +336,30 @@ impl OnDiskCache {
         previous_index: SerializedDepNodeIndex,
         current_index: DepNodeIndex,
     ) -> bool {
-        // Periodically use normal promotion to discard obsolete generations.
-        if self.generation_count >= MAX_CACHE_GENERATIONS
+        if self.base_age >= MAX_BASE_AGE
             || !self.loadable_from_disk(previous_index)
+            || (self.generation_count >= MAX_CACHE_GENERATIONS
+                && self.index_in_base(previous_index).is_none())
         {
             return false;
         }
         let current_index = SerializedDepNodeIndex::from_curr_for_serialization(current_index);
         self.pending_query_values.lock().push((current_index, previous_index));
         true
+    }
+
+    /// Follows the same precedence as `try_load_query_value`. A live value
+    /// encoded alongside a forwarding entry supersedes its older bytes.
+    fn index_in_base(&self, mut index: SerializedDepNodeIndex) -> Option<SerializedDepNodeIndex> {
+        let mut cache = self;
+        while let Some(previous) = &cache.previous_cache {
+            if cache.query_values_index.contains_key(&index) {
+                return None;
+            }
+            index = *cache.forwarded_query_values.get(&index)?;
+            cache = previous;
+        }
+        Some(index)
     }
 
     /// Retains serialized data while replacing the cache file.
@@ -343,7 +370,13 @@ impl OnDiskCache {
         }
         query_values.sort_unstable_by_key(|(index, _)| index.as_u32());
         let mut allocation_origins = FxHashMap::default();
-        let mut cache = Some(self);
+        let mut prefix = self;
+        if self.generation_count >= MAX_CACHE_GENERATIONS {
+            while let Some(previous) = &prefix.previous_cache {
+                prefix = previous;
+            }
+        }
+        let mut cache = Some(prefix);
         let mut depth = 1;
         while let Some(current) = cache {
             for (index, id) in current.alloc_decoding_state.decoded_alloc_ids() {
@@ -358,7 +391,7 @@ impl OnDiskCache {
         let data = Arc::clone(data.as_ref().unwrap());
         Some(QueryCachePromotion {
             data,
-            data_len: self.data_len,
+            data_len: prefix.data_len,
             start_pos: self.start_pos,
             query_values,
             allocation_origins,
@@ -374,7 +407,7 @@ impl OnDiskCache {
     ) -> FileEncodeResult {
         // Serializing the `DepGraph` should not modify it.
         tcx.dep_graph.with_ignore(|| {
-            let (previous_cache_len, forwarded_query_values, allocation_origins) =
+            let (previous_cache_len, mut forwarded_query_values, allocation_origins) =
                 if let Some(promotion) = promotion {
                     // Preserve every old byte position, including type and symbol shorthands.
                     // The already-written header belongs to the same compiler version.
@@ -410,11 +443,14 @@ impl OnDiskCache {
             );
             if let Some(cache) = &tcx.query_system.on_disk_cache {
                 let loaded = cache.loaded_query_values.lock();
-                for &(index, previous) in &forwarded_query_values {
+                for (index, previous) in &mut forwarded_query_values {
                     // A recomputed query can be green even when its diagnostic spans changed.
                     // Only skip encoding a live value if we actually decoded its previous bytes.
-                    if loaded.contains(previous) {
-                        forwarded_queries.insert(index);
+                    if loaded.contains(*previous) {
+                        forwarded_queries.insert(*index);
+                    }
+                    if cache.generation_count >= MAX_CACHE_GENERATIONS {
+                        *previous = cache.index_in_base(*previous).unwrap();
                     }
                 }
             }
@@ -504,6 +540,11 @@ impl OnDiskCache {
                 TAG_FILE_FOOTER,
                 &Footer {
                     previous_cache_len,
+                    base_age: if previous_cache_len.is_some() {
+                        tcx.query_system.on_disk_cache.as_ref().unwrap().base_age + 1
+                    } else {
+                        1
+                    },
                     forwarded_query_values,
                     forwarded_allocations,
                     file_index_to_stable_id,
