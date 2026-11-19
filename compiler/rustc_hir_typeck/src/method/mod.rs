@@ -15,7 +15,8 @@ use rustc_infer::infer::{BoundRegionConversionTime, InferOk};
 use rustc_infer::traits::PredicateObligations;
 use rustc_middle::traits::ObligationCause;
 use rustc_middle::ty::{
-    self, GenericArgs, GenericArgsRef, GenericParamDefKind, Ty, TypeVisitableExt, Unnormalized,
+    self, GenericArgs, GenericArgsRef, GenericParamDefKind, Ty, TyCtxt, TypeVisitableExt,
+    Unnormalized,
 };
 use rustc_span::{ErrorGuaranteed, Ident, Span, Symbol, bug, span_bug};
 use rustc_trait_selection::traits::query::evaluate_obligation::InferCtxtExt;
@@ -571,9 +572,18 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
     /// Finds item with name `item_ident` defined in impl/trait `def_id`
     /// and return it, or `None`, if no such item was defined there.
     fn associated_value(&self, def_id: DefId, item_ident: Ident) -> Option<ty::AssocItem> {
-        self.tcx
-            .associated_items(def_id)
-            .find_by_ident_and_namespace(self.tcx, item_ident, Namespace::ValueNS, def_id)
-            .copied()
+        // A root-context lookup depends on the item selected by name, so changes
+        // to sibling items can leave a caller's type check green. Macro hygiene
+        // can distinguish lookups of the same name in other contexts.
+        let item = if self.tcx.dep_graph.is_fully_enabled() && item_ident.span.ctxt().is_root() {
+            self.tcx.associated_value((def_id, item_ident.name))
+        } else {
+            lookup_value(self.tcx, def_id, item_ident)
+        };
+        item.copied()
     }
+}
+
+pub(super) fn lookup_value(tcx: TyCtxt<'_>, owner: DefId, ident: Ident) -> Option<&ty::AssocItem> {
+    tcx.associated_items(owner).find_by_ident_and_namespace(tcx, ident, Namespace::ValueNS, owner)
 }
