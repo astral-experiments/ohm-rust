@@ -27,9 +27,16 @@ use crate::ty::{self, GenericArgs, Instance, InstanceKind, ShimKind, SymbolName,
 /// The high word of an upstream monomorphization's key. Two different instances
 /// in the same bucket are distinguished by their original definition and arguments.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, StableHash)]
+#[derive(TyEncodable, TyDecodable)]
 pub struct UpstreamMonoBucket(pub u32);
 
 impl UpstreamMonoBucket {
+    /// Group nearby buckets into one of 4096 cache entries. This amortizes
+    /// the dependency node and disk index across all lookups in the page.
+    pub fn page(self) -> Self {
+        Self(self.0 >> 20)
+    }
+
     /// Computes the sort key of an instance. Only incremental sessions need
     /// to recover its bucket in another compiler process.
     pub fn sort_key<'tcx>(
@@ -54,7 +61,7 @@ impl UpstreamMonoBucket {
 }
 
 /// One selected upstream provider. The table keeps one row per exact instance.
-#[derive(Copy, Clone, Debug, StableHash)]
+#[derive(Copy, Clone, Debug, StableHash, TyEncodable, TyDecodable)]
 pub struct UpstreamMono<'tcx> {
     pub bucket: UpstreamMonoBucket,
     pub def_id: DefId,

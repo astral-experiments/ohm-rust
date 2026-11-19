@@ -207,6 +207,7 @@ impl_ref_decodable_into_arena! {
     (ty::Clause<'tcx>, Span),
     (ty::PolyTraitRef<'tcx>, Span),
     Spanned<MonoItem<'tcx>>,
+    rustc_middle::mono::UpstreamMono<'tcx>,
     rustc_ast::InlineAsmTemplatePiece,
     rustc_ast::tokenstream::TokenStream,
     rustc_attr_ir::Attribute,
