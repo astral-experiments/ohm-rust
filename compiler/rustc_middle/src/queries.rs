@@ -85,7 +85,7 @@ use rustc_target::spec::PanicStrategy;
 use crate::infer::canonical::{self, Canonical};
 use crate::lint::LintExpectation;
 use crate::middle::codegen_fn_attrs::{CodegenFnAttrs, SanitizerFnAttrs};
-use crate::middle::dead_code::DeadCodeLivenessSummary;
+use crate::middle::dead_code::{BodyUses, DeadCodeLivenessSummary};
 use crate::middle::debugger_visualizer::DebuggerVisualizerFile;
 use crate::middle::deduced_param_attrs::DeducedParamAttrs;
 use crate::middle::exported_symbols::{ExportedSymbol, SymbolExportInfo};
@@ -1326,8 +1326,8 @@ rustc_queries! {
         cache_on_disk
     }
 
-    query used_trait_imports(key: LocalDefId) -> &'tcx UnordSet<LocalDefId> {
-        desc { "finding used_trait_imports `{}`", tcx.def_path_str(key) }
+    query body_uses(key: LocalDefId) -> &'tcx BodyUses<'tcx> {
+        desc { "finding names used by the body of `{}`", tcx.def_path_str(key) }
         cache_on_disk
     }
 

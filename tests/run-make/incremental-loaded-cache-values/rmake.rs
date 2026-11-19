@@ -18,20 +18,21 @@ fn main() {
         large.push_str(&format!("let value_{index}: u32 = x;\n"));
     }
     large.push_str("x\n}\n");
-    rfs::write("large.rs", large);
 
     let mut snapshots: Vec<(PathBuf, Vec<u8>)> = Vec::new();
     let mut check_size = 0;
     let mut build_size = 0;
     for revision in 1..=7 {
+        // Keep the functions in one module so that editing its sibling makes
+        // late lints load the large function's type-checking results.
         rfs::write(
             "main.rs",
             format!(
                 "#![feature(rustc_attrs)]\n\
                  #![allow(internal_features, unused_variables)]\n\
-                 mod large;\n\
+                 {large}\n\
                  fn edited() -> u32 {{ {revision} }}\n\
-                 fn main() {{ println!(\"{{}}\", large::value(7) + edited()); }}\n",
+                 fn main() {{ println!(\"{{}}\", value(7) + edited()); }}\n",
             ),
         );
         let mut command = rustc();
