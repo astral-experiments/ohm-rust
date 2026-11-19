@@ -270,8 +270,10 @@ jobs:
           --set rust.lto=off test --stage 1 tests/incremental/rdr
           tests/incremental/mono_item_partition_body_change.rs
           tests/incremental/mono_item_partition_caller_local_body_change.rs
+          tests/incremental/mono_item_partition_edited_roots.rs
           tests/incremental/mono_item_partition_library_body_change.rs
           tests/incremental/mono_item_partition_library_distinct_edges.rs
+          tests/incremental/mono_item_partition_removed_callee.rs
           tests/incremental/mono_item_partition_stable_merging.rs
           tests/incremental/mono_item_partition_test_body_change.rs
           tests/incremental/mono_item_partition_test_changed_edges.rs

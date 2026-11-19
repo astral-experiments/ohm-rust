@@ -1716,6 +1716,8 @@ pub(crate) fn provide(providers: &mut Providers) {
             && !tcx.sess.opts.unstable_opts.profile_closures
             && !tcx.sess.opts.unstable_opts.print_type_sizes
         {
+            crate::prepare_incremental_monomorphization(tcx);
+            tcx.dcx().abort_if_errors();
             tcx.incremental_mono_item_partitions(())
         } else {
             collect_and_partition_mono_items(tcx, ())

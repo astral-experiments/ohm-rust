@@ -5,7 +5,7 @@
 // tidy-alphabetical-end
 
 use rustc_attr_ir::lang_items::LangItem;
-use rustc_data_structures::fx::FxHashSet;
+use rustc_data_structures::fx::{FxHashSet, FxIndexSet};
 use rustc_hir::def::DefKind;
 use rustc_middle::dep_graph::{DepKind, DepNode};
 use rustc_middle::mono::{CollectionMode, MonoItem, NormalizationErrorInMono};
@@ -30,102 +30,68 @@ mod util;
 // Exposed so `rustc_codegen_ssa::base::codegen_crate` can trigger the
 // host-metadata manifest write.
 pub use offload::manifest::write_host_metadata_offload_manifest;
-/// Updates existing monomorphization queries for edited, non-generic local bodies.
+/// Refreshes opaque instance keys before validating the cached whole-crate partition.
 ///
-/// Instance query keys cannot be recovered from their dependency-node fingerprints. Replaying
-/// only keys that existed in the previous session lets the cached whole-crate partition stay
-/// green when a body edit does not change its monomorphization edges or size estimate.
-pub fn prepare_incremental_monomorphization(tcx: TyCtxt<'_>) {
-    if !tcx.dep_graph.is_fully_enabled()
-        || !(tcx.sess.opts.unstable_opts.public_api_hash
-            || tcx.sess.opts.unstable_opts.ohm_incremental_mono_partitions)
-        || !tcx.codegen_output_mode(()).0
-        || tcx.sess.opts.unstable_opts.print_mono_items
-        || tcx.sess.opts.unstable_opts.dump_mono_stats.enabled()
-        || tcx.sess.opts.unstable_opts.profile_closures
-        || tcx.sess.opts.unstable_opts.print_type_sizes
-    {
+/// The relink input check can request the partitions before code generation, so this runs
+/// at their first use. Only existing keys need refreshing: the regular collector handles new
+/// instances if a changed edge or size estimate invalidates the partition.
+fn prepare_incremental_monomorphization(tcx: TyCtxt<'_>) {
+    if !tcx.codegen_output_mode(()).0 {
         return;
     }
 
     let _prof_timer = tcx.prof.generic_activity("prepare_incremental_monomorphization");
 
     let roots_dep_node = DepNode::construct(tcx, DepKind::collect_mono_item_roots, &());
-    let _ = tcx.collect_mono_item_roots(());
+    let roots = tcx.collect_mono_item_roots(());
     if !tcx.dep_graph.is_green(&roots_dep_node) {
         return;
     }
 
-    let mut changed_typeck_root = None;
+    let mut changed_roots = FxIndexSet::default();
+    let mut changed_definitions = FxHashSet::default();
     for def_id in tcx.hir_body_owners() {
         let typeck_root = tcx.typeck_root_def_id_local(def_id);
         let hir_dep_node = DepNode::construct(tcx, DepKind::hir_owner, &typeck_root);
-        if !tcx.dep_graph.is_red(&hir_dep_node) {
-            continue;
+        if tcx.dep_graph.is_red(&hir_dep_node) {
+            changed_roots.insert(typeck_root.to_def_id());
+            changed_definitions.insert(typeck_root.to_def_id());
+            changed_definitions.insert(def_id.to_def_id());
         }
+    }
 
-        if changed_typeck_root.is_some_and(|previous| previous != typeck_root) {
-            // Another changed body could have removed the only path to this body. Replaying its
-            // monomorphization checks would incorrectly diagnose now-unreachable code.
+    let Some(&first) = changed_roots.first() else { return };
+    let mut pending_instances = Vec::new();
+    let mut push_root = |instance| {
+        pending_instances.push((rustc_span::dummy_spanned(instance), CollectionMode::UsedItems));
+    };
+    if changed_roots.len() == 1 {
+        // Keep the single-body fast path for private callees reached through unchanged callers.
+        if !matches!(tcx.def_kind(first), DefKind::Fn | DefKind::AssocFn)
+            || tcx.generics_of(first).requires_monomorphization(tcx)
+        {
             return;
         }
-        changed_typeck_root = Some(typeck_root);
+        push_root(Instance::mono(tcx, first));
+    } else {
+        // An edited caller may have removed the last call to another edited body. Start only
+        // at current collection roots, then follow their current edges. Forcing an unreachable
+        // instance could evaluate a failing constant that the collector would never visit.
+        for root in roots.iter().rev() {
+            if let MonoItem::Fn(instance) = *root
+                && changed_roots.contains(&instance.def_id())
+            {
+                push_root(instance);
+            }
+        }
     }
 
-    let Some(typeck_root) = changed_typeck_root else {
-        return;
-    };
-    if !matches!(tcx.def_kind(typeck_root), DefKind::Fn | DefKind::AssocFn)
-        || tcx.generics_of(typeck_root).requires_monomorphization(tcx)
-    {
-        return;
-    }
-
-    let root_instance = Instance::mono(tcx, typeck_root.to_def_id());
-    let root_key = (root_instance, CollectionMode::UsedItems);
+    let mut refreshed_instances = FxHashSet::default();
     let instance_items_dep_kind = if tcx.sess.opts.unstable_opts.ohm_incremental_mono_partitions {
         DepKind::partition_items_of_instance
     } else {
         DepKind::items_of_instance
     };
-    let root_instance_dep_node = DepNode::construct(tcx, instance_items_dep_kind, &root_key);
-    if !tcx.dep_graph.contains_previous_node(&root_instance_dep_node) {
-        return;
-    }
-    let Ok((root_used_items, root_mentioned_items)) =
-        items_of_instance_for_partitioning(tcx, root_instance, CollectionMode::UsedItems)
-    else {
-        return;
-    };
-    if !tcx.dep_graph.is_green(&root_instance_dep_node) {
-        // A changed call graph can make a previously reachable nested closure unreachable.
-        return;
-    }
-
-    if !refresh_incremental_monomorphization_attributes(tcx, root_instance) {
-        return;
-    }
-
-    let mut changed_definitions = FxHashSet::default();
-    changed_definitions.insert(typeck_root.to_def_id());
-
-    for def_id in tcx.hir_body_owners() {
-        if tcx.typeck_root_def_id_local(def_id) == typeck_root {
-            changed_definitions.insert(def_id.to_def_id());
-        }
-    }
-
-    let mut refreshed_instances = FxHashSet::default();
-    refreshed_instances.insert(root_key);
-
-    let mut pending_instances = Vec::new();
-    collect_incremental_monomorphization_edges(
-        &mut pending_instances,
-        CollectionMode::UsedItems,
-        root_used_items,
-        root_mentioned_items,
-    );
-
     while let Some((spanned_instance, mode)) = pending_instances.pop() {
         let instance = spanned_instance.node;
         if !instance_references_changed_body(instance, &changed_definitions)
