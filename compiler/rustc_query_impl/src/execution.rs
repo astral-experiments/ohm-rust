@@ -761,7 +761,8 @@ fn recover_trait_impl_bucket(
     dep_node: DepNode,
     prev_index: SerializedDepNodeIndex,
 ) -> Option<(DefId, SimplifiedType)> {
-    let (trait_node, adt_node) = tcx.dep_graph.previous_trait_impl_inputs(dep_node, prev_index)?;
+    let (trait_node, receiver_node) =
+        tcx.dep_graph.previous_trait_impl_inputs(dep_node, prev_index)?;
     let trait_id = registered_def_id(tcx, trait_node)?;
     if tcx.def_kind(trait_id) != DefKind::Trait {
         return None;
@@ -770,12 +771,16 @@ fn recover_trait_impl_bucket(
         let key = (trait_id, receiver);
         (DepNode::construct(tcx, DepKind::non_blanket_trait_impls, &key) == dep_node).then_some(key)
     };
-    if let Some(adt_node) = adt_node {
-        let adt = registered_def_id(tcx, adt_node)?;
-        if !tcx.def_kind(adt).is_adt() {
-            return None;
-        }
-        matching_key(SimplifiedType::Adt(adt))
+    if let Some(receiver_node) = receiver_node {
+        let id = registered_def_id(tcx, receiver_node)?;
+        let receiver = match tcx.def_kind(id) {
+            kind if kind.is_adt() => SimplifiedType::Adt(id),
+            DefKind::Fn | DefKind::AssocFn | DefKind::Ctor(..) | DefKind::Closure => {
+                SimplifiedType::Closure(id)
+            }
+            _ => return None,
+        };
+        matching_key(receiver)
     } else {
         let mut matches = FINITE_IMPL_RECEIVERS.iter().copied().filter_map(matching_key);
         let key = matches.next()?;
