@@ -44,8 +44,9 @@ impl Fallback for Receiver {
     fn value(&self) {}
 }
 
-// The first caller repeats the lookup after the impl changes. The second
-// can reuse its type check if the lookup still selects the same method.
+// Both callers can reuse their type checks, including the first one that
+// needs the result of looking up `value` after the impl changes.
+#[rustc_clean(cfg = "bpass2", loaded_from_disk = "typeck_root")]
 pub fn first(x: &Receiver) {
     x.value();
 }

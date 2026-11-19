@@ -743,7 +743,11 @@ fn fatally_break_rust(tcx: TyCtxt<'_>, span: Span) -> ! {
 pub fn provide(providers: &mut Providers) {
     *providers = Providers {
         associated_value: |tcx, (owner, name)| {
-            method::lookup_value(tcx, owner, Ident::with_dummy_span(name))
+            let item = method::lookup_value(tcx, owner, Ident::with_dummy_span(name))?;
+            // If the impl or trait changes, this edge identifies the value we found.
+            // Its parent and name let the next session repeat just this lookup.
+            tcx.ensure_ok().associated_item(item.def_id);
+            Some(item)
         },
         method_autoderef_steps: method::probe::method_autoderef_steps,
         typeck_root,
