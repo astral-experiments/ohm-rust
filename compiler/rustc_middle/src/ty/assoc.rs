@@ -47,7 +47,7 @@ impl AssocItem {
     /// Matches a use-site identifier after adjusting it to the item's defining scope.
     pub fn matches_ident(&self, tcx: TyCtxt<'_>, ident: Ident, parent: DefId) -> bool {
         self.opt_name() == Some(ident.name)
-            && ident.span.ctxt().hygienic_eq(self.name_ctxt, tcx.expn_that_defined(parent))
+            && tcx.hygienic_ctxt_eq(ident.span.ctxt(), self.name_ctxt, parent)
     }
 
     pub fn ident(&self, tcx: TyCtxt<'_>) -> Ident {

@@ -50,7 +50,7 @@ use rustc_serialize::{Decodable, Encodable};
 use rustc_session::config::OptLevel;
 use rustc_span::def_id::{LocalModId, ModId};
 use rustc_span::hygiene::MacroKind;
-use rustc_span::{DUMMY_SP, ExpnId, ExpnKind, Ident, Span, Symbol, bug};
+use rustc_span::{DUMMY_SP, ExpnId, ExpnKind, Ident, Span, Symbol, SyntaxContext, bug};
 use rustc_target::callconv::FnAbi;
 pub use rustc_type_ir::data_structures::{DelayedMap, DelayedSet};
 pub use rustc_type_ir::fast_reject::DeepRejectCtxt;
@@ -2218,8 +2218,15 @@ impl<'tcx> TyCtxt<'tcx> {
         if use_ident.name != def_ident.name {
             return false;
         }
-        let use_ctxt = use_ident.span.ctxt();
-        let def_ctxt = def_ident.span.ctxt();
+        self.hygienic_ctxt_eq(use_ident.span.ctxt(), def_ident.span.ctxt(), def_parent_def_id)
+    }
+
+    fn hygienic_ctxt_eq(
+        self,
+        use_ctxt: SyntaxContext,
+        def_ctxt: SyntaxContext,
+        def_parent_def_id: DefId,
+    ) -> bool {
         if use_ctxt.is_root() {
             // Every defining expansion descends from the root, so adjustment cannot remove a mark.
             def_ctxt.normalize_to_macros_2_0().is_root()

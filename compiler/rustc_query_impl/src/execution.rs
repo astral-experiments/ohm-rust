@@ -788,6 +788,28 @@ fn recover_trait_impl_bucket(
     }
 }
 
+pub(crate) fn force_associated_value(
+    tcx: TyCtxt<'_>,
+    dep_node: DepNode,
+    prev_index: SerializedDepNodeIndex,
+    _reader: Option<SerializedDepNodeIndex>,
+) -> bool {
+    let key = tcx.dep_graph.with_ignore(|| {
+        let input = tcx.dep_graph.previous_associated_value_item(dep_node, prev_index)?;
+        let item = registered_def_id(tcx, input)?;
+        let owner = tcx.opt_parent(item)?;
+        if !matches!(tcx.def_kind(owner), DefKind::Impl { .. } | DefKind::Trait) {
+            return None;
+        }
+        let key = (owner, tcx.opt_item_name(item)?);
+        (DepNode::construct(tcx, DepKind::associated_value, &key) == dep_node).then_some(key)
+    });
+    let Some(key) = key else { return false };
+    let query = &tcx.query_system.query_vtables.associated_value;
+    try_execute_query::<_, true>(query, tcx, DUMMY_SP, key, Some(dep_node));
+    true
+}
+
 pub(crate) fn force_trait_impl_bucket(
     tcx: TyCtxt<'_>,
     dep_node: DepNode,
