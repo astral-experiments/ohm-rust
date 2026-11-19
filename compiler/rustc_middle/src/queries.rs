@@ -1141,6 +1141,11 @@ rustc_queries! {
         feedable
     }
 
+    /// The first associated value in a trait or impl matching a name from the root syntax context.
+    query associated_value(key: (DefId, Symbol)) -> Option<&'tcx ty::AssocItem> {
+        desc { "looking up associated value `{}` of `{}`", key.1, tcx.def_path_str(key.0) }
+    }
+
     /// Collects the associated items defined on a trait or impl.
     query associated_items(key: DefId) -> &'tcx ty::AssocItems {
         arena_cache
