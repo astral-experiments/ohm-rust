@@ -1390,9 +1390,8 @@ fn rustc_cargo_env(builder: &Builder<'_>, cargo: &mut Cargo, target: TargetSelec
         cargo.env("RUSTC_VERIFY_LLVM_IR", "1");
     }
 
-    let nightly = builder.config.channel == "nightly" || builder.config.channel == "dev";
-    if nightly {
-        // We want to enable Polonius Alpha and Next Trait Solver by default on nighty
+    // Ohm uses the dev channel for unstable flags and stable defaults for type checking.
+    if builder.config.channel == "nightly" {
         cargo.env("CFG_DEFAULT_POLONIUS_NEXT", "1");
         cargo.env("CFG_DEFAULT_NEXT_SOLVER_GLOBALLY", "1");
     }
