@@ -4,6 +4,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use rustc_data_structures::memmap::Mmap;
 use rustc_data_structures::unord::UnordMap;
 use rustc_hashes::Hash64;
 use rustc_middle::dep_graph::{CheckCacheSource, DepGraph, SerializedDepGraph, WorkProductMap};
@@ -35,9 +36,10 @@ enum LoadResult {
 fn decode_dep_graph(
     sess: &Session,
     path: &Path,
-    decoder: &mut MemDecoder<'_>,
+    start: usize,
+    bytes: Mmap,
 ) -> Option<Arc<SerializedDepGraph>> {
-    let graph = SerializedDepGraph::try_decode(decoder, &sess.prof);
+    let graph = SerializedDepGraph::try_decode(bytes, start, &sess.prof);
     if graph.is_none() {
         sess.dcx().emit_warn(diagnostics::CorruptFile { path });
     }
@@ -130,12 +132,14 @@ fn load_dep_graph(
                 Arc::clone(graph)
             } else if sess.opts.unstable_opts.ohm_shared_stages {
                 // A missing checkpoint makes the ordinary session the fallback for this stage.
-                let Some(graph) = decode_dep_graph(sess, &path, &mut decoder) else {
+                let Some(graph) = decode_dep_graph(sess, &path, decoder.position(), mmap) else {
                     return LoadResult::DataOutOfDate;
                 };
                 graph
             } else {
-                SerializedDepGraph::decode(&mut decoder, &sess.prof)
+                let start = decoder.position();
+                SerializedDepGraph::try_decode(mmap, start, &sess.prof)
+                    .expect("invalid destination in incremental dependency graph")
             };
 
             LoadResult::Ok { prev_graph, prev_work_products }
@@ -361,7 +365,7 @@ fn load_stage_checkpoint(
     if Hash64::decode(&mut decoder) != sess.opts.dep_tracking_hash(false) {
         return None;
     }
-    let graph = decode_dep_graph(sess, &path, &mut decoder)?;
+    let graph = decode_dep_graph(sess, &path, decoder.position(), mmap)?;
     let path = in_old_incr_comp_dir_sess(session, cache_filename)?;
     let OpenFile { mmap, start_pos } = file_format::open_incremental_file(sess, &path).ok()?;
     let cache = OnDiskCache::new(sess, mmap, start_pos).ok()?;

@@ -16,7 +16,7 @@ use rustc_hir::def_id::{
 };
 use rustc_hir::definitions::DefPathHash;
 use rustc_index::IndexVec;
-use rustc_index::bit_set::GrowableBitSet;
+use rustc_index::bit_set::{DenseBitSet, GrowableBitSet};
 use rustc_macros::{Decodable, Encodable};
 use rustc_serialize::opaque::{FileEncodeResult, FileEncoder, IntEncodedWithFixedSize, MemDecoder};
 use rustc_serialize::{Decodable, Decoder, Encodable, Encoder};
@@ -547,17 +547,14 @@ impl OnDiskCache {
     }
 
     /// Dependency nodes with saved query values, in previous-graph order.
-    pub(crate) fn cached_query_indices(&self) -> Vec<SerializedDepNodeIndex> {
-        // Restore the old graph traversal order before promoting query values.
+    pub(crate) fn cached_query_indices(&self, slots: usize) -> DenseBitSet<SerializedDepNodeIndex> {
+        let mut indices = DenseBitSet::new_empty(slots);
         #[allow(rustc::potential_query_instability)]
-        let mut indices: Vec<_> = self
-            .query_values_index
-            .keys()
-            .chain(self.forwarded_query_values.keys())
-            .copied()
-            .collect();
-        indices.sort_unstable_by_key(|index| index.as_u32());
-        indices.dedup();
+        for &index in self.query_values_index.keys().chain(self.forwarded_query_values.keys()) {
+            if index.as_usize() < slots {
+                indices.insert(index);
+            }
+        }
         indices
     }
 
