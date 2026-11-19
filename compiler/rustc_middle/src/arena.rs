@@ -220,6 +220,7 @@ impl_ref_decodable_into_arena! {
     rustc_middle::middle::deduced_param_attrs::DeducedParamAttrs,
     rustc_middle::mir::Body<'tcx>,
     rustc_middle::mono::CodegenUnit<'tcx>,
+    rustc_middle::mono::UpstreamMono<'tcx>,
     rustc_middle::traits::ImplSource<'tcx, ()>,
     rustc_middle::traits::specialization_graph::Graph,
     rustc_middle::ty::TypeckResults<'tcx>,

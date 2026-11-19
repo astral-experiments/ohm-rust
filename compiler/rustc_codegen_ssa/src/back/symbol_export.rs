@@ -593,8 +593,20 @@ pub(crate) fn provide(providers: &mut Providers) {
     providers.queries.exported_generic_symbols = exported_generic_symbols_provider_local;
     providers.queries.has_generic_symbols_for_c_linker = has_generic_symbols_for_c_linker_provider;
     providers.queries.upstream_monomorphizations = upstream_monomorphizations_provider;
-    providers.queries.upstream_monomorphizations_in = |tcx, bucket| {
+    providers.queries.upstream_monomorphization_page = |tcx, page| {
         let entries = tcx.upstream_monomorphizations(());
+        let first = entries.partition_point(|entry| entry.bucket.page() < page);
+        let tail = &entries[first..];
+        &tail[..tail.partition_point(|entry| entry.bucket.page() == page)]
+    };
+    providers.queries.upstream_monomorphizations_in = |tcx, bucket| {
+        // Keep the dependency on a single exact bucket while fetching its
+        // entries from a page retained from the previous compiler session.
+        let entries = if tcx.dep_graph.is_fully_enabled() {
+            tcx.upstream_monomorphization_page(bucket.page())
+        } else {
+            tcx.upstream_monomorphizations(())
+        };
         let first = entries.partition_point(|entry| entry.bucket < bucket);
         let tail = &entries[first..];
         &tail[..tail.iter().take_while(|entry| entry.bucket == bucket).count()]
