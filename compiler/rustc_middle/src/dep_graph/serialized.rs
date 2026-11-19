@@ -18,8 +18,8 @@
 //! for each node on the graph store a 2-bit integer which is the number of bytes per edge
 //! index in that node's edge list. We effectively ignore that an edge index of 0 could be
 //! encoded with 0 bytes in order to not require 3 bits to store the byte width of the edges.
-//! The overhead of calculating the correct byte width for each edge is mitigated by
-//! computing the max of the edge list once per node instead of per edge.
+//! We determine the common byte width once per node by taking the bitwise OR of the
+//! edge indices and counting its leading zero bytes.
 //!
 //! When we decode this data, we do not immediately create [`SerializedDepNodeIndex`] and
 //! instead keep the data in its denser serialized form which lets us turn our on-disk size
@@ -505,14 +505,14 @@ impl SerializedNodeHeader {
         node: &DepNode,
         index: DepNodeIndex,
         value_fingerprint: Fingerprint,
-        edge_max_index: u32,
+        edge_bits: u32,
         edge_count: usize,
     ) -> Self {
         debug_assert_eq!(Self::TOTAL_BITS, Self::LEN_BITS + Self::WIDTH_BITS + Self::KIND_BITS);
 
         let mut head = node.kind.as_u16();
 
-        let free_bytes = edge_max_index.leading_zeros() as usize / 8;
+        let free_bytes = edge_bits.leading_zeros() as usize / 8;
         let bytes_per_index = (DEP_NODE_SIZE - free_bytes).saturating_sub(1);
         head |= (bytes_per_index as u16) << Self::KIND_BITS;
 
@@ -609,10 +609,10 @@ struct NodeInfo<'a> {
 impl NodeInfo<'_> {
     fn encode(&self, e: &mut MemEncoder, index: DepNodeIndex) {
         let NodeInfo { ref node, value_fingerprint, edges } = *self;
-        // The largest index picks the byte width of the edge list.
-        let edge_max = edges.iter().map(|e| e.as_u32()).max().unwrap_or(0);
+        // The highest bit set in any index determines the byte width of the list.
+        let edge_bits = edges.iter().fold(0, |bits, edge| bits | edge.as_u32());
         let header =
-            SerializedNodeHeader::new(node, index, value_fingerprint, edge_max, edges.len());
+            SerializedNodeHeader::new(node, index, value_fingerprint, edge_bits, edges.len());
         e.write_array(header.bytes);
 
         if header.len().is_none() {
