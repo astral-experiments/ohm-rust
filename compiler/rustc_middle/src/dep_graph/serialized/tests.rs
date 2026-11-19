@@ -7,20 +7,25 @@ fn node(kind: DepKind, first: u64, second: u64) -> DepNode {
 #[test]
 fn edge_targets_stop_at_each_list_boundary() {
     let mut graph = SerializedDepGraph::default();
+    let mut bytes = Vec::new();
     let values = [0x0403_0201u32, 0x0807_0605];
     for (width, count) in [(1, 0), (1, 2), (2, 1), (3, 1), (4, 1), (1, 1), (1, 0)] {
-        graph.edge_list_indices.push(EdgeHeader {
-            repr: (graph.edge_list_data.len() << DEP_NODE_WIDTH_BITS) | (width - 1),
+        graph.row_index.push(RowIndex {
+            edges_start: bytes.len(),
+            width: width as u8,
+            header_len: 0,
+            next: None,
             num_edges: count as u32,
         });
         for value in &values[..count] {
-            graph.edge_list_data.extend_from_slice(&value.to_le_bytes()[..width]);
+            bytes.extend_from_slice(&value.to_le_bytes()[..width]);
         }
     }
-    graph.edge_list_data.extend_from_slice(&[0; DEP_NODE_PAD]);
+    bytes.extend_from_slice(&[0; DEP_NODE_PAD]);
+    graph.rows = Some(slice_owned(bytes, |data| &data[..]));
 
     let expected: &[&[u32]] = &[&[], &[1, 5], &[0x0201], &[0x03_0201], &[0x0403_0201], &[1], &[]];
-    for (source, expected) in graph.edge_list_indices.indices().zip(expected) {
+    for (source, expected) in graph.row_index.indices().zip(expected) {
         assert_eq!(
             graph.edge_targets_from(source).map(|index| index.as_u32()).collect::<Vec<_>>(),
             *expected
@@ -30,26 +35,10 @@ fn edge_targets_stop_at_each_list_boundary() {
 
 fn graph(nodes: Vec<DepNode>) -> SerializedDepGraph {
     let nodes = IndexVec::from_raw(nodes);
-    let mut nodes_by_kind = Vec::new();
-    let kinds = (0..DepKind::NUM_VARIANTS)
-        .map(|kind| {
-            let start = nodes_by_kind.len();
-            nodes_by_kind.extend(nodes.iter_enumerated().filter_map(|(index, node)| {
-                (node.kind != DepKind::Null && node.kind.as_usize() == kind).then_some(Some(index))
-            }));
-            LazyKindIndex {
-                start: start as u32,
-                len: (nodes_by_kind.len() - start) as u32,
-                map: OnceLock::new(),
-            }
-        })
-        .collect();
-    SerializedDepGraph {
-        nodes,
-        live_node_count: nodes_by_kind.len(),
-        reverse_index: LazyNodeIndex { nodes_by_kind, kinds },
-        ..Default::default()
-    }
+    let mut row_index = IndexVec::from_elem_n(RowIndex::default(), nodes.len());
+    let live_node_count = nodes.iter().filter(|node| node.kind != DepKind::Null).count();
+    let buckets = build_reverse_index(&nodes, &mut row_index, live_node_count);
+    SerializedDepGraph { nodes, row_index, buckets, live_node_count, ..Default::default() }
 }
 
 #[test]
@@ -63,9 +52,7 @@ fn reverse_index_checks_full_fingerprints_and_kind_with_sparse_indices() {
         fingerprint_hash(collision.key_fingerprint)
     );
     let graph = graph(vec![null, first, null, other_kind, collision]);
-    assert!(graph.reverse_index.kinds.iter().all(|kind| kind.map.get().is_none()));
     assert_eq!(graph.node_to_index_opt(&first), Some(SerializedDepNodeIndex::from_u32(1)));
-    assert!(graph.reverse_index.kinds[other_kind.kind.as_usize()].map.get().is_none());
     for (node, index) in [(first, 1), (collision, 4), (other_kind, 3)] {
         assert_eq!(graph.node_to_index_opt(&node), Some(SerializedDepNodeIndex::from_u32(index)));
     }

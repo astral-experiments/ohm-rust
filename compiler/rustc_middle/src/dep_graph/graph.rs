@@ -195,12 +195,12 @@ impl DepGraph {
         let colors = DepNodeColorMap::new(prev_index_space_len);
 
         // Instantiate a node with zero dependencies only once for anonymous queries.
-        let _green_node_index = current.alloc_new_node(
+        let green_node_index = current.alloc_new_node(
             DepNode { kind: DepKind::AnonZeroDeps, key_fingerprint: current.anon_id_seed.into() },
             &[],
             Fingerprint::ZERO,
         );
-        assert_eq!(_green_node_index, DepNodeIndex::SINGLETON_ZERO_DEPS_ANON_NODE);
+        assert_eq!(green_node_index, DepNodeIndex::SINGLETON_ZERO_DEPS_ANON_NODE);
 
         // Create a single always-red node, with no dependencies of its own.
         // Other nodes can use the always-red node as a fake dependency, to
@@ -211,6 +211,15 @@ impl DepGraph {
             Fingerprint::ZERO,
         );
         assert_eq!(red_node_index, DepNodeIndex::FOREVER_RED_NODE);
+        if current.encoder.retains_indices() {
+            current.encoder.reserve_previous_indices();
+            let prev_index = SerializedDepNodeIndex::from_u32(green_node_index.as_u32());
+            // The singleton represents every anonymous task with no inputs.
+            // Parents may retain an edge to its original slot.
+            let result =
+                colors.try_set_color(prev_index, DesiredColor::Green { index: green_node_index });
+            assert_matches!(result, TrySetColorResult::Success);
+        }
         if prev_index_space_len > 0 {
             let prev_index =
                 const { SerializedDepNodeIndex::from_u32(DepNodeIndex::FOREVER_RED_NODE.as_u32()) };
@@ -880,12 +889,16 @@ impl DepGraphData {
         }
     }
 
-    fn promote_node_and_deps_to_current(
+    fn promote_node_and_deps_to_current<const RETAIN_INDICES: bool>(
         &self,
         prev_index: SerializedDepNodeIndex,
         edges: &[DepNodeIndex],
     ) -> Option<DepNodeIndex> {
-        let dep_node_index = self.current.encoder.send_promoted(prev_index, &self.colors, edges);
+        let dep_node_index = if RETAIN_INDICES {
+            self.current.encoder.retain_row(prev_index, &self.colors)
+        } else {
+            self.current.encoder.send_promoted(prev_index, &self.colors, edges)
+        };
 
         #[cfg(debug_assertions)]
         if let Some(dep_node_index) = dep_node_index {
@@ -1092,10 +1105,20 @@ impl DepGraphData {
                 // mark it as green by recursively marking all of its
                 // dependencies green.
 
+                if self.current.encoder.retains_indices() {
+                    let result = self.try_mark_previous_green::<true>(
+                        tcx,
+                        prev_index,
+                        None,
+                        &mut Vec::new(),
+                    );
+                    return result.map(|index| (prev_index, index));
+                }
                 // Reuse a per-worker buffer for the edges instead of allocating one per call.
                 // The recursion gives it back empty: each `EdgeFrame` pops its edges on drop.
                 let mut edge_buf = self.green_edge_buf.take();
-                let result = self.try_mark_previous_green(tcx, prev_index, None, &mut edge_buf);
+                let result =
+                    self.try_mark_previous_green::<false>(tcx, prev_index, None, &mut edge_buf);
                 debug_assert!(edge_buf.is_empty());
                 self.green_edge_buf.set(edge_buf);
                 result.map(|dep_node_index| (prev_index, dep_node_index))
@@ -1105,7 +1128,7 @@ impl DepGraphData {
 
     /// Try to mark a dep-node which existed in the previous compilation session as green.
     #[instrument(skip(self, tcx, prev_dep_node_index, frame, edge_buf), level = "debug")]
-    fn try_mark_previous_green<'tcx>(
+    fn try_mark_previous_green<'tcx, const RETAIN_INDICES: bool>(
         &self,
         tcx: TyCtxt<'tcx>,
         prev_dep_node_index: SerializedDepNodeIndex,
@@ -1124,7 +1147,9 @@ impl DepGraphData {
                 // This dependency has been marked as green before, we are still ok and can
                 // continue checking the remaining dependencies.
                 DepNodeColor::Green(parent_index) => {
-                    edges.push(parent_index);
+                    if !RETAIN_INDICES {
+                        edges.push(parent_index);
+                    }
                     continue;
                 }
 
@@ -1140,7 +1165,7 @@ impl DepGraphData {
 
             // If this dependency isn't eval_always, try to mark it green recursively.
             if !tcx.is_eval_always(parent_dep_node.kind)
-                && let Some(parent_index) = self.try_mark_previous_green(
+                && let Some(parent_index) = self.try_mark_previous_green::<RETAIN_INDICES>(
                     tcx,
                     parent_dep_node_index,
                     Some(&frame),
@@ -1149,7 +1174,9 @@ impl DepGraphData {
                     edges.buf,
                 )
             {
-                edges.push(parent_index);
+                if !RETAIN_INDICES {
+                    edges.push(parent_index);
+                }
                 continue;
             }
 
@@ -1165,7 +1192,9 @@ impl DepGraphData {
 
             match self.colors.get(parent_dep_node_index) {
                 DepNodeColor::Green(parent_index) => {
-                    edges.push(parent_index);
+                    if !RETAIN_INDICES {
+                        edges.push(parent_index);
+                    }
                     continue;
                 }
                 DepNodeColor::Red => return None,
@@ -1195,8 +1224,8 @@ impl DepGraphData {
         // adding all the appropriate edges imported from the previous graph.
         //
         // `no_hash` nodes may fail this promotion due to already being conservatively colored red.
-        let dep_node_index =
-            self.promote_node_and_deps_to_current(prev_dep_node_index, edges.get())?;
+        let dep_node_index = self
+            .promote_node_and_deps_to_current::<RETAIN_INDICES>(prev_dep_node_index, edges.get())?;
 
         // ... and finally storing a "Green" entry in the color map.
         // Multiple threads can all write the same color here.
@@ -1253,11 +1282,7 @@ impl DepGraph {
 
         // Only nodes with saved query values can need promotion. Avoid scanning the entire old
         // graph and recovering keys for queries that never had a disk-cached value.
-        for prev_index in on_disk_cache.cached_query_indices() {
-            // Ignore invalid cache entries that the old graph could not have referenced.
-            if prev_index.as_usize() >= previous_node_count {
-                continue;
-            }
+        for prev_index in on_disk_cache.cached_query_indices(previous_node_count).iter() {
             let DepNodeColor::Green(dep_node_index) = data.colors.get(prev_index) else {
                 // Red nodes were recomputed and their values are already in memory.
                 continue;

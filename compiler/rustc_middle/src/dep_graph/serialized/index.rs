@@ -23,6 +23,20 @@ pub(super) struct SeekIndexBuilder {
 }
 
 impl SeekIndexBuilder {
+    pub(super) fn reserve_slots(&mut self, len: usize) {
+        if self.offsets.len() < len {
+            self.offsets.resize(len, 0);
+        }
+    }
+
+    pub(super) fn record_node(&mut self, node: DepNode, index: DepNodeIndex, offset: usize) {
+        debug_assert_eq!(self.offsets[index.as_usize()], 0);
+        self.offsets[index.as_usize()] = offset as u64;
+        if matches!(node.kind, super::DepKind::typeck_root | super::DepKind::mir_borrowck) {
+            self.roots.push((node, index));
+        }
+    }
+
     pub(super) fn record_chunk(
         &mut self,
         start: usize,
