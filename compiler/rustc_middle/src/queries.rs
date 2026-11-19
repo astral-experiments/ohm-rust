@@ -1732,8 +1732,8 @@ rustc_queries! {
         desc { "finding impls of `{}` for `{:?}`", tcx.def_path_str(key.0), key.1 }
     }
 
-    query trait_impl_receiver_adt(adt_def_id: DefId) {
-        desc { "recording the receiver of an impl lookup for `{}`", tcx.def_path_str(adt_def_id) }
+    query trait_impl_receiver_def(receiver: DefId) {
+        desc { "recording the receiver of an impl lookup for `{}`", tcx.def_path_str(receiver) }
     }
 
     query trait_impls_by_const_arg(key: (DefId, DefId)) -> &'tcx ty::trait_def::ConstArgImpls<'tcx> {
