@@ -3,6 +3,7 @@
 
 macro_rules! make_inner {
     () => {
+        #[rustc_clean(cfg = "prefixed", loaded_from_disk = "typeck_root")]
         #[rustc_clean(cfg = "moved", loaded_from_disk = "typeck_root")]
         fn inner(value: &str) -> usize {
             value.len()
