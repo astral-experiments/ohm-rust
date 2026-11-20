@@ -1228,9 +1228,17 @@ impl<'tcx> TyCtxt<'tcx> {
     }
 
     #[inline]
-    pub fn def_path_hash(self, def_id: DefId) -> rustc_hir::definitions::DefPathHash {
-        if let Some(def_id) = def_id.as_local() {
+    pub fn def_path_hash(self, def_id: DefId) -> DefPathHash {
+        if def_id.is_local() {
             self.track_local_linkage_identity();
+        }
+        self.untracked_def_path_hash(def_id)
+    }
+
+    /// Reads the linkage-dependent path hash for invariant checks during interning.
+    #[inline]
+    fn untracked_def_path_hash(self, def_id: DefId) -> DefPathHash {
+        if let Some(def_id) = def_id.as_local() {
             self.definitions_untracked().def_path_hash(def_id)
         } else {
             self.cstore_untracked().def_path_hash(def_id)
@@ -2833,11 +2841,12 @@ impl<'tcx> TyCtxt<'tcx> {
         eps: &[PolyExistentialPredicate<'tcx>],
     ) -> &'tcx List<PolyExistentialPredicate<'tcx>> {
         assert!(!eps.is_empty());
-        assert!(
-            eps.array_windows()
-                .all(|[a, b]| a.skip_binder().stable_cmp(self, &b.skip_binder())
-                    != Ordering::Greater)
-        );
+        // Sorting records the dependency on the local linkage identity. Verifying the
+        // existing order also runs during query deserialization, where query reads are forbidden.
+        assert!(eps.array_windows().all(|[a, b]| {
+            a.skip_binder().stable_cmp_by(&b.skip_binder(), |id| self.untracked_def_path_hash(id))
+                != Ordering::Greater
+        }));
         self.intern_poly_existential_predicates(eps)
     }
 

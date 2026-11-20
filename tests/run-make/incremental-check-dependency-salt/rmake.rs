@@ -47,6 +47,8 @@ fn main() {
     subject("damaged", "metadata", Some("not-loaded")).run();
     truncate_check_key();
     subject("first", "metadata", Some("not-loaded")).run();
+    // Reload the local trait object's projection list before changing the linkage identity.
+    subject("first", "metadata", Some("loaded")).run();
     subject("second", "metadata", Some("loaded")).run();
     subject("different-cfg", "metadata", Some("not-loaded")).cfg("variant").run();
     subject("fresh-build", "link", Some("not-loaded")).run();
