@@ -891,6 +891,12 @@ pub(crate) fn optimize_and_codegen(
     {
         return cached;
     }
+    let (typed_hit, mut typed_update) = dwarf.as_ref().map_or((None, None), |entry| {
+        super::dwarf_typed::Attempt::prepare(cgcx, &module.module_llvm, entry)
+    });
+    if let Some(compiled) = typed_hit {
+        return compiled;
+    }
     let diagnostics =
         (entry.is_some() || dwarf.is_some()).then(|| shared_emitter.diagnostic_count());
     optimize(cgcx, prof, shared_emitter, &mut module, config);
@@ -926,6 +932,9 @@ pub(crate) fn optimize_and_codegen(
     if let Some(emission) = emission {
         module.module_llvm = emission;
     }
+    if let Some(update) = typed_update.as_mut() {
+        update.observe_emission(&module.module_llvm);
+    }
     let compiled = codegen(cgcx, prof, shared_emitter, module, config);
     if let Some(entry) = entry
         && Some(shared_emitter.diagnostic_count()) == diagnostics
@@ -936,6 +945,11 @@ pub(crate) fn optimize_and_codegen(
         && Some(shared_emitter.diagnostic_count()) == diagnostics
     {
         e.store(&compiled);
+    }
+    if let Some(update) = typed_update
+        && Some(shared_emitter.diagnostic_count()) == diagnostics
+    {
+        update.finish(&compiled);
     }
     compiled
 }
