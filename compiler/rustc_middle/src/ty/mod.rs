@@ -2448,13 +2448,13 @@ pub fn provide(providers: &mut Providers) {
         non_blanket_trait_impls: |tcx, (trait_id, simp)| {
             let impls = trait_def::trait_impls_for_bucket(tcx, trait_id, Some(simp));
             if tcx.dep_graph.is_fully_enabled()
-                && let SimplifiedType::Adt(adt) = simp
+                && let SimplifiedType::Adt(id) | SimplifiedType::Closure(id) = simp
             {
-                let () = tcx.trait_impl_receiver_adt(adt);
+                let () = tcx.trait_impl_receiver_def(id);
             }
             impls
         },
-        trait_impl_receiver_adt: |_, _| (),
+        trait_impl_receiver_def: |_, _| (),
         trait_impls_by_const_arg: trait_def::trait_impls_by_const_arg_provider,
         incoherent_impls: trait_def::incoherent_impls_provider,
         trait_impls_in_crate: trait_def::trait_impls_in_crate_provider,
