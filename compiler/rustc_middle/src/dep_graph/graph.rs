@@ -1279,6 +1279,11 @@ impl DepGraph {
         let mut retained_mono = 0usize;
         let mut retained_items = 0usize;
         let mut unpromoted_mono = 0usize;
+        let compact_mono =
+            retain_mono && tcx.sess.opts.unstable_opts.ohm_incremental_mono_partitions;
+        let mut items = Vec::new();
+        let mut sizes = Vec::new();
+        let mut symbols = Vec::new();
 
         // Only nodes with saved query values can need promotion. Avoid scanning the entire old
         // graph and recovering keys for queries that never had a disk-cached value.
@@ -1300,15 +1305,30 @@ impl DepGraph {
             } else if let Some(promote_fn) = tcx.dep_kind_vtable(dep_node.kind).promote_from_disk_fn
             {
                 promote_fn(tcx, *dep_node, prev_index, dep_node_index)
+            } else if compact_mono {
+                // At the generation limit, the cached partition can be our
+                // only use of these green queries. Their keys are unrecoverable.
+                let indices = match dep_node.kind {
+                    DepKind::items_of_instance => &mut items,
+                    DepKind::size_estimate => &mut sizes,
+                    DepKind::symbol_name => &mut symbols,
+                    _ => continue,
+                };
+                indices.push((prev_index, dep_node_index));
             } else if trace_mono && is_mono {
                 unpromoted_mono += 1;
             }
         }
+        let queries = &tcx.query_system.query_vtables;
+        let items = queries.items_of_instance.promote_without_keys(tcx, items);
+        let sizes = queries.size_estimate.promote_without_keys(tcx, sizes);
+        let symbols = queries.symbol_name.promote_without_keys(tcx, symbols);
         if trace_mono {
             let crate_name = tcx.crate_name(rustc_hir::def_id::LOCAL_CRATE);
             eprintln!(
                 "ohm-mono-graph: crate={crate_name} retained={retained_mono} \
-                 retained_items={retained_items} unpromoted={unpromoted_mono}"
+                 retained_items={retained_items} unpromoted={unpromoted_mono} \
+                 compacted_items={items} compacted_sizes={sizes} compacted_symbols={symbols}"
             );
         }
     }
