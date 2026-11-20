@@ -2517,7 +2517,9 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                     self.tcx.explicit_super_clauses_of(def_id).skip_binder(), hcx);
                 record_defaulted_array!(self.tables.explicit_implied_clauses_of[def_id] <-
                     self.tcx.explicit_implied_clauses_of(def_id).skip_binder(), hcx);
-                let module_children = self.partition_module_children(local_id);
+                // Resolution enumerates every member when checking an impl, even
+                // when the trait itself was found through a privacy error.
+                let module_children = tcx.module_children_local(local_id).iter();
                 record_array!(self.tables.module_children_non_reexports[def_id] <-
                     module_children.map(|child| child.res.def_id()), hcx,
                     |def_id| def_id.index);
