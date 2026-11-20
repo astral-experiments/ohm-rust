@@ -20,7 +20,7 @@ use rustc_middle::ty::{self, TyCtxt, TypeVisitable};
 use rustc_middle::util::Providers;
 use rustc_serialize::Decoder;
 use rustc_session::StableCrateId;
-use rustc_structures::CrateType;
+use rustc_session::config::Lto;
 use rustc_span::def_id::ModId;
 use rustc_span::hygiene::ExpnId;
 use rustc_span::{Span, Symbol, bug, kw};
@@ -150,22 +150,17 @@ macro_rules! provide_one {
             let ($def_id, $other) = def_id_arg.into_args();
             assert!(!$def_id.is_local());
 
-            // External query providers call `public_api_hash` in order to register a dependency
-            // on the crate metadata. The exception is `public_api_hash` itself, which obviously
-            // doesn't need to do this (and can't, as it would cause a query cycle).
-            //
-            // The `crate_hash` query must not depend on public_api_hash, since it might change when
-            // the `public_api_hash` does not change.
             use rustc_middle::dep_graph::DepKind;
             match DepKind::$name {
-                DepKind::public_api_hash | DepKind::crate_hash => (),
+                DepKind::public_api_hash | DepKind::crate_hash
+                | DepKind::external_metadata_input_hash => (),
                 DepKind::exported_non_generic_symbols => {
                     // Non-generic symbols are only consumed during linking and remain outside
                     // the public API hash.
                     $tcx.ensure_ok().crate_hash($def_id.krate);
                 }
                 _ => {
-                    $tcx.ensure_ok().public_api_hash($def_id.krate);
+                    $tcx.ensure_ok().external_metadata_input_hash($def_id.krate);
                 }
             }
 
@@ -436,6 +431,20 @@ provide! { tcx, def_id, other, cdata,
     public_api_hash => {
         tracing::debug!("public api hash: {} {}", cdata.name(), cdata.public_hash());
         cdata.public_hash()
+    }
+    external_metadata_input_hash => {
+        let crate_types = tcx.crate_types();
+        let rust_dylib =
+            crate_types.iter().any(|ct| matches!(ct, CrateType::Dylib | CrateType::Sdylib));
+        // Cross-crate LTO uses the highest export threshold of all requested outputs.
+        let mixed_rust_lto = crate_types.len() > 1
+            && crate_types.contains(&CrateType::Rlib)
+            && matches!(tcx.sess.lto(), Lto::Thin | Lto::Fat);
+        if (rust_dylib || mixed_rust_lto) && tcx.codegen_output_mode(()).1 {
+            cdata.private_hash()
+        } else {
+            cdata.public_hash()
+        }
     }
     crate_host_hash => { cdata.host_hash }
     crate_name => { cdata.root.header.name }
@@ -939,6 +948,7 @@ fn will_have_link_step(tcx: TyCtxt<'_>) -> bool {
             ct,
             CrateType::Executable
                 | CrateType::Dylib
+                | CrateType::Sdylib
                 | CrateType::Cdylib
                 | CrateType::StaticLib
                 | CrateType::ProcMacro
