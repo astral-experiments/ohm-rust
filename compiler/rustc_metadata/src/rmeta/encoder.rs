@@ -2767,27 +2767,13 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 module_children.filter(|child| !child.reexport_chain.is_empty()), hcx
             );
 
-            let effective_visibilities = self.tcx.effective_visibilities(());
-            let remove_private_children = self.remove_private_children();
+            // An ambiguously glob-imported trait can still supply a method downstream.
+            // Preserve the binding and its ambiguity together for lookup and linting.
             let ambig_module_children = tcx
                 .resolutions(())
                 .ambig_module_children
                 .get(&local_def_id)
-                .map_or_default(|v| &v[..])
-                .iter()
-                // only ambiguities where both main and second are public can cause actual
-                // ambiguity.
-                .filter(|ambig| {
-                    is_public_mod_child(
-                        remove_private_children,
-                        &effective_visibilities,
-                        &ambig.main,
-                    ) && is_public_mod_child(
-                        remove_private_children,
-                        effective_visibilities,
-                        &ambig.second,
-                    )
-                });
+                .map_or_default(|v| &v[..]);
             record_defaulted_array!(self.tables.ambig_module_children[def_id] <-
                 ambig_module_children, hcx);
         }
