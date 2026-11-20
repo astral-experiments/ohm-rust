@@ -292,7 +292,6 @@ fn main() {
     assert_eq!(tracked_source.len(), moved_source.len());
     assert_ne!(tracked_source, moved_source);
 
-    // Metadata-only and native callers can observe the full column.
     rfs::write("lib.rs", &tracked_source);
     let check_hash = compile_and_read_public_api_hash(false);
     rfs::write("lib.rs", &moved_source);
