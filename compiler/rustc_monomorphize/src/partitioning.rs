@@ -124,6 +124,7 @@ use rustc_middle::util::Providers;
 use rustc_session::CodegenUnits;
 use rustc_session::config::{DumpMonoStatsFormat, OptLevel, SwitchWithOptPath};
 use rustc_span::{Symbol, bug};
+use rustc_structures::CrateType;
 use rustc_target::spec::SymbolVisibility;
 use tracing::debug;
 
@@ -1015,9 +1016,16 @@ fn local_codegen_owner(mono_item: MonoItem<'_>) -> Option<DefId> {
 }
 
 fn caller_local_def_id<'tcx>(cx: &PartitioningCx<'_, 'tcx>, item: MonoItem<'tcx>) -> Option<DefId> {
-    // Adding a second caller should leave an instance with its defining module.
     if let Some(def_id) = local_codegen_owner(item) {
         return Some(def_id);
+    }
+
+    // A binary can instantiate a large tree of library functions under one local
+    // caller. Keep instances without a local body in their ordinary modules, so
+    // editing one library function can reuse the objects containing its callers.
+    if cx.tcx.sess.opts.optimize == OptLevel::No && cx.tcx.crate_types() == [CrateType::Executable]
+    {
+        return characteristic_def_id_of_mono_item(cx.tcx, item);
     }
 
     // A body edit can add or remove a chain of upstream instantiations.
