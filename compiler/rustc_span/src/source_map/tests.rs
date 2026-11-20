@@ -373,6 +373,7 @@ fn to_real_filename_with_full_scopes() {
                 working_directory: path("FOO"),
                 embeddable_name: path("FOO/src/main.rs")
             },
+            worktree_source_path: false,
             scopes: RemapPathScopeComponents::all()
         }
     );
@@ -391,6 +392,7 @@ fn to_real_filename_with_full_scopes() {
                 working_directory: path("FOO"),
                 embeddable_name: path("BAR/src/main.rs")
             },
+            worktree_source_path: false,
             scopes: RemapPathScopeComponents::all()
         }
     );
@@ -409,6 +411,7 @@ fn to_real_filename_with_full_scopes() {
                 working_directory: path("FOO"),
                 embeddable_name: path("/quux/src/main.rs")
             },
+            worktree_source_path: false,
             scopes: RemapPathScopeComponents::all()
         }
     );
@@ -427,6 +430,7 @@ fn to_real_filename_with_full_scopes() {
                 working_directory: path("FOO"),
                 embeddable_name: path("FOO/src/main.rs")
             },
+            worktree_source_path: false,
             scopes: RemapPathScopeComponents::all()
         }
     );
@@ -445,6 +449,7 @@ fn to_real_filename_with_full_scopes() {
                 working_directory: path("FOO"),
                 embeddable_name: path("FOO/src/main.rs")
             },
+            worktree_source_path: false,
             scopes: RemapPathScopeComponents::all()
         }
     );
@@ -466,6 +471,7 @@ fn to_real_filename_with_full_scopes() {
                 working_directory: path("/abc"),
                 embeddable_name: path("/abc/quux/src/main.rs")
             },
+            worktree_source_path: false,
             scopes: RemapPathScopeComponents::empty()
         }
     );
@@ -499,6 +505,7 @@ fn to_real_filename_with_mixed_scopes() {
                 working_directory: path("FOO"),
                 embeddable_name: path("FOO/src/main.rs")
             },
+            worktree_source_path: false,
             scopes: RemapPathScopeComponents::OBJECT
         }
     );
@@ -517,6 +524,7 @@ fn to_real_filename_with_mixed_scopes() {
                 working_directory: path("FOO"),
                 embeddable_name: path("BAR/src/main.rs")
             },
+            worktree_source_path: false,
             scopes: RemapPathScopeComponents::OBJECT
         }
     );
@@ -535,6 +543,7 @@ fn to_real_filename_with_mixed_scopes() {
                 working_directory: path("FOO"),
                 embeddable_name: path("/quux/src/main.rs")
             },
+            worktree_source_path: false,
             scopes: RemapPathScopeComponents::OBJECT
         }
     );
@@ -553,6 +562,7 @@ fn to_real_filename_with_mixed_scopes() {
                 working_directory: path("FOO"),
                 embeddable_name: path("FOO/src/main.rs")
             },
+            worktree_source_path: false,
             scopes: RemapPathScopeComponents::OBJECT
         }
     );
@@ -574,6 +584,7 @@ fn to_real_filename_with_mixed_scopes() {
                 working_directory: path("/abc"),
                 embeddable_name: path("/abc/quux/src/main.rs")
             },
+            worktree_source_path: false,
             scopes: RemapPathScopeComponents::empty()
         }
     );
@@ -606,6 +617,7 @@ fn to_real_filename_without_remapped_cwd() {
                 working_directory: path("/cwd"),
                 embeddable_name: path("FOO/src/main.rs")
             },
+            worktree_source_path: false,
             scopes: RemapPathScopeComponents::OBJECT
         }
     );
@@ -624,6 +636,7 @@ fn to_real_filename_without_remapped_cwd() {
                 working_directory: path("/cwd"),
                 embeddable_name: path("/bar/src/main.rs")
             },
+            worktree_source_path: false,
             scopes: RemapPathScopeComponents::empty()
         }
     );
@@ -642,6 +655,7 @@ fn to_real_filename_without_remapped_cwd() {
                 working_directory: path("/cwd"),
                 embeddable_name: path("CWDBAR/src/main.rs")
             },
+            worktree_source_path: false,
             scopes: RemapPathScopeComponents::OBJECT
         }
     );
@@ -660,6 +674,7 @@ fn to_real_filename_without_remapped_cwd() {
                 working_directory: path("/cwd"),
                 embeddable_name: path("/cwd/src/main.rs")
             },
+            worktree_source_path: false,
             scopes: RemapPathScopeComponents::empty()
         }
     );

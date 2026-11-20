@@ -43,7 +43,8 @@ use rustc_middle::ty::codec::TyEncoder;
 use rustc_middle::ty::fast_reject::{self, TreatParams};
 use rustc_middle::ty::trait_def::trait_impl_receiver_kind;
 use rustc_middle::ty::{AssocContainer, PredicateKind, Visibility};
-use rustc_serialize::opaque::{FileEncoder, mem_encoder::MemEncoder};
+use rustc_serialize::opaque::FileEncoder;
+use rustc_serialize::opaque::mem_encoder::MemEncoder;
 use rustc_serialize::{Decodable, Decoder, Encodable, Encoder};
 use rustc_session::IncrCompSession;
 use rustc_session::config::mitigation_coverage::DeniedPartialMitigation;
@@ -1193,6 +1194,10 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             match source_file.name {
                 FileName::Real(ref original_file_name) => {
                     let mut adapted_file_name = original_file_name.clone();
+                    if source_file.name.has_worktree_source_path() {
+                        let _ =
+                            self.tcx.env_var_os(sym::ohm_worktree_source_paths.as_str().as_ref());
+                    }
                     adapted_file_name.update_for_crate_metadata();
                     adapted_source_file.name = FileName::Real(adapted_file_name);
                 }
@@ -1231,40 +1236,6 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         }
 
         (adapted.encode(self), required_source_files)
-    }
-
-    /// Finish the private SVH at the boundary between the hashed root and the filename trailer.
-    fn finish_crate_hash(&mut self) -> Svh {
-        // By default the crate hash (SVH) is derived from the encoded metadata bytes. With
-        // `-Z metadata-crate-hash=no` we instead store the legacy HIR-based hash, which the
-        // `crate_hash` query computes directly without consulting `local_crate_hash`.
-        let hash = if self.tcx.sess.opts.unstable_opts.metadata_crate_hash {
-            self.opaque.flush();
-            Svh::new(Fingerprint::from_le_bytes(
-                self.metadata_hasher.lock().unwrap().finish_128().to_le_bytes(),
-            ))
-        } else {
-            self.tcx.crate_hash(LOCAL_CRATE)
-        };
-        self.tcx.untracked().local_crate_hash.set(hash).expect("local_crate_hash set twice");
-        hash
-    }
-
-    fn encode_unhashed_crate_root(&mut self) -> LazyValue<CrateRootUnhashed> {
-        // Indexed by dependency `CrateNum`, matching the numbering `encode_crate_deps` uses.
-        // Slot 0 (`LOCAL_CRATE`) is filler; this crate's own value is `extra_filename`.
-        let mut dep_extra_filenames = IndexVec::from_elem_n(String::new(), 1);
-        if !self.is_proc_macro {
-            for &cnum in self.tcx.crates(()).iter() {
-                let idx = dep_extra_filenames.push(self.tcx.extra_filename(cnum).to_owned());
-                assert_eq!(idx, cnum, "dep_extra_filenames must be indexed by CrateNum");
-            }
-        }
-
-        self.lazy(CrateRootUnhashed {
-            extra_filename: self.tcx.sess.opts.cg.extra_filename.clone(),
-            dep_extra_filenames,
-        })
     }
 
     /// Finish the private SVH at the boundary between the hashed root and the filename trailer.
@@ -3672,7 +3643,8 @@ pub struct EncodedMetadata {
 
 impl EncodedMetadata {
     /// The independently optional work-product containing the prefix-reuse manifest.
-    pub const PREFIX_WORK_PRODUCT_NAME: &'static str = WorkProduct::METADATA_PREFIX_WORKPRODUCT_CGU_NAME;
+    pub const PREFIX_WORK_PRODUCT_NAME: &'static str =
+        WorkProduct::METADATA_PREFIX_WORKPRODUCT_CGU_NAME;
 
     /// Optional work-product describing the reusable metadata prefix.
     pub const PREFIX_MANIFEST_EXTENSION: &'static str = "ohm-prefix-v3";
@@ -3777,11 +3749,6 @@ fn encode_crate_root<'tcx, 'h, M: MetadataEncoder<'tcx>>(
             ecx.opaque.file().metadata().unwrap().len(),
         );
 
-        if M::HASH_PUBLIC_API && tcx.dep_graph.is_fully_enabled()
-            && tcx.sess.opts.unstable_opts.metadata_crate_hash
-        {
-            let _ = tcx.ohm_metadata_hir_hash(());
-        }
         (root.position.get(), unhashed.position.get(), crate_hashes.public_hash)
     });
 }
@@ -4000,7 +3967,7 @@ fn try_reuse_metadata_prefix(
                 if let Some(dependency) = dependency {
                     tcx.dep_graph.read_index(dependency);
                 } else if tcx.sess.opts.unstable_opts.metadata_crate_hash {
-                    let _ = tcx.ohm_metadata_hir_hash(());
+                    let _ = tcx.ohm_metadata_input_hashes(());
                 } else {
                     let _ = tcx.crate_hash(LOCAL_CRATE);
                 }
@@ -4043,11 +4010,13 @@ pub fn encode_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>) {
             Err(err) => tcx.dcx().emit_fatal(FailCreateFileEncoder { err }),
         };
 
-        if let Some(prefix) = tcx.dep_graph.previous_work_product(
-            &WorkProductId::from_cgu_name(EncodedMetadata::PREFIX_WORK_PRODUCT_NAME),
-        ) && let Some(saved) = prefix.saved_files.get(EncodedMetadata::PREFIX_MANIFEST_EXTENSION)
+        if let Some(prefix) = tcx.dep_graph.previous_work_product(&WorkProductId::from_cgu_name(
+            EncodedMetadata::PREFIX_WORK_PRODUCT_NAME,
+        )) && let Some(saved) =
+            prefix.saved_files.get(EncodedMetadata::PREFIX_MANIFEST_EXTENSION)
             && let Some(next) = EncodedMetadata::prefix_manifest_path(Some(incr_comp_session))
-            && let Err(error) = rustc_fs_util::link_or_copy(old_incr_comp_session_dir.join(saved), next)
+            && let Err(error) =
+                rustc_fs_util::link_or_copy(old_incr_comp_session_dir.join(saved), next)
         {
             debug!(target: "ohm_metadata_reuse", ?error, "could not retain optional prefix manifest");
         }
@@ -4164,7 +4133,7 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
         let hir_body_hash = if M::HASH_PUBLIC_API && tcx.dep_graph.is_fully_enabled() {
             // Record this dependency last. The prefix proof needs the encoder's other inputs
             // checked before a private HIR edit stops normal green marking.
-            tcx.dep_graph.with_ignore(|| tcx.ohm_metadata_hir_hash(()))
+            tcx.dep_graph.with_ignore(|| tcx.ohm_metadata_input_hashes(()).0)
         } else {
             compute_hir_hash(tcx)
         };
