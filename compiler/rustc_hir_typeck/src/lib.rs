@@ -55,7 +55,7 @@ use rustc_middle::query::Providers;
 use rustc_middle::ty::{self, FnSigKind, Ty, TyCtxt, Unnormalized};
 use rustc_session::config;
 use rustc_span::def_id::LocalDefId;
-use rustc_span::{Span, bug, span_bug};
+use rustc_span::{Ident, Span, bug, span_bug};
 use tracing::{debug, instrument};
 use typeck_root_ctxt::TypeckRootCtxt;
 
@@ -742,6 +742,9 @@ fn fatally_break_rust(tcx: TyCtxt<'_>, span: Span) -> ! {
 /// Adds query implementations to the [Providers] vtable, see [`rustc_middle::query`]
 pub fn provide(providers: &mut Providers) {
     *providers = Providers {
+        associated_value: |tcx, (owner, name)| {
+            method::lookup_value(tcx, owner, Ident::with_dummy_span(name))
+        },
         method_autoderef_steps: method::probe::method_autoderef_steps,
         typeck_root,
         check_transmutes: intrinsicck::check_transmutes,

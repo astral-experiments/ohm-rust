@@ -230,6 +230,17 @@ impl QueryKey for (DefId, SimplifiedType) {
     }
 }
 
+impl QueryKey for (DefId, Symbol) {
+    fn default_span(&self, tcx: TyCtxt<'_>) -> Span {
+        tcx.def_span(self.0)
+    }
+
+    #[inline(always)]
+    fn key_as_def_id(&self) -> Option<DefId> {
+        Some(self.0)
+    }
+}
+
 impl QueryKey for (DefId, Ident) {
     fn default_span(&self, tcx: TyCtxt<'_>) -> Span {
         tcx.def_span(self.0)
