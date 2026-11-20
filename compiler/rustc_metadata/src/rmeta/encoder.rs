@@ -1312,8 +1312,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             (self.encode_lang_items(hcx), self.encode_lang_items_missing(hcx))
         });
 
-        let stripped_cfg_items =
-            stat!("stripped-cfg-items", || self.encode_stripped_cfg_items(hcx));
+        let stripped_cfg_items = stat!("stripped-cfg-items", || self.encode_stripped_cfg_items());
 
         let diagnostic_items = stat!("diagnostic-items", || self.encode_diagnostic_items(hcx));
 
@@ -3372,26 +3371,17 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         hashed_lazy_array!(self, &tcx.lang_items().missing, hcx)
     }
 
-    fn encode_stripped_cfg_items<'h>(
-        &mut self,
-        hcx: &mut impl PublicApiHashState<'h>,
-    ) -> Unhashed<LazyArray<StrippedCfgItem<DefIndex>>> {
-        if hcx.enabled() {
-            // FIXME: we should encode this while public api hashing is enabled, but it must not be
-            // part of the public hash. Its query should depend on the private hash of the crate
-            // if it is included.
-            // NOTE: When readded, the reachability graph recording must be disabled during the encoding
-            // of this lazy array.
-            return Unhashed(LazyArray::default());
-        }
-        Unhashed(
-            self.lazy_array(
-                self.tcx
-                    .stripped_cfg_items(LOCAL_CRATE)
-                    .iter()
-                    .map(|item| item.clone().map_scope_id(|def_id| def_id.index)),
-            ),
-        )
+    fn encode_stripped_cfg_items(&mut self) -> Unhashed<LazyArray<StrippedCfgItem<DefIndex>>> {
+        self.with_record_mode(RecordMode::None, |ecx| {
+            Unhashed(
+                ecx.lazy_array(
+                    ecx.tcx
+                        .stripped_cfg_items(LOCAL_CRATE)
+                        .iter()
+                        .map(|item| item.clone().map_scope_id(|def_id| def_id.index)),
+                ),
+            )
+        })
     }
 
     fn encode_traits<'h>(

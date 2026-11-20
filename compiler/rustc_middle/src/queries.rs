@@ -2949,6 +2949,9 @@ rustc_queries! {
     /// is only fed there.
     query stripped_cfg_items(cnum: CrateNum) -> &'tcx [StrippedCfgItem] {
         desc { "getting cfg-ed out item names" }
+        // The resolver consults this list for errors. It can change while a dependency's
+        // public API hash stays green, so read it from the current session.
+        eval_always
         separate_provide_extern
     }
 

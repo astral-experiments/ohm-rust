@@ -51,6 +51,19 @@ fn main() {
         "public hash changed after appending a private item to the end of a file",
     );
 
+    // Disabled items provide diagnostic context without affecting the public API.
+    append_to_submodule(r#"#[cfg(feature = "wire")] pub struct Packet;"#);
+    assert_eq!(baseline, compile_and_read_public_hash());
+    rustc()
+        .input("-")
+        .stdin_buf("pub use dep::sub::Packet;")
+        .crate_type("rlib")
+        .edition("2024")
+        .extern_("dep", "libdep.rlib")
+        .arg("-Zpublic-api-hash")
+        .run_fail()
+        .assert_stderr_contains("the item is gated behind the `wire` feature");
+
     append_to_submodule("pub fn new_public() {}");
     let after_public = compile_and_read_public_hash();
     assert_ne!(
