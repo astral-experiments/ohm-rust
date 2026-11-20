@@ -594,7 +594,7 @@ pub(super) fn crate_hashes<'tcx, 'h, const HASH: bool>(
     ecx: &mut EncodeContext<'_, 'tcx, DefPathHashDefIdEncoder<'tcx, HASH>>,
     hcx: &mut impl PublicApiHashState<'h>,
     root: &HashableCrateRoot,
-) -> (Option<Svh>, Option<ItemPublicHashes>) {
+) -> (Option<Svh>, PublicHashes) {
     assert!(!root.header.is_proc_macro_crate);
     let graph = std::mem::take(&mut ecx.spec_encoder_data.reachability_graph_builder)
         .build_graph(hcx.hcx_mut());
@@ -641,11 +641,14 @@ pub(super) fn crate_hashes<'tcx, 'h, const HASH: bool>(
     debug!("crate_hashes: public_hashes roots hash = {:?}", public_hashes.hash);
     public_global_hash.stable_hash(hcx.hcx_mut(), &mut hasher);
     public_hashes.stable_hash(hcx.hcx_mut(), &mut hasher);
-    let rdr_hashes = public_hashes.value.encode(ecx, public_global_hash);
     let public_hash = Svh::new(hasher.finish());
+    if ecx.hash_declaration_text {
+        return (None, PublicHashes::TerminalCheck(public_hash));
+    }
+    let rdr_hashes = public_hashes.value.encode(ecx, public_global_hash);
     debug!("Hashed crate root: {root:#x?}");
     debug!("public api hash: {}", public_hash);
-    (Some(public_hash), Some(rdr_hashes))
+    (Some(public_hash), PublicHashes::Items(rdr_hashes))
 }
 
 impl HashableCrateRoot {
@@ -1257,4 +1260,22 @@ pub(crate) struct ItemPublicHashes {
     pub(crate) local: LazyTable<DefIndex, Option<Fingerprint>>,
     pub(crate) expn: LazyTable<ExpnIndex, Option<Fingerprint>>,
     pub(crate) public_global_hash: Fingerprint,
+}
+
+/// Keep the discriminants of the original `Option<ItemPublicHashes>` wire representation.
+/// A terminal check reports an auxiliary key to Cargo while rustc readers use the full SVH.
+#[derive(LazyDecodable, MetadataEncodable)]
+pub(crate) enum PublicHashes {
+    None,
+    Items(ItemPublicHashes),
+    TerminalCheck(Svh),
+}
+
+impl PublicHashes {
+    pub(crate) fn as_ref(&self) -> Option<&ItemPublicHashes> {
+        match self {
+            Self::Items(items) => Some(items),
+            Self::None | Self::TerminalCheck(_) => None,
+        }
+    }
 }

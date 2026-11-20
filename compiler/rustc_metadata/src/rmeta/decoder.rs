@@ -913,6 +913,13 @@ impl MetadataBlob {
         LazyValue::<CrateHeader>::from_position(pos).decode(self)
     }
 
+    pub(crate) fn terminal_check_hash(&self) -> Option<Svh> {
+        match self.get_root().rdr_hashes {
+            PublicHashes::TerminalCheck(hash) => Some(hash),
+            PublicHashes::None | PublicHashes::Items(_) => None,
+        }
+    }
+
     pub(crate) fn get_root(&self) -> CrateRoot {
         let pos = self.root_pos();
         LazyValue::<CrateRoot>::from_position(pos).decode(self)
