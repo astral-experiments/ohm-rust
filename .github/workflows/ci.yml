@@ -244,7 +244,7 @@ jobs:
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 compiler/rustc_middle
-          --test-args 'aliases_preserve_allocation_identity check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges lazy_worker_cache recorder_'
+          --test-args 'aliases_preserve_allocation_identity check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges lazy_worker_cache recorder_ c_linker_generic_summary_keeps_retention_exceptions'
 
       - name: Run incremental directory copy tests
         run: >-
@@ -278,6 +278,7 @@ jobs:
             tests/run-make/rdr-public-hash*
             tests/run-make/ohm-early-metadata
             tests/run-make/metadata-export-prefetch
+            tests/run-make/c-linker-generic-summary
             tests/run-make/trait-impl-directory
             tests/run-make/ohm-shared-stages
             tests/run-make/ohm-thinlto-cache
