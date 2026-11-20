@@ -53,6 +53,9 @@ fn main() {
     let ordinary = compile(Some("ordinary"), false);
     assert_placement(&ordinary, "upstream::apply::<", "upstream.", ".volatile[");
     assert_placement(&ordinary, "upstream::invoke::<", "upstream.", ".volatile[");
+    assert_placement(&ordinary, "upstream::identity::<u64>", "upstream.", ".volatile[");
+    assert_fallback_placement(&ordinary, &["<upstream::Wrapper<", ">::drop"]);
+    assert_fallback_placement(&ordinary, &["drop_glue::<upstream::Wrapper<"]);
     run("main").assert_stdout_contains("dropped:false:true:7:11");
 
     let caller_local = compile(Some("caller-local"), true);
@@ -60,9 +63,11 @@ fn main() {
         assert_placement(&caller_local, function, "main.", "-first.volatile[");
         assert_placement(&caller_local, function, "main.", "-second.volatile[");
     }
-    assert_placement(&caller_local, "upstream::identity::<u64>", "upstream.", ".volatile[");
-    assert_fallback_placement(&caller_local, &["<upstream::Wrapper<", ">::drop"]);
-    assert_fallback_placement(&caller_local, &["drop_glue::<upstream::Wrapper<"]);
+    for function in
+        ["upstream::identity::<u64>", "as std::ops::Drop>::drop", "drop_glue::<upstream::Wrapper<"]
+    {
+        assert_placement(&caller_local, function, "main.", ".volatile[");
+    }
     run("main").assert_stdout_contains("dropped:false:true:7:11");
 
     // The flag is inert without incremental compilation.
@@ -82,4 +87,16 @@ fn main() {
     let rebuilt = compile(Some("caller-local"), true);
     assert_placement(&rebuilt, "upstream::apply::<", "main.", "-first.volatile[");
     run("main").assert_stdout_contains("dropped:true:true:7:11");
+
+    // Add a second user in another module, then remove it in the same cache.
+    let shared = original.replace("number >= 3", "upstream::identity(number as u64) == 2");
+    rfs::write("main.rs", shared);
+    let rebuilt = compile(Some("caller-local"), true);
+    assert_placement(&rebuilt, "upstream::identity::<u64>", "upstream.", ".volatile[");
+    run("main").assert_stdout_contains("dropped:true:true:7:11");
+
+    rfs::write("main.rs", original);
+    let rebuilt = compile(Some("caller-local"), true);
+    assert_placement(&rebuilt, "upstream::identity::<u64>", "main.", ".volatile[");
+    run("main").assert_stdout_contains("dropped:false:true:7:11");
 }

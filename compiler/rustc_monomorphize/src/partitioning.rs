@@ -227,6 +227,9 @@ where
 {
     let mut codegen_units = UnordMap::default();
     let is_incremental_build = cx.tcx.sess.opts.incremental.is_some();
+    let place_by_user = is_incremental_build
+        && cx.tcx.sess.opts.unstable_opts.ohm_caller_local_cgus
+        && matches!(cx.tcx.sess.opts.optimize, OptLevel::No | OptLevel::Less);
     let mut internalization_candidates = UnordSet::default();
 
     // Determine if monomorphizations instantiated in this crate will be made
@@ -249,7 +252,20 @@ where
             InstantiationMode::LocalCopy => continue,
         }
 
-        let characteristic_def_id = characteristic_def_id_of_mono_item(cx.tcx, mono_item);
+        // A body edit can add or remove a whole chain of instantiations, including
+        // drop glue. Group the chain by the module that needs it, stopping at shared
+        // instances. Bound the work per item even for cycles and long generic chains.
+        let mut owner = mono_item;
+        if place_by_user {
+            for _ in 0..16 {
+                if !owner.is_generic_fn() {
+                    break;
+                }
+                let [user] = cx.usage_map.get_user_items(owner) else { break };
+                owner = *user;
+            }
+        }
+        let characteristic_def_id = characteristic_def_id_of_mono_item(cx.tcx, owner);
         let is_volatile = is_incremental_build && mono_item.is_generic_fn();
 
         let (cgu_name, partition_key) = match characteristic_def_id {
