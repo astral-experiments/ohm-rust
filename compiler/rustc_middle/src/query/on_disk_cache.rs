@@ -965,8 +965,8 @@ impl_decodable_via_ref_decodable_for_foreign_types! {
     &'tcx [CodegenUnit<'tcx>],
     &'tcx [DefId],
     &'tcx [Spanned<MonoItem<'tcx>>],
-    &'tcx [crate::mono::UpstreamMono<'tcx>],
     &'tcx [Symbol],
+    &'tcx [crate::mono::UpstreamMono<'tcx>],
     &'tcx [ty::Variance],
     &'tcx rustc_ast::tokenstream::TokenStream,
     // tidy-alphabetical-end
