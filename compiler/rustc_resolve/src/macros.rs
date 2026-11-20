@@ -276,10 +276,11 @@ impl<'ra, 'tcx> ResolverExpand for Resolver<'ra, 'tcx> {
                     .invocation_parent_scopes
                     .get(&eager_expansion_root)
                     .expect("non-eager expansion without a parent scope");
-                let invocation_parent = *self
+                let mut invocation_parent = *self
                     .invocation_parents
                     .get(&eager_expansion_root)
                     .expect("non-eager expansion without an invocation parent");
+                invocation_parent.preceding_source_adt = None;
                 self.invocation_parent_scopes.insert(invoc_id, parent_scope);
                 self.invocation_parents.insert(invoc_id, invocation_parent);
                 (parent_scope, invocation_parent)
@@ -341,21 +342,59 @@ impl<'ra, 'tcx> ResolverExpand for Resolver<'ra, 'tcx> {
         )?;
 
         let mut span = invoc.span();
-        if (kind == MacroKind::Derive
-            || matches!(ext.builtin_name, Some(sym::derive | sym::derive_const)))
-            && !span.is_dummy()
-            && span.ctxt().is_root()
-            && let Some(&anchor) = self.last_source_adt.get(&invocation_parent.parent_def)
-            && self
-                .tcx
-                .sess
-                .source_map()
-                .lookup_source_file(span.lo())
-                .contains(self.tcx.source_span_untracked(anchor).lo())
-        {
-            // Keep the original coordinates and hygiene. Incremental span hashing and
-            // encoding already support signed offsets to an anchor in the same source file.
-            span = span.with_parent(Some(anchor));
+        if let Some(anchor) = invocation_parent.preceding_source_adt {
+            let builtin_derive = matches!(ext.builtin_name, Some(sym::derive | sym::derive_const));
+            let derive = kind == MacroKind::Derive || builtin_derive;
+            if derive || (kind == MacroKind::Attr && !inner_attr) {
+                let data = span.data_untracked();
+                let earlier = self.tcx.source_span_untracked(anchor).data_untracked();
+                if !data.is_dummy()
+                    && data.ctxt.is_root()
+                    && data.parent == Some(invocation_parent.parent_def)
+                    && earlier.hi <= data.lo
+                {
+                    let file = self.tcx.sess.source_map().lookup_source_file(data.lo);
+                    // A local parent in this file already gives an ordinary attribute
+                    // a relative coordinate. An out-of-line module declaration does not.
+                    if file.contains(earlier.lo)
+                        && file.contains(data.hi)
+                        && (derive
+                            || !file.contains(
+                                self.tcx.source_span_untracked(invocation_parent.parent_def).lo(),
+                            ))
+                    {
+                        span = span.with_parent(Some(anchor));
+                    }
+                }
+            }
+            // Built-in derive and inert helpers keep the annotated input. A macro that
+            // can supply a new fragment cannot certify predecessors for those new tokens.
+            if !builtin_derive
+                && !matches!(ext.kind, rustc_expand::base::SyntaxExtensionKind::NonMacroAttr)
+            {
+                self.invocation_parents.get_mut(&invoc_id).unwrap().preceding_source_adt = None;
+            }
+        }
+        // Individual derive paths are synthesized after macro invocation collection.
+        // A path inside a source-written derive can use the same anchor as its attribute.
+        if kind == MacroKind::Derive && self.tcx.sess.opts.incremental.is_some() {
+            let child = span.data_untracked();
+            let attribute = parent_scope.expansion.call_site().data_untracked();
+            if let Some(anchor) = attribute.parent
+                && child.parent.is_none()
+                && !child.is_dummy()
+                && child.ctxt.is_root()
+                && attribute.ctxt == child.ctxt
+                && attribute.contains(child)
+            {
+                let file = self.tcx.sess.source_map().lookup_source_file(attribute.lo);
+                if !file.is_imported()
+                    && file.contains(attribute.hi)
+                    && file.contains(self.tcx.source_span_untracked(anchor).lo())
+                {
+                    span = span.with_parent(Some(anchor));
+                }
+            }
         }
         let def_id = if deleg_impl.is_some() { None } else { res.opt_def_id() };
         self.tcx.with_stable_hashing_context(|hcx| {
