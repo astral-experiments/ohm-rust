@@ -2768,6 +2768,8 @@ options! {
         "reuse unchanged incremental monomorphization partitions without public API hashing"),
     ohm_metadata_macro_reuse: bool = (true, parse_bool, [TRACKED],
         "reuse validated metadata for source-written exported macros (default: yes)"),
+    ohm_prefer_full_crate_hash: bool = (false, parse_bool, [UNTRACKED],
+        "allow fresh public metadata to use the full crate hash for invalidation"),
     ohm_shared_stages: bool = (false, parse_bool, [TRACKED],
         "reuse frontend incremental queries between metadata and link emission"),
     ohm_split_large_cgus: bool = (true, parse_bool, [TRACKED],
