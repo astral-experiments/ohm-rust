@@ -1396,10 +1396,10 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
 
         if M::HASH_PUBLIC_API {
             for (symbol, info) in tcx.exported_non_generic_symbols(LOCAL_CRATE) {
-                let def_id = match symbol {
-                    ExportedSymbol::NonGeneric(id) => id.expect_local(),
-                    _ => continue,
-                };
+                // An extern item implementation exports the symbol for its declaration,
+                // which can belong to a dependency. These tables index local definitions.
+                let ExportedSymbol::NonGeneric(id) = symbol else { continue };
+                let Some(def_id) = id.as_local() else { continue };
                 if matches!(info, SymbolExportInfo { level: SymbolExportLevel::C, .. }) {
                     self.tables
                         .is_reachable_non_generic_with_export_level_c
