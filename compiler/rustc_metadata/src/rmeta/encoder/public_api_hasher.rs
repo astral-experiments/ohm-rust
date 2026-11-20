@@ -5,6 +5,11 @@
 //! `public_api_hash_opt_enabled` field on `CrateRoot`), so the decoder can fall back to the old
 //! behaviour for rmetas produced without the option.
 //!
+//! With `-Zohm-prefer-full-crate-hash` and metadata-based SVHs, a fresh encoding may
+//! keep the stable identities and use the full crate hash for every external read.
+//! This saves the reachability graph when the caller expects the metadata to go unused.
+//! Any later consumer can load it, with coarser invalidation after a private edit.
+//!
 //! # Public API hash
 //! The goal of public API hashing is to allow skipping recompiles of downstream dependencies when only
 //! private items change. It is a hash over everything in a crate that is observable by downstream
@@ -589,8 +594,8 @@ pub(crate) struct HashableCrateRoot {
     pub(crate) traits: Unhashed<LazyArray<DefIndex>>,
 }
 
-pub(super) fn crate_hashes<'tcx, 'h>(
-    ecx: &mut EncodeContext<'_, 'tcx, DefPathHashDefIdEncoder<'tcx>>,
+pub(super) fn crate_hashes<'tcx, 'h, const HASH: bool>(
+    ecx: &mut EncodeContext<'_, 'tcx, DefPathHashDefIdEncoder<'tcx, HASH>>,
     hcx: &mut impl PublicApiHashState<'h>,
     root: &HashableCrateRoot,
 ) -> (Option<Svh>, Option<ItemPublicHashes>) {
