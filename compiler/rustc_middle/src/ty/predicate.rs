@@ -4,6 +4,7 @@ use rustc_data_structures::intern::Interned;
 use rustc_hir::def_id::DefId;
 use rustc_macros::{StableHash, extension};
 use rustc_span::bug;
+use rustc_span::def_id::DefPathHash;
 use rustc_type_ir as ir;
 
 use crate::ty::{self, EarlyBinder, Ty, TyCtxt, TypeFlags, Upcast, UpcastFrom, WithCachedTypeInfo};
@@ -225,13 +226,18 @@ impl<'tcx> ExistentialPredicate<'tcx> {
     /// Compares via an ordering that will not change if modules are reordered or other changes are
     /// made to the tree. In particular, this ordering is preserved across incremental compilations.
     fn stable_cmp(&self, tcx: TyCtxt<'tcx>, other: &Self) -> Ordering {
+        self.stable_cmp_by(other, |id| tcx.def_path_hash(id))
+    }
+
+    /// Compares predicates in the same canonical order using the supplied path hash lookup.
+    fn stable_cmp_by(&self, other: &Self, hash: impl Fn(DefId) -> DefPathHash) -> Ordering {
         match (*self, *other) {
             (ExistentialPredicate::Trait(_), ExistentialPredicate::Trait(_)) => Ordering::Equal,
             (ExistentialPredicate::Projection(ref a), ExistentialPredicate::Projection(ref b)) => {
-                tcx.def_path_hash(a.def_id).cmp(&tcx.def_path_hash(b.def_id))
+                hash(a.def_id).cmp(&hash(b.def_id))
             }
             (ExistentialPredicate::AutoTrait(ref a), ExistentialPredicate::AutoTrait(ref b)) => {
-                tcx.def_path_hash(*a).cmp(&tcx.def_path_hash(*b))
+                hash(*a).cmp(&hash(*b))
             }
             (ExistentialPredicate::Trait(_), _) => Ordering::Less,
             (ExistentialPredicate::Projection(_), ExistentialPredicate::Trait(_)) => {
