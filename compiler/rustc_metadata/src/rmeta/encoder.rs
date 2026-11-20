@@ -217,7 +217,7 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
         ecx: &mut EncodeContext<'_, 'tcx, Self>,
         hcx: &mut impl PublicApiHashState<'h>,
         root: &HashableCrateRoot,
-    ) -> (Option<Svh>, Option<ItemPublicHashes>);
+    ) -> (Option<Svh>, PublicHashes);
 
     fn record_encoded_index(&mut self, _node: Node<'tcx>);
     fn retain_public_hash(&mut self, _node: Node<'tcx>) {}
@@ -428,8 +428,12 @@ impl<'tcx, const HASH: bool> MetadataEncoder<'tcx> for DefPathHashDefIdEncoder<'
         ecx: &mut EncodeContext<'_, 'tcx, Self>,
         hcx: &mut impl PublicApiHashState<'h>,
         root: &HashableCrateRoot,
-    ) -> (Option<Svh>, Option<ItemPublicHashes>) {
-        if HASH { public_api_hasher::crate_hashes(ecx, hcx, root) } else { (None, None) }
+    ) -> (Option<Svh>, PublicHashes) {
+        if HASH {
+            public_api_hasher::crate_hashes(ecx, hcx, root)
+        } else {
+            (None, PublicHashes::None)
+        }
     }
 
     #[inline]
@@ -497,8 +501,8 @@ impl<'tcx> MetadataEncoder<'tcx> for DefIndexDefIdEncoder {
         _ecx: &mut EncodeContext<'_, 'tcx, Self>,
         _hcx: &mut impl PublicApiHashState<'h>,
         _root: &HashableCrateRoot,
-    ) -> (Option<Svh>, Option<ItemPublicHashes>) {
-        (None, None)
+    ) -> (Option<Svh>, PublicHashes) {
+        (None, PublicHashes::None)
     }
     #[inline(always)]
     fn record_encoded_index(&mut self, _node: Node<'tcx>) {}
@@ -533,6 +537,9 @@ pub(super) struct EncodeContext<'a, 'tcx, M: MetadataEncoder<'tcx>> {
     // The order inside the `FxIndexSet` is used as on-disk
     // order of `SourceFiles`, and encoded inside `Span`s.
     required_source_files: Option<FxIndexSet<usize>>,
+    hash_declaration_text: bool,
+    // Only spans in the row currently being encoded can be omitted from its graph edges.
+    declaration_spans: FxHashSet<Span>,
     native_line_shapes: Option<FxHashMap<(StableSourceFileId, usize), Fingerprint>>,
     metadata_prefix_manifest: Option<MetadataPrefixManifestBuilder>,
     is_proc_macro: bool,
@@ -668,7 +675,9 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> SpanEncoder for EncodeContext<'a, 'tcx,
     }
 
     fn encode_span(&mut self, span: Span) {
-        self.record_encoded_index(span);
+        if !self.hash_declaration_text || !self.declaration_spans.contains(&span) {
+            self.record_encoded_index(span);
+        }
         match self.span_shorthands.entry(span) {
             Entry::Occupied(o) => {
                 // If an offset is smaller than the absolute position, we encode with the offset.
@@ -2203,6 +2212,60 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         })
     }
 
+    /// A terminal binary check can keep its success if only the locations of ordinary
+    /// declaration tokens moved. Keep their spelling and file identity in its freshness key,
+    /// and retain the exact spans in metadata for compiler queries and diagnostics.
+    fn declaration_text(&mut self, span: Span) -> Option<Fingerprint> {
+        if !self.hash_declaration_text || span.is_dummy() || span.from_expansion() {
+            return None;
+        }
+        let file = self.tcx.sess.source_map().lookup_source_file(span.lo());
+        if !file.contains(span.hi()) {
+            return None;
+        }
+        let text = file.src.as_ref()?;
+        let lo = file.relative_position(span.lo()).0 as usize;
+        let hi = file.relative_position(span.hi()).0 as usize;
+        let mut hasher = StableHasher::new();
+        file.stable_id.hash(&mut hasher);
+        text.get(lo..hi)?.hash(&mut hasher);
+        if let Some(builder) = &mut self.metadata_prefix_manifest
+            && !builder.capture_protected_span(self.tcx, span)
+        {
+            self.metadata_prefix_manifest = None;
+        }
+        Some(hasher.finish())
+    }
+
+    /// `location` returns a span only for values containing a single diagnostic location.
+    fn encode_declaration_array<'h, T: Encodable<Self> + StableHash + 'tcx>(
+        &mut self,
+        def_id: DefId,
+        values: impl IntoIterator<Item = &'tcx T>,
+        location: impl Fn(&T) -> Option<Span>,
+        hcx: &mut impl PublicApiHashState<'h>,
+    ) -> (LazyArray<T>, Fingerprint) {
+        let mut hasher = StableHasher::new();
+        let encoded = self.with_record_mode(RecordMode::From(def_id.into()), |this| {
+            this.lazy_array_with(values, |this, value| {
+                if let Some(span) = location(value)
+                    && let Some(text) = this.declaration_text(span)
+                {
+                    hcx.hcx_mut().while_hashing_spans(false, |cx| {
+                        value.stable_hash(cx, &mut hasher);
+                    });
+                    text.hash(&mut hasher);
+                    this.declaration_spans.insert(span);
+                } else if hcx.enabled() {
+                    value.stable_hash(hcx.hcx_mut(), &mut hasher);
+                }
+                value.encode(this);
+                this.declaration_spans.clear();
+            })
+        });
+        (encoded, hasher.finish())
+    }
+
     fn encode_attrs<'h>(&mut self, def_id: LocalDefId, hcx: &mut impl PublicApiHashState<'h>) {
         let tcx = self.tcx;
         let mut state = AnalyzeAttrState {
@@ -2218,7 +2281,19 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         };
         let attr_iter = tcx.hir_attrs(hir_id).iter().filter(|attr| analyze_attr(*attr, &mut state));
 
-        record_array!(self.tables.attributes[def_id.to_def_id()] <- attr_iter, hcx);
+        let id = def_id.to_def_id();
+        let (attrs, digest) = self.encode_declaration_array(
+            id,
+            attr_iter,
+            |attr| match attr {
+                rustc_attr_ir::Attribute::Parsed(AttributeKind::DocComment {
+                    span, kind, ..
+                }) if kind.is_sugared() => Some(*span),
+                _ => None,
+            },
+            hcx,
+        );
+        self.tables.attributes.set_some_hashed(id.index, attrs, (id, digest), hcx);
 
         let mut attr_flags = AttrFlags::empty();
         if state.is_doc_hidden {
@@ -2373,12 +2448,21 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 }
                 if let Some(ident_span) = ident_span {
                     let encoded = self.encode_diagnostic_span(def_id, ident_span, false);
-                    self.tables.def_ident_span.set_some_hashed(
-                        def_id.index,
-                        encoded,
-                        (def_id, ident_span),
-                        hcx,
-                    );
+                    if let Some(text) = self.declaration_text(ident_span) {
+                        self.tables.def_ident_span.set_some_hashed(
+                            def_id.index,
+                            encoded,
+                            (def_id, text),
+                            hcx,
+                        );
+                    } else {
+                        self.tables.def_ident_span.set_some_hashed(
+                            def_id.index,
+                            encoded,
+                            (def_id, ident_span),
+                            hcx,
+                        );
+                    }
                 }
             }
             if def_kind.has_codegen_attrs() {
@@ -2405,14 +2489,50 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             }
             if should_encode_generics(def_kind) {
                 let g = tcx.generics_of(def_id);
-                // Preserve the established producer wire and RDR fingerprint, including the
-                // current diagnostic span. Do not clone the parameter list or its reverse map.
-                let wire = g.for_metadata(g.late_bound_regions_span(tcx));
+                let location = g.late_bound_regions_span(tcx);
+                let text = location.and_then(|span| self.declaration_text(span));
+                let wire = g.for_metadata(location);
+                if text.is_some() {
+                    self.declaration_spans.extend(location);
+                }
                 let lazy = self.with_record_mode(RecordMode::From(Node::DefId(def_id)), |ecx| {
                     ecx.lazy_encoded_as(&wire)
                 });
-                self.tables.generics_of.set_some_hashed(def_id.index, lazy, (def_id, &wire), hcx);
-                record!(self.tables.explicit_clauses_of[def_id] <- self.tcx.explicit_clauses_of(def_id), hcx);
+                self.declaration_spans.clear();
+                if let Some(text) = text {
+                    self.tables.generics_of.set_some_hashed(
+                        def_id.index,
+                        lazy,
+                        (def_id, g, text),
+                        hcx,
+                    );
+                } else {
+                    self.tables.generics_of.set_some_hashed(
+                        def_id.index,
+                        lazy,
+                        (def_id, &wire),
+                        hcx,
+                    );
+                }
+                let clauses = self.tcx.explicit_clauses_of(def_id);
+                if self.hash_declaration_text && !clauses.clauses.is_empty() {
+                    let mut hasher = StableHasher::new();
+                    clauses.parent.stable_hash(hcx.hcx_mut(), &mut hasher);
+                    for (clause, span) in clauses.clauses {
+                        clause.stable_hash(hcx.hcx_mut(), &mut hasher);
+                        if let Some(text) = self.declaration_text(*span) {
+                            text.hash(&mut hasher);
+                            self.declaration_spans.insert(*span);
+                        } else {
+                            span.stable_hash(hcx.hcx_mut(), &mut hasher);
+                        }
+                    }
+                    let digest: Fingerprint = hasher.finish();
+                    record!(self.tables.explicit_clauses_of[def_id] <- clauses, hcx, digest);
+                    self.declaration_spans.clear();
+                } else {
+                    record!(self.tables.explicit_clauses_of[def_id] <- clauses, hcx);
+                }
                 let inferred_outlives = self.tcx.inferred_outlives_of(def_id);
                 record_defaulted_array!(self.tables.inferred_outlives_of[def_id] <- inferred_outlives, hcx);
 
@@ -2436,7 +2556,18 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             if let DefKind::Fn | DefKind::AssocFn = def_kind {
                 let asyncness = tcx.asyncness(def_id);
                 self.tables.asyncness.set_local_hashed(def_id.expect_local(), asyncness, hcx);
-                record_array!(self.tables.fn_arg_idents[def_id] <- tcx.fn_arg_idents(def_id), hcx);
+                let (args, digest) = self.encode_declaration_array(
+                    def_id,
+                    tcx.fn_arg_idents(def_id),
+                    |arg| arg.map(|ident| ident.span),
+                    hcx,
+                );
+                self.tables.fn_arg_idents.set_some_hashed(
+                    def_id.index,
+                    args,
+                    (def_id, digest),
+                    hcx,
+                );
             }
             if let Some(name) = tcx.intrinsic(def_id) {
                 record!(self.tables.intrinsic[def_id] <- name, hcx);
@@ -3889,12 +4020,17 @@ fn try_reuse_metadata_prefix(
             return None;
         }
     }
-    let previous_rdr_hashes = previous_root.rdr_hashes.take()?;
-    let local_hashes_range = previous_rdr_hashes.local.encoded_range(&metadata)?;
-    let expn_hashes_range = previous_rdr_hashes.expn.encoded_range(&metadata)?;
-    if local_hashes_range.start < manifest.prefix_position
-        || expn_hashes_range.start < manifest.prefix_position
-    {
+    let is_terminal = matches!(previous_root.rdr_hashes, PublicHashes::TerminalCheck(_));
+    let table_ranges = match &previous_root.rdr_hashes {
+        PublicHashes::None => return None,
+        PublicHashes::TerminalCheck(_) => None,
+        PublicHashes::Items(items) => {
+            Some((items.local.encoded_range(&metadata)?, items.expn.encoded_range(&metadata)?))
+        }
+    };
+    if table_ranges.as_ref().is_some_and(|(local, expn)| {
+        local.start < manifest.prefix_position || expn.start < manifest.prefix_position
+    }) {
         return None;
     }
 
@@ -3938,24 +4074,21 @@ fn try_reuse_metadata_prefix(
             previous_root.denied_partial_mitigations =
                 ecx.encode_enabled_denied_partial_mitigations(&mut hcx).value;
         });
-        previous_root.rdr_hashes = Some(ItemPublicHashes {
-            local: relocate_metadata_table(
-                ecx,
-                &metadata,
-                previous_rdr_hashes.local,
-                local_hashes_range,
-            ),
-            expn: relocate_metadata_table(
-                ecx,
-                &metadata,
-                previous_rdr_hashes.expn,
-                expn_hashes_range,
-            ),
-            public_global_hash: previous_rdr_hashes.public_global_hash,
-        });
+        if let PublicHashes::Items(items) = &mut previous_root.rdr_hashes {
+            let (local, expn) = table_ranges.unwrap();
+            items.local = relocate_metadata_table(ecx, &metadata, items.local, local);
+            items.expn = relocate_metadata_table(ecx, &metadata, items.expn, expn);
+        }
         let root: LazyValue<CrateRoot> = ecx.lazy(previous_root);
         ecx.finish_crate_hash();
         let unhashed = ecx.encode_unhashed_crate_root();
+        // Terminal metadata uses its exact private hash for rustc readers. Refresh that
+        // identity even when just the source map changed and the Cargo key survived.
+        let public_hash = if is_terminal {
+            *tcx.untracked().local_crate_hash.get().unwrap()
+        } else {
+            public_hash
+        };
         (root.position.get(), unhashed.position.get(), public_hash)
     });
     temporary_file
@@ -4205,6 +4338,11 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
         source_file_cache,
         interpret_allocs: Default::default(),
         required_source_files,
+        hash_declaration_text: M::HASH_PUBLIC_API
+            && tcx.sess.opts.unstable_opts.ohm_terminal_check_hash
+            && tcx.sess.opts.unstable_opts.metadata_crate_hash
+            && !tcx.codegen_output_mode(()).0,
+        declaration_spans: FxHashSet::default(),
         native_line_shapes: (M::HASH_PUBLIC_API
             && tcx.sess.opts.incremental.is_some()
             && tcx.crate_types().iter().any(|ty| ty.has_metadata())
