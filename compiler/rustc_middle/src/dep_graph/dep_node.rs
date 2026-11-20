@@ -211,7 +211,7 @@ pub struct DepKindVTable<'tcx> {
     /// validated MIR for. Now, when we call `force_from_dep_node()` on a `DepNode`
     /// with kind `mir_promoted`, we know that the key fingerprint of the `DepNode`
     /// is actually a `DefPathHash`, and can therefore just look up the corresponding
-    /// `DefId` in `tcx.def_path_hash_to_def_id`.
+    /// `DefId` in `tcx.incremental_def_path_hash_to_def_id`.
     pub force_from_dep_node_fn: Option<
         fn(
             tcx: TyCtxt<'tcx>,
@@ -341,7 +341,7 @@ impl DepNode {
     /// has been removed.
     pub fn extract_def_id(&self, tcx: TyCtxt<'_>) -> Option<DefId> {
         if tcx.key_fingerprint_style(self.kind) == KeyFingerprintStyle::DefPathHash {
-            tcx.def_path_hash_to_def_id(DefPathHash(self.key_fingerprint.into()))
+            tcx.incremental_def_path_hash_to_def_id(DefPathHash(self.key_fingerprint.into()))
         } else {
             None
         }

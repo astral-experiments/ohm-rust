@@ -1602,22 +1602,19 @@ impl<'tcx> TyCtxt<'tcx> {
             .filter(move |item| item.is_fn() && item.defaultness(self).has_value())
     }
 
+    fn path_layout_seed(self, path: rustc_hir::def_id::DefPathHash) -> rustc_hashes::Hash64 {
+        let mut seed = path.0.to_smaller_hash();
+        seed ^= self.sess.opts.unstable_opts.layout_seed.unwrap_or_default();
+        seed
+    }
+
     pub fn repr_options_of_def(self, did: LocalDefId) -> ReprOptions {
         let mut flags = ReprFlags::empty();
         let mut size = None;
         let mut max_align: Option<Align> = None;
         let mut min_pack: Option<Align> = None;
 
-        // Generate a deterministically-derived seed from the item's path hash
-        // to allow for cross-crate compilation to actually work
-        let mut field_shuffle_seed = self.def_path_hash(did.to_def_id()).0.to_smaller_hash();
-
-        // If the user defined a custom seed for layout randomization, xor the item's
-        // path hash with the user defined seed, this will allowing determinism while
-        // still allowing users to further randomize layout generation for e.g. fuzzing
-        if let Some(user_seed) = self.sess.opts.unstable_opts.layout_seed {
-            field_shuffle_seed ^= user_seed;
-        }
+        let field_shuffle_seed = self.path_layout_seed(self.def_path_hash(did.to_def_id()));
 
         let elt = find_attr!(self, did, RustcScalableVector { element_count } => element_count
         )

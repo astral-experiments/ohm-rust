@@ -151,7 +151,7 @@ pub enum ScalableElt {
 /// Represents the repr options provided by the user.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
 #[cfg_attr(feature = "nightly", derive(Encodable_NoContext, Decodable_NoContext, StableHash))]
-pub struct ReprOptions {
+pub struct ReprOptions<Seed = Hash64> {
     pub int: Option<IntegerType>,
     pub align: Option<Align>,
     pub pack: Option<Align>,
@@ -165,10 +165,16 @@ pub struct ReprOptions {
     /// hash without loss, but it does pay the price of being larger.
     /// Everything's a tradeoff, a 64-bit seed should be sufficient for our
     /// purposes (primarily `-Z randomize-layout`)
-    pub field_shuffle_seed: Hash64,
+    pub field_shuffle_seed: Seed,
 }
 
-impl ReprOptions {
+impl<Seed> ReprOptions<Seed> {
+    /// Projects the declaration attributes used independently of layout randomization.
+    pub fn without_seed(&self) -> ReprOptions<()> {
+        let Self { int, align, pack, flags, scalable, field_shuffle_seed: _ } = *self;
+        ReprOptions { int, align, pack, flags, scalable, field_shuffle_seed: () }
+    }
+
     #[inline]
     pub fn simd(&self) -> bool {
         self.flags.contains(ReprFlags::IS_SIMD)

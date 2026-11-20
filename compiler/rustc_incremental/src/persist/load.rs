@@ -1,19 +1,21 @@
 //! Code to load the dep-graph from files.
 
+use std::hash::Hash;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rustc_data_structures::memmap::Mmap;
+use rustc_data_structures::stable_hash::StableHasher;
 use rustc_data_structures::unord::UnordMap;
 use rustc_hashes::Hash64;
 use rustc_middle::dep_graph::{CheckCacheSource, DepGraph, SerializedDepGraph, WorkProductMap};
 use rustc_middle::query::on_disk_cache::OnDiskCache;
 use rustc_serialize::opaque::{FileEncoder, MemDecoder};
 use rustc_serialize::{Decodable, Decoder, Encodable};
-use rustc_session::config::IncrementalStateAssertion;
+use rustc_session::config::{IncrementalStateAssertion, Input};
 use rustc_session::{IncrCompSession, Session, StableCrateId};
-use rustc_span::Symbol;
+use rustc_span::{RemapPathScopeComponents, Symbol};
 use tracing::{debug, warn};
 
 use super::data::*;
@@ -33,6 +35,51 @@ enum LoadResult {
     IoError { path: PathBuf, err: io::Error },
 }
 
+/// The canonical key validates a complete incremental session. The optional
+/// check key permits borrowing query data after a dependency salt change.
+#[derive(Clone, Copy, rustc_macros::Encodable, rustc_macros::Decodable)]
+struct GraphKey {
+    canonical: Hash64,
+    /// Zero disables sibling reads.
+    check: Hash64,
+}
+
+impl GraphKey {
+    fn new(sess: &Session, lookup_id: Option<StableCrateId>) -> Self {
+        let mut canonical = sess.opts.dep_tracking_hash(false);
+        if let Some(id) = lookup_id {
+            let mut hasher = StableHasher::new();
+            (canonical, id).hash(&mut hasher);
+            canonical = hasher.finish();
+        }
+        let check = lookup_id.and_then(|id| check_compatibility(sess, id)).unwrap_or(Hash64::ZERO);
+        Self { canonical, check }
+    }
+
+    fn try_decode(decoder: &mut MemDecoder<'_>) -> Option<Self> {
+        (decoder.remaining() >= 2 * size_of::<u64>()).then(|| Self::decode(decoder))
+    }
+}
+
+fn check_compatibility(sess: &Session, id: StableCrateId) -> Option<Hash64> {
+    if sess.opts.output_types.should_codegen() {
+        return None;
+    }
+    let Input::File(input) = &sess.io.input else { return None };
+    let mut opts = sess.opts.clone();
+    opts.cg.metadata.clear();
+    let mut hash = StableHasher::new();
+    (id, opts.dep_tracking_hash(false)).hash(&mut hash);
+    let map = sess.source_map();
+    let input = map.path_mapping().to_real_filename(map.working_dir(), input.as_path());
+    input.path(RemapPathScopeComponents::DEBUGINFO).hash(&mut hash);
+    let mut cfg: Vec<_> =
+        sess.config.iter().map(|(k, v)| (k.as_str(), v.as_ref().map(Symbol::as_str))).collect();
+    cfg.sort_unstable();
+    cfg.hash(&mut hash);
+    Some(hash.finish())
+}
+
 fn decode_dep_graph(
     sess: &Session,
     path: &Path,
@@ -50,6 +97,7 @@ fn load_dep_graph(
     sess: &Session,
     incr_comp_session: &IncrCompSession,
     stage_graph: Option<&Arc<SerializedDepGraph>>,
+    expected_hash: Hash64,
 ) -> LoadResult {
     assert!(sess.opts.incremental.is_some());
 
@@ -60,7 +108,6 @@ fn load_dep_graph(
     let Some(path) = old_dep_graph_path(incr_comp_session) else {
         return LoadResult::DataOutOfDate;
     };
-    let expected_hash = sess.opts.dep_tracking_hash(false);
 
     let mut prev_work_products = UnordMap::default();
 
@@ -112,9 +159,10 @@ fn load_dep_graph(
                 sess.dcx().emit_warn(diagnostics::CorruptFile { path: &path });
                 return LoadResult::DataOutOfDate;
             };
-            let prev_commandline_args_hash = Hash64::decode(&mut decoder);
-
-            if prev_commandline_args_hash != expected_hash {
+            let Some(key) = GraphKey::try_decode(&mut decoder) else {
+                return LoadResult::DataOutOfDate;
+            };
+            if key.canonical != expected_hash {
                 if sess.opts.unstable_opts.incremental_info {
                     eprintln!(
                         "[incremental] completely ignoring cache because of \
@@ -207,6 +255,7 @@ pub fn setup_dep_graph(
     sess: &Session,
     crate_name: Symbol,
     stable_crate_id: StableCrateId,
+    lookup_id: Option<StableCrateId>,
 ) -> (DepGraph, Option<IncrCompSession>, Option<OnDiskCache>) {
     if sess.opts.incremental.is_none() {
         return (DepGraph::new_disabled(), None, None);
@@ -214,6 +263,7 @@ pub fn setup_dep_graph(
 
     // `load_dep_graph` can only be called after `prepare_session_directory`.
     let mut incr_comp_session = prepare_session_directory(sess, crate_name, stable_crate_id);
+    let key = GraphKey::new(sess, lookup_id);
     let should_codegen = sess.opts.output_types.should_codegen();
     let checkpoint_files = if sess.opts.unstable_opts.ohm_shared_stages {
         match (
@@ -228,12 +278,38 @@ pub fn setup_dep_graph(
     } else {
         None
     };
-    let mut checkpoint = checkpoint_files
-        .and_then(|(graph, cache)| load_stage_checkpoint(sess, &incr_comp_session, graph, cache));
+    let mut checkpoint = checkpoint_files.and_then(|(graph, cache)| {
+        let dir = incr_comp_session.old_session_directory.as_ref()?;
+        load_stage_checkpoint(sess, dir, graph, cache, |old| old.canonical == key.canonical)
+    });
     // Try to load the previous session's dep graph and work products.
-    let mut load_result =
-        load_dep_graph(sess, &incr_comp_session, checkpoint.as_ref().map(|(graph, _)| graph));
+    let mut load_result = load_dep_graph(
+        sess,
+        &incr_comp_session,
+        checkpoint.as_ref().map(|(graph, _)| graph),
+        key.canonical,
+    );
     let mut query_cache = None;
+    // Retain canonical stage histories. Only an otherwise cold check may
+    // borrow a compatible sibling's query results. Work products, including
+    // encoded metadata, belong to their original canonical crate identity.
+    if key.check != Hash64::ZERO && incr_comp_session.old_session_directory.is_none() {
+        for dir in sibling_sessions(sess, crate_name) {
+            if let Some((graph, cache)) =
+                load_stage_checkpoint(sess, &dir, CHECK_DEP_GRAPH, CHECK_QUERY_CACHE, |old| {
+                    old.check == key.check
+                })
+            {
+                incr_comp_session.check_seed = Some(dir);
+                load_result = LoadResult::Ok {
+                    prev_graph: Arc::clone(&graph),
+                    prev_work_products: Default::default(),
+                };
+                checkpoint = Some((graph, cache));
+                break;
+            }
+        }
+    }
     if matches!(load_result, LoadResult::Ok { .. }) && checkpoint.is_none() {
         query_cache = load_query_result_cache(sess, Some(&incr_comp_session));
         if query_cache.is_none() {
@@ -283,7 +359,7 @@ pub fn setup_dep_graph(
         }
     }
     let latest_check = if should_codegen && checkpoint.is_some() {
-        load_latest_check(sess, &incr_comp_session)
+        load_latest_check(sess, &incr_comp_session, key.canonical)
     } else {
         None
     };
@@ -303,7 +379,7 @@ pub fn setup_dep_graph(
     file_format::write_file_header(&mut encoder, sess);
 
     // First encode the commandline arguments hash
-    sess.opts.dep_tracking_hash(false).encode(&mut encoder);
+    key.encode(&mut encoder);
 
     (
         DepGraph::new(sess, prev_graph, prev_work_products, encoder, latest_check),
@@ -340,11 +416,15 @@ fn load_metadata_checkpoint(
 }
 
 /// Maps the current check snapshot without decoding it until a build query needs it.
-fn load_latest_check(sess: &Session, session: &IncrCompSession) -> Option<CheckCacheSource> {
+fn load_latest_check(
+    sess: &Session,
+    session: &IncrCompSession,
+    expected_hash: Hash64,
+) -> Option<CheckCacheSource> {
     let OpenFile { mmap: graph, start_pos } =
         file_format::open_incremental_file(sess, &old_dep_graph_path(session)?).ok()?;
     let mut decoder = MemDecoder::new(&graph, start_pos).ok()?;
-    if Hash64::decode(&mut decoder) != sess.opts.dep_tracking_hash(false) {
+    if GraphKey::try_decode(&mut decoder)?.canonical != expected_hash {
         return None;
     }
     let graph_start = decoder.position();
@@ -355,18 +435,19 @@ fn load_latest_check(sess: &Session, session: &IncrCompSession) -> Option<CheckC
 
 fn load_stage_checkpoint(
     sess: &Session,
-    session: &IncrCompSession,
+    directory: &Path,
     graph_filename: &str,
     cache_filename: &str,
+    compatible: impl FnOnce(GraphKey) -> bool,
 ) -> Option<(Arc<SerializedDepGraph>, OnDiskCache)> {
-    let path = in_old_incr_comp_dir_sess(session, graph_filename)?;
+    let path = directory.join(graph_filename);
     let OpenFile { mmap, start_pos } = file_format::open_incremental_file(sess, &path).ok()?;
     let mut decoder = MemDecoder::new(&mmap, start_pos).ok()?;
-    if Hash64::decode(&mut decoder) != sess.opts.dep_tracking_hash(false) {
+    if !compatible(GraphKey::try_decode(&mut decoder)?) {
         return None;
     }
     let graph = decode_dep_graph(sess, &path, decoder.position(), mmap)?;
-    let path = in_old_incr_comp_dir_sess(session, cache_filename)?;
+    let path = directory.join(cache_filename);
     let OpenFile { mmap, start_pos } = file_format::open_incremental_file(sess, &path).ok()?;
     let cache = OnDiskCache::new(sess, mmap, start_pos).ok()?;
     Some((graph, cache))

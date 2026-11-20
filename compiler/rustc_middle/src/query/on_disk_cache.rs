@@ -7,7 +7,6 @@ use std::{fmt, mem};
 
 use rustc_data_structures::fx::{FxHashMap, FxIndexMap, FxIndexSet};
 use rustc_data_structures::memmap::Mmap;
-use rustc_data_structures::stable_hash::{StableHash, StableHasher};
 use rustc_data_structures::sync::{HashMapExt, Lock, RwLock};
 use rustc_data_structures::unhash::UnhashMap;
 use rustc_data_structures::unord::{UnordMap, UnordSet};
@@ -175,7 +174,7 @@ impl EncodedSourceFileId {
     fn new(tcx: TyCtxt<'_>, file: &SourceFile) -> EncodedSourceFileId {
         EncodedSourceFileId {
             stable_source_file_id: file.stable_id,
-            stable_crate_id: tcx.stable_crate_id(file.cnum),
+            stable_crate_id: tcx.incremental_crate_id(file.cnum),
         }
     }
 }
@@ -489,7 +488,7 @@ impl OnDiskCache {
                     if expn_id.krate == LOCAL_CRATE {
                         let pos = AbsoluteBytePos::new(encoder.position());
                         encoder.encode_tagged(TAG_EXPN_DATA, data.expect("local expn"));
-                        expn_data.insert(hash, pos);
+                        expn_data.insert(expn_id.incremental_expn_hash(), pos);
                     } else {
                         foreign_expn_data.insert(hash, expn_id.local_id.as_u32());
                     }
@@ -648,7 +647,8 @@ impl<'a, 'tcx> CacheDecoder<'a, 'tcx> {
 
         Arc::clone(file_index_to_file.borrow_mut().entry(index).or_insert_with(|| {
             let source_file_id = &file_index_to_stable_id[&index];
-            let source_file_cnum = tcx.stable_crate_id_to_crate_num(source_file_id.stable_crate_id);
+            let source_file_cnum =
+                tcx.crate_num_from_incremental_id(source_file_id.stable_crate_id);
 
             // If this `SourceFile` is from a foreign crate, then make sure
             // that we've imported all of the source files from that crate.
@@ -802,7 +802,7 @@ impl<'a, 'tcx> SpanDecoder for CacheDecoder<'a, 'tcx> {
             return expn_id;
         }
 
-        let krate = self.tcx.stable_crate_id_to_crate_num(hash.stable_crate_id());
+        let krate = self.tcx.crate_num_from_incremental_id(hash.stable_crate_id());
 
         let expn_id = if krate == LOCAL_CRATE {
             // We look up the position of the associated `ExpnData` and decode it.
@@ -817,14 +817,9 @@ impl<'a, 'tcx> SpanDecoder for CacheDecoder<'a, 'tcx> {
             // Another decoder may register this expansion while we decode it. Validate the data
             // before registration so that the locked identity check can safely reuse its result.
             // Hashing must stay outside the hygiene lock because parent expansions need that lock.
-            let local_hash = self.tcx.with_stable_hashing_context(|mut hcx| {
-                let mut hasher = StableHasher::new();
-                data.stable_hash(&mut hcx, &mut hasher);
-                hasher.finish()
-            });
-            assert_eq!(hash.local_hash(), local_hash, "invalid cached local expansion data");
-
-            rustc_span::hygiene::register_local_expn_id(data, hash)
+            self.tcx.with_untracked_stable_hashing_context(|hcx| {
+                rustc_span::hygiene::register_cached_local_expn_id(data, hash, hcx)
+            })
         } else {
             let index_guess = self.foreign_expn_data[&hash];
             self.tcx.expn_hash_to_expn_id(krate, index_guess, hash)
@@ -871,7 +866,7 @@ impl<'a, 'tcx> SpanDecoder for CacheDecoder<'a, 'tcx> {
 
     fn decode_crate_num(&mut self) -> CrateNum {
         let stable_id = StableCrateId::decode(self);
-        let cnum = self.tcx.stable_crate_id_to_crate_num(stable_id);
+        let cnum = self.tcx.crate_num_from_incremental_id(stable_id);
         cnum
     }
 
@@ -887,7 +882,7 @@ impl<'a, 'tcx> SpanDecoder for CacheDecoder<'a, 'tcx> {
         // If we get to this point, then all of the query inputs were green,
         // which means that the definition with this hash is guaranteed to
         // still exist in the current compilation session.
-        match self.tcx.def_path_hash_to_def_id(def_path_hash) {
+        match self.tcx.incremental_def_path_hash_to_def_id(def_path_hash) {
             Some(r) => r,
             None => panic!("Failed to convert DefPathHash {def_path_hash:?}"),
         }
@@ -1078,7 +1073,7 @@ impl<'tcx> SpanEncoder for CacheEncoder<'tcx> {
 
     fn encode_expn_id(&mut self, expn_id: ExpnId) {
         self.hygiene_context.borrow_mut().schedule_expn_data_for_encoding(expn_id);
-        expn_id.expn_hash().encode(self);
+        expn_id.incremental_expn_hash().encode(self);
     }
 
     fn encode_span(&mut self, span: Span) {
@@ -1137,11 +1132,11 @@ impl<'tcx> SpanEncoder for CacheEncoder<'tcx> {
     }
 
     fn encode_crate_num(&mut self, crate_num: CrateNum) {
-        self.tcx.stable_crate_id(crate_num).encode(self);
+        self.tcx.incremental_crate_id(crate_num).encode(self);
     }
 
     fn encode_def_id(&mut self, def_id: DefId) {
-        self.tcx.def_path_hash(def_id).encode(self);
+        self.tcx.incremental_def_path_hash(def_id).encode(self);
     }
 
     fn encode_def_index(&mut self, _def_index: DefIndex) {

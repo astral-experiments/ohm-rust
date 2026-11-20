@@ -1905,6 +1905,8 @@ fn validate_commandline_args_with_session_available(sess: &Session) {
 
 /// Holds data on the current incremental compilation session, if there is one.
 pub struct IncrCompSession {
+    /// Retains the lease on mapped check data from another canonical crate directory.
+    pub check_seed: Option<flock::LockedDir>,
     /// The directory from which cached data of a previous session can be read.
     pub old_session_directory: Option<flock::LockedDir>,
     /// The directory to which cached data for the current session can be

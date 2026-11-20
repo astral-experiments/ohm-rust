@@ -118,6 +118,17 @@ pub struct AdtDefData {
     repr: ReprOptions,
 }
 
+impl AdtDefData {
+    /// A cached local ADT may originate in a check using another linkage salt.
+    /// Refresh the seed with the canonical path of its already-remapped definition.
+    pub(super) fn remap_local_layout_seed(&mut self, tcx: TyCtxt<'_>) {
+        if let Some(local) = self.did.as_local() {
+            let path = tcx.definitions_untracked().def_path_hash(local);
+            self.repr.field_shuffle_seed = tcx.path_layout_seed(path);
+        }
+    }
+}
+
 impl PartialEq for AdtDefData {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
@@ -172,7 +183,13 @@ impl StableHash for AdtDefData {
                 did.stable_hash(hcx, &mut hasher);
                 variants.stable_hash(hcx, &mut hasher);
                 flags.stable_hash(hcx, &mut hasher);
-                repr.stable_hash(hcx, &mut hasher);
+                if stable_hash_controls.incremental_keys && did.is_local() {
+                    // The effective seed has a separate dependency (repr_for_layout).
+                    // The user seed is a tracked compiler option.
+                    repr.without_seed().stable_hash(hcx, &mut hasher);
+                } else {
+                    repr.stable_hash(hcx, &mut hasher);
+                }
 
                 hasher.finish()
             })
@@ -207,8 +224,17 @@ impl<'tcx> AdtDef<'tcx> {
         self.0.0.flags
     }
 
+    /// The declaration's representation attributes.
     #[inline]
-    pub fn repr(self) -> ReprOptions {
+    pub fn repr(self) -> ReprOptions<()> {
+        self.0.0.repr.without_seed()
+    }
+
+    /// The full representation, including its canonical layout seed.
+    pub fn repr_for_layout(self, tcx: TyCtxt<'tcx>) -> ReprOptions {
+        if self.did().is_local() {
+            tcx.track_local_linkage_identity();
+        }
         self.0.0.repr
     }
 

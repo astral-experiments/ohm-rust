@@ -266,7 +266,7 @@ impl<'a, 'hir> PerOwnerLoweringState<'a, 'hir> {
         let attrs = hir::AttributeMap { map: attrs, opt_hash: attrs_hash, define_opaque };
 
         let opt_hash = tcx.needs_owner_info_hash().then(|| {
-            tcx.with_stable_hashing_context(|mut hcx| {
+            tcx.with_incremental_hashing_context(|mut hcx| {
                 let mut stable_hasher = StableHasher::new();
                 bodies_hash.unwrap().stable_hash(&mut hcx, &mut stable_hasher);
                 attrs_hash.unwrap().stable_hash(&mut hcx, &mut stable_hasher);

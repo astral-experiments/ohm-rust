@@ -40,7 +40,7 @@ where
 
     #[inline(always)]
     default fn to_fingerprint(&self, tcx: TyCtxt<'tcx>) -> Fingerprint {
-        tcx.with_stable_hashing_context(|mut hcx| {
+        tcx.with_incremental_hashing_context(|mut hcx| {
             let mut hasher = StableHasher::new();
             self.stable_hash(&mut hcx, &mut hasher);
             hasher.finish()
@@ -115,7 +115,7 @@ impl<'tcx> DepNodeKey<'tcx> for DefId {
 
     #[inline(always)]
     fn to_fingerprint(&self, tcx: TyCtxt<'tcx>) -> Fingerprint {
-        tcx.def_path_hash(*self).0
+        tcx.incremental_def_path_hash(*self).0
     }
 
     #[inline(always)]
@@ -189,8 +189,8 @@ impl<'tcx> DepNodeKey<'tcx> for (DefId, DefId) {
     fn to_fingerprint(&self, tcx: TyCtxt<'tcx>) -> Fingerprint {
         let (def_id_0, def_id_1) = *self;
 
-        let def_path_hash_0 = tcx.def_path_hash(def_id_0);
-        let def_path_hash_1 = tcx.def_path_hash(def_id_1);
+        let def_path_hash_0 = tcx.incremental_def_path_hash(def_id_0);
+        let def_path_hash_1 = tcx.incremental_def_path_hash(def_id_1);
 
         def_path_hash_0.0.combine(def_path_hash_1.0)
     }
@@ -208,7 +208,7 @@ impl<'tcx> DepNodeKey<'tcx> for HirId {
     #[inline(always)]
     fn to_fingerprint(&self, tcx: TyCtxt<'tcx>) -> Fingerprint {
         let HirId { owner, local_id } = *self;
-        let def_path_hash = tcx.def_path_hash(owner.to_def_id());
+        let def_path_hash = tcx.incremental_def_path_hash(owner.to_def_id());
         Fingerprint::new(
             // `owner` is local, so is completely defined by the local hash
             def_path_hash.local_hash(),
@@ -220,8 +220,8 @@ impl<'tcx> DepNodeKey<'tcx> for HirId {
     fn try_recover_key(tcx: TyCtxt<'tcx>, dep_node: &DepNode) -> Option<Self> {
         if tcx.key_fingerprint_style(dep_node.kind) == KeyFingerprintStyle::HirId {
             let (local_hash, local_id) = Fingerprint::from(dep_node.key_fingerprint).split();
-            let def_path_hash = DefPathHash::new(tcx.stable_crate_id(LOCAL_CRATE), local_hash);
-            let def_id = tcx.def_path_hash_to_def_id(def_path_hash)?.expect_local();
+            let def_path_hash = DefPathHash::new(tcx.incremental_crate_id(LOCAL_CRATE), local_hash);
+            let def_id = tcx.incremental_def_path_hash_to_def_id(def_path_hash)?.expect_local();
             let local_id = local_id
                 .as_u64()
                 .try_into()

@@ -937,13 +937,10 @@ fn provide_cstore_hooks(providers: &mut Providers) {
         // If this is a DefPathHash from an upstream crate, let the CrateStore map
         // it to a DefId.
         let cstore = CStore::from_tcx(tcx);
-        let cnum = *tcx
-            .untracked()
-            .stable_crate_ids
-            .read()
-            .get(&stable_crate_id)
-            .unwrap_or_else(|| bug!("uninterned StableCrateId: {stable_crate_id:?}"));
-        assert_ne!(cnum, LOCAL_CRATE);
+        let cnum = *tcx.untracked().stable_crate_ids.read().get(&stable_crate_id)?;
+        if cnum == LOCAL_CRATE {
+            return None;
+        }
         let def_index = cstore.get_crate_data(cnum).def_path_hash_to_def_index(hash)?;
         Some(DefId { krate: cnum, index: def_index })
     };
