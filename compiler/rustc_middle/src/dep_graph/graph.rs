@@ -945,6 +945,21 @@ impl DepGraph {
         self.data()?.try_mark_green(tcx, dep_node)
     }
 
+    pub fn previous_associated_value_item(
+        &self,
+        node: DepNode,
+        index: SerializedDepNodeIndex,
+    ) -> Option<DepNode> {
+        let previous = &self.data()?.previous;
+        if *previous.index_to_node(index) != node {
+            return None;
+        }
+        previous
+            .edge_targets_from(index)
+            .map(|input| *previous.index_to_node(input))
+            .find(|input| input.kind == DepKind::associated_item)
+    }
+
     pub fn previous_implementations_of_trait_inputs(
         &self,
         dep_node: DepNode,
