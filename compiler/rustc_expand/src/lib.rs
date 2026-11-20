@@ -21,6 +21,8 @@ pub use mbe::macro_rules::{MacroRulesMacroExpander, compile_declarative_macro};
 pub mod base;
 pub mod config;
 pub mod expand;
+mod macro_cache;
 pub mod module;
 mod parse_cache;
 pub mod proc_macro;
+pub mod syntax_codec;

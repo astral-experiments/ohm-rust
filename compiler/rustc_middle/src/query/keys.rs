@@ -514,3 +514,9 @@ fn def_id_of_type_cached<'a>(ty: Ty<'a>, visited: &mut SsoHashSet<Ty<'a>>) -> Op
 fn def_id_of_type(ty: Ty<'_>) -> Option<DefId> {
     def_id_of_type_cached(ty, &mut SsoHashSet::new())
 }
+
+impl QueryKey for (StableSourceFileId, CrateNum) {
+    fn default_span(&self, _: TyCtxt<'_>) -> Span {
+        DUMMY_SP
+    }
+}

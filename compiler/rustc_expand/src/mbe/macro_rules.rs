@@ -192,6 +192,7 @@ impl WhichMatcher {
 }
 
 pub struct MacroRulesMacroExpander {
+    pub(crate) syntax_stamp: Option<rustc_data_structures::fingerprint::Fingerprint>,
     node_id: NodeId,
     name: Ident,
     span: Span,
@@ -674,6 +675,11 @@ pub(super) fn try_match_macro<'matcher, T: Tracker<'matcher>>(
         // The matcher was not `Success(..)`ful.
         // Restore to the state before snapshotting and maybe try again.
         mem::swap(&mut gated_spans_snapshot, &mut psess.gated_spans.spans.borrow_mut());
+        if !gated_spans_snapshot.is_empty() {
+            // ModuleParseEffects observed gates that this failed matcher
+            // just discarded. Re-run matching to preserve that rollback.
+            rustc_span::MetavarSpansMap::discard_capture();
+        }
     }
 
     Err(CanRetry::Yes)
@@ -932,7 +938,13 @@ pub fn compile_declarative_macro(
     .flatten()
     .map(|directive| *directive);
 
+    let syntax_stamp = if is_defined_in_current_crate(node_id) {
+        None
+    } else {
+        crate::macro_cache::definition_stamp(sess, macro_def, transparency, edition)
+    };
     let exp = MacroRulesMacroExpander {
+        syntax_stamp,
         name: ident,
         kinds,
         span,
