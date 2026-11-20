@@ -80,6 +80,7 @@ trivially_parameterized_over_tcx! {
     crate::rmeta::CrateRoot,
     crate::rmeta::CrateRootUnhashed,
     crate::rmeta::IncoherentImpls,
+    crate::rmeta::PrivateChild,
     crate::rmeta::ProcMacroKind,
     crate::rmeta::RawDefId,
     crate::rmeta::TraitImpls<DefIndex>,

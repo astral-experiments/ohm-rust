@@ -363,6 +363,32 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
         resolutions
     }
 
+    /// Look up a binding omitted from normal resolution by public API hashing.
+    pub(crate) fn private_module_decl(
+        &self,
+        module: ExternModule<'ra>,
+        key: BindingKey,
+    ) -> Option<Decl<'ra>> {
+        let def_id = module.def_id();
+        let mut private = self.private_module_resolutions.borrow_mut();
+        let table = private.entry(def_id).or_insert_with(|| {
+            let mut resolutions = FxIndexMap::default();
+            for (i, child) in
+                self.cstore().private_module_children_untracked(self.tcx, def_id).enumerate()
+            {
+                self.build_reduced_graph_for_external_crate_res(
+                    &child,
+                    module,
+                    i,
+                    None,
+                    &mut resolutions,
+                );
+            }
+            resolutions
+        });
+        table.get(&key)?.0.borrow_checked(self).non_glob_decl
+    }
+
     /// Builds the reduced graph for a single item in an external crate.
     fn build_reduced_graph_for_external_crate_res(
         &self,

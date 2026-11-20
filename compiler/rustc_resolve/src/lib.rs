@@ -1428,6 +1428,7 @@ pub struct Resolver<'ra, 'tcx> {
     local_module_map: FxIndexMap<LocalDefId, LocalModule<'ra>>,
     /// Lazily populated cache of modules loaded from external crates.
     extern_module_map: RwLock<FxIndexMap<DefId, ExternModule<'ra>>>,
+    private_module_resolutions: RwLock<FxHashMap<DefId, ResolutionTable<'ra>>>,
 
     /// Maps glob imports to the names of items actually imported.
     glob_map: FxIndexMap<LocalDefId, FxIndexSet<Symbol>>,
@@ -1865,6 +1866,7 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
             local_modules,
             local_module_map,
             extern_module_map: Default::default(),
+            private_module_resolutions: Default::default(),
 
             glob_map: Default::default(),
             maybe_unused_trait_imports: Default::default(),
