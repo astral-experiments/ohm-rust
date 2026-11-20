@@ -1,6 +1,8 @@
 use std::fs::{self, File};
 use std::hash::Hash;
 use std::io::Read;
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
@@ -73,7 +75,14 @@ impl CacheEntry {
     }
 
     pub(super) fn load(&self) -> Option<CompiledModule> {
-        let mut file = File::open(&self.path).ok()?;
+        let mut options = File::options();
+        options.read(true);
+        #[cfg(unix)]
+        options.custom_flags(libc::O_NONBLOCK);
+        let mut file = options.open(&self.path).ok()?;
+        if !file.metadata().ok()?.is_file() {
+            return None;
+        }
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes).ok()?;
         if bytes.len() <= HEADER_LEN
