@@ -12,6 +12,7 @@ use rustc_trait_selection::traits::{
 use tracing::{debug, instrument};
 
 use crate::coercion::CoerceMany;
+use crate::pat::PatOrigin;
 use crate::{Diverges, Expectation, FnCtxt, GatherLocalsVisitor, Needs};
 
 impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
@@ -42,11 +43,11 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         let scrut_diverges = self.diverges.replace(Diverges::Maybe);
 
         // #55810: Type check patterns first so we get types for all bindings.
-        let scrut_span = scrut.span.find_ancestor_inside(expr.span).unwrap_or(scrut.span);
+        let origin = PatOrigin::Expr { expr: scrut, enclosing: expr.span };
         for arm in arms {
             GatherLocalsVisitor::gather_from_arm(self, arm);
 
-            self.check_pat_top(arm.pat, scrutinee_ty, Some(scrut_span), Some(scrut), None);
+            self.check_pat_top(arm.pat, scrutinee_ty, origin, None);
         }
 
         // Now typecheck the blocks.
