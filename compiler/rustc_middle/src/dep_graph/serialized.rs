@@ -1,16 +1,16 @@
 //! The data that we will serialize and deserialize.
 //!
-//! Notionally, the dep-graph is a sequence of NodeInfo with the dependencies
-//! specified inline. The total number of nodes and edges are stored as the last
-//! 16 bytes of the file, so we can find them easily at decoding time.
+//! Each row of the graph contains a node header and its outgoing edges. The
+//! footer records the size of the index space and the number of nodes and
+//! edges, so we can allocate the lookup tables before reading the rows.
 //!
-//! The serialisation is performed on-demand when each node is emitted. Using this
-//! scheme, we do not need to keep the current graph in memory.
+//! New and re-executed nodes are serialized on demand. When we keep the
+//! previous indices, validation marks rows to copy when the session ends.
 //!
-//! The deserialization is performed manually, in order to convert from the stored
-//! sequence of NodeInfos to the different arrays in SerializedDepGraph. Since the
-//! node and edge count are stored at the end of the file, all the arrays can be
-//! pre-allocated with the right length.
+//! The previous graph holds the packed rows and two arrays indexed by node
+//! number. One stores node kinds and keys for validation and reverse lookup.
+//! The other locates each node's value fingerprint and edges in its row, and
+//! links nodes that share a bucket in the reverse index.
 //!
 //! The encoding of the dep-graph is generally designed around the fact that fixed-size
 //! reads of encoded data are generally faster than variable-sized reads. Ergo we adopt
@@ -35,26 +35,27 @@
 //! If the number of edges in this node does not fit in the bits available in the header, we
 //! store it directly after the header with leb128.
 //!
-//! Dep-graph indices are bulk allocated to threads inside `LocalEncoderState`. Having threads
-//! own these indices helps avoid races when they are conditionally used when marking nodes green.
-//! It also reduces congestion on the shared index count.
+//! Threads bulk allocate fresh indices in `LocalEncoderState`. Reusing a row
+//! requires preserving every index in its edge list. When the previous index
+//! space gets too sparse, we assign fresh indices to compact the graph.
 
 use std::cell::RefCell;
 use std::cmp::max;
 use std::hash::{BuildHasher, BuildHasherDefault};
 use std::iter;
-use std::sync::atomic::Ordering;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 mod index;
 #[cfg(test)]
 mod tests;
 pub(super) use index::IndexedDepGraph;
-use index::{SeekIndexBuilder, SeekIndexMetadata};
+use index::SeekIndexBuilder;
 use rustc_data_structures::fingerprint::{Fingerprint, PackedFingerprint};
 use rustc_data_structures::fx::FxHashMap;
-use rustc_data_structures::hash_table::{Entry, HashTable};
+use rustc_data_structures::memmap::Mmap;
 use rustc_data_structures::outline;
+use rustc_data_structures::owned_slice::{OwnedSlice, slice_owned};
 use rustc_data_structures::profiling::SelfProfilerRef;
 use rustc_data_structures::sync::{AtomicU64, Lock, WorkerLocal, broadcast};
 use rustc_data_structures::unhash::Unhasher;
@@ -99,82 +100,39 @@ const DEP_NODE_WIDTH_BITS: usize = DEP_NODE_SIZE / 2;
 
 /// Data for use when recompiling the **current crate**.
 ///
-/// There may be unused indices with DepKind::Null in this graph due to batch allocation of
-/// indices to threads.
+/// Removed nodes and unused entries in per-thread index batches leave holes
+/// marked by `DepKind::Null`.
 #[derive(Default)]
 pub struct SerializedDepGraph {
     /// The set of all DepNodes in the graph
     nodes: IndexVec<SerializedDepNodeIndex, DepNode>,
-    /// A value fingerprint associated with each [`DepNode`] in [`Self::nodes`],
-    /// typically a hash of the value returned by the node's query in the
-    /// previous incremental-compilation session.
-    ///
-    /// Some nodes don't have a meaningful value hash (e.g. queries with `no_hash`),
-    /// so they store a dummy value here instead (e.g. [`Fingerprint::ZERO`]).
-    value_fingerprints: IndexVec<SerializedDepNodeIndex, Fingerprint>,
-    /// For each DepNode, stores the list of edges originating from that
-    /// DepNode. Encoded as a [start, end) pair indexing into edge_list_data,
-    /// which holds the actual DepNodeIndices of the target nodes.
-    edge_list_indices: IndexVec<SerializedDepNodeIndex, EdgeHeader>,
-    /// A flattened list of all edge targets in the graph, stored in the same
-    /// varint encoding that we use on disk. Edge sources are implicit in edge_list_indices.
-    edge_list_data: Vec<u8>,
-    /// The lazily-built inverse of `nodes`: maps a [`DepNode`] back to its
-    /// [`SerializedDepNodeIndex`] via the node's key fingerprint. See
-    /// [`LazyNodeIndex`].
-    reverse_index: LazyNodeIndex,
-    /// The number of nodes actually encoded, which is below [`Self::index_space_len`]
-    /// whenever a thread left part of its batch of indices unused.
+    /// Locations of headers and edges inside the serialized rows. A missing row
+    /// corresponds to a null slot in `nodes`.
+    row_index: IndexVec<SerializedDepNodeIndex, RowIndex>,
+    /// The contiguous rows, followed by padding for edge reads. The ordinary
+    /// graph footer supplies this padding. Empty graphs have no backing file.
+    rows: Option<OwnedSlice>,
+    /// The head of each reverse lookup chain. Its links live in `row_index`.
+    buckets: Vec<Option<SerializedDepNodeIndex>>,
+    /// The number of nodes actually encoded. [`Self::index_space_len`] also
+    /// counts the holes.
     live_node_count: usize,
     /// The number of previous compilation sessions. This is used to generate
     /// unique anon dep nodes per session.
     session_count: u64,
-    /// Used to time the lazy per-`DepKind` reverse-index build. `None` only for
-    /// the empty default graph, which is never looked up.
-    profiler: Option<SelfProfilerRef>,
 }
 
-// `SelfProfilerRef` is not `Debug`, so we can't derive this.
+// Omit the packed bytes in `OwnedSlice` from the debug output.
 impl std::fmt::Debug for SerializedDepGraph {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SerializedDepGraph")
             .field("nodes", &self.nodes)
-            .field("value_fingerprints", &self.value_fingerprints)
-            .field("edge_list_indices", &self.edge_list_indices)
-            .field("edge_list_data", &self.edge_list_data)
-            .field("reverse_index", &self.reverse_index)
+            .field("row_index", &self.row_index)
+            .field("buckets", &self.buckets)
             .field("live_node_count", &self.live_node_count)
             .field("session_count", &self.session_count)
             .finish_non_exhaustive()
     }
-}
-
-/// The inverse of [`SerializedDepGraph::nodes`], built lazily per [`DepKind`].
-///
-/// Only few nodes are ever looked up here, and those cluster into a handful of
-/// `DepKind`s. Building a map for every kind up front would be wasted work.
-#[derive(Debug, Default)]
-struct LazyNodeIndex {
-    /// All (non-`Null`) node indices, grouped into contiguous per-`DepKind`
-    /// ranges described by `kinds`. For any non-`Null` `DepKind` `k`, all values in
-    /// `nodes_by_kind[kinds[k].start..][..kinds[k].len]`
-    /// must be `Some` and have kind `k`.
-    nodes_by_kind: Vec<Option<SerializedDepNodeIndex>>,
-    /// For each `DepKind`, the range of `nodes_by_kind` holding its node indices
-    /// and the lazily-built fingerprint map over that range.
-    kinds: Vec<LazyKindIndex>,
-}
-
-#[derive(Debug, Default)]
-struct LazyKindIndex {
-    /// Offset into `LazyNodeIndex::nodes_by_kind` of this kind's first node.
-    start: u32,
-    /// Number of nodes of this kind.
-    len: u32,
-    /// `key_fingerprint -> node index`, built from this kind's range on first
-    /// lookup. Keys are read from the immutable node array rather than duplicated
-    /// in each table entry. Kinds never looked up never build a map.
-    map: OnceLock<HashTable<SerializedDepNodeIndex>>,
 }
 
 #[inline]
@@ -182,63 +140,64 @@ fn fingerprint_hash(fingerprint: PackedFingerprint) -> u64 {
     BuildHasherDefault::<Unhasher>::default().hash_one(fingerprint)
 }
 
-impl LazyKindIndex {
-    /// Returns this kind's `key_fingerprint -> node index` map.
-    fn fingerprint_map(
-        &self,
-        kind: DepKind,
-        nodes: &IndexSlice<SerializedDepNodeIndex, DepNode>,
-        nodes_by_kind: &[Option<SerializedDepNodeIndex>],
-        profiler: &Option<SelfProfilerRef>,
-    ) -> &HashTable<SerializedDepNodeIndex> {
-        self.map.get_or_init(|| {
-            let _prof_timer = profiler
-                .as_ref()
-                .map(|p| p.generic_activity("incr_comp_load_dep_graph_reverse_index"));
-            let range = (self.start as usize)..(self.start as usize + self.len as usize);
-            let mut map = HashTable::<SerializedDepNodeIndex>::with_capacity(self.len as usize);
-            for &idx in &nodes_by_kind[range] {
-                let idx = idx.expect("counting sort fills every slot of a kind's range");
-                let node = nodes[idx];
-                debug_assert_eq!(node.kind, kind);
-                let entry = map.entry(
-                    fingerprint_hash(node.key_fingerprint),
-                    |&index| nodes[index].key_fingerprint == node.key_fingerprint,
-                    |&index| fingerprint_hash(nodes[index].key_fingerprint),
-                );
-                if matches!(&entry, Entry::Occupied(_))
-                    // Side effect nodes can legitimately share a fingerprint.
-                    && node.kind != DepKind::SideEffect
-                {
-                    panic!(
-                        "Error: A dep graph node ({kind:?}) does not have an unique index. \
-                         Running a clean build on a nightly compiler with \
-                         `-Z incremental-verify-ich` can help narrow down the issue for reporting. \
-                         A clean build may also work around the issue.\n
-                         DepNode: {node:?}"
-                    )
-                }
-                entry.insert(idx);
-            }
-            map
-        })
+fn reverse_bucket(node: &DepNode, size: usize) -> usize {
+    // Mix in the kind because many queries have the same definition as their key.
+    let hash = fingerprint_hash(node.key_fingerprint) as usize;
+    (hash ^ node.kind.as_usize().wrapping_mul(0x9e3779b9)) & (size - 1)
+}
+
+/// Index the rows by kind and key in one pass. Looking up a node compares the
+/// full key, and inserting indices in ascending order puts the last side effect
+/// with a given key first in its chain.
+fn build_reverse_index(
+    nodes: &IndexSlice<SerializedDepNodeIndex, DepNode>,
+    rows: &mut IndexSlice<SerializedDepNodeIndex, RowIndex>,
+    count: usize,
+) -> Vec<Option<SerializedDepNodeIndex>> {
+    let mut heads: Vec<Option<SerializedDepNodeIndex>> = vec![None; count.next_power_of_two()];
+    for (index, node) in nodes.iter_enumerated() {
+        if node.kind == DepKind::Null {
+            continue;
+        }
+        let bucket = reverse_bucket(node, heads.len());
+        let mut next = heads[bucket];
+        // Side effects deliberately share their key. Keep only the latest
+        // duplicate at the head of a chain.
+        if node.kind == DepKind::SideEffect
+            && let Some(last) = next
+            && nodes[last] == *node
+        {
+            next = rows[last].next;
+        }
+        rows[index].next = next;
+        heads[bucket] = Some(index);
     }
+    heads
 }
 
 impl SerializedDepGraph {
+    #[inline]
+    fn row_bytes(&self) -> &[u8] {
+        self.rows.as_deref().unwrap()
+    }
+
+    #[inline]
+    fn header_at(&self, start: usize) -> SerializedNodeHeader {
+        SerializedNodeHeader { bytes: *self.row_bytes()[start..].first_chunk().unwrap() }
+    }
+
     #[inline]
     pub fn edge_targets_from(
         &self,
         source: SerializedDepNodeIndex,
     ) -> impl Iterator<Item = SerializedDepNodeIndex> + Clone {
-        let header = self.edge_list_indices[source];
-        let bytes_per_index = header.bytes_per_index();
+        let header = self.row_index[source];
+        let bytes_per_index = header.width as usize;
         let edge_bytes = header.num_edges as usize * bytes_per_index;
         // The padding after the last edge is too short to read another index.
-        let mut raw = &self.edge_list_data[header.start()..][..edge_bytes + DEP_NODE_PAD];
+        let mut raw = &self.row_bytes()[header.edges_start..][..edge_bytes + DEP_NODE_PAD];
 
-        // LLVM doesn't hoist EdgeHeader::mask so we do it ourselves.
-        let mask = header.mask();
+        let mask = mask(bytes_per_index * 8) as u32;
         iter::from_fn(move || {
             let index = u32::from_le_bytes(*raw.first_chunk::<DEP_NODE_SIZE>()?) & mask;
             raw = &raw[bytes_per_index..];
@@ -253,17 +212,30 @@ impl SerializedDepGraph {
 
     #[inline]
     pub fn node_to_index_opt(&self, dep_node: &DepNode) -> Option<SerializedDepNodeIndex> {
-        let kind = self.reverse_index.kinds.get(dep_node.kind.as_usize())?;
-        let map = kind.fingerprint_map(
-            dep_node.kind,
-            &self.nodes,
-            &self.reverse_index.nodes_by_kind,
-            &self.profiler,
-        );
-        map.find(fingerprint_hash(dep_node.key_fingerprint), |&index| {
-            self.nodes[index].key_fingerprint == dep_node.key_fingerprint
-        })
-        .copied()
+        if self.buckets.is_empty() {
+            return None;
+        }
+        let mut next = self.buckets[reverse_bucket(dep_node, self.buckets.len())];
+        let mut found = None;
+        while let Some(i) = next {
+            if self.nodes[i] == *dep_node {
+                if dep_node.kind == DepKind::SideEffect {
+                    return Some(i);
+                }
+                assert!(
+                    found.is_none(),
+                    "Error: A dep graph node ({:?}) does not have an unique index. \
+                     Running a clean build on a nightly compiler with \
+                     `-Z incremental-verify-ich` can help narrow down the issue for reporting. \
+                     A clean build may also work around the issue.\n
+                     DepNode: {dep_node:?}",
+                    dep_node.kind
+                );
+                found = Some(i);
+            }
+            next = self.row_index[i].next;
+        }
+        found
     }
 
     #[inline]
@@ -271,7 +243,11 @@ impl SerializedDepGraph {
         &self,
         dep_node_index: SerializedDepNodeIndex,
     ) -> Fingerprint {
-        self.value_fingerprints[dep_node_index]
+        let row = self.row_index[dep_node_index];
+        if row.header_len == 0 {
+            return Fingerprint::ZERO;
+        }
+        self.header_at(row.edges_start - usize::from(row.header_len)).value_fingerprint()
     }
 
     /// The number of dep-node indices, counting those that hold no node.
@@ -291,30 +267,20 @@ impl SerializedDepGraph {
     }
 }
 
-/// A packed representation of an edge's start index and byte width.
-///
-/// This is packed by stealing 2 bits from the start index, which means we only accommodate edge
-/// data arrays up to a quarter of our address space. Which seems fine.
-#[derive(Debug, Clone, Copy)]
-struct EdgeHeader {
-    repr: usize,
+/// Location of one serialized row. The length stored before the edges can
+/// spill out of the fixed header into a varint.
+#[derive(Debug, Clone, Copy, Default)]
+struct RowIndex {
+    edges_start: usize,
     num_edges: u32,
+    header_len: u8,
+    width: u8,
+    next: Option<SerializedDepNodeIndex>,
 }
 
-impl EdgeHeader {
-    #[inline]
-    fn start(self) -> usize {
-        self.repr >> DEP_NODE_WIDTH_BITS
-    }
-
-    #[inline]
-    fn bytes_per_index(self) -> usize {
-        (self.repr & mask(DEP_NODE_WIDTH_BITS)) + 1
-    }
-
-    #[inline]
-    fn mask(self) -> u32 {
-        mask(self.bytes_per_index() * 8) as u32
+impl RowIndex {
+    fn end(self) -> usize {
+        self.edges_start + self.num_edges as usize * usize::from(self.width)
     }
 }
 
@@ -324,13 +290,11 @@ fn mask(bits: usize) -> usize {
 }
 
 impl SerializedDepGraph {
-    pub fn decode(d: &mut MemDecoder<'_>, profiler: &SelfProfilerRef) -> Arc<Self> {
-        Self::try_decode(d, profiler).expect("invalid destination in incremental dependency graph")
-    }
-
     /// Returns `None` if an Ohm stage graph contains a null, duplicate or out-of-bounds node.
-    #[instrument(level = "debug", skip(d, profiler))]
-    pub fn try_decode(d: &mut MemDecoder<'_>, profiler: &SelfProfilerRef) -> Option<Arc<Self>> {
+    #[instrument(level = "debug", skip(bytes, profiler))]
+    pub fn try_decode(bytes: Mmap, start: usize, profiler: &SelfProfilerRef) -> Option<Arc<Self>> {
+        let mut decoder = MemDecoder::new(&bytes, start).ok()?;
+        let d = &mut decoder;
         // The last 16 bytes are the node count and edge count.
         debug!("position: {:?}", d.position());
 
@@ -348,10 +312,6 @@ impl SerializedDepGraph {
 
         debug!(?node_count, ?edge_count);
 
-        let graph_end = SeekIndexMetadata::decode(d)
-            .map_or(d.len() - 3 * IntEncodedWithFixedSize::ENCODED_SIZE, |index| index.start);
-        let graph_bytes = graph_end - d.position();
-
         let mut nodes = IndexVec::from_elem_n(
             DepNode {
                 kind: DepKind::Null,
@@ -359,23 +319,9 @@ impl SerializedDepGraph {
             },
             node_max,
         );
-        let mut value_fingerprints = IndexVec::from_elem_n(Fingerprint::ZERO, node_max);
-        let mut edge_list_indices =
-            IndexVec::from_elem_n(EdgeHeader { repr: 0, num_edges: 0 }, node_max);
-
-        // This estimation assumes that all of the encoded bytes are for the edge lists or for the
-        // fixed-size node headers. But that's not necessarily true; if any edge list has a length
-        // that spills out of the size we can bit-pack into SerializedNodeHeader then some of the
-        // total serialized size is also used by leb128-encoded edge list lengths. Neglecting that
-        // contribution to graph_bytes means our estimation of the bytes needed for edge_list_data
-        // slightly overshoots. But it cannot overshoot by much; consider that the worse case is
-        // for a node with length 64, which means the spilled 1-byte leb128 length is 1 byte of at
-        // least (34 byte header + 1 byte len + 64 bytes edge data), which is ~1%. A 2-byte leb128
-        // length is about the same fractional overhead and it amortizes for yet greater lengths.
-        let mut edge_list_data =
-            Vec::with_capacity(graph_bytes - node_count * size_of::<SerializedNodeHeader>());
-
+        let mut row_index = IndexVec::from_elem_n(RowIndex::default(), node_max);
         for _ in 0..node_count {
+            let row_start = d.position();
             // Decode the header for this edge; the header packs together as many of the fixed-size
             // fields as possible to limit the number of times we update decoder state.
             let node_header = SerializedNodeHeader { bytes: d.read_array() };
@@ -389,72 +335,43 @@ impl SerializedDepGraph {
             }
             *node = decoded;
 
-            value_fingerprints[index] = node_header.value_fingerprint();
-
             // If the length of this node's edge list is small, the length is stored in the header.
             // If it is not, we fall back to another decoder call.
             let num_edges = node_header.len().unwrap_or_else(|| d.read_u32());
 
-            // The edges index list uses the same varint strategy as rmeta tables; we select the
-            // number of byte elements per-array not per-element. This lets us read the whole edge
-            // list for a node with one decoder call and also use the on-disk format in memory.
-            let edges_len_bytes = node_header.bytes_per_index() * (num_edges as usize);
-            // The in-memory structure for the edges list stores the byte width of the edges on
-            // this node with the offset into the global edge data array.
-            let edges_header = node_header.edges_header(&edge_list_data, num_edges);
-
-            edge_list_data.extend(d.read_raw_bytes(edges_len_bytes));
-
-            edge_list_indices[index] = edges_header;
+            let width = node_header.bytes_per_index();
+            row_index[index] = RowIndex {
+                edges_start: d.position() - start,
+                num_edges,
+                header_len: (d.position() - row_start).try_into().unwrap(),
+                width: width as u8,
+                next: None,
+            };
+            let _ = d.read_raw_bytes(width * num_edges as usize);
         }
-
-        // When we access the edge list data, we do a fixed-size read from the edge list data then
-        // mask off the bytes that aren't for that edge index, so the last read may dangle off the
-        // end of the array. This padding ensure it doesn't.
-        edge_list_data.extend(&[0u8; DEP_NODE_PAD]);
-
-        // Read the number of nodes of each dep kind, and perform
-        // counting sort for `LazyNodeIndex`.
-        let mut kinds = Vec::with_capacity(DepKind::NUM_VARIANTS);
-        let mut offset = 0u32;
-        for _ in 0..(DepKind::NUM_VARIANTS) {
-            let len = d.read_u32();
-            kinds.push(LazyKindIndex { start: offset, len, map: OnceLock::new() });
-            offset += len;
+        let padded_end = d.position() + DEP_NODE_PAD;
+        let mut total = 0;
+        for _ in 0..DepKind::NUM_VARIANTS {
+            total += d.read_u32() as usize;
         }
-        debug_assert_eq!(offset as usize, node_count);
-
+        debug_assert_eq!(total, node_count);
         let session_count = d.read_u64();
-
-        // Counting sort: place each node index into its kind's range. `fill[k]`
-        // points at the next free slot in kind `k`'s range, so a kind's nodes end
-        // up contiguous. Slots start as `None` and are each filled exactly once
-        // (the counts sum to the number of non-`Null` nodes).
-        let mut nodes_by_kind = vec![None; node_count];
-        let mut fill: Vec<u32> = kinds.iter().map(|k| k.start).collect();
-        for (idx, node) in nodes.iter_enumerated() {
-            // Unused indices from batch allocation stay `Null`; they carry no
-            // encoded node and are never looked up by fingerprint, so skip them.
-            if node.kind == DepKind::Null {
-                continue;
-            }
-            let k = node.kind.as_usize();
-            nodes_by_kind[fill[k] as usize] = Some(idx);
-            fill[k] += 1;
-        }
-        // Each kind's range was filled exactly to its end.
-        debug_assert!(kinds.iter().zip(&fill).all(|(k, &f)| f == k.start + k.len));
-        let reverse_index = LazyNodeIndex { nodes_by_kind, kinds };
-
+        let buckets = {
+            let _timer = profiler.generic_activity("incr_comp_load_dep_graph_reverse_index");
+            build_reverse_index(&nodes, &mut row_index, node_count)
+        };
+        // On Windows finish reading the old file before replacing it.
+        #[cfg(windows)]
+        let rows = slice_owned(bytes[start..padded_end].to_vec(), |data| &data[..]);
+        #[cfg(not(windows))]
+        let rows = slice_owned(bytes, |data| &data[start..padded_end]);
         Some(Arc::new(Self {
             nodes,
-            value_fingerprints,
-            edge_list_indices,
-            edge_list_data,
-            reverse_index,
+            row_index,
+            rows: Some(rows),
+            buckets,
             live_node_count: node_count,
             session_count,
-            profiler: Some(profiler.clone()),
         }))
     }
 }
@@ -589,14 +506,6 @@ impl SerializedNodeHeader {
         let Unpacked { kind, key_fingerprint, .. } = self.unpack();
         DepNode { kind, key_fingerprint }
     }
-
-    #[inline]
-    fn edges_header(&self, edge_list_data: &[u8], num_edges: u32) -> EdgeHeader {
-        EdgeHeader {
-            repr: (edge_list_data.len() << DEP_NODE_WIDTH_BITS) | (self.bytes_per_index() - 1),
-            num_edges,
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -659,6 +568,9 @@ struct LocalEncoderResult {
 }
 
 struct EncoderState {
+    /// One flag for every reserved index, set when validation can keep the
+    /// previous row verbatim. Empty when allocating a compact graph.
+    retained_rows: IndexVec<SerializedDepNodeIndex, AtomicBool>,
     next_node_index: AtomicU64,
     previous: Arc<SerializedDepGraph>,
     file: Lock<Option<FileEncoder<'static>>>,
@@ -673,8 +585,21 @@ impl EncoderState {
         record_stats: bool,
         previous: Arc<SerializedDepGraph>,
         index_check: bool,
+        reuse_rows: bool,
     ) -> Self {
+        // Reserving the old index space lets a verified node keep its packed
+        // edges. Reclaim holes left by removed nodes once one in five slots
+        // is vacant. The first graph also uses compact, sequential allocation.
+        let slot_limit = previous.live_node_count + previous.live_node_count / 4;
+        let retain_indices =
+            reuse_rows && !record_stats && previous.index_space_len() <= slot_limit;
+        let retained_rows = if retain_indices {
+            IndexVec::from_fn_n(|_| AtomicBool::new(false), previous.index_space_len())
+        } else {
+            IndexVec::new()
+        };
         Self {
+            retained_rows,
             previous,
             next_node_index: AtomicU64::new(0),
             stats: record_stats.then(|| Lock::new(FxHashMap::default())),
@@ -852,6 +777,13 @@ impl EncoderState {
             }
         }
 
+        if !self.retained_rows.is_empty() {
+            let (nodes, edges) = self.copy_retained_rows(&mut encoder, &mut kind_stats);
+            node_max = node_max.max(self.retained_rows.len() as u32);
+            node_count += nodes;
+            edge_count += edges;
+        }
+
         // Encode the number of each dep kind encountered
         for count in kind_stats.iter() {
             count.encode(&mut encoder);
@@ -881,6 +813,47 @@ impl EncoderState {
         self.print_incremental_info(current, node_count, edge_count);
 
         result
+    }
+
+    /// Append each consecutive run of retained rows with one write. By this
+    /// point every worker has flushed its new and re-executed nodes, including
+    /// queries whose result stayed green after their dependencies changed.
+    fn copy_retained_rows(
+        &self,
+        encoder: &mut FileEncoder<'_>,
+        kinds: &mut [u32],
+    ) -> (usize, usize) {
+        let mut seek = self.seek_index.as_ref().map(|s| s.lock());
+        if let Some(seek) = &mut seek {
+            seek.reserve_slots(self.retained_rows.len());
+        }
+        let bytes = self.previous.row_bytes();
+        let (mut offset, mut run_start) = (0, 0);
+        let (mut nodes, mut edges) = (0, 0);
+        for _ in 0..self.previous.live_node_count {
+            let start = offset;
+            let header = self.previous.header_at(start);
+            let index = header.index();
+            let row = self.previous.row_index[index];
+            offset = row.end();
+            if !self.retained_rows[index].load(Ordering::Relaxed) {
+                if run_start != start {
+                    encoder.emit_raw_bytes(&bytes[run_start..start]);
+                }
+                run_start = offset;
+                continue;
+            }
+            let node = header.node();
+            nodes += 1;
+            edges += row.num_edges as usize;
+            kinds[node.kind.as_usize()] += 1;
+            if let Some(seek) = &mut seek {
+                let position = encoder.position() + (start - run_start);
+                seek.record_node(node, DepNodeIndex::from_u32(index.as_u32()), position);
+            }
+        }
+        encoder.emit_raw_bytes(&bytes[run_start..offset]);
+        (nodes, edges)
     }
 
     fn print_incremental_info(
@@ -968,8 +941,40 @@ impl GraphEncoder {
             sess.opts.unstable_opts.incremental_info,
             previous,
             index_check,
+            retained_graph.is_none(),
         );
         GraphEncoder { status, retained_graph, profiler: sess.prof.clone() }
+    }
+
+    #[inline]
+    pub(super) fn retains_indices(&self) -> bool {
+        !self.status.retained_rows.is_empty()
+    }
+
+    /// Called after allocating the two singleton nodes and before any
+    /// parallel work. New keys take slots beyond the previous index space.
+    pub(super) fn reserve_previous_indices(&self) {
+        self.status.local.borrow_mut().remaining_node_index = 0;
+        self.status
+            .next_node_index
+            .store(self.status.retained_rows.len() as u64, Ordering::Relaxed);
+    }
+
+    #[inline]
+    pub(super) fn retain_row(
+        &self,
+        prev_index: SerializedDepNodeIndex,
+        colors: &DepNodeColorMap,
+    ) -> Option<DepNodeIndex> {
+        let index = DepNodeIndex::from_u32(prev_index.as_u32());
+        match colors.try_set_color(prev_index, DesiredColor::Green { index }) {
+            TrySetColorResult::Success => {
+                self.status.retained_rows[prev_index].store(true, Ordering::Relaxed);
+                Some(index)
+            }
+            TrySetColorResult::AlreadyGreen { index } => Some(index),
+            TrySetColorResult::AlreadyRed => None,
+        }
     }
 
     pub(crate) fn retained_dep_graph(&self) -> Option<RetainedDepGraph> {
@@ -993,6 +998,8 @@ impl GraphEncoder {
     }
 
     /// Encodes a node that exists in the previous graph, but was re-executed.
+    /// When retaining indices, keep its slot so parents can reuse their packed
+    /// edges even if this node had to execute to prove its value unchanged.
     ///
     /// This will also ensure the dep node is colored either red or green.
     pub(crate) fn send_and_color(
@@ -1009,7 +1016,11 @@ impl GraphEncoder {
 
         let mut local = self.status.local.borrow_mut();
 
-        let index = self.status.next_index(&mut *local);
+        let index = if self.retains_indices() {
+            DepNodeIndex::from_u32(prev_index.as_u32())
+        } else {
+            self.status.next_index(&mut *local)
+        };
         let color = if is_green { DesiredColor::Green { index } } else { DesiredColor::Red };
 
         // Use `try_set_color` to avoid racing when `send_promoted` is called concurrently
@@ -1020,7 +1031,11 @@ impl GraphEncoder {
             TrySetColorResult::AlreadyGreen { index } => return index,
         }
 
-        self.status.bump_index(&mut *local);
+        if self.retains_indices() {
+            local.node_count += 1;
+        } else {
+            self.status.bump_index(&mut *local);
+        }
         self.status.encode_node(index, &node, &self.retained_graph, &mut *local);
         index
     }
