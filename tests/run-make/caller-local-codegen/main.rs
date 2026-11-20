@@ -1,13 +1,22 @@
 extern crate upstream;
 
+mod tasks {
+    pub async fn pending(message: String) {
+        std::future::pending::<()>().await;
+        drop(message);
+    }
+}
+
 mod first {
     pub fn evaluate(value: u32) -> bool {
+        let _future = super::tasks::pending(String::new());
         upstream::apply(value, |number| number >= 3)
     }
 }
 
 mod second {
     pub fn evaluate(value: u32) -> bool {
+        let _future = super::tasks::pending(String::new());
         upstream::apply(value, |number| number % 2 == 0)
     }
 }
