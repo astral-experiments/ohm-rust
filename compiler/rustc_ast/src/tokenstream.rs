@@ -146,14 +146,16 @@ impl fmt::Debug for LazyAttrTokenStream {
 }
 
 impl<S: SpanEncoder> Encodable<S> for LazyAttrTokenStream {
-    fn encode(&self, _s: &mut S) {
-        panic!("Attempted to encode LazyAttrTokenStream");
+    fn encode(&self, s: &mut S) {
+        if s.should_encode_attr_tokens() {
+            self.to_attr_token_stream().encode(s);
+        }
     }
 }
 
 impl<D: SpanDecoder> Decodable<D> for LazyAttrTokenStream {
-    fn decode(_d: &mut D) -> Self {
-        panic!("Attempted to decode LazyAttrTokenStream");
+    fn decode(d: &mut D) -> Self {
+        Self::new_direct(Decodable::decode(d))
     }
 }
 

@@ -51,6 +51,16 @@ impl AttrIdGenerator {
         AttrIdGenerator(AtomicU32::new(0))
     }
 
+    /// Reserve a contiguous range for the attributes of a cached module.
+    pub fn reserve_ids(&self, count: u32) -> u32 {
+        if count == 0 {
+            return self.0.load(Ordering::Relaxed);
+        }
+        let base = self.0.fetch_add(count, Ordering::Relaxed);
+        assert!(base.checked_add(count).is_some());
+        base
+    }
+
     pub fn mk_attr_id(&self) -> AttrId {
         let id = self.0.fetch_add(1, Ordering::Relaxed);
         assert!(id != u32::MAX);

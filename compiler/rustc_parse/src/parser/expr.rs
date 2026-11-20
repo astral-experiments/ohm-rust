@@ -250,7 +250,7 @@ impl<'a> Parser<'a> {
                 // and closures are distinct enough that they don't get mixed up with their
                 // return value.
                 let sp = self.psess.source_map().start_point(self.token.span);
-                self.psess.ambiguous_block_expr_parse.borrow_mut().insert(sp, lhs.span);
+                self.psess.record_ambiguous_block(sp,lhs.span);
                 false
             }
             (true, Some(op)) if !op.can_continue_expr_unambiguously() => false,

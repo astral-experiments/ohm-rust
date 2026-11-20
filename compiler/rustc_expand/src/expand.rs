@@ -1394,6 +1394,7 @@ impl InvocationCollectorNode for Box<ast::Item> {
                 // We have an outline `mod foo;` so we need to parse the file.
                 let old_attrs_len = node.attrs.len();
                 let ParsedExternalMod {
+                    lint_items,
                     items,
                     spans,
                     file_path,
@@ -1402,6 +1403,7 @@ impl InvocationCollectorNode for Box<ast::Item> {
                     had_parse_error,
                 } = parse_external_mod(
                     ecx.sess,
+                    ecx.lint_store.is_some_and(|store| store.keyword_lints_only()),
                     ident,
                     node.span,
                     &ecx.current_expansion.module,
@@ -1417,6 +1419,7 @@ impl InvocationCollectorNode for Box<ast::Item> {
                         ecx.current_expansion.lint_node_id,
                         &node.attrs,
                         &items,
+                        lint_items.as_deref(),
                         ident.name,
                     );
                 }

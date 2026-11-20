@@ -1209,3 +1209,11 @@ impl<'tcx> Encodable<CacheEncoder<'tcx>> for [u8] {
         self.encode(&mut e.encoder);
     }
 }
+
+impl<'a, 'tcx> Decodable<CacheDecoder<'a, 'tcx>> for &'tcx [u8] {
+    fn decode(decoder: &mut CacheDecoder<'a, 'tcx>) -> Self {
+        let tcx = decoder.tcx;
+        let len = decoder.read_usize();
+        tcx.arena.alloc_slice(decoder.read_raw_bytes(len))
+    }
+}

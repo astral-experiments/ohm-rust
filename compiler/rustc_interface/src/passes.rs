@@ -113,6 +113,9 @@ fn pre_expansion_lint<'a>(
 struct LintStoreExpandImpl<'a>(&'a LintStore);
 
 impl LintStoreExpand for LintStoreExpandImpl<'_> {
+    fn keyword_lints_only(&self) -> bool {
+        self.0.keyword_lints_only()
+    }
     fn pre_expansion_lint(
         &self,
         sess: &Session,
@@ -121,9 +124,10 @@ impl LintStoreExpand for LintStoreExpandImpl<'_> {
         node_id: ast::NodeId,
         attrs: &[ast::Attribute],
         items: &[Box<ast::Item>],
+        selected: Option<&[u32]>,
         name: Symbol,
     ) {
-        let check_node = EarlyCheckNode::LoadedMod(node_id, attrs, items);
+        let check_node = EarlyCheckNode::LoadedMod(node_id, attrs, items, selected);
         pre_expansion_lint(sess, features, self.0, registered_lint_tools, check_node, name);
     }
 }

@@ -277,20 +277,20 @@ crate::early_lint_methods!(impl_early_lint_pass, []);
 /// This trait generalizes over those nodes.
 pub enum EarlyCheckNode<'a> {
     CrateRoot(&'a ast::Crate, &'a [ast::Attribute]),
-    LoadedMod(ast::NodeId, &'a [ast::Attribute], &'a [Box<ast::Item>]),
+    LoadedMod(ast::NodeId, &'a [ast::Attribute], &'a [Box<ast::Item>], Option<&'a [u32]>),
 }
 
 impl<'a> EarlyCheckNode<'a> {
     fn id(&self) -> ast::NodeId {
         match self {
             EarlyCheckNode::CrateRoot(_crate, _attrs) => ast::CRATE_NODE_ID,
-            EarlyCheckNode::LoadedMod(id, _attrs, _items) => *id,
+            EarlyCheckNode::LoadedMod(id, _attrs, _items, _) => *id,
         }
     }
     fn attrs(&self) -> &'a [ast::Attribute] {
         match self {
             EarlyCheckNode::CrateRoot(_crate, attrs) => attrs,
-            EarlyCheckNode::LoadedMod(_id, attrs, _items) => attrs,
+            EarlyCheckNode::LoadedMod(_id, attrs, _items, _) => attrs,
         }
     }
     fn check<'ecx, T: EarlyLintPass>(&self, cx: &mut EarlyContextAndPass<'ecx, T>) {
@@ -300,9 +300,15 @@ impl<'a> EarlyCheckNode<'a> {
                 ast_visit::walk_crate(cx, crate_);
                 lint_callback!(cx, check_crate_post, crate_);
             }
-            EarlyCheckNode::LoadedMod(_id, attrs, items) => {
+            EarlyCheckNode::LoadedMod(_id, attrs, items, selected) => {
                 walk_list!(cx, visit_attribute, *attrs);
-                walk_list!(cx, visit_item, *items);
+                if let Some(ids) = *selected {
+                    for &id in ids {
+                        ast_visit::Visitor::visit_item(cx, &items[id as usize]);
+                    }
+                } else {
+                    walk_list!(cx, visit_item, *items);
+                }
             }
         }
     }
