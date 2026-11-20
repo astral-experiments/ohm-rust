@@ -103,8 +103,8 @@
 //!    query their metadata to construct native symbols. Exported generic symbols remain in the
 //!    public hash because downstream crates can reuse their monomorphizations.
 //!  - `def_path_hash_map` is unhashed (see above).
-//!  - `stripped_cfg_items` is only read when a compilation session ends in an error,
-//!    so it is currently dropped from the rmeta when the option is enabled.
+//!  - `stripped_cfg_items` describes disabled items for resolution errors. Its query reads
+//!    the current metadata on demand and its entries are excluded from the reachability graph.
 //!  - Proc-macro crates are not graph-hashed at all; their full crate hash is used as the public
 //!    hash.
 //!
@@ -579,9 +579,6 @@ pub(crate) struct HashableCrateRoot {
     // The introduction of the option to store the DefIndex part of DefId-s as DefPathHash in the
     // metadata was done to remove this from the public hash.
     pub(crate) def_path_hash_map: Unhashed<LazyValue<DefPathHashMapRef<'static>>>,
-    // Only used for diagnostics when the compilation session errors
-    // FIXME: this is currently removed from the metadata when public api hashing is enabled. We
-    // should add a safe way to access this when the compilation session errors.
     pub(crate) stripped_cfg_items: Unhashed<LazyArray<StrippedCfgItem<DefIndex>>>,
 }
 
