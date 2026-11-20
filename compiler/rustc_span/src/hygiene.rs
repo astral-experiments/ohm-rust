@@ -1167,6 +1167,25 @@ impl ExpnData {
         matches!(self.kind, ExpnKind::Root)
     }
 
+    /// The local identity of a source-written `.await` includes the byte distance from
+    /// its enclosing definition. Metadata stores its span without that parent. Use
+    /// the encoded coordinates when assigning its exported identity, keeping the
+    /// owner as a discriminator for expansions at identical source locations.
+    pub fn metadata_hash(&self, local: ExpnHash, hcx: &mut impl StableHashCtxt) -> ExpnHash {
+        if hcx.hashes_metadata_spans()
+            && matches!(self.kind, ExpnKind::Desugaring(DesugaringKind::Await))
+            && self.call_site.ctxt().is_root()
+            && let Some(parent) = self.call_site.parent()
+        {
+            let mut hasher = StableHasher::new();
+            self.stable_hash(hcx, &mut hasher);
+            parent.stable_hash(hcx, &mut hasher);
+            ExpnHash::new(local.stable_crate_id(), hasher.finish())
+        } else {
+            local
+        }
+    }
+
     #[inline]
     fn hash_expn(&self, hcx: &mut impl StableHashCtxt) -> Hash64 {
         let mut hasher = StableHasher::new();
@@ -1645,6 +1664,34 @@ fn update_disambiguator(expn_data: &mut ExpnData, mut hcx: impl StableHashCtxt) 
     ExpnHash::new(LOCAL_CRATE.as_def_id().to_stable_hash_key(&mut hcx).stable_crate_id(), expn_hash)
 }
 
+impl HygieneData {
+    #[inline]
+    fn expn_hash_input(&self, id: ExpnId, for_metadata: bool) -> (ExpnHash, Option<LocalExpnId>) {
+        let hash = self.expn_hash(id);
+        if for_metadata
+            && let Some(local) = id.as_local()
+            && let Some(data) = &self.local_expn_data[local]
+            && matches!(data.kind, ExpnKind::Desugaring(DesugaringKind::Await))
+        {
+            (hash, Some(local))
+        } else {
+            (hash, None)
+        }
+    }
+}
+
+// Hash the expansion outside the hygiene lock because its own contexts may need the lock.
+#[inline]
+fn hash_expansion(
+    (hash, site): (ExpnHash, Option<LocalExpnId>),
+    hcx: &mut impl StableHashCtxt,
+) -> Fingerprint {
+    match site {
+        Some(site) => site.expn_data().metadata_hash(hash, hcx).0,
+        None => hash.0,
+    }
+}
+
 impl StableHash for SyntaxContext {
     fn stable_hash<Hcx: StableHashCtxt>(&self, hcx: &mut Hcx, hasher: &mut StableHasher) {
         const TAG_EXPANSION: u8 = 0;
@@ -1659,9 +1706,9 @@ impl StableHash for SyntaxContext {
             hcx.assert_default_stable_hash_controls("ExpnId");
             let (hash, transparency) = HygieneData::with(|data| {
                 let (expn_id, transparency) = data.outer_mark(*self);
-                (data.expn_hash(expn_id).0, transparency)
+                (data.expn_hash_input(expn_id, hcx.hashes_metadata_spans()), transparency)
             });
-            hash.stable_hash(hcx, hasher);
+            hash_expansion(hash, hcx).stable_hash(hcx, hasher);
             transparency.stable_hash(hcx, hasher);
         }
     }
@@ -1674,7 +1721,9 @@ impl StableHash for ExpnId {
             // Avoid fetching TLS storage for a trivial often-used value.
             Fingerprint::ZERO
         } else {
-            self.expn_hash().0
+            let input =
+                HygieneData::with(|data| data.expn_hash_input(*self, hcx.hashes_metadata_spans()));
+            hash_expansion(input, hcx)
         };
 
         hash.stable_hash(hcx, hasher);
