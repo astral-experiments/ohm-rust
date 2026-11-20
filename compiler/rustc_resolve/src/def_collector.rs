@@ -201,8 +201,9 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
                 DefKind::Macro(macro_kinds)
             }
             ItemKind::GlobalAsm(..) => DefKind::GlobalAsm,
-            ItemKind::Use(_) => {
-                return self.with_owner(i.id, None, DefKind::Use, i.span, |this, feed| {
+            ItemKind::Use(tree) => {
+                let name = tree.prefix.segments.last().map(|segment| segment.ident.name);
+                return self.with_owner(i.id, name, DefKind::Use, i.span, |this, feed| {
                     this.with_parent(feed.def_id(), |this| {
                         this.brg_visit_item(i, feed);
                     })

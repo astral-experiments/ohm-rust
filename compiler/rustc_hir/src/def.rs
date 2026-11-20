@@ -347,7 +347,7 @@ impl DefKind {
             DefKind::Macro(..) => DefPathData::MacroNs(name.unwrap()),
             DefKind::LifetimeParam => DefPathData::LifetimeNs(name.unwrap()),
             DefKind::Ctor(..) => DefPathData::Ctor,
-            DefKind::Use => DefPathData::Use,
+            DefKind::Use => name.map_or(DefPathData::Use, DefPathData::NamedUse),
             DefKind::ForeignMod => DefPathData::ForeignMod,
             DefKind::AnonConst => DefPathData::AnonConst,
             DefKind::OpaqueTy => DefPathData::OpaqueTy,
