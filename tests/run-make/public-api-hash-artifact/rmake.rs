@@ -275,8 +275,7 @@ fn main() {
     rfs::write("lib.rs", public_source.replace("-> u32", "-> u64"));
     assert_ne!(fresh_hash, compile_and_read_public_api_hash(false));
 
-    // Move an entire tracked function by
-    // exactly 256 columns while keeping every line boundary and definition length unchanged.
+    // Move a tracked function by exactly 256 columns without changing any line boundary.
     rfs::write("private.rs", private_source);
     let public_source = rfs::read_to_string("lib.rs");
     let padding = " ".repeat(256);
@@ -285,6 +284,26 @@ fn main() {
         "std::panic::Location::caller() }",
     );
     let tracked_source = format!("{public_source}\n#[track_caller]\n{definition}{padding}\n");
+    let moved_source = tracked_source.replacen(
+        &format!("{definition}{padding}"),
+        &format!("{padding}{definition}"),
+        1,
+    );
+    assert_eq!(tracked_source.len(), moved_source.len());
+    assert_ne!(tracked_source, moved_source);
+
+    // Metadata-only and native callers can observe the full column.
+    rfs::write("lib.rs", &tracked_source);
+    let check_hash = compile_and_read_public_api_hash(false);
+    rfs::write("lib.rs", &moved_source);
+    change_private_value(5, 6);
+    let moved_check_hash = compile_and_read_public_api_hash(false);
+    assert_ne!(check_hash, moved_check_hash);
+    rfs::remove_dir_all("incremental");
+    assert_eq!(moved_check_hash, compile_and_read_public_api_hash(false));
+
+    // Native callers can observe the full column, so moving the definition must invalidate them.
+    change_private_value(6, 5);
     rfs::write("lib.rs", &tracked_source);
     let (tracked_hash, _) =
         compile_and_read_public_api_hash_with_output(false, &[], "metadata,link");
@@ -296,13 +315,6 @@ fn main() {
         compile_and_read_public_api_hash_with_output(true, &[], "metadata,link").0,
     );
 
-    let moved_source = tracked_source.replacen(
-        &format!("{definition}{padding}"),
-        &format!("{padding}{definition}"),
-        1,
-    );
-    assert_eq!(tracked_source.len(), moved_source.len());
-    assert_ne!(tracked_source, moved_source);
     rfs::write("lib.rs", &moved_source);
     change_private_value(6, 7);
     let (moved_hash, _) = compile_and_read_public_api_hash_with_output(false, &[], "metadata,link");
@@ -518,7 +530,7 @@ fn main() {
     change_private_value(9, 1);
     let (changed_macro_hash, _) =
         compile_and_read_public_api_hash_with_output(false, &[], "metadata,link");
-    assert_ne!(macro_hash, changed_macro_hash);
+    assert_ne!(moved_macro_hash, changed_macro_hash);
     assert_eq!(downstream_exported_macro_value(), 456);
     change_private_value(1, 2);
     assert_eq!(
