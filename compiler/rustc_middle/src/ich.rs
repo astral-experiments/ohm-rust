@@ -90,6 +90,11 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashState<'a, HASH_SPANS_AS
 impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
     for StableHashState<'a, HASH_SPANS_AS_PARENTLESS>
 {
+    #[inline]
+    fn hashes_metadata_spans(&self) -> bool {
+        HASH_SPANS_AS_PARENTLESS && !self.incremental_ignore_spans
+    }
+
     /// Hashes a span in a stable way. We can't directly hash the span's `BytePos` fields (that
     /// would be similar to hashing pointers, since those are just offsets into the `SourceMap`).
     /// Instead, we hash the (file name, line, column) triple, which stays the same even if the

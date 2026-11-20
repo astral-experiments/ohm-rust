@@ -23,6 +23,10 @@ pub use rustc_stable_hash::{
 /// certain operations to be defined in `rustc_middle` where more things are
 /// visible.
 pub trait StableHashCtxt {
+    fn hashes_metadata_spans(&self) -> bool {
+        false
+    }
+
     /// The main event: stable hashing of a span.
     fn stable_hash_span(&mut self, span: RawSpan, hasher: &mut StableHasher);
 
