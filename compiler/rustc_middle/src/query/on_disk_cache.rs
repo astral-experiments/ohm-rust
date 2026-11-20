@@ -966,8 +966,10 @@ impl_decodable_via_ref_decodable_for_foreign_types! {
     &'tcx [DefId],
     &'tcx [Spanned<MonoItem<'tcx>>],
     &'tcx [Symbol],
+    &'tcx [rustc_middle::middle::dead_code::SymbolUse],
     &'tcx [ty::Variance],
     &'tcx rustc_ast::tokenstream::TokenStream,
+    &'tcx rustc_middle::middle::dead_code::BodyUses<'tcx>,
     // tidy-alphabetical-end
 }
 

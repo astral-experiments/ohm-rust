@@ -51,11 +51,8 @@ pub mod point {
 pub mod fn_calls_methods_in_same_impl {
     use point::Point;
 
-    // The cached result should actually be loaded from disk
-    // (not just marked green) - for example, `DeadVisitor`
-    // always runs during compilation as a "pass", and loads
-    // the typeck_root results for bodies.
-    #[rustc_clean(cfg="bpass2", loaded_from_disk="typeck_root")]
+    // Dead-code analysis loads this body's symbol uses after the method changes.
+    #[rustc_clean(cfg="bpass2", loaded_from_disk="body_uses")]
     pub fn check() {
         let x = Point { x: 2.0, y: 2.0 };
         x.distance_from_origin();

@@ -17,6 +17,7 @@ use rustc_hir::{HirId, Path};
 use rustc_lint as lint;
 use rustc_lint::{MissingDoc, late_lint_mod};
 use rustc_middle::hir::nested_filter;
+use rustc_middle::middle::dead_code::BodyUses;
 use rustc_middle::ty::{self, ParamEnv, Ty, TyCtxt};
 use rustc_session::Session;
 use rustc_session::config::{
@@ -320,10 +321,15 @@ pub(crate) fn create_config(
             // Most lints will require typechecking, so just don't run them.
             providers.queries.lint_mod =
                 |tcx, module_def_id| late_lint_mod(tcx, module_def_id, MissingDoc);
-            // hack so that `used_trait_imports` won't try to call typeck
-            providers.queries.used_trait_imports = |_, _| {
+            // Skip type checking when the unused-import pass asks about a body.
+            providers.queries.body_uses = |_, _| {
                 static EMPTY_SET: LazyLock<UnordSet<LocalDefId>> = LazyLock::new(UnordSet::default);
-                &EMPTY_SET
+                static EMPTY_USES: LazyLock<BodyUses<'static>> = LazyLock::new(|| BodyUses {
+                    trait_imports: &EMPTY_SET,
+                    tainted_by_errors: None,
+                    symbols: &[],
+                });
+                &EMPTY_USES
             };
             // In case typeck does end up being called, don't ICE in case there were name resolution errors
             providers.queries.typeck_root = move |tcx, def_id| {
