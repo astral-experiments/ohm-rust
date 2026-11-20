@@ -48,11 +48,21 @@ impl LocalDefIdMap<PerParentDisambiguatorState> {
 
 #[derive(Debug)]
 pub struct Definitions {
+    /// Optional second set of local keys for the incremental cache. Public
+    /// identifiers keep both halves of their original canonical hash.
+    incremental_paths: Option<Box<IncrementalPaths>>,
     stable_crate_id: StableCrateId,
     def_id_to_key: IndexVec<LocalDefId, DefKey>,
     // We do only store the local hash, as all the definitions are from the current crate.
     def_path_hashes: IndexVec<LocalDefId, Hash64>,
     def_path_hash_to_index: DefPathHashMap,
+}
+
+#[derive(Debug)]
+struct IncrementalPaths {
+    crate_id: StableCrateId,
+    hashes: IndexVec<LocalDefId, Hash64>,
+    indices: DefPathHashMap,
 }
 
 /// A unique identifier that we can use to lookup a definition
@@ -280,6 +290,33 @@ impl Definitions {
 
     /// Adds a root definition (no parent) and a few other reserved definitions.
     pub fn new(stable_crate_id: StableCrateId) -> Definitions {
+        Self::with_incremental_identity(stable_crate_id, stable_crate_id)
+    }
+
+    pub fn has_incremental_paths(&self) -> bool {
+        self.incremental_paths.is_some()
+    }
+
+    #[inline]
+    pub fn incremental_def_path_hash(&self, id: LocalDefId) -> DefPathHash {
+        match &self.incremental_paths {
+            Some(paths) => DefPathHash::new(paths.crate_id, paths.hashes[id]),
+            None => self.def_path_hash(id),
+        }
+    }
+
+    #[inline]
+    pub fn incremental_crate_id(&self) -> StableCrateId {
+        match &self.incremental_paths {
+            Some(paths) => paths.crate_id,
+            None => self.stable_crate_id,
+        }
+    }
+
+    pub fn with_incremental_identity(
+        stable_crate_id: StableCrateId,
+        incremental_crate_id: StableCrateId,
+    ) -> Definitions {
         let key = DefKey {
             parent: None,
             disambiguated_data: DisambiguatedDefPathData {
@@ -300,6 +337,13 @@ impl Definitions {
             DefPathHash::new(stable_crate_id, Hash64::new(stable_crate_id.as_u64()));
 
         let mut defs = Definitions {
+            incremental_paths: (stable_crate_id != incremental_crate_id).then(|| {
+                Box::new(IncrementalPaths {
+                    crate_id: incremental_crate_id,
+                    hashes: IndexVec::new(),
+                    indices: Default::default(),
+                })
+            }),
             stable_crate_id,
             def_path_hashes: Default::default(),
             def_id_to_key: Default::default(),
@@ -321,6 +365,20 @@ impl Definitions {
         let def_id = self.def_id_to_key.push(key);
         debug!("def_id_to_key.push() - {key:?} <-> {:?}", def_id.local_def_index);
 
+        if let Some(paths) = &mut self.incremental_paths {
+            let hash = match key.parent {
+                Some(local_def_index) => {
+                    let parent = paths.hashes[LocalDefId { local_def_index }];
+                    key.compute_stable_hash(DefPathHash::new(paths.crate_id, parent)).local_hash()
+                }
+                None => Hash64::new(paths.crate_id.as_u64()),
+            };
+            paths.hashes.push(hash);
+            assert!(
+                paths.indices.insert(&hash, &def_id.local_def_index).is_none(),
+                "incremental local definition path collision for {key:?}"
+            );
+        }
         self.def_path_hashes.push(local_hash);
         debug_assert!(self.def_path_hashes.len() == self.def_id_to_key.len());
 
@@ -417,6 +475,17 @@ impl Definitions {
         self.def_path_hash_to_index
             .get(&hash.local_hash())
             .map(|local_def_index| LocalDefId { local_def_index })
+    }
+
+    /// Resolve a definition key from the incremental dependency graph or query cache.
+    #[inline]
+    pub fn incremental_def_path_hash_to_def_id(&self, hash: DefPathHash) -> Option<LocalDefId> {
+        debug_assert!(hash.stable_crate_id() == self.incremental_crate_id());
+        let indices = match &self.incremental_paths {
+            Some(paths) => &paths.indices,
+            None => &self.def_path_hash_to_index,
+        };
+        indices.get(&hash.local_hash()).map(|local_def_index| LocalDefId { local_def_index })
     }
 
     pub fn def_path_hash_to_def_index_map(&self) -> &DefPathHashMap {

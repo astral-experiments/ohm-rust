@@ -392,7 +392,7 @@ impl<'cx, 'tcx> Visitor<'tcx> for WritebackCx<'cx, 'tcx> {
 
 impl<'cx, 'tcx> WritebackCx<'cx, 'tcx> {
     fn eval_closure_size(&mut self) {
-        self.tcx().with_stable_hashing_context(|mut hcx| {
+        self.tcx().with_incremental_hashing_context(|mut hcx| {
             let fcx_typeck_results = self.fcx.typeck_results.borrow();
 
             self.typeck_results.closure_size_eval = fcx_typeck_results
@@ -409,7 +409,7 @@ impl<'cx, 'tcx> WritebackCx<'cx, 'tcx> {
     }
 
     fn visit_min_capture_map(&mut self) {
-        self.tcx().with_stable_hashing_context(|mut hcx| {
+        self.tcx().with_incremental_hashing_context(|mut hcx| {
             let fcx_typeck_results = self.fcx.typeck_results.borrow();
 
             self.typeck_results.closure_min_captures = fcx_typeck_results
@@ -440,7 +440,7 @@ impl<'cx, 'tcx> WritebackCx<'cx, 'tcx> {
     }
 
     fn visit_fake_reads_map(&mut self) {
-        self.tcx().with_stable_hashing_context(move |mut hcx| {
+        self.tcx().with_incremental_hashing_context(move |mut hcx| {
             let fcx_typeck_results = self.fcx.typeck_results.borrow();
 
             self.typeck_results.closure_fake_reads = fcx_typeck_results

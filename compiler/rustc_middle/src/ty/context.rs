@@ -860,6 +860,7 @@ pub struct GlobalCtxt<'tcx> {
     /// `rustc_symbol_mangling` crate for more information.
     stable_crate_id: StableCrateId,
 
+    incremental_crate_id: StableCrateId,
     pub incr_comp_session: Option<&'tcx IncrCompSession>,
     pub dep_graph: DepGraph,
 
@@ -1075,7 +1076,9 @@ impl<'tcx> TyCtxt<'tcx> {
         let common_lifetimes = CommonLifetimes::new(&interners);
         let common_consts = CommonConsts::new(&interners, &common_types);
 
+        let incremental_crate_id = untracked.definitions.read().incremental_crate_id();
         let gcx = gcx_cell.get_or_init(|| GlobalCtxt {
+            incremental_crate_id,
             sess,
             crate_types,
             stable_crate_id,
@@ -1226,8 +1229,8 @@ impl<'tcx> TyCtxt<'tcx> {
 
     #[inline]
     pub fn def_path_hash(self, def_id: DefId) -> rustc_hir::definitions::DefPathHash {
-        // Accessing the DefPathHash is ok, it is incr. comp. stable.
         if let Some(def_id) = def_id.as_local() {
+            self.track_local_linkage_identity();
             self.definitions_untracked().def_path_hash(def_id)
         } else {
             self.cstore_untracked().def_path_hash(def_id)
@@ -1237,6 +1240,45 @@ impl<'tcx> TyCtxt<'tcx> {
     #[inline]
     pub fn crate_types(self) -> &'tcx [CrateType] {
         &self.crate_types
+    }
+
+    #[inline]
+    pub fn incremental_crate_id(self, crate_num: CrateNum) -> StableCrateId {
+        if crate_num == LOCAL_CRATE {
+            self.incremental_crate_id
+        } else {
+            self.cstore_untracked().stable_crate_id(crate_num)
+        }
+    }
+
+    #[inline]
+    pub fn incremental_def_path_hash(self, id: DefId) -> DefPathHash {
+        if let Some(local) = id.as_local() {
+            self.untracked.definitions.read().incremental_def_path_hash(local)
+        } else {
+            self.cstore_untracked().def_path_hash(id)
+        }
+    }
+
+    #[inline]
+    pub fn with_incremental_hashing_context<R>(
+        self,
+        f: impl FnOnce(StableHashState<'_>) -> R,
+    ) -> R {
+        let mut hcx = StableHashState::new(self.sess, &self.untracked);
+        hcx.set_incremental(self.incremental_crate_id != self.stable_crate_id);
+        f(hcx)
+    }
+
+    #[inline]
+    pub fn crate_num_from_incremental_id(self, id: StableCrateId) -> CrateNum {
+        if id == self.incremental_crate_id {
+            LOCAL_CRATE
+        } else {
+            let num = self.untracked.stable_crate_ids.read()[&id];
+            assert_ne!(num, LOCAL_CRATE);
+            num
+        }
     }
 
     pub fn needs_metadata(self) -> bool {
@@ -1292,6 +1334,14 @@ impl<'tcx> TyCtxt<'tcx> {
     #[inline]
     pub fn stable_crate_id(self, crate_num: CrateNum) -> StableCrateId {
         if crate_num == LOCAL_CRATE {
+            self.track_local_linkage_identity();
+        }
+        self.untracked_stable_crate_id(crate_num)
+    }
+
+    #[inline]
+    pub fn untracked_stable_crate_id(self, crate_num: CrateNum) -> StableCrateId {
+        if crate_num == LOCAL_CRATE {
             self.stable_crate_id
         } else {
             self.cstore_untracked().stable_crate_id(crate_num)
@@ -1331,13 +1381,35 @@ impl<'tcx> TyCtxt<'tcx> {
         }
     }
 
+    /// Resolve a definition key from the incremental dependency graph or query cache.
+    #[inline]
+    pub fn incremental_def_path_hash_to_def_id(self, hash: DefPathHash) -> Option<DefId> {
+        debug!("incremental_def_path_hash_to_def_id({:?})", hash);
+
+        let stable_crate_id = hash.stable_crate_id();
+
+        // If this is a DefPathHash from the local crate, we can look up the
+        // DefId in the tcx's `Definitions`.
+        if stable_crate_id == self.incremental_crate_id {
+            Some(
+                self.untracked
+                    .definitions
+                    .read()
+                    .incremental_def_path_hash_to_def_id(hash)?
+                    .to_def_id(),
+            )
+        } else {
+            self.def_path_hash_to_def_id_extern(hash, stable_crate_id)
+        }
+    }
+
     pub fn def_path_debug_str(self, def_id: DefId) -> String {
         // We are explicitly not going through queries here in order to get
         // crate name and stable crate id since this code is called from debug!()
         // statements within the query system and we'd run into endless
         // recursion otherwise.
         let (crate_name, stable_crate_id) = if def_id.is_local() {
-            (self.crate_name(LOCAL_CRATE), self.stable_crate_id(LOCAL_CRATE))
+            (self.crate_name(LOCAL_CRATE), self.untracked_stable_crate_id(LOCAL_CRATE))
         } else {
             let cstore = &*self.cstore_untracked();
             (cstore.crate_name(def_id.krate), cstore.stable_crate_id(def_id.krate))
@@ -1472,6 +1544,9 @@ impl<'tcx> TyCtxt<'tcx> {
         stable_crate_id: StableCrateId,
     ) -> Result<TyCtxtFeed<'tcx, CrateNum>, CrateNum> {
         let mut lock = self.untracked().stable_crate_ids.write();
+        if !lock.is_empty() && stable_crate_id == self.incremental_crate_id {
+            return Err(LOCAL_CRATE);
+        }
         if let Some(&existing) = lock.get(&stable_crate_id) {
             return Err(existing);
         }
@@ -1561,6 +1636,22 @@ impl<'tcx> TyCtxt<'tcx> {
 
     #[inline(always)]
     pub fn with_stable_hashing_context<R>(self, f: impl FnOnce(StableHashState<'_>) -> R) -> R {
+        self.track_local_linkage_identity();
+        self.with_untracked_stable_hashing_context(f)
+    }
+
+    #[inline]
+    pub(super) fn track_local_linkage_identity(self) {
+        if self.incremental_crate_id != self.stable_crate_id {
+            let _ = self.local_linkage_identity(());
+        }
+    }
+
+    #[inline(always)]
+    pub fn with_untracked_stable_hashing_context<R>(
+        self,
+        f: impl FnOnce(StableHashState<'_>) -> R,
+    ) -> R {
         f(StableHashState::new(self.sess, &self.untracked))
     }
 
@@ -3269,6 +3360,9 @@ impl<'tcx> TyCtxt<'tcx> {
 }
 
 pub fn provide(providers: &mut Providers) {
+    providers.local_linkage_identity = |tcx, ()| {
+        rustc_data_structures::fingerprint::Fingerprint::new(tcx.stable_crate_id.as_u64(), 0)
+    };
     providers.codegen_output_mode = |tcx, ()| {
         (tcx.sess.opts.output_types.should_codegen(), tcx.sess.opts.output_types.should_link())
     };

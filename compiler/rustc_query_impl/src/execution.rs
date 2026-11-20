@@ -383,7 +383,7 @@ fn check_feedable_consistency<'tcx, C: QueryCache>(
         );
     };
 
-    let (old_hash, new_hash) = tcx.with_stable_hashing_context(|mut hcx| {
+    let (old_hash, new_hash) = tcx.with_incremental_hashing_context(|mut hcx| {
         (hash_value_fn(&mut hcx, &cached_value), hash_value_fn(&mut hcx, value))
     });
     let formatter = query.format_value;
@@ -462,7 +462,7 @@ fn execute_job_non_incr<'tcx, C: QueryCache>(
     if cfg!(debug_assertions) {
         let _ = key.to_fingerprint(tcx);
         if let Some(hash_value_fn) = query.hash_value_fn {
-            tcx.with_stable_hashing_context(|mut hcx| {
+            tcx.with_incremental_hashing_context(|mut hcx| {
                 hash_value_fn(&mut hcx, &value);
             });
         }
@@ -748,7 +748,7 @@ const FINITE_IMPL_RECEIVERS: &[SimplifiedType] = &[
 fn registered_def_id(tcx: TyCtxt<'_>, dep_node: DepNode) -> Option<DefId> {
     let hash = DefPathHash(dep_node.key_fingerprint.into());
     let id = hash.stable_crate_id();
-    if id != tcx.stable_crate_id(LOCAL_CRATE)
+    if id != tcx.incremental_crate_id(LOCAL_CRATE)
         && !tcx.untracked().stable_crate_ids.read().contains_key(&id)
     {
         return None;

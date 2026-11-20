@@ -40,7 +40,7 @@ fn invalidate_node(incremental: &str, graph: &str, damage: BadNode) {
     for path in caches(incremental, graph) {
         let mut bytes = rfs::read(&path);
         assert_eq!(&bytes[..4], b"RSIC");
-        let first = 7 + usize::from(bytes[6]) + size_of::<u64>();
+        let first = 7 + usize::from(bytes[6]) + 2 * size_of::<u64>();
         let index = &mut bytes[first + 2..first + 6];
         match damage {
             BadNode::Null => bytes[first..first + 2].fill(0),

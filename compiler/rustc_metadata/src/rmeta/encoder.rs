@@ -2678,7 +2678,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         let def_id = local_def_id.to_def_id();
         let tcx = self.tcx;
         let adt_def = tcx.adt_def(def_id);
-        record!(self.tables.repr_options[def_id] <- adt_def.repr(), hcx);
+        record!(self.tables.repr_options[def_id] <- adt_def.repr_for_layout(tcx), hcx);
 
         let params_in_repr = self.tcx.params_in_repr(def_id);
         record!(self.tables.params_in_repr[def_id] <- params_in_repr, hcx);

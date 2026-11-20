@@ -225,8 +225,7 @@ impl<'tcx> TyCtxt<'tcx> {
 
     #[inline]
     pub fn hir_def_path_hash(self, def_id: LocalDefId) -> DefPathHash {
-        // Accessing the DefPathHash is ok, it is incr. comp. stable.
-        self.definitions_untracked().def_path_hash(def_id)
+        self.def_path_hash(def_id.to_def_id())
     }
 
     pub fn hir_get_if_local(self, id: DefId) -> Option<Node<'tcx>> {

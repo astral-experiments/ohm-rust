@@ -276,7 +276,34 @@ pub(crate) fn prepare_session_directory(
         None
     };
 
-    IncrCompSession { old_session_directory, new_session_directory }
+    IncrCompSession { old_session_directory, new_session_directory, check_seed: None }
+}
+
+/// Finalized session candidates for a cold check, newest first.
+pub(super) fn sibling_sessions(
+    sess: &Session,
+    name: Symbol,
+) -> impl Iterator<Item = flock::LockedDir> {
+    let prefix = format!("{name}-");
+    let root = sess.opts.incremental.as_ref().unwrap();
+    let mut paths = Vec::new();
+    for dir in root.read_dir().into_iter().flatten().flatten() {
+        if !dir.file_name().to_str().is_some_and(|name| name.starts_with(&prefix))
+            || !dir.file_type().is_ok_and(|ty| ty.is_dir())
+        {
+            continue;
+        }
+        if let Ok(sessions) = dir.path().read_dir()
+            && let Some(path) = find_source_directory_in_iter(sessions.flatten().map(|s| s.path()))
+        {
+            paths.push(path);
+        }
+    }
+    paths.sort_unstable_by(|a, b| b.file_name().cmp(&a.file_name()));
+    paths.into_iter().filter_map(|path| {
+        let lock = lock_file_path(&path);
+        flock::LockedDir::try_lock(path, &lock, false, false).ok()
+    })
 }
 
 /// This function finalizes and thus 'publishes' the session directory by

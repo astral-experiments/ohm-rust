@@ -24,7 +24,7 @@ pub fn incremental_verify_ich<'tcx, V>(
     }
 
     let new_hash = hash_result.map_or(Fingerprint::ZERO, |f| {
-        tcx.with_stable_hashing_context(|mut hcx| f(&mut hcx, result))
+        tcx.with_incremental_hashing_context(|mut hcx| f(&mut hcx, result))
     });
 
     let old_hash = dep_graph_data.prev_value_fingerprint_of(prev_index);

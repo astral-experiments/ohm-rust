@@ -53,8 +53,16 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashState<'a, HASH_SPANS_AS
             untracked,
             incremental_ignore_spans: sess.opts.unstable_opts.incremental_ignore_spans,
             caching_source_map: CachingSourceMap::Unused(sess.source_map()),
-            stable_hash_controls: StableHashControls { hash_spans: hash_spans_initial },
+            stable_hash_controls: StableHashControls {
+                hash_spans: hash_spans_initial,
+                incremental_keys: false,
+            },
         }
+    }
+
+    #[inline]
+    pub fn set_incremental(&mut self, enable: bool) {
+        self.stable_hash_controls.incremental_keys = enable;
     }
 
     #[inline]
@@ -181,11 +189,27 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
         Hash::hash(&(span.hi - span.lo).0, hasher);
     }
 
+    fn with_incremental_keys<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> Option<T> {
+        if !self.untracked.definitions.read().has_incremental_paths() {
+            return None;
+        }
+        let previous = self.stable_hash_controls.incremental_keys;
+        self.set_incremental(true);
+        let result = f(self);
+        self.set_incremental(previous);
+        Some(result)
+    }
+
     #[inline]
     fn def_path_hash(&self, raw_def_id: RawDefId) -> Fingerprint {
         let def_id = DefId::from_raw_def_id(raw_def_id);
         if let Some(def_id) = def_id.as_local() {
-            self.untracked.definitions.read().def_path_hash(def_id)
+            let definitions = self.untracked.definitions.read();
+            if self.stable_hash_controls.incremental_keys {
+                definitions.incremental_def_path_hash(def_id)
+            } else {
+                definitions.def_path_hash(def_id)
+            }
         } else {
             self.untracked.cstore.read().def_path_hash(def_id)
         }
@@ -199,7 +223,7 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
     #[inline]
     fn assert_default_stable_hash_controls(&self, msg: &str) {
         let stable_hash_controls = self.stable_hash_controls;
-        let StableHashControls { hash_spans } = stable_hash_controls;
+        let StableHashControls { hash_spans, .. } = stable_hash_controls;
 
         // Note that we require that `hash_spans` be the inverse of the global `-Z
         // incremental-ignore-spans` option. Normally, this option is disabled, in which case

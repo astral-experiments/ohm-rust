@@ -132,7 +132,7 @@ impl DepGraphData {
         let value = load(cache, index)?;
         if verify {
             let fingerprint = hash_result.map_or(Fingerprint::ZERO, |hash| {
-                tcx.with_stable_hashing_context(|mut hcx| hash(&mut hcx, &value))
+                tcx.with_incremental_hashing_context(|mut hcx| hash(&mut hcx, &value))
             });
             assert_eq!(fingerprint, root.fingerprint);
         }

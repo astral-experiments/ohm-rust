@@ -733,14 +733,20 @@ fn layout_of_uncached<'tcx>(
                     return Err(error(cx, LayoutError::ReferencesError(guar)));
                 }
 
-                return map_layout(cx.calc.layout_of_union(&def.repr(), &variants));
+                return map_layout(cx.calc.layout_of_union(&def.repr_for_layout(tcx), &variants));
             }
 
             // UnsafeCell and UnsafePinned both disable niche optimizations
             let is_special_no_niche = def.is_unsafe_cell() || def.is_unsafe_pinned();
 
             let discr_range_of_repr = |min: RangeFrom<i128>, max: RangeToInclusive<u128>| {
-                abi::Integer::discr_range_of_repr(tcx, ty, &def.repr(), min.start, max.last)
+                abi::Integer::discr_range_of_repr(
+                    tcx,
+                    ty,
+                    &def.repr_for_layout(tcx),
+                    min.start,
+                    max.last,
+                )
             };
 
             // We shouldn't be computing the layout of discrs that fail typeck
@@ -776,7 +782,7 @@ fn layout_of_uncached<'tcx>(
             let mut layout = cx
                 .calc
                 .layout_of_struct_or_enum(
-                    &def.repr(),
+                    &def.repr_for_layout(tcx),
                     &variants,
                     def.is_enum(),
                     is_special_no_niche,
@@ -805,7 +811,7 @@ fn layout_of_uncached<'tcx>(
                 *variants[FIRST_VARIANT].raw.last_mut().unwrap() = tail_replacement;
 
                 let Ok(unsized_layout) = cx.calc.layout_of_struct_or_enum(
-                    &def.repr(),
+                    &def.repr_for_layout(tcx),
                     &variants,
                     def.is_enum(),
                     is_special_no_niche,

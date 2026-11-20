@@ -519,7 +519,7 @@ impl DepGraphData {
     ) -> DepNodeIndex {
         let hashing_timer = tcx.prof.incr_result_hashing();
         let current_fingerprint = hash_result.map(|hash_result| {
-            tcx.with_stable_hashing_context(|mut hcx| hash_result(&mut hcx, result))
+            tcx.with_incremental_hashing_context(|mut hcx| hash_result(&mut hcx, result))
         });
         let dep_node_index = self.alloc_and_color_node(node, edges, current_fingerprint);
         hashing_timer.finish_with_query_invocation_id(dep_node_index.into());

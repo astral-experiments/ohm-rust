@@ -10,7 +10,7 @@ pub fn thir_tree(tcx: TyCtxt<'_>, owner_def: LocalDefId) -> String {
     match super::cx::thir_body(tcx, owner_def) {
         Ok((thir, expr)) => {
             let thir = thir.steal();
-            let mut printer = ThirPrinter::new(&thir);
+            let mut printer = ThirPrinter::new(tcx, &thir);
             printer.print(expr);
             printer.into_buffer()
         }
@@ -27,6 +27,7 @@ pub fn thir_flat(tcx: TyCtxt<'_>, owner_def: LocalDefId) -> String {
 }
 
 struct ThirPrinter<'a, 'tcx> {
+    tcx: TyCtxt<'tcx>,
     thir: &'a Thir<'tcx>,
     fmt: String,
 }
@@ -48,8 +49,8 @@ impl<'a, 'tcx> Write for ThirPrinter<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> ThirPrinter<'a, 'tcx> {
-    fn new(thir: &'a Thir<'tcx>) -> Self {
-        Self { thir, fmt: String::new() }
+    fn new(tcx: TyCtxt<'tcx>, thir: &'a Thir<'tcx>) -> Self {
+        Self { tcx, thir, fmt: String::new() }
     }
 
     fn indent(&mut self, level: usize) {
@@ -649,7 +650,11 @@ impl<'a, 'tcx> ThirPrinter<'a, 'tcx> {
         print_indented!(self, format!("did: {:?}", adt_def.did()), depth_lvl + 1);
         print_indented!(self, format!("variants: {:?}", adt_def.variants()), depth_lvl + 1);
         print_indented!(self, format!("flags: {:?}", adt_def.flags()), depth_lvl + 1);
-        print_indented!(self, format!("repr: {:?}", adt_def.repr()), depth_lvl + 1);
+        print_indented!(
+            self,
+            format!("repr: {:?}", adt_def.repr_for_layout(self.tcx)),
+            depth_lvl + 1
+        );
         print_indented!(self, "}", depth_lvl);
     }
 
