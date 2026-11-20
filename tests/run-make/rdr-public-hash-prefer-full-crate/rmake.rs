@@ -26,7 +26,8 @@ fn bridge(marker: &str, flag: bool, reused: bool) -> (String, String) {
     rfs::write(
         "bridge.rs",
         format!(
-            "pub struct {marker};\npub use leaf::Token;\n#[inline] pub fn answer(t: Token) -> u8 {{ leaf::value(t) }}"
+            "pub struct {marker};\npub use leaf::Token;\n\
+             #[inline] pub fn answer(t: Token) -> u8 {{ leaf::value(t) }}"
         ),
     );
     let mut compiler = rustc();
@@ -60,7 +61,8 @@ fn consume(expected: &str) {
 fn main() {
     rfs::write(
         "leaf.rs",
-        "mod hidden;\npub struct Token;\n#[inline(never)] pub fn value(_: Token) -> u8 { hidden::value() }",
+        "mod hidden;\npub struct Token;\n\
+         #[inline(never)] pub fn value(_: Token) -> u8 { hidden::value() }",
     );
     rfs::write("main.rs", r#"fn main() { println!("{}", bridge::answer(bridge::Token)); }"#);
     let before = leaf("pub(super) fn value() -> u8 { 17 }");
