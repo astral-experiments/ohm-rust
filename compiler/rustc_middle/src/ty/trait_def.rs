@@ -4,7 +4,7 @@ use rustc_errors::ErrorGuaranteed;
 use rustc_hashes::Hash64;
 use rustc_hir as hir;
 use rustc_hir::def::DefKind;
-use rustc_hir::def_id::{CrateNum, DefId, DefIndex};
+use rustc_hir::def_id::{CrateNum, DefId, DefIndex, LOCAL_CRATE};
 use rustc_macros::{Decodable, Encodable, StableHash};
 use rustc_span::{Span, bug};
 use rustc_type_ir::fast_reject::SimplifiedType as ReceiverShape;
@@ -461,16 +461,34 @@ fn for_each_trait_impl(
         );
     }
 
-    for &impl_def_id in tcx.local_trait_impls(trait_id) {
-        let impl_def_id = impl_def_id.to_def_id();
-
-        let impl_self_ty = tcx.type_of(impl_def_id).instantiate_identity().skip_norm_wip();
-
-        visit(
-            impl_def_id,
-            fast_reject::simplify_type(tcx, impl_self_ty, TreatParams::InstantiateWithInfer),
-        );
+    let local = tcx.local_trait_impls(trait_id);
+    if bucket.is_some() && local.len() > 1 {
+        // Each receiver lookup would otherwise depend on every local impl's type.
+        // Share their classification across buckets, as we do for upstream impls.
+        for &(id, self_ty) in tcx.implementations_of_trait((LOCAL_CRATE, trait_id)) {
+            visit(id, self_ty);
+        }
+    } else {
+        for &id in local {
+            let id = id.to_def_id();
+            visit(id, impl_receiver(tcx, id));
+        }
     }
+}
+
+fn impl_receiver(tcx: TyCtxt<'_>, id: DefId) -> Option<SimplifiedType> {
+    let ty = tcx.type_of(id).instantiate_identity().skip_norm_wip();
+    fast_reject::simplify_type(tcx, ty, TreatParams::InstantiateWithInfer)
+}
+
+pub(super) fn local_implementations_of_trait(
+    tcx: TyCtxt<'_>,
+    trait_id: DefId,
+) -> &[(DefId, Option<SimplifiedType>)] {
+    tcx.arena.alloc_from_iter(tcx.local_trait_impls(trait_id).iter().map(|&id| {
+        let id = id.to_def_id();
+        (id, impl_receiver(tcx, id))
+    }))
 }
 
 /// Query provider for `trait_impls_of`.
