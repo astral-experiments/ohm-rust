@@ -212,6 +212,7 @@ macro_rules! define_queries {
                         dep_kind: rustc_middle::dep_graph::DepKind::$name,
                         state: Default::default(),
                         cache: Default::default(),
+                        promoted_without_keys: Default::default(),
                         cache_on_disk_local: $cache_on_disk,
                         separate_provide_extern: $separate_provide_extern,
 

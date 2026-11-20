@@ -22,7 +22,7 @@ fn compile(original: &str, mode: &str, revision: usize) -> String {
     };
     let (ty, size) = match revision {
         1 | 2 => ("u8", 1),
-        3 | 4 => ("u16", 2),
+        3..=5 => ("u16", 2),
         _ => ("u32", 4),
     };
     let source = original
@@ -49,7 +49,7 @@ fn compile(original: &str, mode: &str, revision: usize) -> String {
     } else {
         command.env("OHM_RETAIN_MONO_QUERY_VALUES", if mode == "on" { "1" } else { "0" });
     }
-    if revision == 2 {
+    if revision == 2 || revision == 5 {
         command.cfg("partition_hit");
     }
     let stderr = command.run().stderr_utf8();
@@ -72,12 +72,19 @@ fn main() {
         // Changing the generic call must still produce the new program.
         compile(&original, mode, 3);
         if enabled {
-            // The retained cache reaches its generation limit and declines
-            // forwarding. A further call-graph edit must compile correctly.
+            // The cached partition survives compaction. Its unused inputs
+            // should be available when we change the call graph again.
             let fourth = compile(&original, mode, 4);
             assert_eq!(count(&fourth, "retained"), 0, "{fourth}");
-            assert!(count(&fourth, "unpromoted") > 0, "{fourth}");
-            compile(&original, mode, 5);
+            assert!(count(&fourth, "compacted_items") > 0, "{fourth}");
+            assert!(count(&fourth, "compacted_sizes") > 0, "{fourth}");
+            assert!(count(&fourth, "compacted_symbols") > 0, "{fourth}");
+            let fifth = compile(&original, mode, 5);
+            assert!(
+                count(&fifth, "retained_items") >= count(&fourth, "compacted_items"),
+                "{fifth}"
+            );
+            compile(&original, mode, 6);
         }
     }
 }
