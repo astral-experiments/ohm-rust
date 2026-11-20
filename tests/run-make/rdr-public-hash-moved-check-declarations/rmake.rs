@@ -21,7 +21,9 @@ fn hash(source: &str, hint: bool, native: bool) -> String {
         cmd.arg("-Zohm-terminal-check-hash");
     }
     let output = cmd.emit(if native { "metadata,link" } else { "metadata" }).run();
-    let message = output.stderr_utf8().lines()
+    let message = output
+        .stderr_utf8()
+        .lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
         .find(|msg| msg["$message_type"] == "artifact" && msg["emit"] == "metadata")
         .unwrap();
