@@ -98,6 +98,7 @@ pub(crate) fn get_fn<'ll, 'tcx>(cx: &CodegenCx<'ll, 'tcx>, instance: Instance<'t
         let is_hidden = if is_generic {
             // This is a monomorphization of a generic function.
             if !(cx.tcx.sess.opts.share_generics()
+                || instance.def.is_linked_future(tcx)
                 || tcx.codegen_instance_attrs(instance.def).inline
                     == rustc_hir::attrs::InlineAttr::Never)
             {

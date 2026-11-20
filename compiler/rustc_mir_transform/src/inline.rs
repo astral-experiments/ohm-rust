@@ -710,6 +710,11 @@ fn check_mir_is_available<'tcx, I: Inliner<'tcx>>(
     }
 
     match callee.def {
+        InstanceKind::Shim(ShimKind::DropGlue(..))
+            if callee.def.is_linked_future(inliner.tcx()) =>
+        {
+            return Err("upstream future drop MIR unavailable");
+        }
         InstanceKind::Item(_) => {
             // If there is no MIR available (either because it was not in metadata or
             // because it has no MIR because it's an extern function), then the inliner

@@ -2854,6 +2854,70 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         record_array!(self.tables.rendered_precise_capturing_args[def_id] <- precise_capturing_args, hcx);
     }
 
+    /// Futures for which consumers can use the producing rlib's object code.
+    ///
+    /// Constructing a future in this crate does not guarantee that its poll
+    /// and drop code was instantiated here. Require an exported pair with the
+    /// same arguments. Keep encoding layouts, witnesses and promoted MIR.
+    fn linked_futures(&self) -> LocalDefIdSet {
+        // Async bodies nested directly in a monomorphic function have fixed
+        // arguments after region erasure. A closure can instead have a
+        // separate by-move body, and const evaluation can need executable MIR.
+        fn is_concrete_future(tcx: TyCtxt<'_>, mut id: DefId) -> bool {
+            while let Some(hir::CoroutineKind::Desugared(
+                hir::CoroutineDesugaring::Async,
+                hir::CoroutineSource::Fn | hir::CoroutineSource::Block,
+            )) = tcx.coroutine_kind(id)
+            {
+                if tcx.codegen_fn_attrs(id).inline.always() {
+                    return false;
+                }
+                id = tcx.parent(id);
+            }
+            matches!(tcx.def_kind(id), DefKind::Fn | DefKind::AssocFn)
+                && !tcx.is_const_fn(id)
+                && !tcx.generics_of(id).requires_monomorphization(tcx)
+                && !tcx.codegen_fn_attrs(id).inline.always()
+        }
+
+        let tcx = self.tcx;
+        let mut linked = LocalDefIdSet::default();
+        if !tcx.sess.opts.unstable_opts.public_api_hash
+            || !tcx.codegen_output_mode(()).0
+            || tcx.sess.opts.incremental.is_none()
+            || tcx.sess.opts.optimize != OptLevel::No
+            || tcx.sess.opts.unstable_opts.always_encode_mir
+            || tcx.sess.instrument_coverage()
+            || tcx.is_compiler_builtins(LOCAL_CRATE)
+            || tcx.is_panic_runtime(LOCAL_CRATE)
+            || find_attr!(tcx, CRATE_DEF_ID, ProfilerRuntime)
+            || tcx.crate_types() != [CrateType::Rlib]
+        {
+            return linked;
+        }
+        let symbols = tcx.exported_generic_symbols(LOCAL_CRATE);
+        let mut drops = FxHashSet::default();
+        for &(symbol, _) in symbols {
+            if let ExportedSymbol::DropGlue(ty) = symbol
+                && let ty::Coroutine(id, args) = *ty.kind()
+                && id.is_local()
+            {
+                drops.insert((id, args));
+            }
+        }
+        for &(symbol, _) in symbols {
+            if let ExportedSymbol::Generic(id, args) = symbol
+                && id.is_local()
+                && drops.contains(&(id, args))
+                && is_concrete_future(tcx, id)
+                && tcx.mir_coroutine_runtime_info(id).is_some_and(|info| !info.has_async_drop)
+            {
+                linked.insert(id.expect_local());
+            }
+        }
+        linked
+    }
+
     fn encode_mir<'h>(&mut self, hcx: &mut impl PublicApiHashState<'h>) {
         if self.is_proc_macro {
             return;
@@ -2864,6 +2928,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         let reachable_set =
             if tcx.codegen_output_mode(()).0 { tcx.reachable_set(()) } else { &empty };
 
+        let linked_futures = self.linked_futures();
         let keys_and_jobs: Vec<_> = tcx
             .mir_keys(())
             .iter()
@@ -2889,7 +2954,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             debug_assert!(encode_const || encode_opt || encode_coroutine);
 
             debug!("EntryBuilder::encode_mir({:?})", def_id);
-            if encode_opt {
+            if encode_opt && !linked_futures.contains(&def_id) {
                 record!(self.tables.optimized_mir[def_id.to_def_id()] <- tcx.optimized_mir(def_id), hcx);
             }
             if encode_opt || encode_coroutine {
