@@ -12,6 +12,16 @@ use rustc_span::{Span, Symbol};
 use super::{BasicBlock, ConstValue, Local, SourceInfo};
 use crate::ty::{self, CoroutineArgsExt, Ty, TyCtxt};
 
+/// Which native work must be repeated when the crate's Rust sources are unchanged.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, StableHash)]
+pub enum RelinkInputs {
+    Tracked,
+    /// The assembly can reuse its object code. A later native link can still resolve new inputs.
+    RecheckLink,
+    /// The assembler or archiver can read files outside the compiler's dependencies.
+    Rebuild,
+}
+
 rustc_index::newtype_index! {
     #[stable_hash]
     #[encodable]
