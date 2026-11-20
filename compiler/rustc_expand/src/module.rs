@@ -313,5 +313,3 @@ impl ModError<'_> {
         }
     }
 }
-
-pub use crate::parse_cache::{MODULE_CACHE, ModuleCacheOp};

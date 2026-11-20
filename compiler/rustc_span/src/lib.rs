@@ -203,11 +203,89 @@ scoped_tls::scoped_thread_local!(static SESSION_GLOBALS: SessionGlobals);
 #[derive(Default)]
 pub struct MetavarSpansMap(FreezeLock<UnordMap<Span, (Span, bool)>>);
 
+// When capturing a syntax snapshot, keep the original mapping on every
+// accessed key, whether a new mapping was installed, and whether the final
+// mapping was read. Read mappings contribute to the crate hash.
+#[derive(Clone, Copy, Encodable, Decodable)]
+pub enum MetavarAccess {
+    Missing,
+    Existing(Span, bool),
+    Inserted(Span, bool),
+}
+
+type MetavarLog = rustc_data_structures::fx::FxIndexMap<Span, MetavarAccess>;
+
+thread_local! {
+    static METAVAR_LOG: std::cell::RefCell<Option<MetavarLog>> = const { std::cell::RefCell::new(None) };
+}
+
+#[inline]
+fn record_metavar(f: impl FnOnce(&mut MetavarLog)) {
+    METAVAR_LOG.with_borrow_mut(|slot| {
+        if let Some(log) = slot {
+            f(log)
+        }
+    });
+}
+
 impl MetavarSpansMap {
+    /// Capture all accesses during matching, transcription and parsing.
+    pub fn capture<T>(f: impl FnOnce() -> T) -> (T, Option<MetavarLog>) {
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                METAVAR_LOG.take();
+            }
+        }
+        let _reset = Reset;
+        METAVAR_LOG.replace(Some(MetavarLog::default()));
+        let result = f();
+        (result, METAVAR_LOG.take())
+    }
+
+    pub fn discard_capture() {
+        METAVAR_LOG.take();
+    }
+
+    /// Validate the whole pre-state before replaying any writes.
+    pub fn replay(&self, log: &[(Span, MetavarAccess)]) -> bool {
+        let mut spans = self.0.write();
+        for &(span, access) in log {
+            let before = match access {
+                MetavarAccess::Missing | MetavarAccess::Inserted(..) => None,
+                MetavarAccess::Existing(value, _) => Some(value),
+            };
+            if spans.get(&span).map(|v| v.0) != before {
+                return false;
+            }
+        }
+        for &(span, access) in log {
+            match access {
+                MetavarAccess::Inserted(value, read) => {
+                    spans.insert(span, (value, read));
+                }
+                MetavarAccess::Existing(_, true) => spans.get_mut(&span).unwrap().1 = true,
+                _ => {}
+            }
+        }
+        true
+    }
+
     pub fn insert(&self, span: Span, var_span: Span) -> bool {
         match self.0.write().try_insert(span, (var_span, false)) {
-            Ok(_) => true,
-            Err(entry) => entry.entry.get().0 == var_span,
+            Ok(_) => {
+                record_metavar(|log| {
+                    log.insert(span, MetavarAccess::Inserted(var_span, false));
+                });
+                true
+            }
+            Err(entry) => {
+                let found = entry.entry.get().0;
+                record_metavar(|log| {
+                    log.entry(span).or_insert(MetavarAccess::Existing(found, false));
+                });
+                found == var_span
+            }
         }
     }
 
@@ -216,8 +294,19 @@ impl MetavarSpansMap {
         if let Some(mut mspans) = self.0.try_write() {
             if let Some((var_span, read)) = mspans.get_mut(&span) {
                 *read = true;
+                record_metavar(|log| {
+                    match log.entry(span).or_insert(MetavarAccess::Existing(*var_span, true)) {
+                        MetavarAccess::Inserted(_, read) | MetavarAccess::Existing(_, read) => {
+                            *read = true
+                        }
+                        MetavarAccess::Missing => unreachable!(),
+                    }
+                });
                 Some(*var_span)
             } else {
+                record_metavar(|log| {
+                    log.entry(span).or_insert(MetavarAccess::Missing);
+                });
                 None
             }
         } else {
@@ -1420,6 +1509,12 @@ rustc_index::newtype_index! {
 /// This trait is used to allow encoder specific encodings of certain types.
 /// It is similar to rustc_type_ir's TyEncoder.
 pub trait SpanEncoder: Encoder + Sized {
+    /// An encoder with a size limit can stop descending into shared subtrees.
+    #[inline]
+    fn encode_token_stream(&mut self, encode: impl FnOnce(&mut Self)) {
+        encode(self);
+    }
+
     /// Called before materializing a lazy attribute token stream. An
     /// encoder abandoning its result can skip this work by returning false.
     fn should_encode_attr_tokens(&mut self) -> bool {

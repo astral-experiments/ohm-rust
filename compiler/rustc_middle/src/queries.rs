@@ -1285,6 +1285,14 @@ rustc_queries! {
         desc { "loading parsed syntax for {:?}", key }
     }
 
+    /// Parser output and session effects of one imported declarative macro.
+    query ohm_macro_syntax(key: (StableSourceFileId, CrateNum)) -> &'tcx [u8] {
+        cache_on_disk
+        no_force
+        no_hash
+        desc { "loading expanded syntax for {:?}", key }
+    }
+
     /// Performs lint checking for the module.
     query lint_mod(key: LocalModId) {
         desc { "linting {}", describe_as_module(key, tcx) }
