@@ -2075,6 +2075,12 @@ rustc_queries! {
         desc { "collecting available upstream monomorphizations" }
     }
 
+    /// A contiguous slice of the upstream provider table cached across incremental builds.
+    query upstream_monomorphization_page(page: UpstreamMonoBucket) -> &'tcx [UpstreamMono<'tcx>] {
+        cache_on_disk
+        desc { "loading upstream monomorphization page {:?}", page }
+    }
+
     /// Returns every entry in a bucket. The caller compares exact instance identities.
     query upstream_monomorphizations_in(bucket: UpstreamMonoBucket) -> &'tcx [UpstreamMono<'tcx>] {
         desc { "looking up upstream monomorphizations in bucket {:?}", bucket }
