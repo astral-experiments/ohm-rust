@@ -94,10 +94,10 @@ pub(super) fn check_fn<'a, 'tcx>(
         let origin = ty_span.map_or(PatOrigin::Unspecified, PatOrigin::Type);
         fcx.check_pat_top(param.pat, param_ty, origin, None);
         if param.pat.is_never_pattern() {
-            fcx.function_diverges_because_of_empty_arguments.set(Diverges::Always {
-                span: param.pat.span,
-                custom_note: Some("any code following a never pattern is unreachable"),
-            });
+            fcx.function_diverges_because_of_empty_arguments.set(Diverges::always_with_note(
+                param.pat.span,
+                "any code following a never pattern is unreachable",
+            ));
         }
 
         // Check that argument is Sized.
