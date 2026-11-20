@@ -713,16 +713,33 @@ pub(in crate::rmeta) fn provide(providers: &mut Providers) {
             tcx.untracked().freeze_cstore();
             tcx.arena.alloc_from_iter(CStore::from_tcx(tcx).iter_crate_data().map(|(cnum, _)| cnum))
         },
-        upstream_trait_impls_key_hash: |tcx, ()| {
+        upstream_trait_impls_inventory: |tcx, ()| {
             let crates = tcx.crates(());
+            // `crates` enumerates the occupied slots in ascending order.
+            let slots = crates.last().map_or(0, |cnum| cnum.as_usize() + 1);
+            let hashes = tcx
+                .arena
+                .alloc_index_slice_from_iter(std::iter::repeat_n(Fingerprint::ZERO, slots));
             let cstore = CStore::from_tcx(tcx);
-            let mut hasher = StableHasher::new();
-            crates.len().hash(&mut hasher);
             for &cnum in crates {
                 let cdata = cstore.get_crate_data(cnum);
+                let mut hasher = StableHasher::new();
                 cdata.root.stable_crate_id.hash(&mut hasher);
                 cdata.trait_impls_key_hash(&cstore).hash(&mut hasher);
+                hashes[cnum] = hasher.finish();
             }
+            hashes
+        },
+        upstream_trait_impls_key_hash: |tcx, trait_id| {
+            let hashes = tcx.upstream_trait_impls_inventory(());
+            let trait_hash = tcx.def_path_hash(trait_id);
+            let store = CStore::from_tcx(tcx);
+            let directory =
+                store.trait_impls.get_or_init(|| super::TraitImplDirectory::new(&store));
+            let mut hasher = StableHasher::new();
+            directory.visit(trait_hash, None, |post| {
+                hashes[post.supplier].hash(&mut hasher);
+            });
             hasher.finish()
         },
         used_crates: |tcx, ()| {

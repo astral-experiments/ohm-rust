@@ -434,9 +434,10 @@ fn for_each_trait_impl(
     let local_receiver = bucket.flatten().and_then(|ty| ty.def()).is_some_and(DefId::is_local);
     if !trait_id.is_local() && !local_receiver {
         let trait_hash = tcx.def_path_hash(trait_id);
-        let _ = tcx.crates(());
         if tcx.dep_graph.is_fully_enabled() {
-            tcx.ensure_ok().upstream_trait_impls_key_hash(());
+            tcx.ensure_ok().upstream_trait_impls_key_hash(trait_id);
+        } else {
+            let _ = tcx.crates(());
         }
         let receiver = bucket
             .filter(|_| tcx.dep_graph.has_previous_nodes())

@@ -2215,10 +2215,15 @@ rustc_queries! {
         separate_provide_extern
     }
 
-    /// Tracks the trait-impl directories consulted by a lookup across all upstream crates.
-    query upstream_trait_impls_key_hash(_: ()) -> Fingerprint {
+    /// Per-crate directory fingerprints in the current session's crate-number slots.
+    query upstream_trait_impls_inventory(_: ()) -> &'tcx IndexSlice<CrateNum, Fingerprint> {
         eval_always
         desc { "fingerprinting upstream trait-impl directories" }
+    }
+
+    /// Tracks every supplier of this trait, including suppliers that exclude a requested receiver.
+    query upstream_trait_impls_key_hash(trait_id: DefId) -> Fingerprint {
+        desc { "fingerprinting upstream impl suppliers for `{}`", tcx.def_path_str(trait_id) }
     }
 
     /// Given a crate and a trait, look up all impls of that trait in the crate.
