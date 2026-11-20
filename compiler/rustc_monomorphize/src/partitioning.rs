@@ -227,9 +227,11 @@ where
 {
     let mut codegen_units = UnordMap::default();
     let is_incremental_build = cx.tcx.sess.opts.incremental.is_some();
+    // With LLVM optimizations enabled, spreading instances across their callers
+    // can duplicate helpers across codegen units and increase rebuild work.
     let place_by_user = is_incremental_build
         && cx.tcx.sess.opts.unstable_opts.ohm_caller_local_cgus
-        && matches!(cx.tcx.sess.opts.optimize, OptLevel::No | OptLevel::Less);
+        && cx.tcx.sess.opts.optimize == OptLevel::No;
     let mut internalization_candidates = UnordSet::default();
 
     // Determine if monomorphizations instantiated in this crate will be made
