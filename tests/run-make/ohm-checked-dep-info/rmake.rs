@@ -134,6 +134,11 @@ fn main() {
             "compact_copy",
             "syscall",
             "syscall_file",
+            "atomic_loop",
+            "atomic_feature",
+            "atomic_file",
+            "atomic_other_extension",
+            "atomic_literal",
             "compact_constant",
             "compact_modifier",
             "compact_options",
@@ -161,6 +166,8 @@ fn main() {
                     | "compact_input"
                     | "compact_copy"
                     | "syscall"
+                    | "atomic_loop"
+                    | "atomic_feature"
             );
             assert_eq!(rules.contains(MARKER), !accepted, "{cfg}: {rules}");
             assert_eq!(
