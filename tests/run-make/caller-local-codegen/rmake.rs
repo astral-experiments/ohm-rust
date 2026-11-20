@@ -3,10 +3,11 @@
 
 use run_make_support::{rfs, run, rustc};
 
-fn compile(incremental: Option<&str>, caller_local: bool) -> String {
+fn compile(incremental: Option<&str>, caller_local: bool, opt_level: &str) -> String {
     let mut command = rustc();
     command
         .input("main.rs")
+        .opt_level(opt_level)
         .codegen_units(32)
         .arg("-Zhuman-readable-cgu-names")
         .arg("-Zprint-mono-items")
@@ -50,7 +51,7 @@ fn assert_fallback_placement(output: &str, fragments: &[&str]) {
 fn main() {
     rustc().input("upstream.rs").arg("-Zshare-generics=yes").arg("-Zpublic-api-hash").run();
 
-    let ordinary = compile(Some("ordinary"), false);
+    let ordinary = compile(Some("ordinary"), false, "0");
     assert_placement(&ordinary, "upstream::apply::<", "upstream.", ".volatile[");
     assert_placement(&ordinary, "upstream::invoke::<", "upstream.", ".volatile[");
     assert_placement(&ordinary, "upstream::identity::<u64>", "upstream.", ".volatile[");
@@ -58,7 +59,7 @@ fn main() {
     assert_fallback_placement(&ordinary, &["drop_glue::<upstream::Wrapper<"]);
     run("main").assert_stdout_contains("dropped:false:true:7:11");
 
-    let caller_local = compile(Some("caller-local"), true);
+    let caller_local = compile(Some("caller-local"), true, "0");
     for function in ["upstream::apply::<", "upstream::invoke::<"] {
         assert_placement(&caller_local, function, "main.", "-first.volatile[");
         assert_placement(&caller_local, function, "main.", "-second.volatile[");
@@ -70,8 +71,14 @@ fn main() {
     }
     run("main").assert_stdout_contains("dropped:false:true:7:11");
 
+    let optimized = compile(Some("optimized"), true, "1");
+    assert_placement(&optimized, "upstream::identity::<u64>", "upstream.", ".volatile[");
+    assert_placement(&optimized, "upstream::apply::<", "main.", "-first.volatile[");
+    assert_placement(&optimized, "upstream::apply::<", "main.", "-second.volatile[");
+    run("main").assert_stdout_contains("dropped:false:true:7:11");
+
     // The flag is inert without incremental compilation.
-    let nonincremental = compile(None, true);
+    let nonincremental = compile(None, true, "0");
     assert!(
         !nonincremental.lines().any(|line| {
             line.contains("upstream::apply::<") && line.contains("-first.volatile[")
@@ -84,19 +91,19 @@ fn main() {
     assert_ne!(original, changed);
     rfs::write("main.rs", changed);
 
-    let rebuilt = compile(Some("caller-local"), true);
+    let rebuilt = compile(Some("caller-local"), true, "0");
     assert_placement(&rebuilt, "upstream::apply::<", "main.", "-first.volatile[");
     run("main").assert_stdout_contains("dropped:true:true:7:11");
 
     // Add a second user in another module, then remove it in the same cache.
     let shared = original.replace("number >= 3", "upstream::identity(number as u64) == 2");
     rfs::write("main.rs", shared);
-    let rebuilt = compile(Some("caller-local"), true);
+    let rebuilt = compile(Some("caller-local"), true, "0");
     assert_placement(&rebuilt, "upstream::identity::<u64>", "upstream.", ".volatile[");
     run("main").assert_stdout_contains("dropped:true:true:7:11");
 
     rfs::write("main.rs", original);
-    let rebuilt = compile(Some("caller-local"), true);
+    let rebuilt = compile(Some("caller-local"), true, "0");
     assert_placement(&rebuilt, "upstream::identity::<u64>", "main.", ".volatile[");
     run("main").assert_stdout_contains("dropped:false:true:7:11");
 }

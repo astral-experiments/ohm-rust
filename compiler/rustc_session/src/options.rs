@@ -2757,7 +2757,7 @@ options! {
         `=Enable`
         Currently the only option available"),
     ohm_caller_local_cgus: bool = (false, parse_bool, [TRACKED],
-        "group incremental generic instances by local callable arguments or by sole users at opt levels 0 and 1"),
+        "group incremental generic instances by local callable arguments or by sole users at opt level 0"),
     ohm_cgu_split_limit: Option<NonZero<usize>> = (None, parse_opt_number, [TRACKED],
         "maximum shards per oversized incremental codegen unit at opt-level 0 or 1; 1 disables splitting"),
     ohm_check_relink_inputs: bool = (false, parse_bool, [TRACKED],
