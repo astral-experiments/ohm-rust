@@ -164,6 +164,8 @@ pub struct ResolverGlobalCtxt {
     /// Item with a given `LocalDefId` was defined during macro expansion with ID `ExpnId`.
     pub expn_that_defined: UnordMap<LocalDefId, ExpnId>,
     pub effective_visibilities: EffectiveVisibilities,
+    /// Definition-site lookups can reach private imports when a macro expands downstream.
+    pub has_opaque_macros: bool,
     // FIXME: This table contains ADTs reachable from macro 2.0.
     // Currently, reachability of a definition from a macro is determined by nominal visibility
     // (see `compute_effective_visibilities`). This is incorrect and leads to the necessity

@@ -2013,6 +2013,10 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
             expn_that_defined,
             visibilities_for_hashing: self.visibilities_for_hashing,
             effective_visibilities,
+            #[allow(rustc::potential_query_instability, reason = "existence is order independent")]
+            has_opaque_macros: self.local_macro_map.values().any(|ext| {
+                matches!(&ext.kind, SyntaxExtensionKind::MacroRules(expander) if expander.is_opaque())
+            }),
             macro_reachable_adts: self.macro_reachable_adts,
             extern_crate_map,
             module_children: self.module_children,
