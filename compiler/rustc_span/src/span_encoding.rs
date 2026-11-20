@@ -281,6 +281,24 @@ impl Span {
         }
     }
 
+    /// Combine two unparented inline spans directly when the result has the same encoding.
+    #[inline]
+    pub(super) fn to_in_same_inline_context(self, end: Self) -> Option<Self> {
+        if (self.len_with_tag_or_marker | end.len_with_tag_or_marker) & PARENT_TAG != 0
+            || self.ctxt_or_parent_or_marker != end.ctxt_or_parent_or_marker
+        {
+            return None;
+        }
+
+        let a = InlineCtxt::from_span(self).data();
+        let b = InlineCtxt::from_span(end).data();
+        let lo = a.lo.min(b.lo);
+        let hi = a.hi.max(b.hi);
+        let len = hi.0.checked_sub(lo.0)?;
+        (len <= MAX_LEN && a.ctxt.as_u32() <= MAX_CTXT)
+            .then(|| InlineCtxt::span(lo.0, len as u16, self.ctxt_or_parent_or_marker))
+    }
+
     #[inline]
     pub fn data(self) -> SpanData {
         let data = self.data_untracked();
