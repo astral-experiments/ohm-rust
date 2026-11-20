@@ -15,7 +15,6 @@ use rustc_hir::def_id::DefId;
 use rustc_index::{Idx as _, IndexVec};
 use rustc_middle::mir::{CoroutineCodegenLayout, CoroutineDebugInfo};
 use rustc_middle::query::Providers;
-use rustc_middle::traits::ObligationCause;
 use rustc_middle::ty::layout::{
     FloatExt, HasTyCtxt, IntegerExt, LayoutCx, LayoutError, LayoutOf, SimdLayoutError, TyAndLayout,
 };
@@ -25,7 +24,7 @@ use rustc_middle::ty::{
     TypeVisitableExt, Unnormalized,
 };
 use rustc_session::{DataTypeKind, FieldInfo, FieldKind, SizeKind, VariantInfo};
-use rustc_span::{Symbol, bug, sym};
+use rustc_span::{DUMMY_SP, Symbol, bug, sym};
 use rustc_structures::Limit;
 use tracing::{debug, instrument};
 
@@ -489,7 +488,7 @@ fn layout_of_uncached<'tcx>(
                             cx.typing_env,
                             Unnormalized::new_wip(tcx.struct_tail_raw(
                                 pointee,
-                                &ObligationCause::dummy(),
+                                || DUMMY_SP,
                                 |ty| ty.skip_norm_wip(),
                                 || {},
                             )),

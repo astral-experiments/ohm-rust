@@ -25,7 +25,6 @@ use ty::util::IntTypeExt;
 
 use super::{AdtFlags, GenericParamDefKind};
 use crate::infer::canonical::Canonical;
-use crate::traits::ObligationCause;
 use crate::ty::InferTy::*;
 use crate::ty::consts::ConstExt;
 use crate::ty::{
@@ -1791,7 +1790,7 @@ impl<'tcx> Ty<'tcx> {
         tcx: TyCtxt<'tcx>,
         normalize: impl FnMut(Unnormalized<'tcx, Ty<'tcx>>) -> Ty<'tcx>,
     ) -> Result<Ty<'tcx>, Ty<'tcx>> {
-        let tail = tcx.struct_tail_raw(self, &ObligationCause::dummy(), normalize, || {});
+        let tail = tcx.struct_tail_raw(self, || DUMMY_SP, normalize, || {});
         match tail.kind() {
             // Sized types
             ty::Infer(ty::IntVar(_) | ty::FloatVar(_))
