@@ -1415,6 +1415,12 @@ rustc_queries! {
         cache_on_disk
     }
 
+    /// Whether the prepared coroutine may need call-site diagnostics from forced inlining.
+    query coroutine_has_forced_inline_calls(key: LocalDefId) -> bool {
+        desc { "checking for forced inlining in coroutine `{}`", tcx.def_path_str(key) }
+        cache_on_disk
+    }
+
     /// Obtain all the calls into other local functions
     query mir_inliner_callees(key: ty::InstanceKind<'tcx>) -> &'tcx [(DefId, GenericArgsRef<'tcx>)] {
         desc {
