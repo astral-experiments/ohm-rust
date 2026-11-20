@@ -103,8 +103,8 @@
 //!    query their metadata to construct native symbols. Exported generic symbols remain in the
 //!    public hash because downstream crates can reuse their monomorphizations.
 //!  - `def_path_hash_map` is unhashed (see above).
-//!  - `traits` and `stripped_cfg_items` are only read when a compilation session ends in an error,
-//!    so they are currently dropped from the rmeta when the option is enabled.
+//!  - `stripped_cfg_items` is only read when a compilation session ends in an error,
+//!    so it is currently dropped from the rmeta when the option is enabled.
 //!  - Proc-macro crates are not graph-hashed at all; their full crate hash is used as the public
 //!    hash.
 //!
@@ -539,6 +539,10 @@ pub(crate) struct HashableCrateRoot {
     // reachability graph nodes.
     pub(crate) interpret_alloc_index: GraphHashed<LazyArray<u64>>,
 
+    // Rustdoc and diagnostics discover traits through this list. Only reachable traits
+    // belong here under public API hashing, since each entry is a root of the graph.
+    pub(crate) traits: Hashed<LazyArray<DefIndex>>,
+
     // this is exposed as a full query with `trait_impls_of_crate`. Which is only used in
     // rustc_public. Otherwise the `implementations_of_trait` is the only other consumer of this
     // field. `implementations_of_trait` works as a map. You need to provide a trait DefId to get
@@ -579,14 +583,6 @@ pub(crate) struct HashableCrateRoot {
     // FIXME: this is currently removed from the metadata when public api hashing is enabled. We
     // should add a safe way to access this when the compilation session errors.
     pub(crate) stripped_cfg_items: Unhashed<LazyArray<StrippedCfgItem<DefIndex>>>,
-
-    // The traits defined in this crate.
-    // According to the docs, and some personal digging, this is used by rustdoc and error reporting
-    // error reporting: this should not be included in the public hash, as it is only read when the
-    // compiler session finishes with an error. Just like stripped_cfg_items.
-    // FIXME: this is currently removed from the metadata when public api hashing is enabled. We
-    // should ensure that this is not misused before readding it.
-    pub(crate) traits: Unhashed<LazyArray<DefIndex>>,
 }
 
 pub(super) fn crate_hashes<'tcx, 'h>(
@@ -686,7 +682,7 @@ impl HashableCrateRoot {
             fake_doc_items: self.fake_doc_items.value,
             native_libraries: self.native_libraries.value,
             foreign_modules: self.foreign_modules.value,
-            traits: self.traits.0,
+            traits: self.traits.value,
             impls: self.impls.0,
             incoherent_impls: self.incoherent_impls.value,
             interpret_alloc_index: self.interpret_alloc_index.0,
