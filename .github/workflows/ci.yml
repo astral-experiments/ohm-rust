@@ -298,6 +298,7 @@ jobs:
             tests/run-make/trait-impl-directory
             tests/run-make/ohm-shared-stages
             tests/run-make/ohm-thinlto-cache
+            tests/run-make/ohm-observer-objects
             tests/run-make/caller-local-codegen
             tests/run-make/unused-externs-transparent
             tests/run-make/reset-codegen-1
