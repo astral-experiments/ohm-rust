@@ -170,13 +170,14 @@ impl FileLoader for RealFileLoader {
 
 #[derive(Default)]
 struct SourceMapFiles {
+    read_text_from_binary_placeholder: bool,
     source_files: monotonic::MonotonicVec<Arc<SourceFile>>,
     stable_id_to_source_file: UnhashMap<StableSourceFileId, Arc<SourceFile>>,
 }
 
 impl std::fmt::Debug for SourceMapFiles {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let SourceMapFiles { source_files, stable_id_to_source_file: _ } = self;
+        let SourceMapFiles { source_files, .. } = self;
 
         f.debug_list()
             .entries(
@@ -295,9 +296,13 @@ impl SourceMap {
         // loaded as a binary via `include_bytes!` and as proper `SourceFile`
         // via `mod`, so we try to use real file contents and not just an
         // empty string.
-        let text = std::str::from_utf8(&bytes).unwrap_or("").to_string();
         let filename = FileName::Real(self.path_mapping.to_real_filename(&self.working_dir, path));
-        let file = self.new_source_file(filename, text);
+        let file = match std::str::from_utf8(&bytes) {
+            Ok(text) => self.new_source_file(filename, text.to_owned()),
+            // This empty text exists only to give the binary input a span. A checksum
+            // of the empty string would describe neither the input nor a real text read.
+            Err(_) => self.new_source_file_with_checksum(filename, String::new(), None),
+        };
         Ok((
             bytes,
             Span::new(
@@ -348,19 +353,37 @@ impl SourceMap {
     /// If a file already exists in the `SourceMap` with the same ID, that file is returned
     /// unmodified.
     pub fn new_source_file(&self, filename: FileName, src: String) -> Arc<SourceFile> {
-        self.try_new_source_file(filename, src).unwrap_or_else(|OffsetOverflowError| {
-            eprintln!(
-                "fatal error: rustc does not support text files larger than {} bytes",
-                SourceFile::MAX_FILE_SIZE
-            );
-            crate::fatal_error::FatalError.raise()
-        })
+        self.new_source_file_with_checksum(filename, src, self.checksum_hash_kind)
+    }
+
+    /// Distinguishes source text from the empty string used for a non-UTF-8 file's span.
+    fn new_source_file_with_checksum(
+        &self,
+        filename: FileName,
+        src: String,
+        checksum_kind: Option<SourceFileHashAlgorithm>,
+    ) -> Arc<SourceFile> {
+        self.try_new_source_file(filename, src, checksum_kind).unwrap_or_else(
+            |OffsetOverflowError| {
+                eprintln!(
+                    "fatal error: rustc does not support text files larger than {} bytes",
+                    SourceFile::MAX_FILE_SIZE
+                );
+                crate::fatal_error::FatalError.raise()
+            },
+        )
+    }
+
+    /// Reports when a text load reused the placeholder for an earlier non-UTF-8 input.
+    pub fn read_text_from_binary_placeholder(&self) -> bool {
+        self.files.borrow().read_text_from_binary_placeholder
     }
 
     fn try_new_source_file(
         &self,
         filename: FileName,
         src: String,
+        checksum_kind: Option<SourceFileHashAlgorithm>,
     ) -> Result<Arc<SourceFile>, OffsetOverflowError> {
         // Note that filename may not be a valid path, eg it may be `<anon>` etc,
         // but this is okay because the directory determined by `path.pop()` will
@@ -368,10 +391,14 @@ impl SourceMap {
 
         let stable_id = StableSourceFileId::from_filename_in_current_crate(&filename);
         match self.source_file_by_stable_id(stable_id) {
-            Some(lrc_sf) => Ok(lrc_sf),
+            Some(file) => {
+                if checksum_kind.is_some() && file.checksum_hash.is_none() {
+                    self.files.borrow_mut().read_text_from_binary_placeholder = true;
+                }
+                Ok(file)
+            }
             None => {
-                let source_file =
-                    SourceFile::new(filename, src, self.hash_kind, self.checksum_hash_kind)?;
+                let source_file = SourceFile::new(filename, src, self.hash_kind, checksum_kind)?;
 
                 // Let's make sure the file_id we generated above actually matches
                 // the ID we generate for the SourceFile we just created.
