@@ -3,7 +3,9 @@ use std::mem::size_of;
 use std::num::NonZero;
 
 use decoder::LazyDecoder;
-pub(crate) use decoder::{CrateMetadata, CrateNumMap, MetadataBlob, TargetModifiers};
+pub(crate) use decoder::{
+    CrateMetadata, CrateNumMap, MetadataBlob, TargetModifiers, TraitImplDirectory,
+};
 use def_path_hash_map::DefPathHashMapRef;
 use encoder::EncodeContext;
 pub(crate) use encoder::early::prepare as prepare_early_metadata;
@@ -60,8 +62,9 @@ mod encoder;
 mod parameterized;
 mod table;
 
-/// Distinguishes metadata whose public hashes include the definitions of native exports.
-const OHM_METADATA_EPOCH: u32 = 3;
+/// The previous epoch has the same root layout and the original trait-directory variants.
+const PREVIOUS_OHM_METADATA_EPOCH: u32 = 3;
+const OHM_METADATA_EPOCH: u32 = 4;
 
 pub(crate) fn rustc_version(cfg_version: &'static str) -> String {
     format!("rustc {cfg_version} (Ohm metadata {OHM_METADATA_EPOCH})")
@@ -422,22 +425,20 @@ struct TraitImpls<DefIndexRepr> {
     impls: LazyArray<(DefIndex, Option<SimplifiedType>)>,
 }
 
+// Every nominal receiver in this group names a definition in the producing crate.
+const LOCAL_NOMINAL_RECEIVERS: u32 = 1 << 31;
+
+#[derive(MetadataEncodable, LazyDecodable)]
+struct TraitImplsWithReceiverKinds {
+    group: TraitImpls<Hash64>,
+    receiver_kinds: u32,
+}
+
 #[derive(MetadataEncodable, LazyDecodable)]
 enum EncodedTraitImpls {
     DefIndex(LazyArray<TraitImpls<DefIndex>>),
     DefPathHash(LazyArray<TraitImpls<Hash64>>),
-}
-
-impl From<LazyArray<TraitImpls<DefIndex>>> for EncodedTraitImpls {
-    fn from(value: LazyArray<TraitImpls<DefIndex>>) -> Self {
-        Self::DefIndex(value)
-    }
-}
-
-impl From<LazyArray<TraitImpls<Hash64>>> for EncodedTraitImpls {
-    fn from(value: LazyArray<TraitImpls<Hash64>>) -> Self {
-        Self::DefPathHash(value)
-    }
+    ReceiverShapes { groups: LazyArray<TraitImplsWithReceiverKinds>, fingerprint: Fingerprint },
 }
 
 #[derive(MetadataEncodable, LazyDecodable)]
