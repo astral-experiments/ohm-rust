@@ -1002,25 +1002,39 @@ fn characteristic_def_id_of_mono_item<'tcx>(
                 && tcx.sess.opts.incremental.is_some()
                 && !def_id.is_local()
                 && mono_item.is_generic_fn()
-                && let Some(local_def_id) =
-                    instance.args.iter().flat_map(|argument| argument.walk()).find_map(|argument| {
-                        let ty::GenericArgKind::Type(ty) = argument.kind() else {
-                            return None;
-                        };
-                        let local_def_id = match *ty.kind() {
-                            ty::FnDef(def_id, _)
-                            | ty::Closure(def_id, _)
-                            | ty::CoroutineClosure(def_id, _)
-                            | ty::Coroutine(def_id, _)
-                            | ty::CoroutineWitness(def_id, _) => def_id,
-                            _ => return None,
-                        };
-                        local_def_id.is_local().then_some(local_def_id)
-                    })
             {
-                // Specializations containing a local callable change with that callable, not
-                // with unrelated instantiations from the upstream generic's defining module.
-                return Some(local_def_id);
+                let mut private_wrapper = None;
+                for argument in instance.args.iter().flat_map(|argument| argument.walk()) {
+                    let ty::GenericArgKind::Type(ty) = argument.kind() else { continue };
+                    match *ty.kind() {
+                        ty::FnDef(id, _)
+                        | ty::Closure(id, _)
+                        | ty::CoroutineClosure(id, _)
+                        | ty::Coroutine(id, _)
+                        | ty::CoroutineWitness(id, _)
+                            if id.is_local() =>
+                        {
+                            return Some(id);
+                        }
+                        ty::Adt(adt, _) if private_wrapper.is_none() => {
+                            if let Some(id) = adt.did().as_local()
+                                && adt.is_struct()
+                                && adt.non_enum_variant().fields.len() == 1
+                                && let ty::Visibility::Restricted(module) = tcx.local_visibility(id)
+                                && !module.is_top_level_module()
+                                && module == tcx.parent_module_from_def_id(id)
+                            {
+                                private_wrapper = Some(adt.did());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                // A local callable determines placement first. Specializations involving a
+                // private wrapper tend to be added or removed by edits in its defining module.
+                if private_wrapper.is_some() {
+                    return private_wrapper;
+                }
             }
 
             // If this is a method, we want to put it into the same module as
