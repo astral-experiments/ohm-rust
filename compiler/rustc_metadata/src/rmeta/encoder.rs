@@ -2259,8 +2259,13 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
     ) -> impl Iterator<Item = &'tcx ModChild> + use<'tcx, M> + Clone {
         let effective_visibilities = self.tcx.effective_visibilities(());
         let remove_private_children = self.remove_private_children();
+        // A public binding in an exported module can be used by its own name,
+        // even when an intermediate import (e.g. an extern crate) is private.
+        let exported_module = effective_visibilities.is_exported(def_id);
         let is_public = move |child: &&ModChild| {
-            is_public_mod_child(remove_private_children, effective_visibilities, child)
+            !remove_private_children
+                || (exported_module && child.vis.is_public())
+                || is_reachable_mod_child(effective_visibilities, child)
         };
         let children = self.tcx.module_children_local(def_id);
         if remove_private_children {
@@ -4507,14 +4512,10 @@ fn dylib_dependency_formats(
 }
 
 #[inline(always)]
-fn is_public_mod_child(
-    remove_private_children: bool,
+fn is_reachable_mod_child(
     effective_visibilities: &EffectiveVisibilities,
     child: &ModChild,
 ) -> bool {
-    if !remove_private_children {
-        return true;
-    }
     if child.reexport_chain.is_empty() {
         effective_visibilities.is_reachable(child.res.def_id().expect_local())
     } else {
