@@ -59,7 +59,7 @@ fn main() {
             let line =
                 source.lines().position(|line| line.contains("pub fn auditable")).unwrap() + 1;
             let warm = consumer("diagnostic", "bad-incr").cfg("bad_filter").run_fail();
-            warm.assert_stderr_contains("error[E0271]");
+            warm.assert_stderr_contains("error[E0631]");
             warm.assert_stderr_contains(format!("supplier.rs:{line}:"));
             let cold =
                 consumer("diagnostic", &format!("cold-{revision}")).cfg("bad_filter").run_fail();
