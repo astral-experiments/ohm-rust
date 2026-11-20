@@ -1474,9 +1474,6 @@ pub(crate) fn start_codegen<'tcx>(
 
     info!("Pre-codegen\n{:?}", tcx.debug_stats());
 
-    rustc_monomorphize::prepare_incremental_monomorphization(tcx);
-    tcx.dcx().abort_if_errors();
-
     let metadata = early_metadata.unwrap_or_else(|| {
         rustc_metadata::fs::encode_and_write_metadata(tcx).unwrap_or_else(|guar| guar.raise_fatal())
     });
