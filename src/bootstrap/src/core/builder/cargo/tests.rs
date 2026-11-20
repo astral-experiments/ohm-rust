@@ -1,11 +1,11 @@
 use super::{Builder, Cargo, Compiler, Kind, Mode, PathBuf, PgoConfig, SourceType, apply_pgo};
-use crate::Build;
+use crate::core::session::Session;
 use crate::utils::tests::TestCtx;
 
 fn profile_flags(stage: u32, profile: PgoConfig) -> Vec<String> {
     let context = TestCtx::new();
-    let build = Build::new(context.config("check").create_config());
-    let builder = Builder::new(&build);
+    let sess = Session::new(context.config("check").create_config());
+    let builder = Builder::new(&sess);
     let compiler = Compiler::new(stage, builder.config.host_target);
     let mut cargo = Cargo::new_for_mir_opt_tests(
         &builder,
