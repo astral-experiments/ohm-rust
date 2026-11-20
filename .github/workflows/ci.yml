@@ -65,10 +65,10 @@ jobs:
       - name: Checkout the standard-library backtrace submodule
         run: git submodule update --init --depth 1 library/backtrace
 
-      - name: Check compiler crates
+      - name: Check compiler crates and Clippy
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off --warnings deny check compiler
+          --set rust.lto=off --warnings deny check compiler src/tools/clippy
 
       - name: Install Ninja for Linux distribution tests
         if: runner.os == 'Linux'
