@@ -138,7 +138,7 @@ impl<'tcx> ObligationCause<'tcx> {
         match self.code() {
             ObligationCauseCode::MatchImpl(cause, _) => cause.to_constraint_category(),
             ObligationCauseCode::AscribeUserTypeProvePredicate(predicate_span) => {
-                ConstraintCategory::Predicate(*predicate_span)
+                ConstraintCategory::Predicate(ty::ClauseLocation::Span(*predicate_span))
             }
             _ => ConstraintCategory::BoringNoLocation,
         }
@@ -195,7 +195,7 @@ pub enum ObligationCauseCode<'tcx> {
 
     /// Represents a clause that comes from a specific item.
     /// The span corresponds to the clause.
-    WhereClause(DefId, Span),
+    WhereClause(DefId, ty::ClauseLocation),
 
     /// Represents a bound for an opaque we are checking the well-formedness of.
     /// The def-id corresponds to a specific definition site that we found the
@@ -206,7 +206,7 @@ pub enum ObligationCauseCode<'tcx> {
     /// which requires the `where` clause to be proven, and also
     /// identifies the index of the clause in the `clauses_of`
     /// list of the item.
-    WhereClauseInExpr(DefId, Span, HirId, usize),
+    WhereClauseInExpr(DefId, ty::ClauseLocation, HirId, usize),
 
     /// Like `WhereClauseinExpr`, but indexes into the `const_conditions`
     /// rather than the `clauses_of`.
@@ -594,7 +594,7 @@ pub struct ImplDerivedCause<'tcx> {
     pub impl_or_alias_def_id: DefId,
     /// The index of the derived clause in the parent impl's clauses.
     pub impl_def_clause_index: Option<usize>,
-    pub span: Span,
+    pub span: ty::ClauseLocation,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, StableHash, TyEncodable, TyDecodable)]
