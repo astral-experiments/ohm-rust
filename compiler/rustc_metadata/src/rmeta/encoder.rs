@@ -2265,6 +2265,8 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         let is_public = move |child: &&ModChild| {
             !remove_private_children
                 || (exported_module && child.vis.is_public())
+                // `#[macro_use] extern crate` looks up even private macros at the root.
+                || (def_id == CRATE_DEF_ID && child.res.macro_kinds().is_some())
                 || is_reachable_mod_child(effective_visibilities, child)
         };
         let children = self.tcx.module_children_local(def_id);
