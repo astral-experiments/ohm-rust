@@ -128,6 +128,7 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
         ecx: &mut EncodeContext<'_, 'tcx, Self>,
         trait_impls_map: &FxIndexMap<DefId, Vec<(LocalDefId, Option<SimplifiedType>)>>,
         hcx: &mut impl PublicApiHashState<'h>,
+        policy: PrivateImpls,
     ) -> GraphHashed<EncodedTraitImpls> {
         // we must encode extern traits as root nodes, as their DefId-s can be acquired from other
         // crates. However, this is not the case for local traits. Those should can only be accessed
@@ -139,8 +140,6 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
             }
         }
         let tcx = ecx.tcx;
-        let policy =
-            if Self::HASH_PUBLIC_API { private_impl_policy(tcx) } else { PrivateImpls::None };
         // Both the producing slot and stable identity matter when the same input is rebound.
         let slot_and_hash = |id: DefId| (id.krate.as_u32(), tcx.def_path_hash(id));
         let mut shapes = StableHasher::new();
@@ -241,10 +240,10 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum PrivateImpls {
+pub(super) enum PrivateImpls {
     None,
     BuiltinDerives,
-    AllEligible,
+    AllEligible(VisibilityLevel),
 }
 
 /// Selects which private implementation payloads can be reached exclusively through their owner.
@@ -275,20 +274,18 @@ fn private_impl_policy(tcx: TyCtxt<'_>) -> PrivateImpls {
             exported_macros = true;
         }
     }
-    // Privacy marks even a private function's RPIT hidden type as reachable for codegen.
-    // With no other opaque interfaces, the ordinary reachability level suffices for checking.
-    if !exported_macros && items.opaques().all(|id| {
+    // Privacy marks the hidden types of all defined RPITs, async functions and TAITs
+    // reachable through impl Trait. Checks can use the ordinary reachability level
+    // when every opaque is returned by a private function outside a trait.
+    let only_private_rpits = !exported_macros && items.opaques().all(|id| {
         matches!(tcx.hir_node_by_def_id(id).expect_opaque_ty().origin,
             hir::OpaqueTyOrigin::FnReturn { parent, in_trait_or_impl: None }
                 if !visibility.is_public_at_level(parent, VisibilityLevel::ReachableThroughImplTrait))
-    }) {
-        PrivateImpls::AllEligible
-    } else if tcx.codegen_output_mode(()).0 {
-        // Privacy already marks the underlying types of all defined RPITs, async functions
-        // and TAITs as ReachableThroughImplTrait. Require that stronger per-owner test below.
-        PrivateImpls::BuiltinDerives
-    } else {
-        PrivateImpls::None
+    });
+    match (tcx.codegen_output_mode(()).0, only_private_rpits) {
+        (true, false) => PrivateImpls::BuiltinDerives,
+        (false, true) => PrivateImpls::AllEligible(VisibilityLevel::Reachable),
+        _ => PrivateImpls::AllEligible(VisibilityLevel::ReachableThroughImplTrait),
     }
 }
 
@@ -311,11 +308,12 @@ fn private_trait_impl<'tcx>(
     }
     let native = tcx.codegen_output_mode(()).0;
     let visibility = tcx.effective_visibilities(());
-    let visible = |id| {
-        visibility.is_reachable(id)
-            || (native
-                && visibility.is_public_at_level(id, VisibilityLevel::ReachableThroughImplTrait))
+    let level = match policy {
+        PrivateImpls::AllEligible(level) => level,
+        PrivateImpls::BuiltinDerives => VisibilityLevel::ReachableThroughImplTrait,
+        PrivateImpls::None => return None,
     };
+    let visible = |id| visibility.is_public_at_level(id, level);
     let header = tcx.impl_trait_header(id);
     let owner = if let Some(self_id) = self_id.as_local() {
         if visible(id) {
@@ -374,7 +372,11 @@ fn private_from_input<'tcx>(
 
 /// Such a block cannot supply an accessible inherent item. References from exported MIR
 /// still reach exactly the methods it uses and retain their individual metadata hashes.
-fn private_inherent_impl(tcx: TyCtxt<'_>, impl_id: DefId) -> bool {
+fn private_inherent_impl(
+    tcx: TyCtxt<'_>,
+    impl_id: DefId,
+    reachable: Option<&LocalDefIdSet>,
+) -> bool {
     tcx.associated_item_def_ids(impl_id).iter().all(|&id| {
         let local = id.expect_local();
         tcx.def_kind(id) == DefKind::AssocFn
@@ -382,7 +384,7 @@ fn private_inherent_impl(tcx: TyCtxt<'_>, impl_id: DefId) -> bool {
             && !tcx
                 .effective_visibilities(())
                 .is_public_at_level(local, VisibilityLevel::ReachableThroughImplTrait)
-            && !tcx.reachable_set(()).contains(&local)
+            && reachable.is_none_or(|set| !set.contains(&local))
             && !tcx.is_const_fn(id)
             && !tcx.codegen_fn_attrs(id).contains_extern_indicator()
     })
@@ -1329,13 +1331,18 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         let traits = stat!("traits", || self.encode_traits(hcx));
 
         // Encode the def IDs of impls, for coherence checking.
-        let impls = stat!("impls", || self.encode_impls(hcx));
+        let policy = if M::HASH_PUBLIC_API && !self.is_proc_macro {
+            private_impl_policy(self.tcx)
+        } else {
+            PrivateImpls::None
+        };
+        let impls = stat!("impls", || self.encode_impls(hcx, policy));
 
         let incoherent_impls = stat!("incoherent-impls", || self.encode_incoherent_impls(hcx));
 
         _ = stat!("mir", || self.encode_mir(hcx));
 
-        _ = stat!("def-ids", || self.encode_def_ids(hcx));
+        _ = stat!("def-ids", || self.encode_def_ids(hcx, policy));
 
         let interpret_alloc_index = stat!("interpret-alloc-index", || {
             let mut interpret_alloc_index = Vec::new();
@@ -2310,7 +2317,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         encoded
     }
 
-    fn encode_def_ids<'h>(&mut self, hcx: &mut impl PublicApiHashState<'h>) {
+    fn encode_def_ids<'h>(&mut self, hcx: &mut impl PublicApiHashState<'h>, policy: PrivateImpls) {
         self.encode_info_for_mod(CRATE_DEF_ID, hcx);
 
         // Proc-macro crates only export proc-macro items, which are looked
@@ -2598,12 +2605,12 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 builder.definition_span_hasher.clone().finish();
         }
 
-        let isolate_native_impls = M::HASH_PUBLIC_API
-            && tcx.codegen_output_mode(()).0
-            && private_impl_policy(tcx) == PrivateImpls::AllEligible;
+        let native = tcx.codegen_output_mode(()).0;
+        let isolate_private_impls = matches!(policy, PrivateImpls::AllEligible(_));
+        let reachable = (isolate_private_impls && native).then(|| tcx.reachable_set(()));
         for (def_id, impls) in &tcx.crate_inherent_impls(()).0.inherent_impls {
             let adt = def_id.to_def_id();
-            if isolate_native_impls
+            if isolate_private_impls
                 && !tcx.local_visibility(adt.expect_local()).is_public()
                 && !tcx.effective_visibilities(()).is_public_at_level(
                     adt.expect_local(),
@@ -2615,8 +2622,8 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                     hasher.inspect_digest(impls.iter(), hcx),
                     |this, &impl_id| {
                         // The table and its ordered list hash include every impl independently of
-                        // which payload edges a native consumer can observe.
-                        let mode = if private_inherent_impl(tcx, impl_id) {
+                        // which payload edges a consumer can observe.
+                        let mode = if private_inherent_impl(tcx, impl_id, reachable) {
                             this.spec_encoder_data.retain_public_hash(impl_id.into());
                             RecordMode::None
                         } else {
@@ -3399,10 +3406,11 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
     }
 
     /// Encodes an index, mapping each trait to its (local) implementations.
-    #[instrument(level = "debug", skip(self, hcx))]
+    #[instrument(level = "debug", skip(self, hcx, policy))]
     fn encode_impls<'h>(
         &mut self,
         hcx: &mut impl PublicApiHashState<'h>,
+        policy: PrivateImpls,
     ) -> GraphHashed<EncodedTraitImpls> {
         if self.is_proc_macro {
             let mut shapes = StableHasher::new();
@@ -3469,7 +3477,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             }
         }
 
-        M::encode_trait_impls(self, &trait_impls_map, hcx)
+        M::encode_trait_impls(self, &trait_impls_map, hcx, policy)
     }
 
     #[instrument(level = "debug", skip(self, hcx))]
