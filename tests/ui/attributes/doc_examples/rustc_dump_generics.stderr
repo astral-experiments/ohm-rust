@@ -50,7 +50,7 @@ note: Generics {
               ),
           ],
           has_self: false,
-          has_late_bound_regions: None,
+          late_bound_region_source: None,
       }
  --> $DIR/rustc_dump_generics.rs:9:1
   |
