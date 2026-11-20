@@ -2188,12 +2188,18 @@ fn should_encode_const(def_kind: DefKind) -> bool {
 }
 
 impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
+    /// Opaque macros can resolve names in their defining module, including through
+    /// nested macros whose imports are private even to the outer macro.
+    fn remove_private_children(&self) -> bool {
+        M::HASH_PUBLIC_API && !self.tcx.resolutions(()).has_opaque_macros
+    }
+
     fn public_module_children_local(
         &self,
         def_id: LocalDefId,
     ) -> impl Iterator<Item = &'tcx ModChild> + use<'tcx, M> + Clone {
         let effective_visibilities = self.tcx.effective_visibilities(());
-        let remove_private_children = M::HASH_PUBLIC_API;
+        let remove_private_children = self.remove_private_children();
         self.tcx.module_children_local(def_id).iter().filter(move |child| {
             is_public_mod_child(remove_private_children, effective_visibilities, child)
         })
@@ -2762,7 +2768,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             );
 
             let effective_visibilities = self.tcx.effective_visibilities(());
-            let remove_private_children = M::HASH_PUBLIC_API;
+            let remove_private_children = self.remove_private_children();
             let ambig_module_children = tcx
                 .resolutions(())
                 .ambig_module_children

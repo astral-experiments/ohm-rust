@@ -215,6 +215,11 @@ impl MacroRulesMacroExpander {
         if has_compile_error_macro(rhs) { None } else { Some((&self.name, span)) }
     }
 
+    /// Whether identifiers in the macro body resolve at its definition site.
+    pub fn is_opaque(&self) -> bool {
+        self.transparency == Transparency::Opaque
+    }
+
     pub fn kinds(&self) -> MacroKinds {
         self.kinds
     }
