@@ -21,7 +21,15 @@ fn main() {
     if matches!(target().as_str(), "x86_64-unknown-linux-gnu" | "aarch64-apple-darwin") {
         rfs::write("payload.bin", [0]);
         // The same crate always emits a register barrier and ordinary instructions.
-        for cfg in ["ordinary", "global_macro", "comment_escape", "symbol", "constant", "raw"] {
+        for cfg in [
+            "ordinary",
+            "global_macro",
+            "comment_escape",
+            "label_escape",
+            "symbol",
+            "constant",
+            "raw",
+        ] {
             let rules = rustc()
                 .input("inline.rs")
                 .crate_type("rlib")
