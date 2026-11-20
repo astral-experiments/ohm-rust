@@ -6,12 +6,22 @@ use run_make_support::{dynamic_lib_name, rfs, run, rustc};
 fn main() {
     rustc().input("observe.rs").crate_type("proc-macro").edition("2024").run();
     let template = rfs::read_to_string("template.rs");
-    for (revision, earlier, before_attr) in [
-        ("initial", "fn earlier() {}", ""),
-        ("moved", "fn earlier() {\n\n    }", ""),
-        ("changed_gap", "fn earlier() {\n\n    }", "\n    "),
+    check(&template, "direct");
+    check(&template.replace("impl Subject", "#[observe::wrap]\nimpl Subject"), "wrapped");
+}
+
+fn check(template: &str, incr: &str) {
+    for (revision, prefix, earlier, before_attr) in [
+        // Replace one byte with a newline to move the entire impl without
+        // also changing the impl attribute's byte offset in its module.
+        ("initial", " ", "fn earlier() {}", ""),
+        ("prefixed", "\n", "fn earlier() {}", ""),
+        ("moved", "\n", "fn earlier() {\n\n    }", ""),
+        ("changed_gap", "\n", "fn earlier() {\n\n    }", "\n    "),
+        ("changed_column", "\n", "fn earlier() {\n\n    }", "\n        "),
     ] {
         let source = template
+            .replace("struct Subject;", &format!("{prefix}struct Subject;"))
             .replace("fn earlier() {}", earlier)
             .replace("#[observe::site]", &format!("{before_attr}#[observe::site]"));
         let (line, text) =
@@ -22,7 +32,7 @@ fn main() {
             .input("main.rs")
             .edition("2024")
             .extern_("observe", dynamic_lib_name("observe"))
-            .incremental("incr")
+            .incremental(incr)
             .cfg(revision)
             .arg("-Zquery-dep-graph")
             .run();
