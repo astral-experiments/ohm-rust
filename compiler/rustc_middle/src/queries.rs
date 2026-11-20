@@ -1277,6 +1277,14 @@ rustc_queries! {
         desc { "reading the metadata source-file checksum for {:?}", key }
     }
 
+    /// A relocatable parse of one external module and its session effects.
+    query ohm_module_syntax(key: StableSourceFileId) -> &'tcx [u8] {
+        cache_on_disk
+        no_force
+        no_hash
+        desc { "loading parsed syntax for {:?}", key }
+    }
+
     /// Performs lint checking for the module.
     query lint_mod(key: LocalModId) {
         desc { "linting {}", describe_as_module(key, tcx) }

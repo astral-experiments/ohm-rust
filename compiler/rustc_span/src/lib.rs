@@ -1420,6 +1420,14 @@ rustc_index::newtype_index! {
 /// This trait is used to allow encoder specific encodings of certain types.
 /// It is similar to rustc_type_ir's TyEncoder.
 pub trait SpanEncoder: Encoder + Sized {
+    /// Called before materializing a lazy attribute token stream. An
+    /// encoder abandoning its result can skip this work by returning false.
+    fn should_encode_attr_tokens(&mut self) -> bool {
+        panic!("attempted to encode LazyAttrTokenStream")
+    }
+
+    /// Most decoders assign a fresh ID to each occurrence.
+    fn encode_attr_id(&mut self, _: AttrId) {}
     fn encode_span(&mut self, span: Span);
     fn encode_symbol(&mut self, sym: Symbol);
     fn encode_byte_symbol(&mut self, byte_sym: ByteSymbol);
@@ -1564,8 +1572,8 @@ impl<E: SpanEncoder> Encodable<E> for VisibilityDefId {
 }
 
 impl<E: SpanEncoder> Encodable<E> for AttrId {
-    fn encode(&self, _s: &mut E) {
-        // A fresh id will be generated when decoding
+    fn encode(&self, s: &mut E) {
+        s.encode_attr_id(*self);
     }
 }
 

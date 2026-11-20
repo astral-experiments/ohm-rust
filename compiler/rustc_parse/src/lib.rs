@@ -114,6 +114,11 @@ pub fn new_parser_from_file<'a>(
     strip_tokens: StripTokens,
     sp: Option<Span>,
 ) -> Result<Parser<'a>, Vec<Diag<'a>>> {
+    new_parser_from_source_file(psess, load_source_file(psess, path, sp), strip_tokens)
+}
+
+/// Load the source text and report errors against the referring item.
+pub fn load_source_file(psess: &ParseSess, path: &Path, sp: Option<Span>) -> Arc<SourceFile> {
     let sm = psess.source_map();
     let source_file = sm.load_file(path).unwrap_or_else(|e| {
         use std::io::ErrorKind;
@@ -162,7 +167,7 @@ pub fn new_parser_from_file<'a>(
         }
         err.emit_fatal()
     });
-    new_parser_from_source_file(psess, source_file, strip_tokens)
+    source_file
 }
 
 pub fn utf8_error(
@@ -223,7 +228,7 @@ pub fn utf8_error(
 
 /// Given a session and a `source_file`, return a parser. Returns any buffered errors from lexing
 /// the initial token stream.
-fn new_parser_from_source_file(
+pub fn new_parser_from_source_file(
     psess: &ParseSess,
     source_file: Arc<SourceFile>,
     strip_tokens: StripTokens,

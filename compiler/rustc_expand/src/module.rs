@@ -5,8 +5,6 @@ use rustc_ast::{AttrVec, Attribute, Inline, Item, ModSpans};
 use rustc_attr_parsing::template;
 use rustc_attr_parsing::validate_attr::emit_malformed_attribute;
 use rustc_errors::{Diag, ErrorGuaranteed, FatalError};
-use rustc_parse::lexer::StripTokens;
-use rustc_parse::{exp, new_parser_from_file, unwrap_or_emit_fatal};
 use rustc_session::Session;
 use rustc_session::parse::ParseSess;
 use rustc_span::{Ident, Span, sym};
@@ -33,6 +31,7 @@ pub struct ModulePathSuccess {
 }
 
 pub(crate) struct ParsedExternalMod {
+    pub lint_items: Option<Vec<u32>>,
     pub items: ThinVec<Box<Item>>,
     pub spans: ModSpans,
     pub file_path: PathBuf,
@@ -51,6 +50,7 @@ pub enum ModError<'a> {
 
 pub(crate) fn parse_external_mod(
     sess: &Session,
+    simple_lints: bool,
     ident: Ident,
     span: Span, // The span to blame on errors.
     module: &ModuleData,
@@ -58,6 +58,7 @@ pub(crate) fn parse_external_mod(
     attrs: &mut AttrVec,
 ) -> ParsedExternalMod {
     // We bail on the first error, but that error does not cause a fatal error... (1)
+    let mut lint_items = None;
     let result: Result<_, ModError<'_>> = try {
         // Extract the file path and the new ownership.
         let mp = mod_file_path(sess, ident, attrs, &module.dir_path, dir_ownership)?;
@@ -68,15 +69,15 @@ pub(crate) fn parse_external_mod(
             do yeet ModError::CircularInclusion(module.file_path_stack[pos..].to_vec());
         }
 
-        // Actually parse the external file as a module.
-        let mut parser = unwrap_or_emit_fatal(new_parser_from_file(
-            &sess.psess,
+        let (inner_attrs, items, inner_span) = crate::parse_cache::parse(
+            sess,
             &mp.file_path,
-            StripTokens::ShebangAndFrontmatter,
-            Some(span),
-        ));
-        let (inner_attrs, items, inner_span) =
-            parser.parse_mod(exp!(Eof)).map_err(ModError::ParserError)?;
+            span,
+            simple_lints,
+            attrs.iter().all(|attr| matches!(attr.kind, rustc_ast::AttrKind::DocComment(..))),
+            &mut lint_items,
+        )
+        .map_err(ModError::ParserError)?;
         attrs.extend(inner_attrs);
         (items, inner_span, mp.file_path)
     };
@@ -90,7 +91,15 @@ pub(crate) fn parse_external_mod(
     // Extract the directory path for submodules of the module.
     let dir_path = file_path.parent().unwrap_or(&file_path).to_owned();
 
-    ParsedExternalMod { items, spans, file_path, dir_path, dir_ownership, had_parse_error }
+    ParsedExternalMod {
+        lint_items,
+        items,
+        spans,
+        file_path,
+        dir_path,
+        dir_ownership,
+        had_parse_error,
+    }
 }
 
 pub(crate) fn mod_dir_path(
@@ -304,3 +313,5 @@ impl ModError<'_> {
         }
     }
 }
+
+pub use crate::parse_cache::{MODULE_CACHE, ModuleCacheOp};

@@ -237,7 +237,7 @@ impl<'psess, 'src> Lexer<'psess, 'src> {
                     if !sym.can_be_raw() {
                         self.dcx().emit_err(crate::diagnostics::CannotBeRawIdent { span, ident: sym });
                     }
-                    self.psess.raw_identifier_spans.push(span);
+                    self.psess.record_raw_identifier(span);
                     token::Ident(sym, IdentKind::Raw)
                 }
                 rustc_lexer::TokenKind::UnknownPrefix => {
@@ -385,7 +385,7 @@ impl<'psess, 'src> Lexer<'psess, 'src> {
                         let sym = nfc_normalize(&lifetime_name);
 
                         // Make sure we mark this as a raw identifier.
-                        self.psess.raw_identifier_spans.push(span);
+                        self.psess.record_raw_identifier(span);
 
                         token::Lifetime(sym, IdentKind::Raw)
                     } else {
