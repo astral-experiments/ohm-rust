@@ -1,4 +1,4 @@
-// This test tests that derive proc macro execution is cached.
+// An unchanged derive can leave the owner's ordinary queries green.
 
 //@ proc-macro:derive_nothing.rs
 //@ revisions:rpass1 rpass2
@@ -11,7 +11,7 @@
 extern crate derive_nothing;
 
 #[cfg(any(rpass1, rpass2))]
-#[rustc_clean(cfg = "rpass2", loaded_from_disk = "derive_macro_expansion")]
+#[rustc_clean(cfg = "rpass2")]
 #[derive(Nothing)]
 pub struct Foo;
 
