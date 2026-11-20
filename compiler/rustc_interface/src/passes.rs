@@ -1239,6 +1239,25 @@ fn analysis_interfaces(tcx: TyCtxt<'_>, (): ()) {
     // to use `hir_crate_items`.
     tcx.ensure_done().hir_crate_items(());
 
+    if tcx.sess.opts.unstable_opts.public_api_hash
+        && tcx.dep_graph.is_fully_enabled()
+        && tcx.crate_types() == [CrateType::Rlib]
+        && !tcx.codegen_output_mode(()).0
+    {
+        // These queries allocate definition indices for captured lifetimes and anonymous
+        // associated types. Visit their owners in HIR order before interface checking can
+        // allocate the same definitions in a different order during an incremental check.
+        for opaque in tcx.hir_crate_items(()).opaques() {
+            let owner = tcx.local_def_id_to_hir_id(opaque).owner;
+            let _ = tcx.resolve_bound_vars(owner);
+            if tcx.def_kind(owner) == rustc_hir::def::DefKind::AssocFn {
+                let container = tcx.local_parent(owner.def_id);
+                let _ =
+                    tcx.associated_types_for_impl_traits_in_trait_or_impl(container.to_def_id());
+            }
+        }
+    }
+
     rustc_passes::delegation::check_glob_and_list_delegations_target_expr(tcx);
 
     let sess = tcx.sess;
