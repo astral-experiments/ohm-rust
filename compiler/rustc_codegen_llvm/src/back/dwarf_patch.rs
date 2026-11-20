@@ -279,7 +279,31 @@ fn field(data: &[u8], p: &mut usize, form: u64) -> Option<u64> {
     Some(value)
 }
 
-fn info(data: &mut [u8], ab: &[Vec<(u64, u64)>], files: &Files<'_>, skeleton: bool) -> Option<u64> {
+#[derive(PartialEq)]
+enum UnitKind {
+    Embedded,
+    Skeleton,
+    Split,
+}
+
+fn line_form_width(line: u64) -> usize {
+    if u8::try_from(line).is_ok() {
+        1
+    } else if u16::try_from(line).is_ok() {
+        2
+    } else if u32::try_from(line).is_ok() {
+        4
+    } else {
+        8
+    }
+}
+
+fn info(
+    data: &mut [u8],
+    ab: &[Vec<(u64, u64)>],
+    files: &Files<'_>,
+    kind: UnitKind,
+) -> Option<Option<u64>> {
     if number(data, 0, 4)? + 4 != data.len() as u64 || data.get(4..11)? != [4, 0, 0, 0, 0, 0, 8] {
         return None;
     }
@@ -298,7 +322,11 @@ fn info(data: &mut [u8], ab: &[Vec<(u64, u64)>], files: &Files<'_>, skeleton: bo
             let val = field(data, &mut p, f)?;
             if k == 0x2131 {
                 // DW_AT_GNU_dwo_id is a DW_FORM_data8 attribute on the root DIE.
-                if count != 1 || f != 7 || signature.replace(val).is_some() {
+                if kind == UnitKind::Embedded
+                    || count != 1
+                    || f != 7
+                    || signature.replace(val).is_some()
+                {
                     return None;
                 }
             }
@@ -316,18 +344,53 @@ fn info(data: &mut [u8], ab: &[Vec<(u64, u64)>], files: &Files<'_>, skeleton: bo
             let file = usize::try_from(attrs[i]?.0).ok()?;
             let new = u64::try_from(mapped(files, file, i64::try_from(old).ok()?)?).ok()?;
             if new != old {
-                // DWARF4 CU signatures exclude call-site lines, and the fixed data2 form stays unchanged.
-                if skeleton || i != 2 || form != 5 || old <= 255 || new <= 255 || new > 65535 {
+                // In a split unit only call-site line attributes are excluded
+                // from its signature. The embedded unit has no signature.
+                if kind == UnitKind::Skeleton || (kind == UnitKind::Split && i != 2) {
                     return None;
                 }
-                data.get_mut(at..at + 2)?.copy_from_slice(&(new as u16).to_le_bytes());
+                let width = match form {
+                    11 if kind == UnitKind::Embedded => 1,
+                    5 => 2,
+                    6 if kind == UnitKind::Embedded => 4,
+                    _ => return None,
+                };
+                if line_form_width(old) != width || line_form_width(new) != width {
+                    return None;
+                }
+                data.get_mut(at..at + width)?.copy_from_slice(&new.to_le_bytes()[..width]);
             }
         }
     }
-    if skeleton && count != 1 {
+    if count == 0 || (kind == UnitKind::Skeleton && count != 1) {
         return None;
     }
-    signature
+    if kind != UnitKind::Embedded && signature.is_none() {
+        return None;
+    }
+    Some(signature)
+}
+
+pub(super) fn replay_embedded(object: &mut [u8], map: &LineMap) -> Option<()> {
+    let o = sections(object)?;
+    if o.keys().any(|name| {
+        !matches!(
+            name.as_str(),
+            ".debug_abbrev"
+                | ".debug_info"
+                | ".debug_str"
+                | ".debug_line"
+                | ".debug_ranges"
+                | ".debug_aranges"
+        )
+    }) {
+        return None;
+    }
+    let files = lines(object.get_mut(o.get(".debug_line")?.clone())?, map)?;
+    let ab = abbrevs(object.get(o.get(".debug_abbrev")?.clone())?)?;
+    info(object.get_mut(o.get(".debug_info")?.clone())?, &ab, &files, UnitKind::Embedded)?
+        .is_none()
+        .then_some(())
 }
 
 pub(super) fn replay(obj: &mut [u8], dwo: &mut [u8], map: &LineMap) -> Option<()> {
@@ -335,8 +398,10 @@ pub(super) fn replay(obj: &mut [u8], dwo: &mut [u8], map: &LineMap) -> Option<()
     let d = sections(dwo)?;
     let files = lines(obj.get_mut(o.get(".debug_line")?.clone())?, map)?;
     let oa = abbrevs(obj.get(o.get(".debug_abbrev")?.clone())?)?;
-    let skeleton = info(obj.get_mut(o.get(".debug_info")?.clone())?, &oa, &files, true)?;
+    let skeleton =
+        info(obj.get_mut(o.get(".debug_info")?.clone())?, &oa, &files, UnitKind::Skeleton)??;
     let da = abbrevs(dwo.get(d.get(".debug_abbrev.dwo")?.clone())?)?;
-    let split = info(dwo.get_mut(d.get(".debug_info.dwo")?.clone())?, &da, &files, false)?;
+    let split =
+        info(dwo.get_mut(d.get(".debug_info.dwo")?.clone())?, &da, &files, UnitKind::Split)??;
     (skeleton == split).then_some(())
 }
