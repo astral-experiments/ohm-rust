@@ -2757,7 +2757,7 @@ options! {
         `=Enable`
         Currently the only option available"),
     ohm_caller_local_cgus: bool = (false, parse_bool, [TRACKED],
-        "place upstream generics containing local closures in caller-local codegen units"),
+        "place upstream generics with local callables or private wrappers in local codegen units"),
     ohm_cgu_split_limit: Option<NonZero<usize>> = (None, parse_opt_number, [TRACKED],
         "maximum shards per oversized incremental codegen unit at opt-level 0 or 1; 1 disables splitting"),
     ohm_check_relink_inputs: bool = (false, parse_bool, [TRACKED],
