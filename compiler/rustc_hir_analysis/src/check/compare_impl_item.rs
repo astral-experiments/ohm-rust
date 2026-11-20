@@ -2482,9 +2482,12 @@ pub(super) fn check_type_bounds<'tcx>(
     let param_env = tcx.param_env(impl_ty.def_id);
     debug!(?param_env);
 
-    if param_env.caller_bounds().next().is_none()
-        && matches!(impl_ty.container, ty::AssocContainer::TraitImpl(Ok(_)))
-        && !impl_ty.is_impl_trait_in_trait()
+    // Checking a default in a trait also passes that declaration as `impl_ty`.
+    let is_declared_impl_type = matches!(impl_ty.container, ty::AssocContainer::TraitImpl(Ok(_)))
+        && !impl_ty.is_impl_trait_in_trait();
+
+    if is_declared_impl_type
+        && param_env.caller_bounds().next().is_none()
         && tcx.generics_of(impl_ty.def_id).own_params.is_empty()
         && !tcx.is_conditionally_const(impl_ty.def_id)
         && !impl_trait_ref.args.has_type_flags(CLOSED_BOUND_DISALLOWED_FLAGS)
@@ -2573,7 +2576,8 @@ pub(super) fn check_type_bounds<'tcx>(
     // Directly replace its projection when every bound is a trait predicate whose arguments
     // are only that projection. Associated-type where clauses can add obligations during
     // normalization, so they and other complex bounds keep the original path.
-    let simple_value = if !obligations.is_empty()
+    let simple_value = if is_declared_impl_type
+        && !obligations.is_empty()
         && traits::impl_item_is_final(tcx, &impl_ty)
         && tcx.generics_of(impl_ty.def_id).count() == 0
         && param_env.caller_bounds().next().is_none()
@@ -2582,7 +2586,6 @@ pub(super) fn check_type_bounds<'tcx>(
         && !rebased_args.has_infer()
         && !rebased_args.references_error()
         && !rebased_args.has_bound_vars()
-        && !impl_ty.is_impl_trait_in_trait()
         && !tcx.is_conditionally_const(impl_ty_def_id)
     {
         let value_ty = tcx.type_of(impl_ty.def_id).instantiate_identity().skip_norm_wip();
