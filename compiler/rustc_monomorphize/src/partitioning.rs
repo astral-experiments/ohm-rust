@@ -359,10 +359,10 @@ fn split_large_codegen_units<'tcx>(
     const TARGET_SIZE: usize = 16_384;
     let split_limit =
         cx.tcx.sess.opts.unstable_opts.ohm_cgu_split_limit.map_or(8, |limit| limit.get());
-    // Splitting only spends unused slots from the existing CGU budget. Stable root hashes
-    // keep ordinary body edits in the same shard, along with the root's private inline copies.
+    // Splitting only spends unused slots from the existing CGU budget.
     let mut remaining = cx.tcx.sess.codegen_units().as_usize() - codegen_units.len();
     let mut size_shards = Vec::new();
+    let mut owner_hashes = UnordMap::default();
     codegen_units.sort_by(|a, b| a.partition_key().as_str().cmp(b.partition_key().as_str()));
     for source in std::mem::take(codegen_units) {
         if remaining == 0
@@ -395,12 +395,24 @@ fn split_large_codegen_units<'tcx>(
             .collect();
 
         for (&item, &data) in roots {
-            // DefPathHash and interned types carry the compiler version. The fully qualified
-            // instance text retains generic arguments without that artifact namespace.
-            let mut hasher = StableHasher::new();
-            with_no_trimmed_paths!(item.to_string()).hash(&mut hasher);
-            let hash: Fingerprint = hasher.finish();
-            let shard = &mut shards[(hash.to_smaller_hash().as_u64() % count as u64) as usize];
+            // Keep instances with the same definition together. With caller-local placement,
+            // use the same owner for both the module and the shard within it.
+            let mut owner = if cx.tcx.sess.opts.unstable_opts.ohm_caller_local_cgus {
+                caller_local_def_id(cx, item).unwrap_or_else(|| item.def_id())
+            } else {
+                item.def_id()
+            };
+            while cx.tcx.def_kind(owner) == DefKind::Closure {
+                owner = cx.tcx.parent(owner);
+            }
+            let hash = *owner_hashes.entry(owner).or_insert_with(|| {
+                // The textual definition path omits the compiler-specific crate disambiguator.
+                let mut hasher = StableHasher::new();
+                cx.tcx.def_path(owner).to_string_no_crate_verbose().hash(&mut hasher);
+                let hash: Fingerprint = hasher.finish();
+                hash.to_smaller_hash().as_u64()
+            });
+            let shard = &mut shards[(hash % count as u64) as usize];
             place_split_root(cx, shard, source.items(), item, data);
         }
 
