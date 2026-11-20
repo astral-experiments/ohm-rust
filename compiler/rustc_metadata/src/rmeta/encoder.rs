@@ -3067,12 +3067,16 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                     );
                 });
             },
-            |(this, _, expn_data_table, expn_hash_table), index, expn_data, hash| {
+            |(this, _, expn_data_table, expn_hash_table), index, expn_data, mut hash| {
                 if let Some(index) = index.as_local() {
+                    let expn_data = expn_data.expect("local expn");
+                    if hcx.borrow().enabled() {
+                        hash = expn_data.metadata_hash(hash, hcx.borrow_mut().hcx_mut());
+                    }
                     this.with_record_mode(RecordMode::From(index.into()), |this| {
                         expn_data_table.set_some_hashed(
                             index,
-                            this.lazy(expn_data.expect("local expn")),
+                            this.lazy(expn_data),
                             index,
                             *hcx.borrow_mut(),
                         );
