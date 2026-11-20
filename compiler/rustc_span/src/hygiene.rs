@@ -1194,13 +1194,24 @@ impl ExpnData {
         matches!(self.kind, ExpnKind::Root)
     }
 
-    /// The local identity of a source-written `.await` includes the byte distance from
-    /// its enclosing definition. Metadata stores its span without that parent. Use
+    fn uses_metadata_coordinates(&self) -> bool {
+        // A derive expands once for the attribute and once for each trait it names.
+        matches!(
+            self.kind,
+            ExpnKind::Desugaring(DesugaringKind::Await)
+                | ExpnKind::Macro(MacroKind::Attr, sym::derive)
+                | ExpnKind::Macro(MacroKind::Derive, _)
+        )
+    }
+
+    /// The local identity of a source-written derive or `.await` includes the byte distance
+    /// from its enclosing definition. Metadata stores its span without that parent. Use
     /// the encoded coordinates when assigning its exported identity, keeping the
     /// owner as a discriminator for expansions at identical source locations.
     pub fn metadata_hash(&self, local: ExpnHash, hcx: &mut impl StableHashCtxt) -> ExpnHash {
         if hcx.hashes_metadata_spans()
-            && matches!(self.kind, ExpnKind::Desugaring(DesugaringKind::Await))
+            && self.uses_metadata_coordinates()
+            && self.def_site.parent().is_none()
             && self.call_site.ctxt().is_root()
             && let Some(parent) = self.call_site.parent()
         {
@@ -1733,7 +1744,7 @@ impl HygieneData {
         if for_metadata
             && let Some(local) = id.as_local()
             && let Some(data) = &self.local_expn_data[local]
-            && matches!(data.kind, ExpnKind::Desugaring(DesugaringKind::Await))
+            && data.uses_metadata_coordinates()
         {
             (hash, Some(local))
         } else {
