@@ -1067,7 +1067,8 @@ pub static DEFAULT_QUERY_PROVIDERS: LazyLock<Providers> = LazyLock::new(|| {
     *providers
 });
 
-/// Names local query keys independently of Cargo's recursive dependency salt.
+/// Cargo changes its metadata salt on both package releases and dependency updates.
+/// Use the package name to keep local query keys stable across those changes.
 fn ohm_lookup_id(sess: &Session, crate_name: Symbol, is_exe: bool) -> Option<StableCrateId> {
     if !sess.opts.unstable_opts.ohm_shared_stages
         || sess.opts.incremental.is_none()
@@ -1077,12 +1078,11 @@ fn ohm_lookup_id(sess: &Session, crate_name: Symbol, is_exe: bool) -> Option<Sta
         return None;
     }
     let name = env::var("CARGO_PKG_NAME").ok()?;
-    let version = env::var("CARGO_PKG_VERSION").ok()?;
     Some(StableCrateId::new(
         crate_name,
         is_exe,
         // The NUL keeps this private domain outside possible command-line metadata.
-        vec![format!("\0ohm-local-queries:{name}:{version}")],
+        vec![format!("\0ohm-local-queries:{name}")],
         sess.cfg_version,
     ))
 }

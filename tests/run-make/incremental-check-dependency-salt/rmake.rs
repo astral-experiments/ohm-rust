@@ -56,6 +56,13 @@ fn main() {
     subject("second", "link", None).run();
     assert_eq!(reused, run("subject").stdout_utf8());
 
+    // A release changes both the metadata salt and the value expanded by env!.
+    subject("release", "metadata", Some("loaded")).env("CARGO_PKG_VERSION", "1.0.1").run();
+    subject("longer-version", "metadata", Some("loaded"))
+        .env("CARGO_PKG_VERSION", "1.0.10")
+        .run_fail()
+        .assert_stderr_contains("E0080");
+
     dependency().metadata("new-dependency").cfg("changed").run();
     subject("third", "metadata", Some("loaded")).run_fail().assert_stderr_contains("E0308");
 }
