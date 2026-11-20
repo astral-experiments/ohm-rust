@@ -1136,6 +1136,9 @@ pub trait ResolverExpand {
 }
 
 pub trait LintStoreExpand {
+    fn keyword_lints_only(&self) -> bool {
+        false
+    }
     fn pre_expansion_lint(
         &self,
         sess: &Session,
@@ -1144,6 +1147,7 @@ pub trait LintStoreExpand {
         node_id: NodeId,
         attrs: &[Attribute],
         items: &[Box<Item>],
+        selected: Option<&[u32]>,
         name: Symbol,
     );
 }

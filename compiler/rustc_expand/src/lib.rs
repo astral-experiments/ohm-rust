@@ -22,4 +22,5 @@ pub mod base;
 pub mod config;
 pub mod expand;
 pub mod module;
+mod parse_cache;
 pub mod proc_macro;

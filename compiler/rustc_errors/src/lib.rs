@@ -311,6 +311,7 @@ struct DiagCtxtInner {
     /// Has this diagnostic context printed any diagnostics? (I.e. has
     /// `self.emitter.emit_diagnostic()` been called?
     has_printed: bool,
+    emission_stamp: usize,
 
     /// This flag indicates that an expected diagnostic was emitted and suppressed.
     /// This is used for the `must_produce_diag` check.
@@ -529,6 +530,7 @@ impl<'a> DiagCtxtHandle<'a> {
             emitter: _,
             must_produce_diag,
             has_printed,
+            emission_stamp: _,
             suppressed_expected_diag,
             taught_diagnostics,
             emitted_diagnostic_codes,
@@ -597,6 +599,7 @@ impl<'a> DiagCtxtHandle<'a> {
         key: StashKey,
         diag: DiagInner,
     ) -> Option<ErrorGuaranteed> {
+        self.dcx.inner.borrow_mut().emission_stamp += 1;
         let guar = match diag.level {
             Bug | Fatal => {
                 self.span_bug(
@@ -693,6 +696,11 @@ impl<'a> DiagCtxtHandle<'a> {
             None => {}
         };
         new_err.emit_err()
+    }
+
+    /// Counts diagnostic emissions, including suppressed and stashed diagnostics.
+    pub fn emission_stamp(&self) -> usize {
+        self.dcx.inner.borrow().emission_stamp
     }
 
     pub fn has_stashed_diagnostic(&self, span: Span, key: StashKey) -> bool {
@@ -1174,6 +1182,7 @@ impl DiagCtxtInner {
             emitter,
             must_produce_diag: None,
             has_printed: false,
+            emission_stamp: 0,
             suppressed_expected_diag: false,
             taught_diagnostics: Default::default(),
             emitted_diagnostic_codes: Default::default(),
@@ -1213,6 +1222,7 @@ impl DiagCtxtInner {
         mut diagnostic: DiagInner,
         taint: Option<&Cell<Option<ErrorGuaranteed>>>,
     ) -> Option<ErrorGuaranteed> {
+        self.emission_stamp += 1;
         if diagnostic.has_future_breakage() {
             // About the `allow`/`expect` lint sub-cases of `Warning`: future breakages aren't
             // emitted for them, but they still need to be handled below so they'll trigger the

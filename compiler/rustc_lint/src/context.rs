@@ -154,6 +154,13 @@ pub enum CheckLintNameResult<'a> {
 }
 
 impl LintStore {
+    /// Check that pre-expansion linting only runs the edition-keyword
+    /// pass. Destructuring makes any new builtin require a review here.
+    pub fn keyword_lints_only(&self) -> bool {
+        let crate::BuiltinCombinedPreExpansionLintPass { KeywordIdents: _ } =
+            crate::BuiltinCombinedPreExpansionLintPass::new();
+        self.pre_expansion_lint_passes.is_empty()
+    }
     pub fn new() -> LintStore {
         LintStore {
             lints: vec![],
