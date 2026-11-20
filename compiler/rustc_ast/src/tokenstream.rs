@@ -637,8 +637,15 @@ static EMPTY_TOKEN_STREAM: LazyLock<TokenStream> =
     LazyLock::new(|| TokenStream(Arc::new(Vec::new())));
 
 /// A `TokenStream` is an abstract sequence of tokens, organized into [`TokenTree`]s.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Encodable, Decodable)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Decodable)]
 pub struct TokenStream(Arc<Vec<TokenTree>>);
+
+impl<S: SpanEncoder> Encodable<S> for TokenStream {
+    #[inline]
+    fn encode(&self, s: &mut S) {
+        s.encode_token_stream(|s| self.0.encode(s));
+    }
+}
 
 impl TokenStream {
     pub fn new(tts: Vec<TokenTree>) -> TokenStream {

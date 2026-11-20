@@ -1191,6 +1191,7 @@ pub struct ExpansionData {
 /// when a macro expansion occurs, the resulting nodes have the `backtrace()
 /// -> expn_data` of their expansion context stored into their span.
 pub struct ExtCtxt<'a> {
+    pub(crate) macro_cache: crate::macro_cache::Cache,
     pub sess: &'a Session,
     pub ecfg: expand::ExpansionConfig<'a>,
     pub num_standard_library_imports: usize,
@@ -1225,6 +1226,7 @@ impl<'a> ExtCtxt<'a> {
         lint_store: LintStoreExpandDyn<'a>,
     ) -> ExtCtxt<'a> {
         ExtCtxt {
+            macro_cache: Default::default(),
             sess,
             ecfg,
             num_standard_library_imports: 0,

@@ -214,8 +214,7 @@ impl PlaceholderExpander {
         }
     }
 
-    pub(crate) fn add(&mut self, id: ast::NodeId, mut fragment: AstFragment) {
-        fragment.mut_visit_with(self);
+    pub(crate) fn add(&mut self, id: ast::NodeId, fragment: AstFragment) {
         self.expanded_fragments.insert(id, fragment);
     }
 

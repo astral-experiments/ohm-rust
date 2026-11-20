@@ -749,6 +749,12 @@ impl SyntaxContext {
         HygieneData::with(|data| data.apply_mark(self, expn_id, transparency))
     }
 
+    /// Restore a previously recorded context key. Its parent already includes
+    /// any prefix inherited at the call site by `apply_mark`.
+    pub fn from_key((parent, expn_id, transparency): SyntaxContextKey) -> SyntaxContext {
+        HygieneData::with(|data| data.alloc_ctxt(parent, expn_id, transparency))
+    }
+
     /// Pulls a single mark off of the syntax context. This effectively moves the
     /// context up one macro definition level. That is, if we have a nested macro
     /// definition as follows:
@@ -1600,8 +1606,7 @@ pub fn decode_syntax_context<D: Decoder>(
     // Don't try to decode data while holding the lock, since we need to
     // be able to recursively decode a SyntaxContext
     let (parent, expn_id, transparency) = decode_data(d, raw_id);
-    let ctxt =
-        HygieneData::with(|hygiene_data| hygiene_data.alloc_ctxt(parent, expn_id, transparency));
+    let ctxt = SyntaxContext::from_key((parent, expn_id, transparency));
 
     context.remapped_ctxts.lock().insert(raw_id, ctxt);
 

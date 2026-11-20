@@ -462,6 +462,7 @@ impl<'a, 'b> MacroExpander<'a, 'b> {
             dir_path,
         });
         let krate = self.fully_expand_fragment(AstFragment::Crate(krate)).make_crate();
+        self.cx.macro_cache.flush();
         assert_eq!(krate.id, ast::CRATE_NODE_ID);
         self.cx.trace_macros_diag();
         krate
@@ -580,7 +581,12 @@ impl<'a, 'b> MacroExpander<'a, 'b> {
                     if expanded_fragments.len() < depth {
                         expanded_fragments.push(Vec::new());
                     }
-                    expanded_fragments[depth - 1].push((expn_id, expanded_fragment));
+                    let has_placeholders = !derive_invocations.is_empty();
+                    expanded_fragments[depth - 1].push((
+                        expn_id,
+                        expanded_fragment,
+                        has_placeholders,
+                    ));
                     expanded_fragments_len += 1;
                     invocations.extend(derive_invocations.into_iter().rev());
                 }
@@ -604,12 +610,19 @@ impl<'a, 'b> MacroExpander<'a, 'b> {
         // Finally incorporate all the expanded macros into the input AST fragment.
         let mut placeholder_expander = PlaceholderExpander::with_capacity(expanded_fragments_len);
         while let Some(expanded_fragments) = expanded_fragments.pop() {
-            for (expn_id, expanded_fragment) in expanded_fragments.into_iter().rev() {
+            for (expn_id, mut expanded_fragment, has_placeholders) in
+                expanded_fragments.into_iter().rev()
+            {
+                if has_placeholders {
+                    expanded_fragment.mut_visit_with(&mut placeholder_expander);
+                }
                 placeholder_expander
                     .add(NodeId::placeholder_from_expn_id(expn_id), expanded_fragment);
             }
         }
-        fragment_with_placeholders.mut_visit_with(&mut placeholder_expander);
+        if expanded_fragments_len != 0 {
+            fragment_with_placeholders.mut_visit_with(&mut placeholder_expander);
+        }
         fragment_with_placeholders
     }
 
@@ -743,17 +756,39 @@ impl<'a, 'b> MacroExpander<'a, 'b> {
                         Err(guar) => return ExpandResult::Ready(fragment_kind.dummy(span, guar)),
                     }
                 } else if let Some(expander) = ext.as_legacy_bang() {
-                    let tok_result = match expander.expand(self.cx, span, mac.args.tokens.clone()) {
-                        ExpandResult::Ready(tok_result) => tok_result,
-                        ExpandResult::Retry(_) => {
-                            // retry the original
-                            return ExpandResult::Retry(Invocation {
-                                kind: InvocationKind::Bang { mac, span },
-                                ..invoc
-                            });
+                    let expand = |cx: &mut ExtCtxt<'_>| match expander.expand(
+                        cx,
+                        span,
+                        mac.args.tokens.clone(),
+                    ) {
+                        ExpandResult::Ready(result) => {
+                            ExpandResult::Ready(fragment_kind.make_from(result))
                         }
+                        ExpandResult::Retry(_) => ExpandResult::Retry(()),
                     };
-                    if let Some(fragment) = fragment_kind.make_from(tok_result) {
+                    let result = if let SyntaxExtensionKind::MacroRules(rules) = ext
+                        && let Some(stamp) = rules.syntax_stamp
+                        && !self.cx.trace_macros()
+                    {
+                        crate::macro_cache::Invocation {
+                            sess: self.cx.sess,
+                            id: self.cx.current_expansion.id.to_expn_id(),
+                            stamp,
+                            kind: fragment_kind,
+                            site: span,
+                            input: &mac.args.tokens,
+                        }
+                        .expand(self.cx, expand)
+                    } else {
+                        expand(self.cx)
+                    };
+                    let ExpandResult::Ready(fragment) = result else {
+                        return ExpandResult::Retry(Invocation {
+                            kind: InvocationKind::Bang { mac, span },
+                            ..invoc
+                        });
+                    };
+                    if let Some(fragment) = fragment {
                         if macro_stats {
                             update_bang_macro_stats(self.cx, fragment_kind, span, mac, &fragment);
                         }
