@@ -45,7 +45,7 @@ fn should_recurse<'tcx>(tcx: TyCtxt<'tcx>, callee: ty::Instance<'tcx>) -> bool {
         | InstanceKind::Shim(ShimKind::FutureDropPoll(..))
         | InstanceKind::Shim(ShimKind::AsyncDropGlue(..))
         | InstanceKind::Shim(ShimKind::AsyncDropGlueCtor(..)) => {
-            if callee.has_param() {
+            if callee.has_param() || callee.def.is_linked_future(tcx) {
                 return false;
             }
         }

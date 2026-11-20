@@ -218,7 +218,8 @@ impl<'tcx> Instance<'tcx> {
     /// no upstream crate provides such an exported monomorphization.
     ///
     /// This method already takes into account the global `-Zshare-generics`
-    /// setting, always returning `None` if `share-generics` is off.
+    /// setting. Inline-never functions and linked futures can use upstream
+    /// code even when optional sharing is disabled.
     pub fn upstream_monomorphization(&self, tcx: TyCtxt<'tcx>) -> Option<CrateNum> {
         // If this is an item that is defined in the local crate, no upstream
         // crate can know about it/provide a monomorphization.
@@ -233,6 +234,7 @@ impl<'tcx> Instance<'tcx> {
             // However, if the def_id is marked inline(never), then it's fine to just reuse the
             // upstream monomorphization.
             && tcx.codegen_fn_attrs(self.def_id()).inline != rustc_attr_ir::InlineAttr::Never
+            && !self.def.is_linked_future(tcx)
         {
             return None;
         }
@@ -264,6 +266,26 @@ impl<'tcx> Instance<'tcx> {
 }
 
 impl<'tcx> InstanceKind<'tcx> {
+    /// A producer may provide a concrete future as a pair of linked symbols.
+    /// Such a pair is required even if optional generic sharing is disabled.
+    pub fn is_linked_future(self, tcx: TyCtxt<'tcx>) -> bool {
+        let id = match self {
+            Self::Item(id)
+                if !id.is_local()
+                    && tcx.def_kind(id) == rustc_hir::def::DefKind::Closure
+                    && tcx.is_coroutine(id) =>
+            {
+                id
+            }
+            Self::Shim(ShimKind::DropGlue(_, Some(ty))) => match *ty.kind() {
+                ty::Coroutine(id, _) if !id.is_local() => id,
+                _ => return false,
+            },
+            _ => return false,
+        };
+        !tcx.is_mir_available(id)
+    }
+
     #[inline]
     pub fn def_id(self) -> DefId {
         match self {
