@@ -342,7 +342,25 @@ impl<'ra, 'tcx> ResolverExpand for Resolver<'ra, 'tcx> {
         )?;
 
         let mut span = invoc.span();
-        if let Some(anchor) = invocation_parent.preceding_source_item {
+        if let Some(anchor) = invocation_parent.preceding_source_item
+            && parent_scope.expansion != LocalExpnId::ROOT
+            && self.tcx.def_kind(invocation_parent.parent_def) == DefKind::AssocFn
+            && self.tcx.def_kind(anchor) == DefKind::AssocFn
+            && self.tcx.local_parent(anchor) == self.tcx.local_parent(invocation_parent.parent_def)
+        {
+            let owner =
+                self.tcx.source_span_untracked(invocation_parent.parent_def).data_untracked();
+            let earlier = self.tcx.source_span_untracked(anchor).data_untracked();
+            let data = span.data_untracked();
+            // Preserve this candidate through nested expansions in the same
+            // generated method, including wrappers at the impl attribute.
+            if owner.hi < earlier.lo && earlier.hi <= data.lo {
+                let file = self.tcx.sess.source_map().lookup_source_file(data.lo);
+                if !file.is_imported() && file.contains(owner.lo) && file.contains(data.hi) {
+                    span = span.with_parent(Some(anchor));
+                }
+            }
+        } else if let Some(anchor) = invocation_parent.preceding_source_item {
             let builtin_derive = matches!(ext.builtin_name, Some(sym::derive | sym::derive_const));
             let derive = kind == MacroKind::Derive || builtin_derive;
             if derive || (kind == MacroKind::Attr && !inner_attr) {

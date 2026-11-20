@@ -420,13 +420,26 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
 
         self.with_owner(i.id, Some(ident.name), def_kind, i.span, |this, feed| {
             let def_id = feed.def_id();
-            this.with_parent(def_id, |this| this.brg_visit_assoc_item(i, ctxt, ident, ns, feed));
+            let previous = this.invocation_parent.preceding_source_item;
+            this.with_parent(def_id, |this| {
+                // An attribute on an impl can stamp a generated method with
+                // the impl's location, even when calls inside the method
+                // retain source locations following the previous method.
+                if previous.is_some()
+                    && this.parent_scope.expansion != LocalExpnId::ROOT
+                    && def_kind == DefKind::AssocFn
+                    && !i.span.is_dummy()
+                    && !i.span.ctxt().is_root()
+                {
+                    this.invocation_parent.preceding_source_item = previous;
+                }
+                this.brg_visit_assoc_item(i, ctxt, ident, ns, feed)
+            });
 
             this.invocation_parent.preceding_source_item =
                 (matches!(ctxt, visit::AssocCtxt::Impl { of_trait: false })
                     && matches!(&i.kind, AssocItemKind::Fn(f) if f.body.is_some())
                     && this.r.tcx.sess.opts.incremental.is_some()
-                    && this.parent_scope.expansion == LocalExpnId::ROOT
                     && !i.span.is_dummy()
                     && i.span.ctxt().is_root())
                 .then_some(def_id);
