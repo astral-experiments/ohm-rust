@@ -11,6 +11,7 @@ fn source(modules: usize, functions: usize, operations: usize) -> Vec<String> {
     let mut roots = Vec::new();
     for module in 0..modules {
         writeln!(source, "mod module_{module} {{").unwrap();
+        source.push_str("#[inline(never)] fn tag<const TAG: u64>(x: u64) -> u64 { x ^ TAG }\n");
         for function in 0..functions {
             writeln!(source, "#[inline(never)] pub fn f{function:03}(mut x: u64) -> u64 {{")
                 .unwrap();
@@ -22,7 +23,7 @@ fn source(modules: usize, functions: usize, operations: usize) -> Vec<String> {
                 )
                 .unwrap();
             }
-            source.push_str("x\n}\n");
+            writeln!(source, "tag::<{function}>(x)\n}}").unwrap();
             roots.push(format!("module_{module}::f{function:03}"));
         }
         source.push_str("}\n");
@@ -50,20 +51,28 @@ fn compile(
         .codegen_units(units)
         .incremental(format!("{case}-{version}"))
         .env("RUSTC_FORCE_RUSTC_VERSION", version)
+        .arg("-Zohm-caller-local-cgus")
         .arg("-Zohm-stable-cgu-merging")
         .arg(format!("-Zohm-split-large-cgus={}", if split { "yes" } else { "no" }))
         .arg("-Zprint-mono-items")
         .run()
         .stdout_utf8();
+    fn unit(line: &str) -> &str {
+        let (_, unit) = line.split_once("@@").unwrap();
+        unit.split_whitespace().next().unwrap().split('[').next().unwrap()
+    }
+    if split {
+        let tags: BTreeSet<_> =
+            output.lines().filter(|line| line.contains("module_0::tag::<")).map(unit).collect();
+        assert_eq!(tags.len(), 1, "instances of tag should share a shard: {tags:?}");
+    }
     let mut groups = BTreeMap::<_, BTreeSet<_>>::new();
     for root in roots {
         let line = output
             .lines()
             .find(|line| line.contains(root))
             .unwrap_or_else(|| panic!("missing {root}:\n{output}"));
-        let (_, unit) = line.split_once("@@").unwrap();
-        let unit = unit.split_whitespace().next().unwrap().split('[').next().unwrap();
-        groups.entry(unit.to_owned()).or_default().insert(root.clone());
+        groups.entry(unit(line).to_owned()).or_default().insert(root.clone());
     }
     assert!(groups.len() > 1 && groups.len() <= units, "{groups:?}");
     groups
