@@ -1,12 +1,11 @@
 //@ ignore-cross-compile
 // Reason: the compiled executable is run before and after an incremental edit.
 
-use run_make_support::{rfs, run, rustc};
+use run_make_support::{Rustc, rfs, run, rustc};
 
-fn compile(incremental: Option<&str>, caller_local: bool) -> String {
+fn compiler(incremental: Option<&str>, caller_local: bool) -> Rustc {
     let mut command = rustc();
     command
-        .input("main.rs")
         .edition("2021")
         .codegen_units(32)
         .arg("-Zhuman-readable-cgu-names")
@@ -22,7 +21,11 @@ fn compile(incremental: Option<&str>, caller_local: bool) -> String {
         command.arg("-Zohm-caller-local-cgus");
     }
 
-    command.run().stdout_utf8()
+    command
+}
+
+fn compile(incremental: Option<&str>, caller_local: bool) -> String {
+    compiler(incremental, caller_local).input("main.rs").run().stdout_utf8()
 }
 
 fn assert_placement(output: &str, function: &str, codegen_unit_owner: &str, module: &str) {
@@ -69,11 +72,17 @@ fn main() {
         assert_placement(&caller_local, function, "main.", "-first[");
         assert_placement(&caller_local, function, "main.", "-second[");
     }
-    assert_placement(&caller_local, "upstream::identity::<u64>", "main.", "-second[");
+    assert_placement(&caller_local, "upstream::identity::<u64>", "upstream.", ".volatile[");
     for function in ["as std::ops::Drop>::drop", "drop_glue::<upstream::Wrapper<"] {
         assert_placement(&caller_local, function, "main.", "-tasks[");
     }
     run("main").assert_stdout_contains("dropped:false:true:7:11");
+
+    // In an rlib the same specialization still follows its sole caller.
+    rfs::write("library.rs", "include!(\"main.rs\"); pub fn entry() { main() }");
+    let library =
+        compiler(Some("library"), true).input("library.rs").crate_type("rlib").run().stdout_utf8();
+    assert_placement(&library, "upstream::identity::<u64>", "library.", "-second[");
 
     // The flag is inert without incremental compilation.
     let nonincremental = compile(None, true);
@@ -102,6 +111,6 @@ fn main() {
 
     rfs::write("main.rs", original);
     let rebuilt = compile(Some("caller-local"), true);
-    assert_placement(&rebuilt, "upstream::identity::<u64>", "main.", "-second[");
+    assert_placement(&rebuilt, "upstream::identity::<u64>", "upstream.", ".volatile[");
     run("main").assert_stdout_contains("dropped:false:true:7:11");
 }
