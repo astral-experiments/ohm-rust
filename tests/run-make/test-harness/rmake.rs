@@ -22,4 +22,14 @@ fn main() {
         Some("i.")
     );
     run_with_args("test-ignore-cfg", &["--quiet"]).assert_stdout_not_contains("should");
+
+    rustc().arg("--test").input("tests/plain.rs").run();
+    run("plain")
+        .assert_stdout_contains("ordinary ... ok")
+        .assert_stdout_contains("returns_result ... ok")
+        .assert_stdout_contains("ignored ... ignored");
+
+    let expanded = rustc().arg("--test").arg("-Zunpretty=expanded").input("tests/plain.rs").run();
+    expanded.assert_stdout_contains("test::StaticUnitTest::new(");
+    expanded.assert_stdout_contains("test::StaticTestFn(");
 }
