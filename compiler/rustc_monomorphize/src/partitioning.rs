@@ -252,22 +252,16 @@ where
             InstantiationMode::LocalCopy => continue,
         }
 
-        // A body edit can add or remove a whole chain of instantiations, including
-        // drop glue. Group the chain by the module that needs it, stopping at shared
-        // instances. Bound the work per item even for cycles and long generic chains.
-        let mut owner = mono_item;
-        if place_by_user {
-            for _ in 0..16 {
-                if !owner.is_generic_fn() {
-                    break;
-                }
-                let [user] = cx.usage_map.get_user_items(owner) else { break };
-                owner = *user;
-            }
-        }
-        let characteristic_def_id =
-            characteristic_def_id_of_mono_item(cx.tcx, owner, place_by_user);
-        let is_volatile = is_incremental_build && mono_item.is_generic_fn();
+        let characteristic_def_id = if place_by_user {
+            caller_local_def_id(cx, mono_item)
+        } else {
+            characteristic_def_id_of_mono_item(cx.tcx, mono_item)
+        };
+        // When specializations follow a local definition, editing that definition
+        // often changes both. Keep them in the same unit.
+        let is_volatile = is_incremental_build
+            && mono_item.is_generic_fn()
+            && !(place_by_user && characteristic_def_id.is_some_and(|def_id| def_id.is_local()));
 
         let (cgu_name, partition_key) = match characteristic_def_id {
             Some(def_id) => compute_codegen_unit_name(
@@ -979,25 +973,67 @@ fn mark_code_coverage_dead_code_cgu<'tcx>(codegen_units: &mut [CodegenUnit<'tcx>
     dead_code_cgu.make_code_coverage_dead_code_cgu();
 }
 
+fn local_callable_in_args(instance: ty::Instance<'_>) -> Option<DefId> {
+    instance.args.iter().flat_map(|argument| argument.walk()).find_map(|argument| {
+        let ty::GenericArgKind::Type(ty) = argument.kind() else {
+            return None;
+        };
+        let local_def_id = match *ty.kind() {
+            ty::FnDef(def_id, _)
+            | ty::Closure(def_id, _)
+            | ty::CoroutineClosure(def_id, _)
+            | ty::Coroutine(def_id, _)
+            | ty::CoroutineWitness(def_id, _) => def_id,
+            _ => return None,
+        };
+        local_def_id.is_local().then_some(local_def_id)
+    })
+}
+
+/// The local body that can change this instance's code or layout. For example,
+/// dropping a task containing a future depends on the future's definition.
+fn local_codegen_owner(mono_item: MonoItem<'_>) -> Option<DefId> {
+    let MonoItem::Fn(instance) = mono_item else { return None };
+    if let InstanceKind::Item(def_id) = instance.def
+        && def_id.is_local()
+    {
+        return Some(def_id);
+    }
+    local_callable_in_args(instance)
+}
+
+fn caller_local_def_id<'tcx>(cx: &PartitioningCx<'_, 'tcx>, item: MonoItem<'tcx>) -> Option<DefId> {
+    // Adding a second caller should leave an instance with its defining module.
+    if let Some(def_id) = local_codegen_owner(item) {
+        return Some(def_id);
+    }
+
+    // A body edit can add or remove a chain of upstream instantiations.
+    // Group these by their sole user, bounding the walk in case of a cycle.
+    let mut owner = item;
+    for _ in 0..16 {
+        if !owner.is_generic_fn() {
+            break;
+        }
+        let [user] = cx.usage_map.get_user_items(owner) else { break };
+        owner = *user;
+    }
+    if owner != item
+        && let Some(def_id) = local_codegen_owner(owner)
+    {
+        return Some(def_id);
+    }
+    characteristic_def_id_of_mono_item(cx.tcx, owner)
+}
+
 fn characteristic_def_id_of_mono_item<'tcx>(
     tcx: TyCtxt<'tcx>,
     mono_item: MonoItem<'tcx>,
-    place_by_user: bool,
 ) -> Option<DefId> {
     match mono_item {
         MonoItem::Fn(instance) => {
             let def_id = match instance.def {
                 ty::InstanceKind::Item(def) => def,
-                // A coroutine's drop glue is generated from its body. If several
-                // callers share it, a body edit could invalidate the entire fallback
-                // unit, even if only the line numbers in the glue changed.
-                ty::InstanceKind::Shim(ty::ShimKind::DropGlue(_, Some(ty)))
-                    if place_by_user
-                        && let ty::Coroutine(def, _) = *ty.kind()
-                        && def.is_local() =>
-                {
-                    return Some(def);
-                }
                 ty::InstanceKind::Intrinsic(..)
                 | ty::InstanceKind::LlvmIntrinsic(..)
                 | ty::InstanceKind::Virtual(..)
@@ -1030,21 +1066,7 @@ fn characteristic_def_id_of_mono_item<'tcx>(
                 && tcx.sess.opts.incremental.is_some()
                 && !def_id.is_local()
                 && mono_item.is_generic_fn()
-                && let Some(local_def_id) =
-                    instance.args.iter().flat_map(|argument| argument.walk()).find_map(|argument| {
-                        let ty::GenericArgKind::Type(ty) = argument.kind() else {
-                            return None;
-                        };
-                        let local_def_id = match *ty.kind() {
-                            ty::FnDef(def_id, _)
-                            | ty::Closure(def_id, _)
-                            | ty::CoroutineClosure(def_id, _)
-                            | ty::Coroutine(def_id, _)
-                            | ty::CoroutineWitness(def_id, _) => def_id,
-                            _ => return None,
-                        };
-                        local_def_id.is_local().then_some(local_def_id)
-                    })
+                && let Some(local_def_id) = local_callable_in_args(instance)
             {
                 // Specializations containing a local callable change with that callable, not
                 // with unrelated instantiations from the upstream generic's defining module.
