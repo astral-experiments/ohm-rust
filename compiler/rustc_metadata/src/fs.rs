@@ -153,9 +153,13 @@ pub fn encode_and_write_metadata(tcx: TyCtxt<'_>) -> Result<EncodedMetadata, Err
             });
 
     if need_metadata_file && tcx.sess.opts.json_artifact_notifications {
-        let public_api_hash = public_api_hash_path
-            .as_deref()
-            .and_then(|path| recover_public_api_hash(path, tcx.sess.cfg_version));
+        let public_api_hash = public_api_hash_path.as_deref().and_then(|path| {
+            recover_public_api_hash(
+                path,
+                tcx.sess.cfg_version,
+                tcx.sess.opts.unstable_opts.ohm_terminal_check_hash,
+            )
+        });
         tcx.dcx().emit_metadata_artifact_notification(
             out_filename.as_path(),
             public_api_hash.as_deref(),
@@ -169,7 +173,11 @@ pub fn encode_and_write_metadata(tcx: TyCtxt<'_>) -> Result<EncodedMetadata, Err
 ///
 /// Reading the completed file, instead of returning the freshly computed hash from the encoder,
 /// also covers the incremental path that copies a green metadata work product.
-fn recover_public_api_hash(path: &Path, cfg_version: &'static str) -> Option<String> {
+fn recover_public_api_hash(
+    path: &Path,
+    cfg_version: &'static str,
+    terminal_check: bool,
+) -> Option<String> {
     let file = fs::File::open(path).ok()?;
     // SAFETY: `path` names the completed metadata file owned by this compiler invocation. We only
     // read through the mapping and keep the file-backed mapping alive in `MetadataBlob`.
@@ -180,6 +188,9 @@ fn recover_public_api_hash(path: &Path, cfg_version: &'static str) -> Option<Str
 
     let mut metadata = MetadataBlob::new(slice_owned(mmap, Deref::deref)).ok()?;
     metadata.check_compatibility(cfg_version, || false).ok()?;
+    if terminal_check && let Some(hash) = metadata.terminal_check_hash() {
+        return Some(hash.to_hex());
+    }
     Some(metadata.get_crate_hashes().public_hash.to_hex())
 }
 

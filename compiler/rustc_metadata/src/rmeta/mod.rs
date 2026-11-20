@@ -53,7 +53,7 @@ use table::TableBuilder;
 use crate::eii::EiiMapEncodedKeyValue;
 use crate::rmeta::encoder::MetadataEncoder;
 use crate::rmeta::encoder::public_api_hasher::{
-    GraphHashed, ItemPublicHashes, RDRHashAll, RDRHashNone,
+    GraphHashed, PublicHashes, RDRHashAll, RDRHashNone,
 };
 
 mod decoder;
@@ -339,7 +339,7 @@ pub(crate) struct CrateRoot {
 
     specialization_enabled_in: bool,
     public_api_hash_opt_enabled: bool,
-    rdr_hashes: Option<ItemPublicHashes>,
+    rdr_hashes: PublicHashes,
 }
 
 /// The full and public crate hashes stored in the metadata header.
