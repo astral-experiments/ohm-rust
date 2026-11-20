@@ -16,6 +16,15 @@ impl u16 {
     }
 }
 
+struct Local;
+
+impl Local {
+    fn value(&self) -> u8 {
+        17
+    }
+}
+
 fn main() {
+    assert_eq!(Local.value(), 17);
     println!("{}", u16::local_domain_probe());
 }
