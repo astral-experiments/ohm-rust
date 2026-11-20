@@ -26,8 +26,8 @@ use crate::diagnostics;
 const FILE_MAGIC: &[u8] = b"RSIC";
 
 /// Change this if the header format changes.
-// Upstream monomorphizations are indexed by recoverable buckets.
-const HEADER_FORMAT_VERSION: u16 = 24450;
+// This format includes monomorphization buckets and large byte literal fingerprints.
+const HEADER_FORMAT_VERSION: u16 = 57124;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);
