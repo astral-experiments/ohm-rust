@@ -1,7 +1,7 @@
 use rustc_data_structures::fx::{FxHashMap, FxHashSet, FxIndexSet};
 use rustc_data_structures::unord::UnordSet;
 use rustc_hir::def_id::{DefId, LocalDefId};
-use rustc_middle::mir::TerminatorKind;
+use rustc_middle::mir::{Body, TerminatorKind};
 use rustc_middle::ty::{self, GenericArgsRef, InstanceKind, ShimKind, TyCtxt, TypeVisitableExt};
 use rustc_span::sym;
 use rustc_structures::Limit;
@@ -204,26 +204,37 @@ pub(crate) fn mir_inliner_callees<'tcx>(
         // Functions from other crates and MIR shims
         _ => tcx.instance_mir(instance),
     };
-    let mut calls = FxIndexSet::default();
-    for bb_data in body.basic_blocks.iter() {
-        let terminator = bb_data.terminator();
-        if let TerminatorKind::Call { func, args: call_args, .. } = &terminator.kind {
-            let ty = func.ty(&body.local_decls, tcx);
-            let ty::FnDef(def_id, generic_args) = ty.kind() else {
-                continue;
-            };
-            let call = if tcx.is_intrinsic(*def_id, sym::const_eval_select) {
-                let func = &call_args[2].node;
-                let ty = func.ty(&body.local_decls, tcx);
-                let ty::FnDef(def_id, generic_args) = ty.kind() else {
-                    continue;
-                };
-                (*def_id, *generic_args)
-            } else {
-                (*def_id, *generic_args)
-            };
-            calls.insert(call);
-        }
-    }
+    let calls: FxIndexSet<_> = direct_callees(tcx, body).collect();
     tcx.arena.alloc_from_iter(calls.iter().map(|(did, args)| (*did, args.no_bound_vars().unwrap())))
+}
+
+/// Checks the prepared body before the state transform consumes it. Only coroutines
+/// with a forced callee need the inliner's call-site diagnostics during analysis.
+pub(crate) fn coroutine_has_forced_inline_calls(tcx: TyCtxt<'_>, def_id: LocalDefId) -> bool {
+    let prepared = tcx.mir_coroutine_layout_prepared(def_id).borrow();
+    direct_callees(tcx, &prepared.0)
+        .any(|(id, _)| super::ForceInline::should_run_pass_for_callee(tcx, id))
+}
+
+/// Iterates over the functions that the MIR inliner can encounter at runtime.
+fn direct_callees<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    body: &Body<'tcx>,
+) -> impl Iterator<Item = (DefId, ty::Binder<'tcx, GenericArgsRef<'tcx>>)> {
+    body.basic_blocks.iter().filter_map(move |bb| {
+        let TerminatorKind::Call { func, args, .. } = &bb.terminator().kind else {
+            return None;
+        };
+        let ty::FnDef(id, generics) = *func.ty(&body.local_decls, tcx).kind() else {
+            return None;
+        };
+        if tcx.is_intrinsic(id, sym::const_eval_select) {
+            let ty::FnDef(id, generics) = *args[2].node.ty(&body.local_decls, tcx).kind() else {
+                return None;
+            };
+            Some((id, generics))
+        } else {
+            Some((id, generics))
+        }
+    })
 }

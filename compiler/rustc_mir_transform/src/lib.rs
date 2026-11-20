@@ -232,6 +232,7 @@ pub fn provide(providers: &mut Providers) {
         check_liveness: liveness::check_liveness,
         is_mir_available,
         mir_callgraph_cyclic: inline::cycle::mir_callgraph_cyclic,
+        coroutine_has_forced_inline_calls: inline::cycle::coroutine_has_forced_inline_calls,
         mir_inliner_callees: inline::cycle::mir_inliner_callees,
         promoted_mir,
         deduced_param_attrs: deduce_param_attrs::deduced_param_attrs,
@@ -544,8 +545,9 @@ fn inner_mir_for_ctfe(tcx: TyCtxt<'_>, def: LocalDefId) -> Body<'_> {
 /// end up missing the source MIR due to stealing happening.
 fn mir_drops_elaborated_and_const_checked(tcx: TyCtxt<'_>, def: LocalDefId) -> &Steal<Body<'_>> {
     let body = if tcx.is_coroutine(def.to_def_id()) {
-        // The layout query must borrow the preparation before this query consumes it.
+        // Both queries borrow the preparation before this query consumes it.
         tcx.ensure_done().mir_coroutine_runtime_info(def);
+        tcx.ensure_done().coroutine_has_forced_inline_calls(def);
         let (mut body, preparation) = tcx.mir_coroutine_layout_prepared(def).steal();
         if let Some(preparation) = preparation {
             let state_transform = coroutine::PreparedStateTransform::new(preparation);

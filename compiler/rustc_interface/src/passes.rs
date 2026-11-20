@@ -1372,6 +1372,10 @@ fn run_required_analyses(tcx: TyCtxt<'_>) {
             if tcx.is_coroutine(def_id.to_def_id())
                 && (!tcx.is_async_drop_in_place_coroutine(def_id.to_def_id()))
             {
+                // Forced inlining runs after layout preparation and can diagnose an invalid call.
+                if tcx.coroutine_has_forced_inline_calls(def_id) {
+                    tcx.ensure_ok().optimized_mir(def_id);
+                }
                 // Eagerly check the unsubstituted layout for cycles.
                 tcx.ensure_ok()
                     .layout_of(ty::TypingEnv::codegen(tcx, def_id.to_def_id()).as_query_input(
