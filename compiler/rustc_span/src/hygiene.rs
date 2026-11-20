@@ -217,11 +217,12 @@ impl LocalExpnId {
 
     pub fn fresh(mut expn_data: ExpnData, hcx: impl StableHashCtxt) -> LocalExpnId {
         debug_assert_eq!(expn_data.parent.krate, LOCAL_CRATE);
-        let expn_hash = update_disambiguator(&mut expn_data, hcx);
+        let (expn_hash, incremental) = update_disambiguator(&mut expn_data, hcx);
         HygieneData::with(|data| {
             let expn_id = data.local_expn_data.push(Some(expn_data));
             let _eid = data.local_expn_hashes.push(expn_hash);
             debug_assert_eq!(expn_id, _eid);
+            data.set_incremental_hash(expn_id, incremental);
             let _old_id = data.expn_hash_to_expn_id.insert(expn_hash, expn_id.to_expn_id());
             debug_assert!(_old_id.is_none());
             expn_id
@@ -247,13 +248,14 @@ impl LocalExpnId {
     #[inline]
     pub fn set_expn_data(self, mut expn_data: ExpnData, hcx: impl StableHashCtxt) {
         debug_assert_eq!(expn_data.parent.krate, LOCAL_CRATE);
-        let expn_hash = update_disambiguator(&mut expn_data, hcx);
+        let (expn_hash, incremental) = update_disambiguator(&mut expn_data, hcx);
         HygieneData::with(|data| {
             let old_expn_data = &mut data.local_expn_data[self];
             assert!(old_expn_data.is_none(), "expansion data is reset for an expansion ID");
             *old_expn_data = Some(expn_data);
             debug_assert_eq!(data.local_expn_hashes[self].0, Fingerprint::ZERO);
             data.local_expn_hashes[self] = expn_hash;
+            data.set_incremental_hash(self, incremental);
             let _old_id = data.expn_hash_to_expn_id.insert(expn_hash, self.to_expn_id());
             debug_assert!(_old_id.is_none());
         });
@@ -278,6 +280,10 @@ impl ExpnId {
     /// Invariant: we do not create any ExpnId with local_id == 0 and krate != 0.
     pub const fn root() -> ExpnId {
         ExpnId { krate: LOCAL_CRATE, local_id: ExpnIndex::ZERO }
+    }
+
+    pub fn incremental_expn_hash(self) -> ExpnHash {
+        HygieneData::with(|data| data.hash_for_mode(self, true))
     }
 
     #[inline]
@@ -364,6 +370,7 @@ pub(crate) struct HygieneData {
     /// first and then resolved later), so we use an `Option` here.
     local_expn_data: IndexVec<LocalExpnId, Option<ExpnData>>,
     local_expn_hashes: IndexVec<LocalExpnId, ExpnHash>,
+    incremental_hashes: IndexVec<LocalExpnId, ExpnHash>,
     /// Data and hash information from external crates. We may eventually want to remove these
     /// maps, and fetch the information directly from the other crate's metadata like DefIds do.
     foreign_expn_data: FxHashMap<ExpnId, ExpnData>,
@@ -394,6 +401,7 @@ impl HygieneData {
         let root_ctxt_data = SyntaxContextData::root();
         HygieneData {
             local_expn_data: IndexVec::from_elem_n(Some(root_data), 1),
+            incremental_hashes: IndexVec::new(),
             local_expn_hashes: IndexVec::from_elem_n(ExpnHash(Fingerprint::ZERO), 1),
             foreign_expn_data: FxHashMap::default(),
             foreign_expn_hashes: FxHashMap::default(),
@@ -408,6 +416,25 @@ impl HygieneData {
     #[inline]
     fn with<R>(f: impl FnOnce(&mut HygieneData) -> R) -> R {
         with_session_globals(|session_globals| f(&mut session_globals.hygiene_data.borrow_mut()))
+    }
+
+    fn set_incremental_hash(&mut self, expn_id: LocalExpnId, hash: Option<ExpnHash>) {
+        if let Some(hash) = hash {
+            *self
+                .incremental_hashes
+                .ensure_contains_elem(expn_id, || ExpnHash(Fingerprint::ZERO)) = hash;
+            assert!(self.expn_hash_to_expn_id.insert(hash, expn_id.to_expn_id()).is_none());
+        }
+    }
+
+    fn hash_for_mode(&self, id: ExpnId, incremental: bool) -> ExpnHash {
+        if incremental
+            && let Some(local) = id.as_local()
+            && let Some(hash) = self.incremental_hashes.get(local)
+        {
+            return *hash;
+        }
+        self.expn_hash(id)
     }
 
     #[inline]
@@ -1186,6 +1213,11 @@ impl ExpnData {
         }
     }
 
+    fn full_hash(&self, hcx: &mut impl StableHashCtxt) -> ExpnHash {
+        let crate_id = LOCAL_CRATE.as_def_id().to_stable_hash_key(hcx).stable_crate_id();
+        ExpnHash::new(crate_id, self.hash_expn(hcx))
+    }
+
     #[inline]
     fn hash_expn(&self, hcx: &mut impl StableHashCtxt) -> Hash64 {
         let mut hasher = StableHasher::new();
@@ -1502,7 +1534,23 @@ pub struct HygieneDecodeContext {
 ///
 /// The caller must validate the decoded data against `hash` before registration. Concurrent
 /// decoders of the same expansion then reuse the identity registered by the first decoder.
+pub fn register_cached_local_expn_id(
+    data: ExpnData,
+    expected: ExpnHash,
+    mut hcx: impl StableHashCtxt,
+) -> ExpnId {
+    let canonical = data.full_hash(&mut hcx);
+    let incremental = hcx.with_incremental_keys(|hcx| data.full_hash(hcx));
+    assert_eq!(expected, incremental.unwrap_or(canonical), "invalid cached local expansion data");
+    register_local_expn(data, canonical, incremental)
+}
+
+#[cfg(test)]
 pub fn register_local_expn_id(data: ExpnData, hash: ExpnHash) -> ExpnId {
+    register_local_expn(data, hash, None)
+}
+
+fn register_local_expn(data: ExpnData, hash: ExpnHash, incremental: Option<ExpnHash>) -> ExpnId {
     HygieneData::with(|hygiene_data| {
         if let Some(&expn_id) = hygiene_data.expn_hash_to_expn_id.get(&hash) {
             assert_eq!(
@@ -1515,6 +1563,7 @@ pub fn register_local_expn_id(data: ExpnData, hash: ExpnHash) -> ExpnId {
 
         let expn_id = hygiene_data.local_expn_data.next_index();
         hygiene_data.local_expn_data.push(Some(data));
+        hygiene_data.set_incremental_hash(expn_id, incremental);
         let _eid = hygiene_data.local_expn_hashes.push(hash);
         debug_assert_eq!(expn_id, _eid);
 
@@ -1629,7 +1678,10 @@ impl<D: SpanDecoder> Decodable<D> for LocalExpnId {
 /// `set_expn_data`). It is *not* called for foreign `ExpnId`s deserialized
 /// from another crate's metadata - since `ExpnHash` includes the stable crate id,
 /// collisions are only possible between `ExpnId`s within the same crate.
-fn update_disambiguator(expn_data: &mut ExpnData, mut hcx: impl StableHashCtxt) -> ExpnHash {
+fn update_disambiguator(
+    expn_data: &mut ExpnData,
+    mut hcx: impl StableHashCtxt,
+) -> (ExpnHash, Option<ExpnHash>) {
     // This disambiguator should not have been set yet.
     assert_eq!(expn_data.disambiguator, 0, "Already set disambiguator for ExpnData: {expn_data:?}");
     hcx.assert_default_stable_hash_controls("ExpnData (disambiguator)");
@@ -1661,13 +1713,23 @@ fn update_disambiguator(expn_data: &mut ExpnData, mut hcx: impl StableHashCtxt) 
         });
     }
 
-    ExpnHash::new(LOCAL_CRATE.as_def_id().to_stable_hash_key(&mut hcx).stable_crate_id(), expn_hash)
+    let canonical = ExpnHash::new(
+        LOCAL_CRATE.as_def_id().to_stable_hash_key(&mut hcx).stable_crate_id(),
+        expn_hash,
+    );
+    let incremental = hcx.with_incremental_keys(|hcx| expn_data.full_hash(hcx));
+    (canonical, incremental)
 }
 
 impl HygieneData {
     #[inline]
-    fn expn_hash_input(&self, id: ExpnId, for_metadata: bool) -> (ExpnHash, Option<LocalExpnId>) {
-        let hash = self.expn_hash(id);
+    fn expn_hash_input(
+        &self,
+        id: ExpnId,
+        for_metadata: bool,
+        incremental: bool,
+    ) -> (ExpnHash, Option<LocalExpnId>) {
+        let hash = self.hash_for_mode(id, incremental);
         if for_metadata
             && let Some(local) = id.as_local()
             && let Some(data) = &self.local_expn_data[local]
@@ -1706,7 +1768,14 @@ impl StableHash for SyntaxContext {
             hcx.assert_default_stable_hash_controls("ExpnId");
             let (hash, transparency) = HygieneData::with(|data| {
                 let (expn_id, transparency) = data.outer_mark(*self);
-                (data.expn_hash_input(expn_id, hcx.hashes_metadata_spans()), transparency)
+                (
+                    data.expn_hash_input(
+                        expn_id,
+                        hcx.hashes_metadata_spans(),
+                        hcx.stable_hash_controls().incremental_keys,
+                    ),
+                    transparency,
+                )
             });
             hash_expansion(hash, hcx).stable_hash(hcx, hasher);
             transparency.stable_hash(hcx, hasher);
@@ -1721,8 +1790,13 @@ impl StableHash for ExpnId {
             // Avoid fetching TLS storage for a trivial often-used value.
             Fingerprint::ZERO
         } else {
-            let input =
-                HygieneData::with(|data| data.expn_hash_input(*self, hcx.hashes_metadata_spans()));
+            let input = HygieneData::with(|data| {
+                data.expn_hash_input(
+                    *self,
+                    hcx.hashes_metadata_spans(),
+                    hcx.stable_hash_controls().incremental_keys,
+                )
+            });
             hash_expansion(input, hcx)
         };
 

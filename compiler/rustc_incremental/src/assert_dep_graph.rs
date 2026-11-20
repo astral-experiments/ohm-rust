@@ -111,7 +111,7 @@ struct IfThisChanged<'tcx> {
 
 impl<'tcx> IfThisChanged<'tcx> {
     fn process_attrs(&mut self, def_id: LocalDefId) {
-        let def_path_hash = self.tcx.def_path_hash(def_id.to_def_id());
+        let def_path_hash = self.tcx.incremental_def_path_hash(def_id.to_def_id());
         let hir_id = self.tcx.local_def_id_to_hir_id(def_id);
         let attrs = self.tcx.hir_attrs(hir_id);
         for attr in attrs {

@@ -1067,6 +1067,26 @@ pub static DEFAULT_QUERY_PROVIDERS: LazyLock<Providers> = LazyLock::new(|| {
     *providers
 });
 
+/// Names local query keys independently of Cargo's recursive dependency salt.
+fn ohm_lookup_id(sess: &Session, crate_name: Symbol, is_exe: bool) -> Option<StableCrateId> {
+    if !sess.opts.unstable_opts.ohm_shared_stages
+        || sess.opts.incremental.is_none()
+        || sess.opts.cg.metadata.len() != 1
+        || !matches!(sess.io.input, Input::File(_))
+    {
+        return None;
+    }
+    let name = env::var("CARGO_PKG_NAME").ok()?;
+    let version = env::var("CARGO_PKG_VERSION").ok()?;
+    Some(StableCrateId::new(
+        crate_name,
+        is_exe,
+        // The NUL keeps this private domain outside possible command-line metadata.
+        vec![format!("\0ohm-local-queries:{name}:{version}")],
+        sess.cfg_version,
+    ))
+}
+
 pub fn create_and_enter_global_ctxt<T, F: for<'tcx> FnOnce(TyCtxt<'tcx>) -> T>(
     compiler: &Compiler,
     krate: rustc_ast::Crate,
@@ -1093,12 +1113,16 @@ pub fn create_and_enter_global_ctxt<T, F: for<'tcx> FnOnce(TyCtxt<'tcx>) -> T>(
 
     let outputs = util::build_output_filenames(&pre_configured_attrs, sess);
 
+    let lookup_id = ohm_lookup_id(sess, crate_name, crate_types.contains(&CrateType::Executable));
     let (dep_graph, incr_comp_session, query_result_on_disk_cache) =
-        setup_dep_graph(sess, crate_name, stable_crate_id);
+        setup_dep_graph(sess, crate_name, stable_crate_id, lookup_id);
 
     let cstore =
         FreezeLock::new(Box::new(CStore::new(compiler.codegen_backend.metadata_loader())) as _);
-    let definitions = FreezeLock::new(Definitions::new(stable_crate_id));
+    let definitions = FreezeLock::new(Definitions::with_incremental_identity(
+        stable_crate_id,
+        lookup_id.unwrap_or(stable_crate_id),
+    ));
 
     let stable_crate_ids = FreezeLock::new(StableCrateIdMap::default());
     let untracked = Untracked {

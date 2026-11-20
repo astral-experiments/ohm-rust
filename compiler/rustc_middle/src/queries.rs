@@ -255,6 +255,11 @@ rustc_queries! {
         feedable
     }
 
+    query local_linkage_identity(_: ()) -> Fingerprint {
+        eval_always
+        desc { "tracking the local crate identity" }
+    }
+
     query codegen_output_mode(_: ()) -> (bool, bool) {
         eval_always
         desc { "tracking code generation and linking output modes" }

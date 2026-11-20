@@ -183,7 +183,7 @@ impl<'tcx> TyCtxt<'tcx> {
             return Hashes { bodies_hash: None, attrs_hash: None };
         }
 
-        self.with_stable_hashing_context(|mut hcx| {
+        self.with_incremental_hashing_context(|mut hcx| {
             let mut stable_hasher = StableHasher::new();
             node.stable_hash(&mut hcx, &mut stable_hasher);
             // Bodies are stored out of line, so we need to pull them explicitly in the hash.

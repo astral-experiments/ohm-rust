@@ -343,7 +343,12 @@ impl<'tcx, D: TyDecoder<'tcx>> Decodable<D> for ConstAllocation<'tcx> {
 
 impl<'tcx, D: TyDecoder<'tcx>> Decodable<D> for AdtDef<'tcx> {
     fn decode(decoder: &mut D) -> Self {
-        decoder.interner().mk_adt_def_from_data(Decodable::decode(decoder))
+        let tcx = decoder.interner();
+        let mut data: ty::AdtDefData = Decodable::decode(decoder);
+        if !D::CLEAR_CROSS_CRATE && tcx.sess.opts.unstable_opts.ohm_shared_stages {
+            data.remap_local_layout_seed(tcx);
+        }
+        tcx.mk_adt_def_from_data(data)
     }
 }
 

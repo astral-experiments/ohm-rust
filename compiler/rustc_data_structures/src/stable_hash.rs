@@ -23,6 +23,14 @@ pub use rustc_stable_hash::{
 /// certain operations to be defined in `rustc_middle` where more things are
 /// visible.
 pub trait StableHashCtxt {
+    /// Also compute the incremental hash when this crate has separate local keys.
+    fn with_incremental_keys<T>(&mut self, _f: impl FnOnce(&mut Self) -> T) -> Option<T>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
     fn hashes_metadata_spans(&self) -> bool {
         false
     }
@@ -622,5 +630,6 @@ where
 /// being requested)
 #[derive(Clone, Copy, Hash, Eq, PartialEq, Debug)]
 pub struct StableHashControls {
+    pub incremental_keys: bool,
     pub hash_spans: bool,
 }

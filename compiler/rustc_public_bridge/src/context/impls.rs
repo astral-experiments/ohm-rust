@@ -388,7 +388,7 @@ impl<'tcx, B: Bridge> CompilerCtxt<'tcx, B> {
 
     /// Returns the representation options for this ADT.
     pub fn adt_repr(&self, def: AdtDef<'tcx>) -> ReprOptions {
-        def.repr()
+        def.repr_for_layout(self.tcx)
     }
 
     /// Retrieve the function signature for the given generic arguments.
