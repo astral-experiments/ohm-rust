@@ -405,6 +405,21 @@ impl RawDefId {
     }
 }
 
+/// A binding available only when reporting a privacy error.
+#[derive(TyEncodable, TyDecodable)]
+enum PrivateChild<Binding = ModChild> {
+    Item(DefIndex),
+    Import(Binding),
+    // A glob may bring in thousands of names (e.g. core::arch::x86_64).
+    // Refer to the selected entries in the source module's hashed child list.
+    Glob {
+        import: DefId,
+        source: DefId,
+        vis: ty::Visibility<rustc_span::def_id::ModId>,
+        members: DenseBitSet<usize>,
+    },
+}
+
 /// A dependency record, as stored in the hashed [`CrateRoot`].
 ///
 /// Note the absence of the dependency's `-C extra-filename`: it lives in
@@ -509,6 +524,7 @@ define_tables! {
     // That's why the encoded list needs to contain `ModChild` structures describing all the names
     // individually instead of `DefId`s.
     module_children_reexports: Table<RDRHashAll, DefIndex, LazyArray<ModChild>>,
+    private_module_children: Table<RDRHashNone, DefIndex, LazyArray<PrivateChild>>,
     ambig_module_children: Table<RDRHashAll, DefIndex, LazyArray<AmbigModChild>>,
     cross_crate_inlinable: Table<RDRHashAll, DefIndex, bool>,
     asyncness: Table<RDRHashAll, DefIndex, ty::Asyncness>,

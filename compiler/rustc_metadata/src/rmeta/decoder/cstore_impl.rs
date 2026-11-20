@@ -811,6 +811,40 @@ impl CStore {
         self.get_crate_data(def_id.krate).get_expn_that_defined(tcx, def_id.index)
     }
 
+    /// Bindings omitted from the public API hash, for failed path lookups.
+    pub fn private_module_children_untracked(
+        &self,
+        tcx: TyCtxt<'_>,
+        def_id: DefId,
+    ) -> impl Iterator<Item = ModChild> {
+        use rustc_middle::middle::resolve::Reexport;
+
+        use crate::rmeta::PrivateChild;
+
+        gen move {
+            let cdata = self.get_crate_data(def_id.krate);
+            let children = cdata.root.tables.private_module_children.get(cdata, def_id.index);
+            for child in children.decode((cdata, tcx)) {
+                match child {
+                    PrivateChild::Item(index) => yield cdata.get_mod_child(tcx, index),
+                    PrivateChild::Import(child) => yield child,
+                    PrivateChild::Glob { source, import, vis, members } => {
+                        let data = self.get_crate_data(source.krate);
+                        for (i, mut child) in
+                            data.get_module_children(tcx, source.index).enumerate()
+                        {
+                            if members.contains(i) {
+                                child.reexport_chain.insert(0, Reexport::Glob(import));
+                                child.vis = vis;
+                                yield child;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     pub fn ambig_module_children_untracked(
         &self,
         tcx: TyCtxt<'_>,

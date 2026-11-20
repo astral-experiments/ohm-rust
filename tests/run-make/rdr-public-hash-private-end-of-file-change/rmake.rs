@@ -51,6 +51,31 @@ fn main() {
         "public hash changed after appending a private item to the end of a file",
     );
 
+    // The declaration still needs to be visible to privacy diagnostics.
+    rustc()
+        .input("-")
+        .stdin_buf("pub fn call() { dep::sub::private_at_end(); }")
+        .crate_type("rlib")
+        .edition("2024")
+        .extern_("dep", "libdep.rlib")
+        .arg("-Zpublic-api-hash")
+        .run_fail()
+        .assert_stderr_contains("function `private_at_end` is private")
+        .assert_stderr_contains("fn private_at_end() {}");
+
+    append_to_submodule("use std::io::{self, *};");
+    assert_eq!(baseline, compile_and_read_public_hash());
+    rustc()
+        .input("-")
+        .stdin_buf("pub use dep::sub::Read;")
+        .crate_type("rlib")
+        .edition("2024")
+        .extern_("dep", "libdep.rlib")
+        .arg("-Zpublic-api-hash")
+        .run_fail()
+        .assert_stderr_contains("trait `Read` is private")
+        .assert_stderr_contains("use std::io::{self, *};");
+
     // Disabled items provide diagnostic context without affecting the public API.
     append_to_submodule(r#"#[cfg(feature = "wire")] pub struct Packet;"#);
     assert_eq!(baseline, compile_and_read_public_hash());

@@ -2194,15 +2194,79 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         M::HASH_PUBLIC_API && !self.tcx.resolutions(()).has_opaque_macros
     }
 
-    fn public_module_children_local(
-        &self,
+    /// Encode local items by index. Share the source metadata for bindings
+    /// imported unchanged by a glob from another crate.
+    fn encode_private_children(
+        &mut self,
+        def_id: LocalDefId,
+        children: impl Iterator<Item = &'tcx ModChild>,
+    ) {
+        use rustc_middle::middle::resolve::Reexport;
+
+        let mut records = Vec::new();
+        let mut globs = FxIndexMap::default();
+        for child in children {
+            if child.reexport_chain.is_empty() {
+                records.push(PrivateChild::Item(child.res.def_id().index));
+                continue;
+            }
+            if let Some(&Reexport::Glob(import)) = child.reexport_chain.first() {
+                let group = globs.entry((import, child.vis)).or_insert_with(|| {
+                    let tree = match self.tcx.hir_node_by_def_id(import.as_local()?) {
+                        hir::Node::Item(hir::Item { kind: hir::ItemKind::Use(tree), .. }) => tree,
+                        hir::Node::NestedUseTree(tree) => tree,
+                        _ => return None,
+                    };
+                    let source = tree.prefix.res.type_ns?.opt_def_id()?;
+                    if source.is_local() {
+                        return None;
+                    }
+                    let children = self.tcx.module_children(source);
+                    let indices = children
+                        .iter()
+                        .enumerate()
+                        .map(|(i, c)| ((c.ident.name, c.ident.span, c.res), i))
+                        .collect::<FxHashMap<_, _>>();
+                    Some((source, indices, DenseBitSet::new_empty(children.len())))
+                });
+                if let Some((_, indices, members)) = group
+                    && let Some(&i) = indices.get(&(child.ident.name, child.ident.span, child.res))
+                {
+                    members.insert(i);
+                    continue;
+                }
+            }
+            records.push(PrivateChild::Import(child));
+        }
+        for ((import, vis), group) in globs {
+            if let Some((source, _, members)) = group
+                && !members.is_empty()
+            {
+                records.push(PrivateChild::Glob { import, source, vis, members });
+            }
+        }
+        let omitted = self.with_record_mode(RecordMode::None, |ecx| {
+            ecx.lazy_array_with(records, |ecx, child| child.encode(ecx))
+        });
+        self.tables.private_module_children.set_unhashed(def_id.local_def_index, omitted);
+    }
+
+    /// Encode children used only for privacy diagnostics outside the public API graph.
+    /// Return the remaining children for ordinary name resolution.
+    fn partition_module_children(
+        &mut self,
         def_id: LocalDefId,
     ) -> impl Iterator<Item = &'tcx ModChild> + use<'tcx, M> + Clone {
         let effective_visibilities = self.tcx.effective_visibilities(());
         let remove_private_children = self.remove_private_children();
-        self.tcx.module_children_local(def_id).iter().filter(move |child| {
+        let is_public = move |child: &&ModChild| {
             is_public_mod_child(remove_private_children, effective_visibilities, child)
-        })
+        };
+        let children = self.tcx.module_children_local(def_id);
+        if remove_private_children {
+            self.encode_private_children(def_id, children.iter().filter(|c| !is_public(c)));
+        }
+        children.iter().filter(is_public)
     }
 
     fn encode_attrs<'h>(&mut self, def_id: LocalDefId, hcx: &mut impl PublicApiHashState<'h>) {
@@ -2453,7 +2517,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                     self.tcx.explicit_super_clauses_of(def_id).skip_binder(), hcx);
                 record_defaulted_array!(self.tables.explicit_implied_clauses_of[def_id] <-
                     self.tcx.explicit_implied_clauses_of(def_id).skip_binder(), hcx);
-                let module_children = self.public_module_children_local(local_id);
+                let module_children = self.partition_module_children(local_id);
                 record_array!(self.tables.module_children_non_reexports[def_id] <-
                     module_children.map(|child| child.res.def_id()), hcx,
                     |def_id| def_id.index);
@@ -2756,7 +2820,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             // Encode this here because we don't do it in encode_def_ids.
             record!(self.tables.expn_that_defined[def_id] <- tcx.expn_that_defined(local_def_id), hcx);
         } else {
-            let module_children = self.public_module_children_local(local_def_id);
+            let module_children = self.partition_module_children(local_def_id);
 
             record_array!(self.tables.module_children_non_reexports[def_id] <-
                 module_children.clone().filter(|child| child.reexport_chain.is_empty())

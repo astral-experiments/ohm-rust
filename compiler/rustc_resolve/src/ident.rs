@@ -1124,10 +1124,26 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
         ignore_decl: Option<Decl<'ra>>,
     ) -> Result<Decl<'ra>, ControlFlow<Determinacy, Determinacy>> {
         let key = BindingKey::new(ident, ns);
-        let resolution =
-            &*self.resolution(module.to_module(), key).ok_or(ControlFlow::Continue(Determined))?;
-
-        let binding = resolution.non_glob_decl.filter(|b| Some(*b) != ignore_decl);
+        let binding = self
+            .resolution(module.to_module(), key)
+            .and_then(|r| r.non_glob_decl)
+            .or_else(|| {
+                // Consult unhashed children only when reporting a private path.
+                // After finding a private ancestor, follow its children for import suggestions.
+                let reporting = self.privacy_errors.last().is_some_and(|err| match finalize {
+                    Some(f) => f.path_span == err.dedup_span,
+                    None => err.dedup_span.contains(orig_ident_span),
+                });
+                if shadowing != Shadowing::Unrestricted
+                    || !(reporting || finalize.is_some_and(|f| f.report_private))
+                {
+                    return None;
+                }
+                self.private_module_decl(module, key).filter(|decl| {
+                    reporting || !self.is_accessible_from(decl.vis(), parent_scope.module)
+                })
+            })
+            .filter(|b| Some(*b) != ignore_decl);
 
         if let Some(finalize) = finalize {
             return self.get_mut().finalize_module_binding(
