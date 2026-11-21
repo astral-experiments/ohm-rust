@@ -1237,6 +1237,14 @@ impl Session {
         // codegen units in order to reduce the "collateral damage" small
         // changes cause.
         if self.opts.incremental.is_some() {
+            // With stable hashing, a source module shares every LLVM optimization pass
+            // with the other modules in its bucket. Give optimized development builds
+            // one additional hash bit to reduce the cost of those collisions on edits.
+            if self.opts.unstable_opts.ohm_stable_cgu_merging
+                && self.opts.optimize == config::OptLevel::Less
+            {
+                return CodegenUnits::Default(512);
+            }
             return CodegenUnits::Default(256);
         }
 
