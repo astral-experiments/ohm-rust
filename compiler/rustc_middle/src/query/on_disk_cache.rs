@@ -17,7 +17,9 @@ use rustc_hir::definitions::DefPathHash;
 use rustc_index::IndexVec;
 use rustc_index::bit_set::GrowableBitSet;
 use rustc_macros::{Decodable, Encodable};
-use rustc_serialize::opaque::{FileEncodeResult, FileEncoder, IntEncodedWithFixedSize, MemDecoder};
+use rustc_serialize::opaque::{
+    FileEncodeResult, FileEncoder, IntEncodedWithFixedSize, MAGIC_END_BYTES, MemDecoder,
+};
 use rustc_serialize::{Decodable, Decoder, Encodable, Encoder};
 use rustc_session::Session;
 use rustc_span::hygiene::{
@@ -28,14 +30,16 @@ use rustc_span::{
     SourceFile, Span, SpanDecoder, SpanEncoder, Spanned, StableSourceFileId, Symbol, bug,
 };
 
-use crate::dep_graph::{DepNodeIndex, QuerySideEffect, SerializedDepNodeIndex};
+use crate::dep_graph::{DepKind, DepNodeIndex, QuerySideEffect, SerializedDepNodeIndex};
 use crate::mir::interpret::{AllocDecodingSession, AllocDecodingState};
 use crate::mir::{self, interpret};
 use crate::mono::{CodegenUnit, MonoItem};
+use crate::query::{QueryCache, erase};
 use crate::ty::codec::{RefDecodable, TyDecoder, TyEncoder, forward_all_decoder_methods_to};
 use crate::ty::{self, Ty, TyCtxt};
 
 const TAG_FILE_FOOTER: u128 = 0xC0FFEE_C0FFEE_C0FFEE_C0FFEE_C0FFEE;
+const TAG_SYNTAX_FOOTER: u128 = TAG_FILE_FOOTER + 1;
 const MAX_CACHE_GENERATIONS: usize = 3;
 static NEXT_CACHE_ID: AtomicU32 = AtomicU32::new(1);
 
@@ -72,6 +76,8 @@ pub struct OnDiskCache {
     serialized_data: RwLock<Option<Arc<Mmap>>>,
     start_pos: usize,
     data_len: usize,
+    /// End of the last complete generation, before any parsed module snapshots.
+    retained_len: usize,
     generation_count: usize,
     /// Reuse the previous generation and re-encode only this generation's values.
     replace_overlay: bool,
@@ -229,12 +235,29 @@ impl OnDiskCache {
 
         let mut decoder = MemDecoder::new(&data[..data_len], start_pos)?;
 
-        // Decode the *position* of the footer, which can be found in the
-        // last 8 bytes of the file.
-        let footer_pos = decoder
-            .with_position(decoder.len() - IntEncodedWithFixedSize::ENCODED_SIZE, |decoder| {
-                IntEncodedWithFixedSize::decode(decoder).0 as usize
-            });
+        fn footer_position(decoder: &mut MemDecoder<'_>) -> Result<usize, ()> {
+            let end = decoder.len().checked_sub(IntEncodedWithFixedSize::ENCODED_SIZE).ok_or(())?;
+            let pos = decoder.with_position(end, |d| IntEncodedWithFixedSize::decode(d).0);
+            (pos < end as u64).then_some(pos as usize).ok_or(())
+        }
+
+        let mut footer_pos = footer_position(&mut decoder)?;
+        let mut retained_len = data_len;
+        let mut syntax: Vec<(SerializedDepNodeIndex, AbsoluteBytePos)> = Vec::new();
+        if depth == 0 && decoder.with_position(footer_pos, |d| d.read_u128()) == TAG_SYNTAX_FOOTER {
+            (retained_len, syntax) =
+                decoder.with_position(footer_pos, |d| decode_tagged(d, TAG_SYNTAX_FOOTER));
+            if retained_len <= start_pos
+                || retained_len > footer_pos
+                || syntax
+                    .iter()
+                    .any(|(_, pos)| !(retained_len..footer_pos).contains(&pos.to_usize()))
+            {
+                return Err(());
+            }
+            decoder = MemDecoder::new(&data[..retained_len], start_pos)?;
+            footer_pos = footer_position(&mut decoder)?;
+        }
         // Decode the file footer, which contains all the lookup tables, etc.
         let footer: Footer =
             decoder.with_position(footer_pos, |decoder| decode_tagged(decoder, TAG_FILE_FOOTER));
@@ -304,11 +327,18 @@ impl OnDiskCache {
             saved_query_slots.insert(index);
         }
 
+        for &(index, _) in &syntax {
+            if !saved_query_slots.insert(index) {
+                return Err(());
+            }
+        }
+
         Ok(Self {
             cache_id,
             serialized_data: RwLock::new(Some(data)),
             start_pos,
             data_len,
+            retained_len,
             generation_count,
             replace_overlay,
             previous_cache,
@@ -318,7 +348,7 @@ impl OnDiskCache {
             pending_query_values: Default::default(),
             file_index_to_stable_id: footer.file_index_to_stable_id,
             file_index_to_file: Default::default(),
-            query_values_index: footer.query_values_index.into_iter().collect(),
+            query_values_index: footer.query_values_index.into_iter().chain(syntax).collect(),
             side_effects_index: footer.side_effects_index.into_iter().collect(),
             alloc_decoding_state,
             syntax_contexts: footer.syntax_contexts,
@@ -334,6 +364,7 @@ impl OnDiskCache {
             serialized_data: RwLock::new(None),
             start_pos: 0,
             data_len: 0,
+            retained_len: 0,
             generation_count: 0,
             replace_overlay: false,
             previous_cache: None,
@@ -365,10 +396,12 @@ impl OnDiskCache {
     /// Retains an eligible, green query in its original serialized form.
     pub fn try_forward_query_value(
         &self,
+        kind: DepKind,
         previous_index: SerializedDepNodeIndex,
         current_index: DepNodeIndex,
     ) -> bool {
-        if !self.loadable_from_disk(previous_index) {
+        // Module syntax lives outside the retained prefix.
+        if kind == DepKind::ohm_module_syntax || !self.loadable_from_disk(previous_index) {
             return false;
         }
         if self.replace_overlay {
@@ -415,7 +448,7 @@ impl OnDiskCache {
         let data = Arc::clone(data.as_ref().unwrap());
         Some(QueryCachePromotion {
             data,
-            data_len: retained.data_len,
+            data_len: retained.retained_len,
             start_pos: retained.start_pos,
             query_values,
             allocation_origins,
@@ -574,13 +607,26 @@ impl OnDiskCache {
                 },
             );
 
-            // Encode the position of the footer as the last 8 bytes of the
-            // file so we know where to look for it.
             IntEncodedWithFixedSize(footer_pos).encode(&mut encoder.encoder);
 
-            // DO NOT WRITE ANYTHING TO THE ENCODER AFTER THIS POINT! The address
-            // of the footer must be the last thing in the data stream.
-
+            // Expansion already reads the parsed modules. Write their opaque
+            // byte slices once, after the last complete generation. Editing a
+            // large module won't copy its stale syntax into the next file or
+            // trigger promotion of unrelated query results.
+            let syntax = &tcx.query_system.query_vtables.ohm_module_syntax;
+            if syntax.cache.len() != 0 {
+                encoder.encoder.emit_raw_bytes(MAGIC_END_BYTES);
+                let retained_len = encoder.position();
+                syntax.cache.for_each(&mut |key, value, index| {
+                    if syntax.will_cache_on_disk_for_key(*key) {
+                        encoder.encode_query_value(index, &erase::restore_val::<&[u8]>(*value));
+                    }
+                });
+                let index = mem::take(&mut encoder.query_values_index);
+                let footer_pos = encoder.position() as u64;
+                encoder.encode_tagged(TAG_SYNTAX_FOOTER, &(retained_len, index));
+                IntEncodedWithFixedSize(footer_pos).encode(&mut encoder.encoder);
+            }
             encoder.finish()
         })
     }

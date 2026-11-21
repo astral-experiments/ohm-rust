@@ -1333,7 +1333,7 @@ impl DepGraph {
             let is_mono =
                 matches!(dep_node.kind, DepKind::items_of_instance | DepKind::size_estimate);
             if (!is_mono || retain_mono)
-                && on_disk_cache.try_forward_query_value(prev_index, dep_node_index)
+                && on_disk_cache.try_forward_query_value(dep_node.kind, prev_index, dep_node_index)
             {
                 if trace_mono && is_mono {
                     retained_mono += 1;

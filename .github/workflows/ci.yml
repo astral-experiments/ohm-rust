@@ -318,6 +318,7 @@ jobs:
             tests/run-make/incremental-proc-macro-parse-source
             tests/run-make/incremental-retained-cache-snapshot
             tests/run-make/incremental-loaded-cache-values
+            tests/run-make/incremental-module-syntax
             tests/run-make/incremental-large-byte-literal
             tests/run-make/incremental-recomputed-query-spans
             tests/run-make/incremental-check-dependency-salt
