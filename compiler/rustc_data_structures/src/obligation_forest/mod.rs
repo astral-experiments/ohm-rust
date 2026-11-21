@@ -169,6 +169,12 @@ pub struct ObligationForest<O: ForestObligation> {
     /// significant, and space considerations are not important.
     nodes: Vec<Node<O>>,
 
+    /// Number of nodes left at the last fixpoint. This prefix still participates
+    /// in selection, but its states and edges need no further propagation until
+    /// a node in it changes state or a new tree depends on one of its nodes.
+    /// In either case we reset the length to zero.
+    stalled_len: usize,
+
     /// A cache of predicates that have been successfully completed.
     done_cache: FxHashSet<O::CacheKey>,
 
@@ -333,6 +339,7 @@ mod helper {
         pub fn new() -> ObligationForest<O> {
             ObligationForest {
                 nodes: vec![],
+                stalled_len: 0,
                 done_cache: Default::default(),
                 active_cache: Default::default(),
                 reused_node_vec: vec![],
@@ -369,6 +376,10 @@ impl<O: ForestObligation> ObligationForest<O> {
             Entry::Occupied(o) => {
                 let node = &mut self.nodes[*o.get()];
                 if let Some(parent_index) = parent {
+                    // Adding this edge joins the new trees to the stalled prefix.
+                    if *o.get() < self.stalled_len {
+                        self.stalled_len = 0;
+                    }
                     // If the node is already in `active_cache`, it has already
                     // had its chance to be marked with a parent. So if it's
                     // not already present, just dump `parent` into the
@@ -413,6 +424,7 @@ impl<O: ForestObligation> ObligationForest<O> {
             .map(|(index, _node)| Error { error: error.clone(), backtrace: self.error_at(index) })
             .collect();
 
+        self.stalled_len = 0;
         self.compress(|_| assert!(false));
         errors
     }
@@ -489,6 +501,9 @@ impl<O: ForestObligation> ObligationForest<O> {
                     ProcessResult::Changed(children) => {
                         // We are not (yet) stalled.
                         has_changed = true;
+                        if index < self.stalled_len {
+                            self.stalled_len = 0;
+                        }
                         node.state.set(NodeState::Success);
 
                         for child in children {
@@ -506,6 +521,7 @@ impl<O: ForestObligation> ObligationForest<O> {
                         }
                     }
                     ProcessResult::Error(err) => {
+                        self.stalled_len = 0;
                         has_changed = true;
                         outcome.record_error(Error { error: err, backtrace: self.error_at(index) });
                     }
@@ -520,6 +536,7 @@ impl<O: ForestObligation> ObligationForest<O> {
             // state. (Note that this will occur if we invoke
             // `process_obligations` with no pending obligations.)
             if !has_changed {
+                self.stalled_len = self.nodes.len();
                 break;
             }
 
@@ -567,8 +584,8 @@ impl<O: ForestObligation> ObligationForest<O> {
     /// Mark all `Waiting` nodes as `Success`, except those that depend on a
     /// pending node.
     fn mark_successes(&self) {
-        // Convert all `Waiting` nodes to `Success`.
-        for node in &self.nodes {
+        // Only trees outside the stalled prefix can have made progress.
+        for node in &self.nodes[self.stalled_len..] {
             if node.state.get() == NodeState::Waiting {
                 node.state.set(NodeState::Success);
             }
@@ -576,7 +593,7 @@ impl<O: ForestObligation> ObligationForest<O> {
 
         // Convert `Success` nodes that depend on a pending node back to
         // `Waiting`.
-        for node in &self.nodes {
+        for node in &self.nodes[self.stalled_len..] {
             if node.state.get() == NodeState::Pending {
                 // This call site is hot.
                 self.inlined_mark_dependents_as_waiting(node);
@@ -614,7 +631,7 @@ impl<O: ForestObligation> ObligationForest<O> {
         P: ObligationProcessor<Obligation = O>,
     {
         let mut stack = std::mem::take(&mut self.reused_node_vec);
-        for (index, node) in self.nodes.iter().enumerate() {
+        for (index, node) in self.nodes.iter().enumerate().skip(self.stalled_len) {
             // For some benchmarks this state test is extremely hot. It's a win
             // to handle the no-op cases immediately to avoid the cost of the
             // function call.
@@ -667,15 +684,34 @@ impl<O: ForestObligation> ObligationForest<O> {
     #[inline(never)]
     fn compress(&mut self, mut outcome_cb: impl FnMut(&O)) {
         debug_assert!(self.reused_node_vec.is_empty());
-        // When every node completed, there are no surviving indices to rewrite.
-        // Clearing the active cache also removes keys changed during processing.
-        if self.nodes.iter().all(|node| node.state.get() == NodeState::Done) {
-            for node in &self.nodes {
-                self.done_cache.insert(node.obligation.as_cache_key());
+        // A completed suffix cannot have any pending descendants. Otherwise
+        // mark_successes would have kept their parents waiting. Removing the
+        // suffix leaves every surviving index and edge unchanged.
+        let Some(first) = self.nodes[self.stalled_len..]
+            .iter()
+            .position(|node| matches!(node.state.get(), NodeState::Done | NodeState::Error))
+        else {
+            return;
+        };
+        let first = self.stalled_len + first;
+        if self.nodes[first..].iter().all(|node| node.state.get() == NodeState::Done) {
+            let mut stale_keys = false;
+            for (offset, node) in self.nodes[first..].iter().enumerate() {
+                let key = node.obligation.as_cache_key();
+                if first != 0 {
+                    stale_keys |= self.active_cache.remove(&key) != Some(first + offset);
+                }
+                self.done_cache.insert(key);
                 outcome_cb(&node.obligation);
             }
-            self.nodes.clear();
-            self.active_cache.clear();
+            self.nodes.truncate(first);
+            if first == 0 {
+                self.active_cache.clear();
+            } else if stale_keys {
+                // Processing can change a node's key. Drop any original keys
+                // that still refer to a removed node.
+                self.active_cache.retain(|_, index| *index < first);
+            }
             return;
         }
 

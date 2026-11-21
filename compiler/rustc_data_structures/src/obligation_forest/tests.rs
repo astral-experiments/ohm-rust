@@ -656,3 +656,77 @@ fn simultaneous_register_and_error() {
     assert_eq!(ok.len(), 0);
     assert_eq!(err, vec![super::Error { error: "An error", backtrace: vec!["A"] }]);
 }
+
+#[test]
+fn independent_roots_do_not_reindex_the_stalled_forest() {
+    let mut forest = ObligationForest::new();
+    forest.register_obligation("old");
+    forest.process_obligations(&mut C(|_| ProcessResult::Unchanged, |_| {}));
+
+    // Building a rewrite table for both roots would grow this one-entry cycle stack.
+    forest.reused_node_vec = Vec::with_capacity(1);
+    forest.register_obligation("new");
+    let outcome = forest.process_obligations(&mut C(
+        |obligation| match *obligation {
+            "new" => ProcessResult::Changed(thin_vec![]),
+            _ => ProcessResult::Unchanged,
+        },
+        |_| {},
+    ));
+    assert_eq!(outcome.completed, ["new"]);
+    assert_eq!(forest.len(), 1);
+    assert_eq!(forest.reused_node_vec.capacity(), 1);
+}
+
+#[test]
+fn new_root_shares_a_stalled_child() {
+    let mut forest = ObligationForest::new();
+    let mut processor = C(
+        |obligation| match *obligation {
+            "old" | "new" => ProcessResult::Changed(thin_vec!["child"]),
+            "child" => ProcessResult::Unchanged,
+            _ => unreachable!(),
+        },
+        |_| {},
+    );
+    for root in ["old", "new"] {
+        forest.register_obligation(root);
+        assert!(forest.process_obligations(&mut processor).completed.is_empty());
+    }
+    let outcome = forest.process_obligations(&mut C(
+        |obligation| {
+            assert_eq!(*obligation, "child");
+            ProcessResult::Changed(thin_vec![])
+        },
+        |_| {},
+    ));
+    assert_eq!(outcome.completed, ["old", "child", "new"]);
+    assert_eq!(forest.len(), 0);
+}
+
+#[test]
+fn remove_old_key_of_completed_root_after_stall() {
+    let mut forest = ObligationForest::new();
+    forest.register_obligation("stalled");
+    forest.process_obligations(&mut C(|_| ProcessResult::Unchanged, |_| {}));
+
+    forest.register_obligation("unresolved");
+    let outcome = forest.process_obligations(&mut C(
+        |obligation| match *obligation {
+            "stalled" => ProcessResult::Unchanged,
+            "unresolved" => {
+                *obligation = "resolved";
+                ProcessResult::Changed(thin_vec![])
+            }
+            _ => unreachable!(),
+        },
+        |_| {},
+    ));
+    assert_eq!(outcome.completed, ["resolved"]);
+    forest.register_obligation("stalled");
+    forest.register_obligation("unresolved");
+    forest.register_obligation("resolved");
+    let outcome =
+        forest.process_obligations(&mut C(|_| ProcessResult::Changed(thin_vec![]), |_| {}));
+    assert_eq!(outcome.completed, ["stalled", "unresolved"]);
+}
