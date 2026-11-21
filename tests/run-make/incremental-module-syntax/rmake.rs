@@ -76,4 +76,13 @@ mod tests {
         .run_fail()
         .assert_stderr_contains("reused parsed module")
         .assert_stderr_contains("error[E0710]");
+
+    // The parser builds a long method chain iteratively. Recursive snapshot
+    // decoding used to overflow the stack before cfg could remove the item.
+    let chain = ".method()".repeat(1024);
+    rfs::write("cached.rs", format!("#[cfg(any())] fn unused() {{ 0{chain}; }}"));
+    rfs::write("lib.rs", "pub mod cached;");
+    check("deep").run();
+    rfs::write("lib.rs", "pub mod cached; pub const N: u8 = 0;");
+    check("deep").run().assert_stderr_not_contains("reused parsed module");
 }
