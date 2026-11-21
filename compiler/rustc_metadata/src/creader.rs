@@ -617,7 +617,6 @@ impl CStore {
         let Library { source, metadata } = lib;
         let crate_root = metadata.get_root();
         let (unhashed, paths) = if tcx.uses_incremental_keys()
-            && !tcx.sess.opts.output_types.should_codegen()
             && !tcx.sess.opts.unstable_opts.incremental_ignore_spans
         {
             metadata.get_root_with_incremental_paths()

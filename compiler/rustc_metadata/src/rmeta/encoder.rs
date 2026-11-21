@@ -1275,7 +1275,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         // Place these private tables after the unhashed root, where older readers
         // stop decoding. The consumer derives the effective layout seed from
         // the canonical path, which requires the default producer seed.
-        if !self.tcx.sess.opts.output_types.should_codegen()
+        if !self.is_proc_macro
             && self.tcx.sess.opts.unstable_opts.layout_seed.is_none()
             && let Some((id, prefix, tail, indices)) =
                 self.tcx.untracked().definitions.freeze().exported_incremental_paths()
