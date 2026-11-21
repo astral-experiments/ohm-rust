@@ -330,6 +330,7 @@ jobs:
             tests/run-make/incremental-retained-cache-snapshot
             tests/run-make/incremental-loaded-cache-values
             tests/run-make/incremental-large-byte-literal
+            tests/run-make/incremental-check-body-attrs
             tests/run-make/incremental-recomputed-query-spans
             tests/run-make/incremental-check-dependency-salt
             tests/run-make/incremental-record-fields
