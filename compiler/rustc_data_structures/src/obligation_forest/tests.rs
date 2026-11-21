@@ -68,10 +68,6 @@ where
     type Error = E;
     type OUT = TestOutcome<O, E>;
 
-    fn needs_process_obligation(&self, _obligation: &Self::Obligation) -> bool {
-        true
-    }
-
     fn process_obligation(
         &mut self,
         obligation: &mut Self::Obligation,
@@ -118,8 +114,11 @@ fn prepare_children_preserves_parent_and_order() {
         type Error = &'static str;
         type OUT = TestOutcome<Obligation, Self::Error>;
 
-        fn needs_process_obligation(&self, _obligation: &Obligation) -> bool {
-            true
+        fn obligation_filter(&self) -> impl Fn(&Self::Obligation) -> bool {
+            // Processing the first root should unblock the second one in the
+            // same pass, before we reach the newly appended children.
+            let processed_root = !self.processed.is_empty();
+            move |obligation| obligation.0 != "proven_parent" || processed_root
         }
 
         fn process_obligation(

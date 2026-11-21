@@ -19,7 +19,7 @@ use rustc_middle::ty::{
 };
 use rustc_next_trait_solver::solve::TyOrConstInferVar;
 use rustc_span::bug;
-use thin_vec::thin_vec;
+use thin_vec::{ThinVec, thin_vec};
 use tracing::{debug, debug_span, instrument};
 
 use super::effects::{self, HostEffectObligation};
@@ -74,16 +74,38 @@ pub struct FulfillmentContext<'tcx, E: 'tcx> {
 #[derive(Clone, Debug)]
 pub struct PendingPredicateObligation<'tcx> {
     pub obligation: PredicateObligation<'tcx>,
-    // This is far more often read than modified, meaning that we
-    // should mostly optimize for reading speed, while modifying is not as relevant.
-    //
-    // For whatever reason using a boxed slice is slower than using a `Vec` here.
-    pub stalled_on: Vec<TyOrConstInferVar>,
+    stalled_on: StalledOn,
+}
+
+/// Most stalled predicates wait for a single type variable. Store its index
+/// in the obligation so the readiness check can go straight to the variable.
+#[derive(Clone, Debug)]
+enum StalledOn {
+    Nothing,
+    Ty(ty::TyVid),
+    Other(ThinVec<TyOrConstInferVar>),
+}
+
+impl Extend<TyOrConstInferVar> for StalledOn {
+    fn extend<I: IntoIterator<Item = TyOrConstInferVar>>(&mut self, vars: I) {
+        for var in vars {
+            match self {
+                Self::Nothing => {
+                    *self = match var {
+                        TyOrConstInferVar::Ty(vid) => Self::Ty(vid),
+                        _ => Self::Other(thin_vec![var]),
+                    }
+                }
+                Self::Ty(vid) => *self = Self::Other(thin_vec![TyOrConstInferVar::Ty(*vid), var]),
+                Self::Other(vars) => vars.push(var),
+            }
+        }
+    }
 }
 
 // `PendingPredicateObligation` is used a lot. Make sure it doesn't unintentionally get bigger.
 #[cfg(target_pointer_width = "64")]
-rustc_data_structures::static_assert_size!(PendingPredicateObligation<'_>, 72);
+rustc_data_structures::static_assert_size!(PendingPredicateObligation<'_>, 64);
 
 impl<'tcx, E> FulfillmentContext<'tcx, E>
 where
@@ -154,8 +176,10 @@ where
             return;
         }
 
-        self.predicates
-            .register_obligation(PendingPredicateObligation { obligation, stalled_on: vec![] });
+        self.predicates.register_obligation(PendingPredicateObligation {
+            obligation,
+            stalled_on: StalledOn::Nothing,
+        });
     }
 
     fn collect_remaining_errors(&mut self, infcx: &InferCtxt<'tcx>) -> TraitErrors<E> {
@@ -213,7 +237,7 @@ where
             type Error = !;
             type OUT = Outcome<Self::Obligation, Self::Error>;
 
-            fn needs_process_obligation(&self, pending_obligation: &Self::Obligation) -> bool {
+            fn obligation_filter(&self) -> impl Fn(&Self::Obligation) -> bool {
                 struct StalledOnCoroutines<'tcx> {
                     pub stalled_coroutines: &'tcx ty::List<LocalDefId>,
                     pub cache: DelayedSet<Ty<'tcx>>,
@@ -241,20 +265,22 @@ where
                     }
                 }
 
-                self.infcx
-                    .deeply_resolve_ignoring_regions(pending_obligation.obligation.predicate)
-                    .visit_with(&mut StalledOnCoroutines {
-                        stalled_coroutines: self.stalled_coroutines,
-                        cache: Default::default(),
-                    })
-                    .is_break()
+                |pending_obligation| {
+                    self.infcx
+                        .deeply_resolve_ignoring_regions(pending_obligation.obligation.predicate)
+                        .visit_with(&mut StalledOnCoroutines {
+                            stalled_coroutines: self.stalled_coroutines,
+                            cache: Default::default(),
+                        })
+                        .is_break()
+                }
             }
 
             fn process_obligation(
                 &mut self,
                 pending_obligation: &mut PendingPredicateObligation<'tcx>,
             ) -> ProcessResult<PendingPredicateObligation<'tcx>, !> {
-                assert!(self.needs_process_obligation(pending_obligation));
+                assert!(self.obligation_filter()(pending_obligation));
                 self.removed_predicates.push(pending_obligation.obligation.clone());
                 ProcessResult::Changed(Default::default())
             }
@@ -320,76 +346,28 @@ impl<'a, 'tcx> ObligationProcessor for FulfillProcessor<'a, 'tcx> {
             return None;
         }
         child.set_depth_from_parent(parent.obligation.recursion_depth);
-        Some(PendingPredicateObligation { obligation: child, stalled_on: vec![] })
+        Some(PendingPredicateObligation { obligation: child, stalled_on: StalledOn::Nothing })
     }
 
-    /// Compared to `needs_process_obligation` this and its callees
-    /// contain some optimizations that come at the price of false negatives.
-    ///
-    /// They
-    /// - reduce branching by covering only the most common case
-    /// - take a read-only view of the unification tables which allows skipping undo_log
-    ///   construction.
-    /// - bail out on value-cache misses in ena to avoid pointer chasing
-    /// - hoist RefCell locking out of the loop
     #[inline]
-    fn skippable_obligations<'b>(
-        &'b self,
-        it: impl Iterator<Item = &'b Self::Obligation>,
-    ) -> usize {
-        let is_unchanged = self.selcx.infcx.is_ty_infer_var_definitely_unchanged();
-
-        it.take_while(|o| match o.stalled_on.as_slice() {
-            [o] => is_unchanged(*o),
-            _ => false,
-        })
-        .count()
-    }
-
-    /// Identifies whether a predicate obligation needs processing.
-    ///
-    /// This is always inlined because it has a single callsite and it is
-    /// called *very* frequently. Be careful modifying this code! Several
-    /// compile-time benchmarks are very sensitive to even small changes.
-    #[inline(always)]
-    fn needs_process_obligation(&self, pending_obligation: &Self::Obligation) -> bool {
-        if self.selcx.infcx.disable_trait_solver_fast_paths() {
-            return true;
-        }
-
-        // If we were stalled on some unresolved variables, first check whether
-        // any of them have been resolved; if not, don't bother doing more work
-        // yet.
-        let stalled_on = &pending_obligation.stalled_on;
-        match stalled_on.len() {
-            // This case is the hottest most of the time, being hit up to 99%
-            // of the time. `keccak` and `cranelift-codegen-0.82.1` are
-            // benchmarks that particularly stress this path.
-            1 => self.selcx.infcx.ty_or_const_infer_var_changed(stalled_on[0]),
-
-            // In this case we haven't changed, but wish to make a change. Note
-            // that this is a special case, and is not equivalent to the `_`
-            // case below, which would return `false` for an empty `stalled_on`
-            // vector.
-            //
-            // This case is usually hit only 1% of the time or less, though it
-            // reaches 20% in `wasmparser-0.101.0`.
-            0 => true,
-
-            // This case is usually hit only 1% of the time or less, though it
-            // reaches 95% in `mime-0.3.16`, 64% in `wast-54.0.0`, and 12% in
-            // `inflate-0.4.5`.
-            //
-            // The obvious way of writing this, with a call to `any()` and no
-            // closure, is currently slower than this version.
-            _ => (|| {
-                for &infer_var in stalled_on {
-                    if self.selcx.infcx.ty_or_const_infer_var_changed(infer_var) {
-                        return true;
-                    }
+    fn obligation_filter(&self) -> impl Fn(&Self::Obligation) -> bool {
+        let infcx = self.selcx.infcx;
+        let inner = if infcx.disable_trait_solver_fast_paths() {
+            None
+        } else {
+            infcx.inner.try_borrow().ok()
+        };
+        move |obligation| {
+            let Some(inner) = &inner else { return true };
+            match &obligation.stalled_on {
+                StalledOn::Nothing => true,
+                StalledOn::Ty(vid) => {
+                    inner.ty_or_const_infer_var_changed(TyOrConstInferVar::Ty(*vid))
                 }
-                false
-            })(),
+                StalledOn::Other(vars) => {
+                    vars.iter().any(|&v| inner.ty_or_const_infer_var_changed(v))
+                }
+            }
         }
     }
 
@@ -398,7 +376,7 @@ impl<'a, 'tcx> ObligationProcessor for FulfillProcessor<'a, 'tcx> {
     /// - `Unchanged` if we don't have enough info to be sure
     /// - `Error(e)` if the predicate does not hold
     ///
-    /// This is called much less often than `needs_process_obligation`, so we
+    /// This is called much less often than the readiness check, so we
     /// never inline it.
     #[inline(never)]
     #[instrument(level = "debug", skip(self, pending_obligation))]
@@ -406,7 +384,7 @@ impl<'a, 'tcx> ObligationProcessor for FulfillProcessor<'a, 'tcx> {
         &mut self,
         pending_obligation: &mut PendingPredicateObligation<'tcx>,
     ) -> ProcessResult<PredicateObligation<'tcx>, FulfillmentErrorCode<'tcx>> {
-        pending_obligation.stalled_on.clear();
+        pending_obligation.stalled_on = StalledOn::Nothing;
 
         let obligation = &mut pending_obligation.obligation;
 
@@ -572,7 +550,7 @@ impl<'a, 'tcx> ObligationProcessor for FulfillProcessor<'a, 'tcx> {
                                     bug!("encountered fresh const in fulfill")
                                 }
                             };
-                            pending_obligation.stalled_on.clear();
+                            pending_obligation.stalled_on = StalledOn::Nothing;
                             pending_obligation.stalled_on.extend([var]);
                             return ProcessResult::Unchanged;
                         }
@@ -638,9 +616,10 @@ impl<'a, 'tcx> ObligationProcessor for FulfillProcessor<'a, 'tcx> {
                         obligation.cause.span,
                     ) {
                         None => {
-                            pending_obligation.stalled_on = vec![
-                                TyOrConstInferVar::maybe_from_term::<TyCtxt<'tcx>>(term).unwrap(),
-                            ];
+                            pending_obligation
+                                .stalled_on
+                                .extend([TyOrConstInferVar::maybe_from_term::<TyCtxt<'tcx>>(term)
+                                    .unwrap()]);
                             ProcessResult::Unchanged
                         }
                         Some(os) => ProcessResult::Changed(os),
@@ -655,8 +634,9 @@ impl<'a, 'tcx> ObligationProcessor for FulfillProcessor<'a, 'tcx> {
                     ) {
                         Err((a, b)) => {
                             // None means that both are unresolved.
-                            pending_obligation.stalled_on =
-                                vec![TyOrConstInferVar::Ty(a), TyOrConstInferVar::Ty(b)];
+                            pending_obligation
+                                .stalled_on
+                                .extend([TyOrConstInferVar::Ty(a), TyOrConstInferVar::Ty(b)]);
                             ProcessResult::Unchanged
                         }
                         Ok(Ok(ok)) => ProcessResult::Changed(ok.obligations),
@@ -679,8 +659,9 @@ impl<'a, 'tcx> ObligationProcessor for FulfillProcessor<'a, 'tcx> {
                     ) {
                         Err((a, b)) => {
                             // None means that both are unresolved.
-                            pending_obligation.stalled_on =
-                                vec![TyOrConstInferVar::Ty(a), TyOrConstInferVar::Ty(b)];
+                            pending_obligation
+                                .stalled_on
+                                .extend([TyOrConstInferVar::Ty(a), TyOrConstInferVar::Ty(b)]);
                             ProcessResult::Unchanged
                         }
                         Ok(Ok(ok)) => ProcessResult::Changed(ok.obligations),
@@ -700,7 +681,7 @@ impl<'a, 'tcx> ObligationProcessor for FulfillProcessor<'a, 'tcx> {
                     ) {
                         Ok(()) => ProcessResult::Changed(Default::default()),
                         Err(NotConstEvaluatable::MentionsInfer) => {
-                            pending_obligation.stalled_on.clear();
+                            pending_obligation.stalled_on = StalledOn::Nothing;
                             pending_obligation.stalled_on.extend(alias_const.walk().filter_map(
                                 TyOrConstInferVar::maybe_from_generic_arg::<TyCtxt<'tcx>>,
                             ));
@@ -879,7 +860,7 @@ impl<'a, 'tcx> FulfillProcessor<'a, 'tcx> {
         &mut self,
         obligation: &PredicateObligation<'tcx>,
         trait_obligation: PolyTraitObligation<'tcx>,
-        stalled_on: &mut Vec<TyOrConstInferVar>,
+        stalled_on: &mut StalledOn,
     ) -> ProcessResult<PredicateObligation<'tcx>, FulfillmentErrorCode<'tcx>> {
         let infcx = self.selcx.infcx;
         if obligation.predicate.is_global() && !self.selcx.typing_mode().is_coherence() {
@@ -906,7 +887,7 @@ impl<'a, 'tcx> FulfillProcessor<'a, 'tcx> {
                 // only reason we can fail to make progress on
                 // trait selection is because we don't have enough
                 // information about the types in the trait.
-                stalled_on.clear();
+                *stalled_on = StalledOn::Nothing;
                 stalled_on.extend(args_infer_vars(
                     &self.selcx,
                     trait_obligation.predicate.map_bound(|pred| pred.trait_ref.args),
@@ -932,7 +913,7 @@ impl<'a, 'tcx> FulfillProcessor<'a, 'tcx> {
         &mut self,
         obligation: &PredicateObligation<'tcx>,
         project_obligation: PolyProjectionObligation<'tcx>,
-        stalled_on: &mut Vec<TyOrConstInferVar>,
+        stalled_on: &mut StalledOn,
     ) -> ProcessResult<PredicateObligation<'tcx>, FulfillmentErrorCode<'tcx>> {
         let tcx = self.selcx.tcx();
         let infcx = self.selcx.infcx;
@@ -990,7 +971,7 @@ impl<'a, 'tcx> FulfillProcessor<'a, 'tcx> {
                 }
             }
             ProjectAndUnifyResult::FailedNormalization => {
-                stalled_on.clear();
+                *stalled_on = StalledOn::Nothing;
                 stalled_on.extend(args_infer_vars(
                     &self.selcx,
                     project_obligation.predicate.map_bound(|pred| pred.projection_term.args),
@@ -1013,12 +994,12 @@ impl<'a, 'tcx> FulfillProcessor<'a, 'tcx> {
     fn process_host_obligation(
         &mut self,
         host_obligation: HostEffectObligation<'tcx>,
-        stalled_on: &mut Vec<TyOrConstInferVar>,
+        stalled_on: &mut StalledOn,
     ) -> ProcessResult<PredicateObligation<'tcx>, FulfillmentErrorCode<'tcx>> {
         match effects::evaluate_host_effect_obligation(&mut self.selcx, &host_obligation) {
             Ok(nested) => ProcessResult::Changed(nested),
             Err(effects::EvaluationFailure::Ambiguous) => {
-                stalled_on.clear();
+                *stalled_on = StalledOn::Nothing;
                 stalled_on.extend(args_infer_vars(
                     &self.selcx,
                     ty::Binder::dummy(host_obligation.predicate.trait_ref.args),

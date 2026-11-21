@@ -204,6 +204,10 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/ui/wf/nominal-inherited-obligations.rs
           tests/ui/wf/nominal-inherited-obligations-fail.rs
+          tests/ui/const-generics/issues/issue-70180-1-stalled_on.rs
+          tests/ui/const-generics/issues/issue-70180-2-stalled_on.rs
+          tests/ui/coroutine/stalled-coroutine-obligations.rs
+          tests/ui/inference/projection-cache-registers-obligations.rs
           tests/incremental/nominal-inherited-obligations.rs
           tests/incremental/cached-trait-selection.rs
 
