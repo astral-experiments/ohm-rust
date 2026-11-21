@@ -2835,7 +2835,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         let tcx = self.tcx;
 
         let pat_prefix_span =
-            inner.span.find_ancestor_inside(pat.span).map(|end| pat.span.until(end));
+            || inner.span.find_ancestor_inside(pat.span).map(|end| pat.span.until(end));
 
         let ref_pat_matches_mut_ref = self.ref_pat_matches_mut_ref();
         if ref_pat_matches_mut_ref && pat_mutbl == Mutability::Not {
@@ -2843,7 +2843,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             // to prevent subpatterns from binding with `ref mut`. Subpatterns of a shared reference
             // pattern should have read-only access to the scrutinee, and the borrow checker won't
             // catch it in this case.
-            pat_info.max_ref_mutbl = pat_info.max_ref_mutbl.cap_to_weakly_not(pat_prefix_span);
+            pat_info.max_ref_mutbl = pat_info.max_ref_mutbl.cap_to_weakly_not(pat_prefix_span());
         }
 
         expected = self.deeply_resolve_ignoring_regions_with_obligations(expected);
@@ -2861,7 +2861,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         // (RFC 3627, Rule 5). If we implement a pattern typing ruleset with Rule 4E
                         // but not Rule 5, we'll need to check that here.
                         debug_assert!(ref_pat_matches_mut_ref);
-                        self.error_inherited_ref_mutability_mismatch(pat, pat_prefix_span);
+                        self.error_inherited_ref_mutability_mismatch(pat, pat_prefix_span());
                     }
 
                     pat_info.binding_mode = ByRef::No;
@@ -2899,7 +2899,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                             // falling back to the inherited reference didn't work. This should be
                             // the same error as the old-Edition version below.
                             debug_assert!(ref_pat_matches_mut_ref);
-                            self.error_inherited_ref_mutability_mismatch(pat, pat_prefix_span);
+                            self.error_inherited_ref_mutability_mismatch(pat, pat_prefix_span());
                         }
 
                         pat_info.binding_mode = ByRef::No;
@@ -2936,7 +2936,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         // inherited reference.
                         if pat_mutbl > inh_mut {
                             // We can't match a lone inherited shared reference with `&mut`.
-                            self.error_inherited_ref_mutability_mismatch(pat, pat_prefix_span);
+                            self.error_inherited_ref_mutability_mismatch(pat, pat_prefix_span());
                         }
 
                         self.typeck_results.borrow_mut().skipped_ref_pats_mut().insert(pat.hir_id);
