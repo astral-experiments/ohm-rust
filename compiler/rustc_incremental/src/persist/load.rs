@@ -282,34 +282,21 @@ pub fn setup_dep_graph(
         let dir = incr_comp_session.old_session_directory.as_ref()?;
         load_stage_checkpoint(sess, dir, graph, cache, |old| old.canonical == key.canonical)
     });
-    // Try to load the previous session's dep graph and work products.
-    let mut load_result = load_dep_graph(
-        sess,
-        &incr_comp_session,
-        checkpoint.as_ref().map(|(graph, _)| graph),
-        key.canonical,
-    );
+    let mut load_result = if let Some((graph, cache)) =
+        sibling_checkpoint(sess, crate_name, key, &mut incr_comp_session)
+    {
+        checkpoint = Some((Arc::clone(&graph), cache));
+        // Never mix metadata or work products from either history into this graph.
+        LoadResult::Ok { prev_graph: graph, prev_work_products: Default::default() }
+    } else {
+        load_dep_graph(
+            sess,
+            &incr_comp_session,
+            checkpoint.as_ref().map(|(graph, _)| graph),
+            key.canonical,
+        )
+    };
     let mut query_cache = None;
-    // Retain canonical stage histories. Only an otherwise cold check may
-    // borrow a compatible sibling's query results. Work products, including
-    // encoded metadata, belong to their original canonical crate identity.
-    if key.check != Hash64::ZERO && incr_comp_session.old_session_directory.is_none() {
-        for dir in sibling_sessions(sess, crate_name) {
-            if let Some((graph, cache)) =
-                load_stage_checkpoint(sess, &dir, CHECK_DEP_GRAPH, CHECK_QUERY_CACHE, |old| {
-                    old.check == key.check
-                })
-            {
-                incr_comp_session.check_seed = Some(dir);
-                load_result = LoadResult::Ok {
-                    prev_graph: Arc::clone(&graph),
-                    prev_work_products: Default::default(),
-                };
-                checkpoint = Some((graph, cache));
-                break;
-            }
-        }
-    }
     if matches!(load_result, LoadResult::Ok { .. }) && checkpoint.is_none() {
         query_cache = load_query_result_cache(sess, Some(&incr_comp_session));
         if query_cache.is_none() {
@@ -431,6 +418,57 @@ fn load_latest_check(
     let OpenFile { mmap: cache, start_pos: cache_start } =
         file_format::open_incremental_file(sess, &old_query_cache_path(session)?).ok()?;
     CheckCacheSource::new(graph, graph_start, cache, cache_start)
+}
+
+/// Borrow a compatible graph for a cold check. When revisiting a metadata salt,
+/// keep its canonical history unless a newer check matches the crate root and
+/// the old check does not. Build checkpoints stay with their work products.
+fn sibling_checkpoint(
+    sess: &Session,
+    crate_name: Symbol,
+    key: GraphKey,
+    session: &mut IncrCompSession,
+) -> Option<(Arc<SerializedDepGraph>, OnDiskCache)> {
+    if key.check == Hash64::ZERO {
+        return None;
+    }
+
+    let previous = session.old_session_directory.as_deref();
+    let root = if let Some(dir) = previous {
+        let root = check_root_hint(sess)?;
+        if read_root_hint(dir)? == root || dir.join(BUILD_DEP_GRAPH).exists() {
+            return None;
+        }
+        Some(root)
+    } else {
+        None
+    };
+
+    for dir in sibling_sessions(sess, crate_name) {
+        if previous.is_some_and(|old| dir.file_name() <= old.file_name()) {
+            break;
+        }
+        if root.is_some() && read_root_hint(&dir) != root {
+            continue;
+        }
+        if let Some(checkpoint) =
+            load_stage_checkpoint(sess, &dir, CHECK_DEP_GRAPH, CHECK_QUERY_CACHE, |old| {
+                old.check == key.check
+            })
+        {
+            session.check_seed = Some(dir);
+            return Some(checkpoint);
+        }
+    }
+    None
+}
+
+fn read_root_hint(dir: &Path) -> Option<[u8; 16]> {
+    use std::io::Read;
+
+    let mut hint = [0; 16];
+    std::fs::File::open(dir.join(CHECK_SESSION)).ok()?.read_exact(&mut hint).ok()?;
+    Some(hint)
 }
 
 fn load_stage_checkpoint(

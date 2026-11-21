@@ -263,7 +263,7 @@ pub fn save_shared_stages_checkpoint(sess: &Session, session: Option<&IncrCompSe
     let (graph_filename, cache_filename) = if sess.opts.output_types.should_codegen() {
         (BUILD_DEP_GRAPH, BUILD_QUERY_CACHE)
     } else {
-        let _ = fs::write(marker, []);
+        let _ = fs::write(marker, check_root_hint(sess).as_slice().as_flattened());
         (CHECK_DEP_GRAPH, CHECK_QUERY_CACHE)
     };
     let graph = in_incr_comp_dir_sess(session, graph_filename);
