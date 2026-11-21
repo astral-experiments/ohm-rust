@@ -539,6 +539,13 @@ impl DepGraphData {
         (result, dep_node_index)
     }
 
+    /// Records an observed key-value pair with the task that computed it as its input.
+    /// The caller must allocate this node at most once. Its key includes the complete value,
+    /// so finding the node in the previous graph means the same value was observed there.
+    pub(crate) fn record_cache_entry(&self, node: DepNode, task: DepNodeIndex) -> DepNodeIndex {
+        self.alloc_and_color_node(node, &[task], Some(Fingerprint::ZERO))
+    }
+
     /// Intern the new `DepNode` with the dependencies up-to-now.
     fn hash_result_and_alloc_node<'tcx, R>(
         &self,

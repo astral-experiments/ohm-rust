@@ -1583,8 +1583,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 debug!(?pred, ?candidate, "insert_candidate_cache global");
                 debug_assert!(!candidate.has_infer());
 
-                // This may overwrite the cache with the same value.
-                tcx.caches.selection_cache.insert(
+                tcx.cache_global_candidate(
                     (infcx.typing_env(param_env), pred),
                     dep_node,
                     candidate,

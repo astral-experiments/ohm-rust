@@ -88,7 +88,34 @@ fn check(public_hash: bool, mode: &str, item: bool, expected: &str) {
     assert_eq!(diagnostics[0], diagnostics[1]);
 }
 
+// Changing the alias moves its impl to another receiver while preserving both impl IDs.
+fn check_local_impls() {
+    rfs::write(
+        "local.rs",
+        r#"
+trait Marker {}
+struct A;
+struct B;
+include!("receiver.rs");
+impl Marker for () {}
+impl Marker for Receiver {}
+fn require<T: Marker>() {}
+fn main() { require::<A>(); }
+"#,
+    );
+    let check = || {
+        let mut cmd = compiler("local.rs", true);
+        cmd.emit("metadata").incremental("local-incr");
+        cmd
+    };
+    rfs::write("receiver.rs", "type Receiver = A;");
+    check().run();
+    rfs::write("receiver.rs", "type Receiver = B;");
+    check().arg("-Zassert-incr-state=loaded").run_fail().assert_stderr_contains("E0277");
+}
+
 fn main() {
+    check_local_impls();
     for (public, mode) in [(false, "legacy"), (true, "public")] {
         rfs::write("hidden.rs", "");
         compiler("contracts.rs", public).crate_type("rlib").emit("metadata,link").run();
