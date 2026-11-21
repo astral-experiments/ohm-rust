@@ -60,8 +60,8 @@ use tracing::{debug, info, instrument, trace};
 use twox_hash::XxHash3_128;
 
 use self::metadata_prefix::{
-    MetadataPrefixManifest, MetadataPrefixManifestBuilder, hash_definition_span,
-    hash_macro_token_spans, metadata_fingerprint, relocate_metadata_table,
+    DependencyHashMode, MetadataPrefixManifest, MetadataPrefixManifestBuilder,
+    hash_definition_span, hash_macro_token_spans, metadata_fingerprint, relocate_metadata_table,
     source_file_layout_fingerprint, visit_source_macro_spans,
 };
 use self::public_api_hasher::{
@@ -647,6 +647,11 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> SpanEncoder for EncodeContext<'a, 'tcx,
         }
         expn_id.krate.encode(self);
         if expn_id.krate != LOCAL_CRATE {
+            if let Some(builder) = &self.metadata_prefix_manifest
+                && matches!(builder.dependency_hashes, DependencyHashMode::Native(_))
+            {
+                self.tcx.ensure_ok().public_api_hash(expn_id.krate);
+            }
             // Index zero is reserved for the local root expansion. The old index is a lookup
             // hint because the owning crate can change its expansion order without changing MIR.
             0_u32.encode(self);
@@ -816,6 +821,9 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> Encodable<EncodeContext<'a, 'tcx, M>> f
                 }
             };
 
+            if let Some(builder) = &mut s.metadata_prefix_manifest {
+                builder.dependency_hashes.record_source(s.tcx, source_file);
+            }
             (SpanKind::Foreign, metadata_index)
         } else {
             // Record the fact that we need to encode the data for this `SourceFile`
@@ -1230,6 +1238,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 on_disk_index.try_into().expect("cannot export more than U32_MAX files");
             adapted.set_some_unhashed(on_disk_index, self.lazy(&adapted_source_file));
             if let Some(builder) = &mut self.metadata_prefix_manifest {
+                builder.dependency_hashes.record_source(self.tcx, source_file);
                 builder
                     .manifest
                     .source_files
@@ -1310,6 +1319,13 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
 
         // We have already encoded some things. Get their combined size from the current position.
         stats.push(("preamble", self.position()));
+
+        if let Some(builder) = &mut self.metadata_prefix_manifest
+            && dependency_hash_refresh_allowed(tcx)
+            && MetadataPrefixManifest::clear_for_dependency_hashes(tcx.incr_comp_session)
+        {
+            builder.dependency_hashes = DependencyHashMode::refreshable(tcx);
+        }
 
         let externally_implementable_items = stat!("externally-implementable-items", || self
             .encode_externally_implementable_items(hcx));
@@ -3311,12 +3327,10 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
     ) -> Hashed<LazyArray<CrateDep>> {
         empty_proc_macro!(self);
 
-        let refreshes_dependency_hashes = dependency_hash_refresh_allowed(self.tcx)
-            && self.metadata_prefix_manifest.is_some()
-            && MetadataPrefixManifest::clear_for_dependency_hashes(self.tcx.incr_comp_session);
-        if let Some(manifest) = &mut self.metadata_prefix_manifest {
-            manifest.refreshes_dependency_hashes = refreshes_dependency_hashes;
-        }
+        let refreshes_dependency_hashes =
+            self.metadata_prefix_manifest.as_ref().is_some_and(|builder| {
+                !matches!(builder.dependency_hashes, DependencyHashMode::Tracked)
+            });
         let deps = crate_deps(self.tcx, refreshes_dependency_hashes).collect::<Vec<_>>();
 
         {
@@ -3885,8 +3899,12 @@ fn try_reuse_metadata_prefix(
         &changed_dep_node,
         DepKind::metadata_source_file_hash,
     )?;
-    let (manifest, refreshes_dependency_hashes) =
-        MetadataPrefixManifest::load(&manifest_path, dependency_hash_refresh_allowed(tcx))?;
+    let permitted = if dependency_hash_refresh_allowed(tcx) {
+        DependencyHashMode::refreshable(tcx)
+    } else {
+        DependencyHashMode::Tracked
+    };
+    let (manifest, dependency_hashes) = MetadataPrefixManifest::load(&manifest_path, permitted)?;
     let file = File::open(metadata_path).ok()?;
     // SAFETY: The previous work-product remains immutable; replacement metadata is written to a
     // freshly created inode and atomically renamed only after encoding completes.
@@ -3961,15 +3979,16 @@ fn try_reuse_metadata_prefix(
             return None;
         }
         checked_end = end;
-        // A legacy v3 checksum covers only its payload. Verify its complete rows even if
-        // the previous graph appears green; only an authenticated v4 may rewrite a hash.
-        if old_svh != current.hash && refreshes_dependency_hashes {
+        if old_svh != current.hash {
             previous.hash = current.hash;
             updated_hashes.push((pos, current.hash.as_u128().to_le_bytes()));
         }
         if previous != current {
             return None;
         }
+    }
+    if !updated_hashes.is_empty() && !dependency_hashes.can_refresh(tcx) {
+        return None;
     }
     let previous_rdr_hashes = previous_root.rdr_hashes.take()?;
     let local_hashes_range = previous_rdr_hashes.local.encoded_range(&metadata)?;
@@ -4006,7 +4025,7 @@ fn try_reuse_metadata_prefix(
         ecx.required_source_files = Some(required_source_files);
         ecx.metadata_prefix_manifest = Some(MetadataPrefixManifestBuilder {
             manifest,
-            refreshes_dependency_hashes,
+            dependency_hashes,
             protected_span_keys: FxIndexSet::default(),
             definition_span_hasher: StableHasher::new(),
         });
@@ -4336,8 +4355,7 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
     {
         builder.manifest.metadata_len = metadata.len();
         builder.manifest.metadata_fingerprint = metadata_fingerprint(&metadata);
-        if let Err(error) =
-            builder.manifest.save(tcx.incr_comp_session, builder.refreshes_dependency_hashes)
+        if let Err(error) = builder.manifest.save(tcx.incr_comp_session, &builder.dependency_hashes)
         {
             debug!(target: "ohm_metadata_reuse", ?error, "could not persist metadata prefix manifest");
         }
@@ -4484,7 +4502,8 @@ fn dependency_hash_refresh_allowed(tcx: TyCtxt<'_>) -> bool {
         && !tcx.sess.opts.unstable_opts.incremental_ignore_spans
         && !tcx.sess.opts.unstable_opts.meta_stats
         && tcx.sess.opts.unstable_opts.embed_metadata
-        && !tcx.sess.opts.output_types.should_codegen()
+        && (!tcx.sess.opts.output_types.should_codegen()
+            || tcx.sess.opts.unstable_opts.metadata_crate_hash)
         && !tcx.crate_types().contains(&CrateType::ProcMacro)
 }
 
