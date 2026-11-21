@@ -42,6 +42,16 @@ const BYTE_STR_SENTINEL: u8 = 0xC2;
 /// really makes sense to store floating-point values at all.
 /// (If you need it, revert <https://github.com/rust-lang/rust/pull/109984>.)
 pub trait Encoder {
+    /// Encode an element reached through a pointer or slice. Encoders of
+    /// recursive data can override this to bound the depth of a record.
+    #[inline]
+    fn encode_nested<T: ?Sized + Encodable<Self>>(&mut self, value: &T)
+    where
+        Self: Sized,
+    {
+        value.encode(self);
+    }
+
     fn emit_usize(&mut self, v: usize);
     fn emit_u128(&mut self, v: u128);
     fn emit_u64(&mut self, v: u64);
@@ -298,7 +308,7 @@ impl<D: Decoder, T: Decodable<D>> Decodable<D> for Box<[T]> {
 
 impl<S: Encoder, T: Encodable<S>> Encodable<S> for Rc<T> {
     fn encode(&self, s: &mut S) {
-        (**self).encode(s);
+        s.encode_nested(&**self);
     }
 }
 
@@ -312,7 +322,7 @@ impl<S: Encoder, T: Encodable<S>> Encodable<S> for [T] {
     default fn encode(&self, s: &mut S) {
         s.emit_usize(self.len());
         for e in self {
-            e.encode(s);
+            s.encode_nested(e);
         }
     }
 }
@@ -495,7 +505,7 @@ impl<D: Decoder, T: Decodable<D>> Decodable<D> for RefCell<T> {
 
 impl<S: Encoder, T: Encodable<S>> Encodable<S> for Arc<T> {
     fn encode(&self, s: &mut S) {
-        (**self).encode(s);
+        s.encode_nested(&**self);
     }
 }
 
@@ -507,7 +517,7 @@ impl<D: Decoder, T: Decodable<D>> Decodable<D> for Arc<T> {
 
 impl<S: Encoder, T: ?Sized + Encodable<S>> Encodable<S> for Box<T> {
     fn encode(&self, s: &mut S) {
-        (**self).encode(s)
+        s.encode_nested(&**self)
     }
 }
 
