@@ -217,10 +217,11 @@ pub type CrateStoreDyn = dyn CrateStore + sync::DynSync + sync::DynSend;
 
 pub struct ResolvedPathHashes {
     columns: Vec<Option<DefPathHashColumn>>,
-    incremental: DefPathHashColumn,
+    incremental: Vec<Option<DefPathHashColumn>>,
 }
 
 pub struct Untracked {
+    pub suppliers: FreezeLock<rustc_hir_id::def_path_hash_map::ExternalIncrementalKeys>,
     pub resolved_paths: OnceLock<ResolvedPathHashes>,
     pub cstore: FreezeLock<Box<CrateStoreDyn>>,
     /// Reference span for definitions.
@@ -237,8 +238,16 @@ impl Untracked {
     /// Crate number zero is reserved for the local crate.
     pub fn publish_path_hashes(&self, mut columns: Vec<Option<DefPathHashColumn>>) {
         self.resolved_paths.get_or_init(|| {
-            let (local, incremental) = self.definitions.write().publish_path_hashes();
+            let (local, local_incremental) = self.definitions.write().publish_path_hashes();
             columns[0] = Some(local);
+            let mut incremental = columns.clone();
+            incremental[0] = Some(local_incremental);
+            let keys = self.suppliers.read();
+            for (i, col) in incremental.iter_mut().enumerate().skip(1) {
+                if let Some(paths) = keys.get(CrateNum::new(i)) {
+                    *col = Some(DefPathHashColumn::from_le_bytes(paths.id, paths.hashes.clone()));
+                }
+            }
             ResolvedPathHashes { columns, incremental }
         });
     }
@@ -246,11 +255,8 @@ impl Untracked {
     #[inline]
     pub fn def_path_hash(&self, id: DefId, incremental: bool) -> DefPathHash {
         if let Some(paths) = self.resolved_paths.get() {
-            let column = if incremental && id.is_local() {
-                Some(&paths.incremental)
-            } else {
-                paths.columns[id.krate.as_usize()].as_ref()
-            };
+            let columns = if incremental { &paths.incremental } else { &paths.columns };
+            let column = columns[id.krate.as_usize()].as_ref();
             if let Some(hash) = column.and_then(|column| column.get(id.index)) {
                 return hash;
             }
@@ -269,6 +275,8 @@ impl Untracked {
             } else {
                 definitions.def_path_hash(local)
             }
+        } else if incremental && let Some(paths) = self.suppliers.read().get(id.krate) {
+            paths.hash(id.index)
         } else {
             self.cstore.read().def_path_hash(id)
         }
@@ -279,6 +287,7 @@ impl Untracked {
     /// (which writes the map) finishes before the map is frozen.
     pub fn freeze_cstore(&self) {
         self.cstore.freeze();
+        self.suppliers.freeze();
         self.stable_crate_ids.freeze();
     }
 }

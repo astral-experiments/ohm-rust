@@ -1229,15 +1229,13 @@ impl<'tcx> TyCtxt<'tcx> {
 
     #[inline]
     pub fn def_path_hash(self, def_id: DefId) -> DefPathHash {
-        if def_id.is_local() {
-            self.track_local_linkage_identity();
-        }
+        self.track_linkage_identity(def_id.krate);
         self.untracked_def_path_hash(def_id)
     }
 
-    /// Reads the linkage-dependent path hash for invariant checks during interning.
+    /// Reads the canonical path when restoring or validating a decoded value.
     #[inline]
-    fn untracked_def_path_hash(self, def_id: DefId) -> DefPathHash {
+    pub(super) fn untracked_def_path_hash(self, def_id: DefId) -> DefPathHash {
         self.untracked.def_path_hash(def_id, false)
     }
 
@@ -1250,6 +1248,8 @@ impl<'tcx> TyCtxt<'tcx> {
     pub fn incremental_crate_id(self, crate_num: CrateNum) -> StableCrateId {
         if crate_num == LOCAL_CRATE {
             self.incremental_crate_id
+        } else if let Some(paths) = self.untracked.suppliers.read().get(crate_num) {
+            paths.id
         } else {
             self.cstore_untracked().stable_crate_id(crate_num)
         }
@@ -1266,19 +1266,24 @@ impl<'tcx> TyCtxt<'tcx> {
         f: impl FnOnce(StableHashState<'_>) -> R,
     ) -> R {
         let mut hcx = StableHashState::new(self.sess, &self.untracked);
-        hcx.set_incremental(self.incremental_crate_id != self.stable_crate_id);
+        hcx.set_incremental(self.uses_incremental_keys());
         f(hcx)
     }
 
     #[inline]
-    pub fn crate_num_from_incremental_id(self, id: StableCrateId) -> CrateNum {
+    pub fn lookup_incremental_crate(self, id: StableCrateId) -> Option<CrateNum> {
         if id == self.incremental_crate_id {
-            LOCAL_CRATE
-        } else {
-            let num = self.untracked.stable_crate_ids.read()[&id];
-            assert_ne!(num, LOCAL_CRATE);
-            num
+            return Some(LOCAL_CRATE);
         }
+        if let Some(n) = self.untracked.stable_crate_ids.read().get(&id) {
+            return Some(*n);
+        }
+        self.untracked.suppliers.read().crate_num(id)
+    }
+
+    #[inline]
+    pub fn crate_num_from_incremental_id(self, id: StableCrateId) -> CrateNum {
+        self.lookup_incremental_crate(id).unwrap()
     }
 
     pub fn needs_metadata(self) -> bool {
@@ -1333,9 +1338,7 @@ impl<'tcx> TyCtxt<'tcx> {
 
     #[inline]
     pub fn stable_crate_id(self, crate_num: CrateNum) -> StableCrateId {
-        if crate_num == LOCAL_CRATE {
-            self.track_local_linkage_identity();
-        }
+        self.track_linkage_identity(crate_num);
         self.untracked_stable_crate_id(crate_num)
     }
 
@@ -1352,7 +1355,8 @@ impl<'tcx> TyCtxt<'tcx> {
     /// that the crate in question has already been loaded by the CrateStore.
     #[inline]
     pub fn stable_crate_id_to_crate_num(self, stable_crate_id: StableCrateId) -> CrateNum {
-        if stable_crate_id == self.stable_crate_id(LOCAL_CRATE) {
+        self.track_all_linkage_identities();
+        if stable_crate_id == self.stable_crate_id {
             LOCAL_CRATE
         } else {
             *self
@@ -1374,7 +1378,8 @@ impl<'tcx> TyCtxt<'tcx> {
 
         // If this is a DefPathHash from the local crate, we can look up the
         // DefId in the tcx's `Definitions`.
-        if stable_crate_id == self.stable_crate_id(LOCAL_CRATE) {
+        self.track_all_linkage_identities();
+        if stable_crate_id == self.stable_crate_id {
             Some(self.untracked.definitions.read().local_def_path_hash_to_def_id(hash)?.to_def_id())
         } else {
             self.def_path_hash_to_def_id_extern(hash, stable_crate_id)
@@ -1399,7 +1404,11 @@ impl<'tcx> TyCtxt<'tcx> {
                     .to_def_id(),
             )
         } else {
+            if let Some(id) = self.untracked.suppliers.read().def_id(hash) {
+                return Some(id);
+            }
             self.def_path_hash_to_def_id_extern(hash, stable_crate_id)
+                .filter(|id| self.untracked.suppliers.read().get(id.krate).is_none())
         }
     }
 
@@ -1564,6 +1573,9 @@ impl<'tcx> TyCtxt<'tcx> {
         if !lock.is_empty() && stable_crate_id == self.incremental_crate_id {
             return Err(LOCAL_CRATE);
         }
+        if let Some(existing) = self.untracked.suppliers.read().crate_num(stable_crate_id) {
+            return Err(existing);
+        }
         if let Some(&existing) = lock.get(&stable_crate_id) {
             return Err(existing);
         }
@@ -1653,14 +1665,35 @@ impl<'tcx> TyCtxt<'tcx> {
 
     #[inline(always)]
     pub fn with_stable_hashing_context<R>(self, f: impl FnOnce(StableHashState<'_>) -> R) -> R {
-        self.track_local_linkage_identity();
-        self.with_untracked_stable_hashing_context(f)
+        let result = self.with_untracked_stable_hashing_context(f);
+        self.track_all_linkage_identities();
+        result
     }
 
     #[inline]
-    pub(super) fn track_local_linkage_identity(self) {
-        if self.incremental_crate_id != self.stable_crate_id {
-            let _ = self.local_linkage_identity(());
+    pub fn uses_incremental_keys(self) -> bool {
+        self.incremental_crate_id != self.stable_crate_id
+    }
+
+    #[inline]
+    pub(super) fn track_linkage_identity(self, krate: CrateNum) {
+        if self.uses_incremental_keys()
+            && (krate == LOCAL_CRATE || self.untracked.suppliers.read().get(krate).is_some())
+        {
+            let _ = self.linkage_identity(krate);
+        }
+    }
+
+    #[inline]
+    fn track_all_linkage_identities(self) {
+        if self.uses_incremental_keys() {
+            let _ = self.linkage_identity(LOCAL_CRATE);
+            // The callback can load additional crates. Read the largest
+            // prefix it could have observed, after it has finished.
+            let last = self.untracked.suppliers.read().last();
+            if let Some(krate) = last {
+                let _ = self.external_linkage_scope(krate);
+            }
         }
     }
 
@@ -3378,8 +3411,14 @@ impl<'tcx> TyCtxt<'tcx> {
 }
 
 pub fn provide(providers: &mut Providers) {
-    providers.local_linkage_identity = |tcx, ()| {
-        rustc_data_structures::fingerprint::Fingerprint::new(tcx.stable_crate_id.as_u64(), 0)
+    providers.external_linkage_scope = |tcx, krate| tcx.untracked.suppliers.read().prefix(krate);
+    providers.linkage_identity = |tcx, krate| {
+        let canonical = if krate == LOCAL_CRATE {
+            tcx.stable_crate_id
+        } else {
+            tcx.untracked.suppliers.read().canonical(krate)
+        };
+        rustc_data_structures::fingerprint::Fingerprint::new(canonical.as_u64(), 0)
     };
     providers.codegen_output_mode = |tcx, ()| {
         (tcx.sess.opts.output_types.should_codegen(), tcx.sess.opts.output_types.should_link())
