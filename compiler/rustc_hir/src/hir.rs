@@ -1297,6 +1297,9 @@ pub struct ParentedNode<'tcx> {
 #[derive(Debug)]
 pub struct AttributeMap<'tcx> {
     pub map: SortedMap<ItemLocalId, &'tcx [Attribute]>,
+    /// Indices into `map` for nodes that can introduce lint scopes, in HIR traversal order.
+    /// Empty for owners with at most one entry in `map`.
+    pub lint_roots: &'tcx [u32],
     /// Preprocessed `#[define_opaque]` attribute.
     pub define_opaque: Option<&'tcx [(Span, LocalDefId)]>,
     // Only present when the crate hash is needed.
@@ -1306,6 +1309,7 @@ pub struct AttributeMap<'tcx> {
 impl<'tcx> AttributeMap<'tcx> {
     pub const EMPTY: &'static AttributeMap<'static> = &AttributeMap {
         map: SortedMap::new(),
+        lint_roots: &[],
         opt_hash: Some(Fingerprint::ZERO),
         define_opaque: None,
     };

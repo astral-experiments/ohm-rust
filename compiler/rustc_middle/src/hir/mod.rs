@@ -178,6 +178,7 @@ impl<'tcx> TyCtxt<'tcx> {
         node: OwnerNode<'_>,
         bodies: &SortedMap<ItemLocalId, &Body<'_>>,
         attrs: &SortedMap<ItemLocalId, &[Attribute]>,
+        lint_roots: &[u32],
         define_opaque: Option<&[(Span, LocalDefId)]>,
     ) -> Hashes {
         if !self.needs_hir_hash() {
@@ -193,6 +194,9 @@ impl<'tcx> TyCtxt<'tcx> {
 
             let mut stable_hasher = StableHasher::new();
             attrs.stable_hash(&mut hcx, &mut stable_hasher);
+            if attrs.len() > 1 {
+                lint_roots.stable_hash(&mut hcx, &mut stable_hasher);
+            }
 
             // Hash the defined opaque types, which are not present in the attrs.
             define_opaque.stable_hash(&mut hcx, &mut stable_hasher);
