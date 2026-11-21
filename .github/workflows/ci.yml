@@ -200,6 +200,7 @@ jobs:
           tests/ui/wf/nominal-inherited-obligations-fail.rs
           tests/incremental/nominal-inherited-obligations.rs
           tests/incremental/cached-trait-selection.rs
+          tests/incremental/arity-receiver-lookup.rs
 
       - name: Run borrow checker dataflow regression tests
         run: >-
