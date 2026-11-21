@@ -7,6 +7,9 @@ pub async fn wait() {
     let _prefix = 12345;
     std::future::pending::<()>().await;
 }
+
+#[derive(Clone, Debug)]
+pub struct Row(pub u8);
 "#;
 
 fn check(source: &str, dir: &str) -> Vec<u8> {
@@ -24,7 +27,7 @@ fn check(source: &str, dir: &str) -> Vec<u8> {
 
 fn main() {
     let original = check(LIB, "warm");
-    // Both .await desugarings still have the same source range and text.
+    // The await and the derive move in bytes while keeping their line and column.
     let short = LIB.replace("12345", "1");
     assert_eq!(original, check(&short, "warm"));
     assert_eq!(original, check(&short, "cold"));
@@ -33,4 +36,9 @@ fn main() {
     let changed = check(&moved, "warm");
     assert_ne!(original, changed);
     assert_eq!(changed, check(&moved, "moved"));
+
+    let moved_derive = short.replace("#[derive", "  #[derive");
+    let changed = check(&moved_derive, "warm");
+    assert_ne!(original, changed);
+    assert_eq!(changed, check(&moved_derive, "moved-derive"));
 }

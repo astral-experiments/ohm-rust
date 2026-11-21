@@ -1573,7 +1573,6 @@ rustc_queries! {
     /// Gets the span for the definition.
     query def_span(def_id: DefId) -> Span {
         desc { "looking up span for `{}`", tcx.def_path_str(def_id) }
-        cache_on_disk
         separate_provide_extern
         feedable
     }
@@ -1581,7 +1580,6 @@ rustc_queries! {
     /// Gets the span for the identifier of the definition.
     query def_ident_span(def_id: DefId) -> Option<Span> {
         desc { "looking up span for `{}`'s identifier", tcx.def_path_str(def_id) }
-        cache_on_disk
         separate_provide_extern
         feedable
     }
@@ -1590,18 +1588,15 @@ rustc_queries! {
     /// Panics if it is not a definition that has a single type.
     query ty_span(def_id: LocalDefId) -> Span {
         desc { "looking up span for `{}`'s type", tcx.def_path_str(def_id) }
-        cache_on_disk
     }
 
     query lookup_stability(def_id: DefId) -> Option<rustc_attr_ir::Stability> {
         desc { "looking up stability of `{}`", tcx.def_path_str(def_id) }
-        cache_on_disk
         separate_provide_extern
     }
 
     query lookup_const_stability(def_id: DefId) -> Option<rustc_attr_ir::ConstStability> {
         desc { "looking up const stability of `{}`", tcx.def_path_str(def_id) }
-        cache_on_disk
         separate_provide_extern
     }
 
@@ -1620,7 +1615,6 @@ rustc_queries! {
 
     query lookup_deprecation_entry(def_id: DefId) -> Option<DeprecationEntry> {
         desc { "checking whether `{}` is deprecated", tcx.def_path_str(def_id) }
-        cache_on_disk
         separate_provide_extern
     }
 
