@@ -111,6 +111,7 @@ pub struct ModuleConfig {
     pub vectorize_loop: bool,
     pub vectorize_slp: bool,
     pub merge_functions: bool,
+    pub merge_rust_functions: bool,
     pub emit_lifetime_markers: bool,
     pub llvm_plugins: Vec<String>,
     pub autodiff: Vec<config::AutoDiff>,
@@ -130,6 +131,7 @@ impl ModuleConfig {
 
         let sess = tcx.sess;
         let opt_level_and_size = if_regular!(Some(sess.opts.optimize), None);
+        let allow_merging = !matches!(sess.merge_functions(), MergeFunctions::Disabled);
 
         let save_temps = sess.opts.cg.save_temps;
 
@@ -253,16 +255,9 @@ impl ModuleConfig {
             // backends (again, NVPTX). Therefore, allow targets to opt out of
             // the MergeFunctions pass, but otherwise keep the pass enabled (at
             // O2 and O3) since it can be useful for reducing code size.
-            merge_functions: match sess.merge_functions() {
-                MergeFunctions::Disabled => false,
-                MergeFunctions::Trampolines | MergeFunctions::Aliases => {
-                    use config::OptLevel::*;
-                    match sess.opts.optimize {
-                        Aggressive | More | SizeMin | Size => true,
-                        Less | No => false,
-                    }
-                }
-            },
+            merge_functions: allow_merging
+                && !matches!(sess.opts.optimize, OptLevel::Less | OptLevel::No),
+            merge_rust_functions: allow_merging,
 
             emit_lifetime_markers: sess.emit_lifetime_markers(),
             llvm_plugins: if_regular!(sess.opts.unstable_opts.llvm_plugins.clone(), vec![]),
