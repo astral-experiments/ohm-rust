@@ -9,7 +9,6 @@ use rustc_errors::{Diag, DiagCtxtHandle, Diagnostic, MultiSpan, msg};
 use rustc_feature::{Features, GateIssue};
 use rustc_hir as hir;
 use rustc_hir::HirId;
-use rustc_hir::intravisit::{self, Visitor};
 use rustc_index::IndexVec;
 use rustc_lint_defs::builtin::{
     self, FORBIDDEN_LINT_GROUPS, RENAMED_AND_REMOVED_LINTS, SINGLE_USE_LIFETIMES,
@@ -18,7 +17,6 @@ use rustc_lint_defs::builtin::{
 use rustc_lint_defs::{
     Level, Lint, LintExpectationId, LintId, StableLintExpectationId, UnstableLintExpectationId,
 };
-use rustc_middle::hir::nested_filter;
 use rustc_middle::lint::{
     LevelSpec, LintExpectation, LintLevelSource, ShallowLintLevelMap, StableLevelSpec,
     UnstableLevelSpec, emit_lint_base, reveal_actual_level_spec,
@@ -26,7 +24,6 @@ use rustc_middle::lint::{
 use rustc_middle::query::Providers;
 use rustc_middle::ty::{RegisteredTools, TyCtxt};
 use rustc_session::Session;
-use rustc_span::def_id::CRATE_MOD_ID;
 use rustc_span::{AttrId, DUMMY_SP, Span, Symbol, sym};
 use tracing::{debug, instrument};
 
@@ -154,8 +151,11 @@ fn skippable_lints(tcx: TyCtxt<'_>, (): ()) -> UnordSet<LintId> {
 
 #[instrument(level = "trace", skip(tcx), ret)]
 fn shallow_lint_levels_on(tcx: TyCtxt<'_>, owner: hir::OwnerId) -> ShallowLintLevelMap {
-    let store = unerased_lint_store(tcx.sess);
     let attrs = tcx.hir_attr_map(owner);
+    if attrs.map.is_empty() && owner != hir::CRATE_OWNER_ID {
+        return ShallowLintLevelMap::default();
+    }
+    let store = unerased_lint_store(tcx.sess);
 
     let mut levels = LintLevelsBuilder {
         sess: tcx.sess,
@@ -165,7 +165,6 @@ fn shallow_lint_levels_on(tcx: TyCtxt<'_>, owner: hir::OwnerId) -> ShallowLintLe
             cur: owner.into(),
             specs: ShallowLintLevelMap::default(),
             empty: FxIndexMap::default(),
-            attrs,
         },
         lint_added_lints: false,
         store,
@@ -176,25 +175,20 @@ fn shallow_lint_levels_on(tcx: TyCtxt<'_>, owner: hir::OwnerId) -> ShallowLintLe
         levels.add_command_line();
     }
 
-    match attrs.map.range(..) {
-        // There is only something to do if there are attributes at all.
+    let entries = attrs.map.range(..);
+    let mut add = |&(local_id, node_attrs): &(hir::ItemLocalId, &[hir::Attribute])| {
+        let hir_id = HirId { owner, local_id };
+        levels.provider.cur = hir_id;
+        levels.add(node_attrs, hir_id == hir::CRATE_HIR_ID);
+    };
+    match entries {
         [] => {}
-        // Most of the time, there is only one attribute. Avoid fetching HIR in that case.
-        &[(local_id, _)] => levels.add_id(HirId { owner, local_id }),
-        // Otherwise, we need to visit the attributes in source code order, so we fetch HIR and do
-        // a standard visit.
-        // FIXME(#102522) Just iterate on attrs once that iteration order matches HIR's.
-        _ => match tcx.hir_owner_node(owner) {
-            hir::OwnerNode::Item(item) => levels.visit_item(item),
-            hir::OwnerNode::ForeignItem(item) => levels.visit_foreign_item(item),
-            hir::OwnerNode::TraitItem(item) => levels.visit_trait_item(item),
-            hir::OwnerNode::ImplItem(item) => levels.visit_impl_item(item),
-            hir::OwnerNode::Crate(mod_) => {
-                levels.add_id(hir::CRATE_HIR_ID);
-                levels.visit_mod(mod_, mod_.spans.inner_span, CRATE_MOD_ID)
+        [entry] => add(entry),
+        _ => {
+            for &index in attrs.lint_roots {
+                add(&entries[index as usize]);
             }
-            hir::OwnerNode::Synthetic => unreachable!(),
-        },
+        }
     }
 
     let specs = levels.provider.specs;
@@ -268,7 +262,6 @@ struct LintLevelQueryMap<'tcx> {
     specs: ShallowLintLevelMap,
     /// Empty hash map to simplify code.
     empty: FxIndexMap<LintId, StableLevelSpec>,
-    attrs: &'tcx hir::AttributeMap<'tcx>,
 }
 
 impl LintLevelsProvider for LintLevelQueryMap<'_> {
@@ -314,86 +307,6 @@ impl LintLevelsProvider for LintLevelQueryMap<'_> {
     ) -> Self::LintExpectationId {
         let attr_index = attr_index.try_into().unwrap();
         StableLintExpectationId { hir_id: self.cur, attr_index, lint_index }
-    }
-}
-
-impl<'tcx> LintLevelsBuilder<'_, LintLevelQueryMap<'tcx>> {
-    fn add_id(&mut self, hir_id: HirId) {
-        self.provider.cur = hir_id;
-        self.add(self.provider.attrs.get(hir_id.local_id), hir_id == hir::CRATE_HIR_ID);
-    }
-}
-
-impl<'tcx> Visitor<'tcx> for LintLevelsBuilder<'_, LintLevelQueryMap<'tcx>> {
-    type NestedFilter = nested_filter::OnlyBodies;
-
-    fn maybe_tcx(&mut self) -> Self::MaybeTyCtxt {
-        self.provider.tcx
-    }
-
-    fn visit_param(&mut self, param: &'tcx hir::Param<'tcx>) {
-        self.add_id(param.hir_id);
-        intravisit::walk_param(self, param);
-    }
-
-    fn visit_item(&mut self, it: &'tcx hir::Item<'tcx>) {
-        self.add_id(it.hir_id());
-        intravisit::walk_item(self, it);
-    }
-
-    fn visit_foreign_item(&mut self, it: &'tcx hir::ForeignItem<'tcx>) {
-        self.add_id(it.hir_id());
-        intravisit::walk_foreign_item(self, it);
-    }
-
-    fn visit_stmt(&mut self, s: &'tcx hir::Stmt<'tcx>) {
-        self.add_id(s.hir_id);
-        intravisit::walk_stmt(self, s);
-    }
-
-    fn visit_expr(&mut self, e: &'tcx hir::Expr<'tcx>) {
-        self.add_id(e.hir_id);
-        intravisit::walk_expr(self, e);
-    }
-
-    fn visit_pat_field(&mut self, f: &'tcx hir::PatField<'tcx>) -> Self::Result {
-        self.add_id(f.hir_id);
-        intravisit::walk_pat_field(self, f);
-    }
-
-    fn visit_expr_field(&mut self, f: &'tcx hir::ExprField<'tcx>) {
-        self.add_id(f.hir_id);
-        intravisit::walk_expr_field(self, f);
-    }
-
-    fn visit_field_def(&mut self, s: &'tcx hir::FieldDef<'tcx>) {
-        self.add_id(s.hir_id);
-        intravisit::walk_field_def(self, s);
-    }
-
-    fn visit_variant(&mut self, v: &'tcx hir::Variant<'tcx>) {
-        self.add_id(v.hir_id);
-        intravisit::walk_variant(self, v);
-    }
-
-    fn visit_local(&mut self, l: &'tcx hir::LetStmt<'tcx>) {
-        self.add_id(l.hir_id);
-        intravisit::walk_local(self, l);
-    }
-
-    fn visit_arm(&mut self, a: &'tcx hir::Arm<'tcx>) {
-        self.add_id(a.hir_id);
-        intravisit::walk_arm(self, a);
-    }
-
-    fn visit_trait_item(&mut self, trait_item: &'tcx hir::TraitItem<'tcx>) {
-        self.add_id(trait_item.hir_id());
-        intravisit::walk_trait_item(self, trait_item);
-    }
-
-    fn visit_impl_item(&mut self, impl_item: &'tcx hir::ImplItem<'tcx>) {
-        self.add_id(impl_item.hir_id());
-        intravisit::walk_impl_item(self, impl_item);
     }
 }
 

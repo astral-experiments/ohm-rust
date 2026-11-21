@@ -19,6 +19,8 @@ struct NodeCollector<'a, 'hir> {
     /// Outputs
     nodes: IndexVec<ItemLocalId, ParentedNode<'hir>>,
     parenting: LocalDefIdMap<ItemLocalId>,
+    lint_roots: &'hir mut [u32],
+    num_lint_roots: usize,
 
     /// The parent of this node
     parent_node: ItemLocalId,
@@ -26,15 +28,28 @@ struct NodeCollector<'a, 'hir> {
     owner: OwnerId,
 }
 
-#[instrument(level = "debug", skip(tcx, bodies))]
+#[instrument(level = "debug", skip(tcx, bodies, attrs))]
 pub(super) fn index_hir<'hir>(
     tcx: TyCtxt<'hir>,
     item: hir::OwnerNode<'hir>,
     bodies: &SortedMap<ItemLocalId, &'hir Body<'hir>>,
     num_nodes: usize,
-) -> (IndexVec<ItemLocalId, ParentedNode<'hir>>, LocalDefIdMap<ItemLocalId>) {
+    attrs: &SortedMap<ItemLocalId, &[Attribute]>,
+) -> (IndexVec<ItemLocalId, ParentedNode<'hir>>, LocalDefIdMap<ItemLocalId>, &'hir [u32]) {
     let err_node = ParentedNode { parent: ItemLocalId::ZERO, node: Node::Err(item.span()) };
     let mut nodes = IndexVec::from_elem_n(err_node, num_nodes);
+    // A single attribute entry needs no ordering. Otherwise mark the still-empty node slots
+    // so the visit can collect attributed nodes without a map lookup on every insertion.
+    let lint_roots: &mut [u32] = if attrs.len() > 1 {
+        for (index, &id) in attrs.keys().enumerate() {
+            nodes[id].parent = ItemLocalId::from_usize(index + 1);
+        }
+        tcx.hir_arena.alloc_from_iter(std::iter::repeat_n(0u32, attrs.len()))
+    } else {
+        &mut []
+    };
+    // The owner, if attributed, is first and has no call to `insert`.
+    let num_lint_roots = usize::from(nodes[ItemLocalId::ZERO].parent != ItemLocalId::ZERO);
     // This node's parent should never be accessed: the owner's parent is computed by the
     // hir_owner_parent query. Make it invalid (= ItemLocalId::MAX) to force an ICE whenever it is
     // used.
@@ -46,6 +61,8 @@ pub(super) fn index_hir<'hir>(
         nodes,
         bodies,
         parenting: Default::default(),
+        lint_roots,
+        num_lint_roots,
     };
 
     match item {
@@ -65,7 +82,7 @@ pub(super) fn index_hir<'hir>(
         }
     }
 
-    (collector.nodes, collector.parenting)
+    (collector.nodes, collector.parenting, &collector.lint_roots[..collector.num_lint_roots])
 }
 
 impl<'a, 'hir> NodeCollector<'a, 'hir> {
@@ -104,7 +121,26 @@ impl<'a, 'hir> NodeCollector<'a, 'hir> {
             }
         }
 
-        self.nodes[hir_id.local_id] = ParentedNode { parent: self.parent_node, node };
+        let slot = &mut self.nodes[hir_id.local_id];
+        if slot.parent != ItemLocalId::ZERO
+            && matches!(slot.node, Node::Err(_))
+            && matches!(
+                node,
+                Node::Param(_)
+                    | Node::Stmt(_)
+                    | Node::Expr(_)
+                    | Node::PatField(_)
+                    | Node::ExprField(_)
+                    | Node::Field(_)
+                    | Node::Variant(_)
+                    | Node::LetStmt(_)
+                    | Node::Arm(_)
+            )
+        {
+            self.lint_roots[self.num_lint_roots] = slot.parent.as_u32() - 1;
+            self.num_lint_roots += 1;
+        }
+        *slot = ParentedNode { parent: self.parent_node, node };
     }
 
     fn with_parent<F: FnOnce(&mut Self)>(&mut self, parent_node_id: HirId, f: F) {

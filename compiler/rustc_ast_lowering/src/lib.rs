@@ -246,11 +246,12 @@ impl<'a, 'hir> PerOwnerLoweringState<'a, 'hir> {
         bodies.sort_by_key(|(k, _)| *k);
         let bodies = SortedMap::from_presorted_elements(bodies);
 
+        let num_nodes = self.item_local_id_counter.as_usize();
+        let (nodes, parenting, lint_roots) =
+            index::index_hir(tcx, node, &bodies, num_nodes, &attrs);
         // Don't hash unless necessary, because it's expensive.
         let rustc_middle::hir::Hashes { bodies_hash, attrs_hash } =
-            tcx.hash_owner_nodes(node, &bodies, &attrs, define_opaque);
-        let num_nodes = self.item_local_id_counter.as_usize();
-        let (nodes, parenting) = index::index_hir(tcx, node, &bodies, num_nodes);
+            tcx.hash_owner_nodes(node, &bodies, &attrs, lint_roots, define_opaque);
         let has_loop_control_attrs = attrs.values().any(|attrs| {
             attrs.iter().any(|attr| {
                 matches!(
@@ -263,7 +264,8 @@ impl<'a, 'hir> PerOwnerLoweringState<'a, 'hir> {
         });
         let nodes =
             hir::OwnerNodes { opt_hash: bodies_hash, nodes, bodies, has_loop_control_attrs };
-        let attrs = hir::AttributeMap { map: attrs, opt_hash: attrs_hash, define_opaque };
+        let attrs =
+            hir::AttributeMap { map: attrs, lint_roots, opt_hash: attrs_hash, define_opaque };
 
         let opt_hash = tcx.needs_owner_info_hash().then(|| {
             tcx.with_incremental_hashing_context(|mut hcx| {
