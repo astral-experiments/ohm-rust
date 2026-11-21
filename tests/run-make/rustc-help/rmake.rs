@@ -30,7 +30,7 @@ fn main() {
     let polonius_help =
         format!("{}\n", unstable_help.lines().find(|line| line.contains("polonius=val")).unwrap());
     let version = bare_rustc().arg("--version").run().stdout_utf8();
-    let expected_file = if version.contains("-nightly") || version.contains("-dev") {
+    let expected_file = if version.contains("-nightly") {
         "polonius-help.stdout"
     } else {
         "polonius-help-stable.stdout"
