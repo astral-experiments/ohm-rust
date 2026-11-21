@@ -12,7 +12,7 @@ use crate::expand::{AstFragment, AstFragmentKind};
 pub(crate) fn placeholder(
     kind: AstFragmentKind,
     id: ast::NodeId,
-    vis: Option<ast::Visibility>,
+    field: Option<&ast::FieldDef>,
 ) -> AstFragment {
     fn mac_placeholder() -> Box<ast::MacCall> {
         Box::new(ast::MacCall {
@@ -27,8 +27,7 @@ pub(crate) fn placeholder(
 
     let ident = Ident::dummy();
     let attrs = ast::AttrVec::new();
-    let vis =
-        vis.unwrap_or(ast::Visibility { span: DUMMY_SP, kind: ast::VisibilityKind::Inherited });
+    let vis = ast::Visibility { span: DUMMY_SP, kind: ast::VisibilityKind::Inherited };
     let span = DUMMY_SP;
     let expr_placeholder = || {
         Box::new(ast::Expr {
@@ -167,10 +166,13 @@ pub(crate) fn placeholder(
         AstFragmentKind::FieldDefs => AstFragment::FieldDefs(smallvec![ast::FieldDef {
             attrs: Default::default(),
             id,
-            ident: None,
+            // Def collection can print a named field inside a written impl header.
+            ident: field.and_then(|f| f.ident),
             span,
             ty: ty(),
-            vis,
+            // Resolve determines tuple constructor visibility before expansion.
+            // Only inert attributes are permitted here, so the visibility is final.
+            vis: field.filter(|f| f.ident.is_none()).map_or(vis, |f| f.vis.clone()),
             is_placeholder: true,
             extras: None
         }]),
