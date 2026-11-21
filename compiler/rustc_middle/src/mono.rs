@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::hash::{BuildHasher, Hash};
 
+use rustc_attr_ir::lang_items::LangItem;
 use rustc_attr_ir::{InlineAttr, Linkage};
 use rustc_data_structures::base_n::{BaseNString, CASE_INSENSITIVE, ToBaseN};
 use rustc_data_structures::fingerprint::Fingerprint;
@@ -267,6 +268,25 @@ impl<'tcx> MonoItem<'tcx> {
         // of our CGUs.
         if let InlineAttr::Never = codegen_fn_attrs.inline
             && self.is_generic_fn()
+        {
+            return InstantiationMode::GloballyShared { may_conflict: true };
+        }
+
+        // The built-in PartialEq derive marks eq as #[inline] even for a large match over
+        // enum variants. At -O1 LLVM often emits an out-of-line copy in each caller CGU,
+        // making edits to any of the compared types invalidate them all. Share a single
+        // instance within the defining crate and leave cross-crate inlining as usual.
+        if tcx.sess.opts.unstable_opts.ohm_split_large_cgus
+            && tcx.sess.opts.incremental.is_some()
+            && tcx.sess.opts.optimize == OptLevel::Less
+            && matches!(codegen_fn_attrs.inline, InlineAttr::Hint)
+            && let InstanceKind::Item(method) = instance.def
+            && method.is_local()
+            && !self.is_generic_fn()
+            && let Some(parent) = tcx.trait_impl_of_assoc(method)
+            && tcx.is_lang_item(tcx.impl_trait_id(parent), LangItem::PartialEq)
+            && tcx.is_automatically_derived(parent)
+            && self.size_estimate(tcx) >= 128
         {
             return InstantiationMode::GloballyShared { may_conflict: true };
         }
