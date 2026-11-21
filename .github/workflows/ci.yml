@@ -193,6 +193,12 @@ jobs:
           tests/ui/associated-types/concrete-impl-bound-normalization.rs
           tests/incremental/closed-associated-type-proofs.rs
 
+      - name: Run obligation forest tests
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1 compiler/rustc_data_structures
+          --test-args obligation_forest::tests
+
       - name: Run well-formedness obligation regression tests
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
