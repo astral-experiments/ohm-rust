@@ -22,11 +22,38 @@ use tracing::{debug, instrument};
 
 use crate::def_path_hash_map::DefPathHashMap;
 
+/// Select the sequence of disambiguators used when allocating a definition.
+/// Only the resulting ordinary def-path data and integer are persisted.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum DefPathSlot {
+    Ordinary(DefPathData),
+    WrittenImpl(u32),
+}
+
+impl From<DefPathData> for DefPathSlot {
+    fn from(data: DefPathData) -> Self {
+        Self::Ordinary(data)
+    }
+}
+
+impl DefPathSlot {
+    /// Give impls with the same self type and trait syntax a common starting
+    /// slot, independent of intervening impls and changes to their methods.
+    pub fn written_impl(self_ty: &str, trait_path: Option<&str>) -> Self {
+        let mut hasher = StableHasher::new();
+        self_ty.hash(&mut hasher);
+        trait_path.hash(&mut hasher);
+        let hash: Hash64 = hasher.finish();
+        // Start away from the dense disambiguators of macro-generated impls.
+        Self::WrittenImpl(hash.as_u64() as u32 | (1 << 31))
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct PerParentDisambiguatorState {
     #[cfg(debug_assertions)]
     parent: Option<LocalDefId>,
-    next: FxHashMap<DefPathData, u32>,
+    next: FxHashMap<DefPathSlot, u32>,
 }
 
 impl PerParentDisambiguatorState {
@@ -513,9 +540,14 @@ impl Definitions {
     pub fn create_def(
         &mut self,
         parent: LocalDefId,
-        data: DefPathData,
+        slot: impl Into<DefPathSlot>,
         disambiguator: &mut PerParentDisambiguatorState,
     ) -> LocalDefId {
+        let slot = slot.into();
+        let (data, first) = match slot {
+            DefPathSlot::Ordinary(data) => (data, 0),
+            DefPathSlot::WrittenImpl(seed) => (DefPathData::Impl, seed),
+        };
         // We can't use `Debug` implementation for `LocalDefId` here, since it tries to acquire a
         // reference to `Definitions` and we're already holding a mutable reference.
         debug!(
@@ -526,32 +558,33 @@ impl Definitions {
         // The root node must be created in `new()`.
         assert!(data != DefPathData::CrateRoot);
 
-        // Find the next free disambiguator for this key.
-        let disambiguator = {
-            #[cfg(debug_assertions)]
-            debug_assert_eq!(
-                parent,
-                disambiguator.parent.expect("must be set"),
-                "provided parent and parent in disambiguator must be the same"
-            );
-
-            let next_disamb = disambiguator.next.entry(data).or_insert(0);
-            let disambiguator = *next_disamb;
-            *next_disamb = next_disamb.checked_add(1).expect("disambiguator overflow");
-            disambiguator
-        };
-        let key = DefKey {
-            parent: Some(parent.local_def_index),
-            disambiguated_data: DisambiguatedDefPathData { data, disambiguator },
-        };
-
+        #[cfg(debug_assertions)]
+        debug_assert_eq!(parent, disambiguator.parent.expect("must be set"));
+        let next = disambiguator.next.entry(slot).or_insert(first);
         let parent_hash = self.def_path_hash(parent);
-        let def_path_hash = key.compute_stable_hash(parent_hash);
-
-        debug!("create_def: after disambiguation, key = {:?}", key);
-
-        // Create the definition.
-        self.allocate(key, def_path_hash)
+        loop {
+            let disambiguator = *next;
+            *next = match slot {
+                DefPathSlot::Ordinary(_) => next.checked_add(1).expect("disambiguator overflow"),
+                DefPathSlot::WrittenImpl(_) => next.wrapping_add(1),
+            };
+            let key = DefKey {
+                parent: Some(parent.local_def_index),
+                disambiguated_data: DisambiguatedDefPathData { data, disambiguator },
+            };
+            let def_path_hash = key.compute_stable_hash(parent_hash);
+            // Distinct source headers can select overlapping slot sequences.
+            // Skip occupied keys while preserving the normal hash collision
+            // check in allocate for distinct keys with the same hash.
+            if data == DefPathData::Impl
+                && let Some(existing) = self.local_def_path_hash_to_def_id(def_path_hash)
+                && self.def_key(existing) == key
+            {
+                continue;
+            }
+            debug!("create_def: after disambiguation, key = {:?}", key);
+            return self.allocate(key, def_path_hash);
+        }
     }
 
     #[inline(always)]
