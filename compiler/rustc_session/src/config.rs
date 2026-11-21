@@ -2804,6 +2804,24 @@ pub fn build_session_options(early_dcx: &mut EarlyDiagCtxt, matches: &getopts::M
     let output_types = parse_output_types(early_dcx, &unstable_opts, matches);
 
     let mut cg = CodegenOptions::build(early_dcx, matches, &mut collected_options);
+
+    // These untracked options need analysis queries or LLVM passes to run on a
+    // stage transition. A shared graph can skip their reports and reuse objects
+    // produced with different options when returning to a build after a check.
+    if unstable_opts.dump_mir.is_some()
+        || unstable_opts.nll_facts
+        || unstable_opts.profile_closures
+        || unstable_opts.print_type_sizes
+        || unstable_opts.meta_stats
+        || unstable_opts.print_llvm_passes
+        || cg.save_temps
+        || !cg.remark.is_empty()
+        || unstable_opts.emit_stack_sizes
+        || unstable_opts.codegen_source_order
+    {
+        unstable_opts.ohm_shared_stages = false;
+    }
+
     let (disable_local_thinlto, codegen_units) = should_override_cgus_and_disable_thinlto(
         early_dcx,
         &output_types,
