@@ -171,6 +171,34 @@ pub struct InferCtxtInner<'tcx> {
 }
 
 impl<'tcx> InferCtxtInner<'tcx> {
+    /// `ty_or_const_infer_var_changed` is equivalent to one of these two:
+    ///   * `shallow_resolve(ty) != ty` (where `ty.kind = ty::Infer(_)`)
+    ///   * `shallow_resolve(ct) != ct` (where `ct.kind = ty::ConstKind::Infer(_)`)
+    ///
+    /// This is an extremely hot check. Keeping it on the borrowed tables lets
+    /// fulfillment share the borrow across a run of stalled obligations.
+    #[inline(always)]
+    pub fn ty_or_const_infer_var_changed(&self, var: TyOrConstInferVar) -> bool {
+        match var {
+            TyOrConstInferVar::Ty(vid) => !matches!(
+                self.try_type_variables_probe_ref(vid),
+                Some(TypeVariableValue::Unknown { .. })
+            ),
+            TyOrConstInferVar::TyInt(vid) => !matches!(
+                self.int_unification_storage.try_probe_value(vid),
+                Some(ty::IntVarValue::Unknown)
+            ),
+            TyOrConstInferVar::TyFloat(vid) => !matches!(
+                self.float_unification_storage.try_probe_value(vid),
+                Some(ty::FloatVarValue::Unknown)
+            ),
+            TyOrConstInferVar::Const(vid) => !matches!(
+                self.const_unification_storage.try_probe_value(vid),
+                Some(ConstVariableValue::Unknown { .. })
+            ),
+        }
+    }
+
     fn new() -> InferCtxtInner<'tcx> {
         InferCtxtInner {
             undo_log: InferCtxtUndoLogs::default(),
@@ -1715,55 +1743,9 @@ impl<'tcx> InferCtxt<'tcx> {
         self.typing_env(param_env).as_query_input(value)
     }
 
-    /// The returned function is used in a fast path. If it returns `true` the variable is
-    /// unchanged, `false` indicates that the status is unknown.
-    #[inline]
-    pub fn is_ty_infer_var_definitely_unchanged(&self) -> impl Fn(TyOrConstInferVar) -> bool {
-        // This hoists the borrow/release out of the loop body.
-        let inner = self.inner.try_borrow();
-
-        move |infer_var: TyOrConstInferVar| match (infer_var, &inner) {
-            (TyOrConstInferVar::Ty(ty_var), Ok(inner)) => {
-                use self::type_variable::TypeVariableValue;
-
-                matches!(
-                    inner.try_type_variables_probe_ref(ty_var),
-                    Some(TypeVariableValue::Unknown { .. })
-                )
-            }
-            _ => false,
-        }
-    }
-
-    /// `ty_or_const_infer_var_changed` is equivalent to one of these two:
-    ///   * `shallow_resolve(ty) != ty` (where `ty.kind = ty::Infer(_)`)
-    ///   * `shallow_resolve(ct) != ct` (where `ct.kind = ty::ConstKind::Infer(_)`)
-    ///
-    /// However, `ty_or_const_infer_var_changed` is more efficient. It's always
-    /// inlined, despite being large, because it has only two call sites that
-    /// are extremely hot (both in `traits::fulfill`'s checking of `stalled_on`
-    /// inference variables), and it handles both `Ty` and `ty::Const` without
-    /// having to resort to storing full `GenericArg`s in `stalled_on`.
     #[inline(always)]
     pub fn ty_or_const_infer_var_changed(&self, var: TyOrConstInferVar) -> bool {
-        match var {
-            TyOrConstInferVar::Ty(vid) => !matches!(
-                self.inner.borrow().try_type_variables_probe_ref(vid),
-                Some(TypeVariableValue::Unknown { .. })
-            ),
-            TyOrConstInferVar::TyInt(vid) => !matches!(
-                self.inner.borrow().int_unification_storage.try_probe_value(vid),
-                Some(ty::IntVarValue::Unknown)
-            ),
-            TyOrConstInferVar::TyFloat(vid) => !matches!(
-                self.inner.borrow().float_unification_storage.try_probe_value(vid),
-                Some(ty::FloatVarValue::Unknown)
-            ),
-            TyOrConstInferVar::Const(vid) => !matches!(
-                self.inner.borrow().const_unification_storage.try_probe_value(vid),
-                Some(ConstVariableValue::Unknown { .. })
-            ),
-        }
+        self.inner.borrow().ty_or_const_infer_var_changed(var)
     }
 
     /// Attach a callback to be invoked on each root obligation evaluated in the new trait solver.

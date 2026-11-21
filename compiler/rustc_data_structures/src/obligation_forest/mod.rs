@@ -103,17 +103,12 @@ pub trait ObligationProcessor {
     type Error: Debug;
     type OUT: OutcomeTrait<Obligation = Self::Obligation, Error = Error<Self::Obligation, Self::Error>>;
 
-    /// Implementations can provide a fast-path to obligation-processing
-    /// by counting the prefix of the passed iterator for which
-    /// `needs_process_obligation` would return false.
-    fn skippable_obligations<'a>(
-        &'a self,
-        _it: impl Iterator<Item = &'a Self::Obligation>,
-    ) -> usize {
-        0
+    /// Selects pending obligations that might make progress. The forest drops
+    /// the filter before processing an obligation so it can borrow inference
+    /// state while traversing unchanged obligations.
+    fn obligation_filter(&self) -> impl Fn(&Self::Obligation) -> bool {
+        |_| true
     }
-
-    fn needs_process_obligation(&self, _obligation: &Self::Obligation) -> bool;
 
     fn process_obligation(
         &mut self,
@@ -466,26 +461,19 @@ impl<O: ForestObligation> ObligationForest<O> {
         loop {
             let mut has_changed = false;
 
-            // This is the super fast path for cheap-to-check conditions.
-            let mut index =
-                processor.skippable_obligations(self.nodes.iter().map(|n| &n.obligation));
-
-            // Note that the loop body can append new nodes, and those new nodes
-            // will then be processed by subsequent iterations of the loop.
-            //
-            // We can't use an iterator for the loop because `self.nodes` is
-            // appended to and the borrow checker would complain. We also can't use
-            // `for index in 0..self.nodes.len() { ... }` because the range would
-            // be computed with the initial length, and we would miss the appended
-            // nodes. Therefore we use a `while` loop.
-            while let Some(node) = self.nodes.get_mut(index) {
-                // This is the moderately fast path when the prefix skipping above didn't work out.
-                if node.state.get() != NodeState::Pending
-                    || !processor.needs_process_obligation(&node.obligation)
-                {
-                    index += 1;
-                    continue;
-                }
+            // Processing one obligation may change the next one's readiness
+            // and append more nodes. Search again after each attempt.
+            let mut index = 0;
+            while index < self.nodes.len() {
+                let next = {
+                    let ready = processor.obligation_filter();
+                    self.nodes[index..].iter().position(|node| {
+                        node.state.get() == NodeState::Pending && ready(&node.obligation)
+                    })
+                };
+                let Some(offset) = next else { break };
+                index += offset;
+                let node = &mut self.nodes[index];
 
                 // `processor.process_obligation` can modify the predicate within
                 // `node.obligation`, and that predicate is the key used for
