@@ -59,6 +59,15 @@ impl<'tcx> TyCtxt<'tcx> {
         )
     }
 
+    /// Returns the drop scopes for this body and the others sharing its type-checking root.
+    pub fn region_scope_tree(
+        self,
+        def_id: impl IntoQueryKey<LocalDefId>,
+    ) -> &'tcx crate::middle::region::ScopeTree {
+        // Query by root so incremental compilation fingerprints the shared tree once.
+        self.region_scope_tree_root(self.typeck_root_def_id_local(def_id.into_query_key()))
+    }
+
     /// Returns a transparent wrapper for `TyCtxt` which uses
     /// `span` as the location of queries performed through it.
     #[inline(always)]
