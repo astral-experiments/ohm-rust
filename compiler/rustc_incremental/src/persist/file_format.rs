@@ -33,7 +33,8 @@ const FILE_MAGIC: &[u8] = b"RSIC";
 // Local query caches now distinguish deduplicated CTFE literals.
 // Check graphs carry a sibling compatibility key and use logical local IDs.
 // Retained query results use a bitmap for aliases whose graph index has not changed.
-const HEADER_FORMAT_VERSION: u16 = 61346;
+// Parsed module snapshots follow the retained generations.
+const HEADER_FORMAT_VERSION: u16 = 61350;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);

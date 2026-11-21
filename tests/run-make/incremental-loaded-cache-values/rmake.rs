@@ -111,4 +111,41 @@ fn main() {
             assert!(bytes.starts_with(&base), "lost original cache at edit {value}");
         }
     }
+
+    // Only the parser sees these cfg-disabled names. Each revision should
+    // retain the current snapshot without keeping the obsolete ones alive.
+    rfs::write("lib.rs", format!("{constants}pub mod child;\n"));
+    for revision in 0..5 {
+        // Drop below the minimum module size once, then cache the module again.
+        let padding = " ".repeat(if revision == 2 { 0 } else { 2048 });
+        let marker = format!("SYNTAX_REVISION_{revision}");
+        rfs::write(
+            "child.rs",
+            format!(
+                "{padding}#[cfg(any())] const {marker}: () = ();\n\
+                 pub const VALUE: u32 = {revision};\n"
+            ),
+        );
+        let compile = |dir: &str| {
+            rustc()
+                .input("lib.rs")
+                .crate_type("rlib")
+                .emit("metadata")
+                .incremental(dir)
+                .arg("-Zohm-shared-stages")
+                .arg("-Zincremental-verify-ich")
+                .run();
+            rfs::read("liblib.rmeta")
+        };
+        assert!(compile("syntax") == compile("fresh"), "metadata mismatch at edit {revision}");
+        rfs::remove_dir_all("fresh");
+        let bytes = fs::read(session("syntax").join("query-cache.bin")).unwrap();
+        let names: Vec<_> =
+            bytes.windows(marker.len()).filter(|v| v.starts_with(b"SYNTAX_REVISION_")).collect();
+        if revision == 2 {
+            assert!(names.is_empty());
+        } else {
+            assert_eq!(names, [marker.as_bytes()]);
+        }
+    }
 }
