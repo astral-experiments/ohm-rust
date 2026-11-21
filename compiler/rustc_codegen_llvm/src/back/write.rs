@@ -214,8 +214,7 @@ pub(crate) fn target_machine_factory(
     let emit_stack_size_section = sess.opts.unstable_opts.emit_stack_sizes;
 
     let verbose_asm = sess.opts.unstable_opts.verbose_asm;
-    let relax_elf_relocations =
-        sess.opts.unstable_opts.relax_elf_relocations.unwrap_or(sess.target.relax_elf_relocations);
+    let relax_elf_relocations = sess.relax_elf_relocations();
 
     let use_init_array =
         !sess.opts.unstable_opts.use_ctors_section.unwrap_or(sess.target.use_ctors_section);
