@@ -1,6 +1,8 @@
 use std::any::TypeId;
 use std::mem::offset_of;
 
+const _: () = assert!(env!("CARGO_PKG_VERSION").len() == 5);
+
 #[derive(Debug)]
 pub struct Leaf(pub u32);
 
