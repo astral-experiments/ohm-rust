@@ -1903,6 +1903,9 @@ fn validate_commandline_args_with_session_available(sess: &Session) {
     }
 }
 
+/// Per-module ThinLTO keys used to determine which post-LTO objects can be reused.
+pub const THIN_LTO_KEYS_INCR_COMP_FILE_NAME: &str = "thin-lto-past-keys.bin";
+
 /// Holds data on the current incremental compilation session, if there is one.
 pub struct IncrCompSession {
     /// Retains the lease on mapped check data from another canonical crate directory.
