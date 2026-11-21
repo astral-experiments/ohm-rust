@@ -180,11 +180,24 @@ pub fn gather_rustdoc_profiles(
 
 pub struct ClippyPGOProfile(pub Utf8PathBuf);
 
+/// Give the training driver a single path so dyld resolves its relative library
+/// search path from `stage2/bin`. Bootstrap hard-links it from `stage2-tools-bin`.
+fn detach_training_driver(driver: &Utf8Path) -> anyhow::Result<()> {
+    let copy = tempfile::NamedTempFile::new_in(driver.parent().unwrap())?;
+    std::fs::copy(driver, copy.path())?;
+    copy.persist(driver)?;
+    Ok(())
+}
+
 pub fn gather_clippy_profiles(
     env: &Environment,
     profile_root: &Utf8Path,
 ) -> anyhow::Result<ClippyPGOProfile> {
     log::info!("Running benchmarks with PGO instrumented clippy");
+    if cfg!(target_os = "macos") {
+        detach_training_driver(&env.clippy_stage_2())
+            .context("Cannot prepare the Clippy driver in the training sysroot")?;
+    }
     gather_pgo_profiles(env, profile_root, "clippy", clippy_benchmarks(env)).map(ClippyPGOProfile)
 }
 
