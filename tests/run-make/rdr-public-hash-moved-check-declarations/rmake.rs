@@ -117,7 +117,10 @@ fn check_derived_declarations() {
     assert_ne!(first, hash(&moved.replace("Clone, Debug", "Debug"), true, false));
     assert_ne!(first, hash(&moved.replace("color", "hue"), true, false));
 
-    let generated = "pub mod inner { macro_rules! make { () => { #[derive(Clone)] pub struct Ink; } } make!(); }";
+    let generated = "pub mod inner { \
+                         macro_rules! make { () => { #[derive(Clone)] pub struct Ink; } } \
+                         make!(); \
+                     }";
     assert_ne!(hash(generated, true, false), hash(&format!("\n{generated}"), true, false));
 
     // A reader can evaluate the location of a call in the dependency's MIR and
@@ -136,7 +139,10 @@ fn check_derived_declarations() {
          }",
     );
     rustc().input("observe.rs").crate_type("proc-macro").run();
-    let custom = "extern crate observe;\npub mod inner { #[derive(Clone, observe::Declare)] pub struct Ink { pub color: u32 } }";
+    let custom = "extern crate observe;\n\
+                  pub mod inner { \
+                      #[derive(Clone, observe::Declare)] pub struct Ink { pub color: u32 } \
+                  }";
     assert_ne!(hash(custom, true, false), hash(&format!("\n{custom}"), true, false));
     for (producer, invocation) in [
         ("pub const fn at() -> u32 { core::panic::Location::caller().line() }", "dep::at()"),
