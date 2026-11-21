@@ -234,6 +234,11 @@ fn main() {
         );
     }
 
+    // Reusing a green codegen unit with local ThinLTO needs the pre-LTO bitcode.
+    for emit in ["metadata,link", "metadata", "metadata", "metadata,link"] {
+        stage(emit).arg("-Copt-level=1").codegen_units(16).run();
+    }
+
     // A saved build checkpoint can also skip the passes that write bitcode.
     stage("link").run();
     stage("metadata").run();
