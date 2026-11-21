@@ -125,8 +125,9 @@ pub(crate) struct Scopes<'tcx> {
 
 #[derive(Debug)]
 struct Scope {
-    /// The source scope this scope was created in.
-    source_scope: SourceScope,
+    /// All drops scheduled in this scope use the same source location. The
+    /// scope is set at creation and the span when the first drop is scheduled.
+    drop_source: SourceInfo,
 
     /// the region span of this scope within source code.
     region_scope: region::Scope,
@@ -135,7 +136,7 @@ struct Scope {
     /// out empty but grows as variables are declared during the
     /// building process. This is a stack, so we always drop from the
     /// end of the vector (top of the stack) first.
-    drops: Vec<DropData>,
+    drops: Vec<ScheduledDrop>,
 
     moved_locals: Vec<Local>,
 
@@ -146,6 +147,12 @@ struct Scope {
     /// The drop index that will drop everything in and below this scope on a
     /// coroutine drop path.
     cached_coroutine_drop_block: Option<DropIdx>,
+}
+
+#[derive(Debug)]
+struct ScheduledDrop {
+    local: Local,
+    kind: DropKind,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -254,6 +261,15 @@ struct DropNodeKey {
 }
 
 impl Scope {
+    /// Attach the scope's source location when building drops for an exit path.
+    fn scheduled_drops(&self) -> impl DoubleEndedIterator<Item = DropData> {
+        self.drops.iter().map(|drop| DropData {
+            source_info: self.drop_source,
+            local: drop.local,
+            kind: drop.kind,
+        })
+    }
+
     /// Whether there's anything to do for the cleanup path, that is,
     /// when unwinding through this scope. This includes destructors,
     /// but not StorageDead statements, which don't get emitted at all
@@ -491,7 +507,7 @@ impl<'tcx> Scopes<'tcx> {
     fn push_scope(&mut self, region_scope: region::Scope, vis_scope: SourceScope) {
         debug!("push_scope({:?})", region_scope);
         self.scopes.push(Scope {
-            source_scope: vis_scope,
+            drop_source: SourceInfo { span: DUMMY_SP, scope: vis_scope },
             region_scope,
             drops: vec![],
             moved_locals: vec![],
@@ -815,8 +831,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
         let mut drop_idx = ROOT_NODE;
         for scope in &self.scopes.scopes[stack_index + 1..] {
-            for drop in &scope.drops {
-                drop_idx = drops.add_drop(*drop, drop_idx);
+            for drop in scope.scheduled_drops() {
+                drop_idx = drops.add_drop(drop, drop_idx);
             }
         }
         drops.add_entry_point(block, drop_idx);
@@ -1019,8 +1035,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
         let drop_idx = self.scopes.scopes[stack_index + 1..]
             .iter()
-            .flat_map(|scope| &scope.drops)
-            .fold(ROOT_NODE, |drop_idx, &drop| drops.add_drop(drop, drop_idx));
+            .flat_map(Scope::scheduled_drops)
+            .fold(ROOT_NODE, |drop_idx, drop| drops.add_drop(drop, drop_idx));
 
         drops.add_entry_point(imaginary_target, drop_idx);
 
@@ -1032,8 +1048,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
         let drop_idx = self.scopes.scopes[stack_index + 1..]
             .iter()
-            .flat_map(|scope| &scope.drops)
-            .fold(ROOT_NODE, |drop_idx, &drop| drops.add_drop(drop, drop_idx));
+            .flat_map(Scope::scheduled_drops)
+            .fold(ROOT_NODE, |drop_idx, drop| drops.add_drop(drop, drop_idx));
 
         drops.add_entry_point(drop_and_continue_block, drop_idx);
 
@@ -1072,8 +1088,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         let mut drop_idx = ROOT_NODE;
         let drops = &mut if_then_scope.else_drops;
         for scope in &self.scopes.scopes[stack_index + 1..] {
-            for drop in &scope.drops {
-                drop_idx = drops.add_drop(*drop, drop_idx);
+            for drop in scope.scheduled_drops() {
+                drop_idx = drops.add_drop(drop, drop_idx);
             }
         }
         drops.add_entry_point(block, drop_idx);
@@ -1125,7 +1141,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         // we only want to drop these in case of a panic, so we skip it
         for scope in self.scopes.scopes[1..].iter().rev().skip(1) {
             // FIXME(explicit_tail_calls) code duplication with `build_scope_drops`
-            for drop_data in scope.drops.iter().rev() {
+            for drop_data in scope.scheduled_drops().rev() {
                 let source_info = drop_data.source_info;
                 let local = drop_data.local;
 
@@ -1455,15 +1471,12 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             }
 
             if scope.region_scope == region_scope {
-                let region_scope_span = region_scope.span(self.tcx, self.region_scope_tree);
-                // Attribute scope exit drops to scope's closing brace.
-                let scope_end = self.tcx.sess.source_map().end_point(region_scope_span);
-
-                scope.drops.push(DropData {
-                    source_info: SourceInfo { span: scope_end, scope: scope.source_scope },
-                    local,
-                    kind: drop_kind,
-                });
+                if scope.drops.is_empty() {
+                    // Attribute scope exit drops to the scope's closing brace.
+                    let scope_span = region_scope.span(self.tcx, self.region_scope_tree);
+                    scope.drop_source.span = self.tcx.sess.source_map().end_point(scope_span);
+                }
+                scope.drops.push(ScheduledDrop { local, kind: drop_kind });
 
                 return;
             }
@@ -1610,9 +1623,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
         let is_coroutine = self.coroutine.is_some();
         for scope in &mut self.scopes.scopes[uncached_scope..=target] {
-            for drop in &scope.drops {
+            for drop in scope.scheduled_drops() {
                 if is_coroutine || drop.kind == DropKind::Value {
-                    cached_drop = self.scopes.unwind_drops.add_drop(*drop, cached_drop);
+                    cached_drop = self.scopes.unwind_drops.add_drop(drop, cached_drop);
                 }
             }
             scope.cached_unwind_block = Some(cached_drop);
@@ -1672,8 +1685,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         }
 
         for scope in &mut self.scopes.scopes[uncached_scope..=target] {
-            for drop in &scope.drops {
-                cached_drop = self.scopes.coroutine_drops.add_drop(*drop, cached_drop);
+            for drop in scope.scheduled_drops() {
+                cached_drop = self.scopes.coroutine_drops.add_drop(drop, cached_drop);
             }
             scope.cached_coroutine_drop_block = Some(cached_drop);
         }
@@ -1849,7 +1862,7 @@ where
     // `dropline_to` indicates what needs to be dropped should coroutine drop occur.
     let mut dropline_to = dropline_to;
 
-    for drop_data in scope.drops.iter().rev() {
+    for drop_data in scope.scheduled_drops().rev() {
         let source_info = drop_data.source_info;
         let local = drop_data.local;
 
