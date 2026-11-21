@@ -27,13 +27,14 @@ types!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y
 #[derive(Clone, PartialEq)]
 pub struct Small(u64);
 
-pub type EqFn<T> = fn(&T, &T) -> bool;
+type EqFn<T> = fn(&T, &T) -> bool;
+pub type Comparisons = (EqFn<Large<'static>>, EqFn<Small>, EqFn<Generic<u32>>, EqFn<Manual>);
 
 #[macro_export]
 macro_rules! callers {
     ($name:ident) => {
         pub mod $name {
-            use $crate::{EqFn, Generic, Large, Manual, Small};
+            use $crate::{Comparisons, Generic, Large, Manual, Small};
 
             #[inline(never)]
             pub fn copy() -> fn(&Large<'static>) -> Large<'static> {
@@ -41,7 +42,7 @@ macro_rules! callers {
             }
 
             #[inline(never)]
-            pub fn compare() -> (EqFn<Large<'static>>, EqFn<Small>, EqFn<Generic<u32>>, EqFn<Manual>) {
+            pub fn compare() -> Comparisons {
                 (Large::eq, Small::eq, Generic::eq, Manual::eq)
             }
         }
