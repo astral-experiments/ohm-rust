@@ -19,7 +19,7 @@ use rustc_data_structures::memmap::Mmap;
 use rustc_data_structures::profiling::SelfProfilerRef;
 use rustc_errors::{DiagCtxt, DiagCtxtHandle};
 use rustc_middle::dep_graph::WorkProduct;
-use rustc_session::config;
+use rustc_session::{THIN_LTO_KEYS_INCR_COMP_FILE_NAME, config};
 use rustc_span::bug;
 use rustc_structures::SanitizerSet;
 use tracing::{debug, info};
@@ -32,10 +32,6 @@ use crate::back::write::{
 use crate::diagnostics::{LlvmError, LtoBitcodeFromRlib};
 use crate::llvm::{self, build_string};
 use crate::{LlvmCodegenBackend, ModuleLlvm};
-
-/// We keep track of the computed LTO cache keys from the previous
-/// session to determine which CGUs we can reuse.
-const THIN_LTO_KEYS_INCR_COMP_FILE_NAME: &str = "thin-lto-past-keys.bin";
 
 fn prepare_lto(
     cgcx: &CodegenContext,

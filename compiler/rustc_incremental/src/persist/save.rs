@@ -7,7 +7,7 @@ use rustc_middle::query::on_disk_cache;
 use rustc_middle::ty::TyCtxt;
 use rustc_serialize::Encodable as RustcEncodable;
 use rustc_serialize::opaque::FileEncoder;
-use rustc_session::{IncrCompSession, Session};
+use rustc_session::{IncrCompSession, Session, THIN_LTO_KEYS_INCR_COMP_FILE_NAME};
 use tracing::debug;
 
 use super::data::*;
@@ -229,20 +229,21 @@ pub fn save_shared_stages_checkpoint(sess: &Session, session: Option<&IncrCompSe
     // A new session starts with an empty directory. Preserve the other stage's checkpoint
     // before publishing this one, so repeated checks can still lead back to the last build.
     if let Some(old) = &session.old_session_directory {
-        let (prefix, graph) = if sess.opts.output_types.should_codegen() {
-            ("ohm-check-", CHECK_DEP_GRAPH)
-        } else {
+        let preserve_build = !sess.opts.output_types.should_codegen();
+        let (prefix, graph) = if preserve_build {
             ("ohm-build-", BUILD_DEP_GRAPH)
+        } else {
+            ("ohm-check-", CHECK_DEP_GRAPH)
         };
         // Publish the graph last. An incomplete copy cannot be selected by load_stage_checkpoint.
         let preserve = || -> io::Result<()> {
             for entry in fs::read_dir(&**old)? {
                 let entry = entry?;
                 let name = entry.file_name();
-                if name
-                    .to_str()
-                    .is_some_and(|n| n.starts_with(prefix) && n != CHECK_SESSION && n != graph)
-                    && entry.file_type()?.is_file()
+                if name.to_str().is_some_and(|n| {
+                    (n.starts_with(prefix) && n != CHECK_SESSION && n != graph)
+                        || (preserve_build && n == THIN_LTO_KEYS_INCR_COMP_FILE_NAME)
+                }) && entry.file_type()?.is_file()
                 {
                     rustc_fs_util::link_or_copy(
                         entry.path(),

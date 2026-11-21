@@ -515,12 +515,20 @@ fn copy_all_cgu_workproducts_to_incr_comp_cache_dir(
         if let Some(path) = &module.bytecode {
             files.push((OutputType::Bitcode.extension(), path.as_path()));
         }
-        let (id, product) = copy_cgu_workproduct_to_incr_comp_cache_dir(
+        let (id, mut product) = copy_cgu_workproduct_to_incr_comp_cache_dir(
             sess,
             incr_comp_session.unwrap(),
             &module.name,
             files.as_slice(),
         );
+        // LTO writes its input directly into the session. Index it with the object
+        // so a check carries both files forward as a single work product.
+        if sess.opts.unstable_opts.ohm_shared_stages && need_pre_lto_bitcode_for_incr_comp(sess) {
+            let filename = pre_lto_bitcode_filename(&module.name);
+            if in_incr_comp_dir_sess(incr_comp_session.unwrap(), &filename).is_file() {
+                product.saved_files.insert(PRE_LTO_BC_EXT.to_owned(), filename);
+            }
+        }
         work_products.insert(id, product);
     }
 
