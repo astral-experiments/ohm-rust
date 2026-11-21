@@ -28,19 +28,32 @@ pub struct StableHashState<'a, const HASH_SPANS_AS_PARENTLESS: bool = false> {
     incremental_ignore_spans: bool,
     caching_source_map: CachingSourceMap<'a>,
     stable_hash_controls: StableHashControls,
+    hir_owner: Option<(LocalDefId, rustc_span::SpanData)>,
 }
 
 impl<'a> StableHashState<'a, false> {
     /// Switches to hashing spans without their parent definitions, matching their rmeta encoding.
     pub fn hash_spans_as_parentless(self) -> StableHashState<'a, true> {
-        let Self { untracked, incremental_ignore_spans, caching_source_map, stable_hash_controls } =
-            self;
+        let Self {
+            untracked,
+            incremental_ignore_spans,
+            caching_source_map,
+            stable_hash_controls,
+            ..
+        } = self;
         StableHashState {
             untracked,
             incremental_ignore_spans,
             caching_source_map,
             stable_hash_controls,
+            hir_owner: None,
         }
+    }
+
+    /// Use the containing definition as the implicit parent while hashing its HIR.
+    pub(crate) fn begin_hir_owner(&mut self, owner: LocalDefId, hasher: &mut StableHasher) {
+        owner.stable_hash(self, hasher);
+        self.hir_owner = Some((owner, self.def_span(owner).data_untracked()));
     }
 }
 
@@ -53,6 +66,7 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashState<'a, HASH_SPANS_AS
             untracked,
             incremental_ignore_spans: sess.opts.unstable_opts.incremental_ignore_spans,
             caching_source_map: CachingSourceMap::Unused(sess.source_map()),
+            hir_owner: None,
             stable_hash_controls: StableHashControls {
                 hash_spans: hash_spans_initial,
                 incremental_keys: false,
@@ -128,6 +142,23 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
 
         if HASH_SPANS_AS_PARENTLESS {
             span.parent = None
+        } else if let Some((owner, bounds)) = self.hir_owner {
+            // The owner identity was hashed once at the start of this HIR body.
+            // For an ordinary token in that owner, only the two offsets vary.
+            if span.parent == Some(owner)
+                && span.ctxt.is_root()
+                && !span.is_dummy()
+                && span.lo <= span.hi
+                && bounds.contains(span)
+            {
+                let lo = span.lo.0 - bounds.lo.0;
+                let hi = span.hi.0 - bounds.lo.0;
+                Hash::hash(&((u64::from(hi) << 32) | u64::from(lo)), hasher);
+                return;
+            }
+            // lo = 1, hi = 0 cannot represent an ordered range. Escape to
+            // the full encoding, preserving non-root contexts and other parents.
+            Hash::hash(&1u64, hasher);
         }
         span.ctxt.stable_hash(self, hasher);
         span.parent.stable_hash(self, hasher);

@@ -187,12 +187,6 @@ impl<'tcx> TyCtxt<'tcx> {
 
         self.with_incremental_hashing_context(|mut hcx| {
             let mut stable_hasher = StableHasher::new();
-            node.stable_hash(&mut hcx, &mut stable_hasher);
-            // Bodies are stored out of line, so we need to pull them explicitly in the hash.
-            bodies.stable_hash(&mut hcx, &mut stable_hasher);
-            let h1 = stable_hasher.finish();
-
-            let mut stable_hasher = StableHasher::new();
             attrs.stable_hash(&mut hcx, &mut stable_hasher);
             if attrs.len() > 1 {
                 lint_roots.stable_hash(&mut hcx, &mut stable_hasher);
@@ -202,6 +196,13 @@ impl<'tcx> TyCtxt<'tcx> {
             define_opaque.stable_hash(&mut hcx, &mut stable_hasher);
 
             let h2 = stable_hasher.finish();
+
+            let mut stable_hasher = StableHasher::new();
+            hcx.begin_hir_owner(node.def_id().def_id, &mut stable_hasher);
+            node.stable_hash(&mut hcx, &mut stable_hasher);
+            // Bodies are stored out of line, so we need to pull them explicitly in the hash.
+            bodies.stable_hash(&mut hcx, &mut stable_hasher);
+            let h1 = stable_hasher.finish();
 
             Hashes { bodies_hash: Some(h1), attrs_hash: Some(h2) }
         })
