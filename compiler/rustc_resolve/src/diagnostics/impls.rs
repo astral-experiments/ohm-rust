@@ -2917,7 +2917,7 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
         // We don't have to handle type-relative paths because they're forbidden in ADT
         // expressions, but that would change with `#[feature(more_qualified_paths)]`.
         let Some(segment) = struct_expr.path.segments.last() else { return };
-        let Some(partial_res) = self.partial_res_map.get(&segment.id) else { return };
+        let Some(partial_res) = self.partial_res_map.get(segment.id) else { return };
         let Some(Res::Def(_, def_id)) = partial_res.full_res() else {
             return;
         };
