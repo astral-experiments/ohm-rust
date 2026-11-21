@@ -562,6 +562,7 @@ pub(crate) unsafe fn llvm_optimize(
         passes_after_enzyme.map_or(std::ptr::null(), |s| s.as_c_char_ptr());
     let passes_after_enzyme_len = passes_after_enzyme.map_or(0, |s| s.len());
     let merge_functions;
+    let merge_rust_functions;
     let unroll_loops;
     let vectorize_slp;
     let vectorize_loop;
@@ -576,6 +577,7 @@ pub(crate) unsafe fn llvm_optimize(
     // We then would need to abort compilation. This was especially common in test cases.
     if consider_ad && autodiff_stage != AutodiffStage::PostAD {
         merge_functions = false;
+        merge_rust_functions = false;
         unroll_loops = false;
         vectorize_slp = false;
         vectorize_loop = false;
@@ -583,6 +585,7 @@ pub(crate) unsafe fn llvm_optimize(
         unroll_loops =
             opt_level != config::OptLevel::Size && opt_level != config::OptLevel::SizeMin;
         merge_functions = config.merge_functions;
+        merge_rust_functions = config.merge_rust_functions;
         vectorize_slp = config.vectorize_slp;
         vectorize_loop = config.vectorize_loop;
     }
@@ -780,6 +783,7 @@ pub(crate) unsafe fn llvm_optimize(
             thin_lto_buffer,
             thin_lto_summary_buffer,
             merge_functions,
+            merge_rust_functions,
             unroll_loops,
             vectorize_slp,
             vectorize_loop,
