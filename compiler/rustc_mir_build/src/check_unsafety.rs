@@ -576,7 +576,7 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
             ExprKind::Field { lhs, variant_index, name } => {
                 let lhs = &self.thir[lhs];
                 if let ty::Adt(adt_def, _) = lhs.ty.kind() {
-                    if adt_def.variant(variant_index).fields[name].safety.is_unsafe() {
+                    if adt_def.field(variant_index, name).safety.is_unsafe() {
                         self.requires_unsafe(expr.span, UseOfUnsafeField);
                     } else if adt_def.is_union() {
                         if let Some(assigned_ty) = self.assignment_info {
