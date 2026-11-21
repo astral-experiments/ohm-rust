@@ -399,19 +399,11 @@ pub enum InvocationKind {
 }
 
 impl InvocationKind {
-    fn placeholder_visibility(&self) -> Option<ast::Visibility> {
-        // HACK: For unnamed fields placeholders should have the same visibility as the actual
-        // fields because for tuple structs/variants resolve determines visibilities of their
-        // constructor using these field visibilities before attributes on them are expanded.
-        // The assumption is that the attribute expansion cannot change field visibilities,
-        // and it holds because only inert attributes are supported in this position.
+    /// The field whose shape the resolver sees before expanding its attributes.
+    fn placeholder_field(&self) -> Option<&ast::FieldDef> {
         match self {
             InvocationKind::Attr { item: Annotatable::FieldDef(field), .. }
-            | InvocationKind::Derive { item: Annotatable::FieldDef(field), .. }
-                if field.ident.is_none() =>
-            {
-                Some(field.vis.clone())
-            }
+            | InvocationKind::Derive { item: Annotatable::FieldDef(field), .. } => Some(field),
             _ => None,
         }
     }
@@ -2144,7 +2136,11 @@ impl<'a, 'b> InvocationCollector<'a, 'b> {
             // before their `ExpnData` is filled.
             self.cx.resolver.register_glob_delegation(expn_id);
         }
-        let vis = kind.placeholder_visibility();
+        let placeholder = placeholder(
+            fragment_kind,
+            NodeId::placeholder_from_expn_id(expn_id),
+            kind.placeholder_field(),
+        );
         self.invocations.push((
             Invocation {
                 kind,
@@ -2157,7 +2153,7 @@ impl<'a, 'b> InvocationCollector<'a, 'b> {
             },
             None,
         ));
-        placeholder(fragment_kind, NodeId::placeholder_from_expn_id(expn_id), vis)
+        placeholder
     }
 
     fn collect_bang(&mut self, mac: Box<ast::MacCall>, kind: AstFragmentKind) -> AstFragment {
