@@ -371,18 +371,8 @@ fn thir_abstract_const<'tcx>(
     tcx: TyCtxt<'tcx>,
     def: LocalDefId,
 ) -> Result<Option<ty::EarlyBinder<'tcx, ty::Const<'tcx>>>, ErrorGuaranteed> {
-    if !tcx.features().generic_const_exprs() {
+    if !tcx.may_have_abstract_const(def) {
         return Ok(None);
-    }
-
-    match tcx.def_kind(def) {
-        // FIXME(generic_const_exprs): We currently only do this for anonymous constants,
-        // meaning that we do not look into associated constants. I(@lcnr) am not yet sure whether
-        // we want to look into them or treat them as opaque projections.
-        //
-        // Right now we do neither of that and simply always fail to unify them.
-        DefKind::AnonConst => (),
-        _ => return Ok(None),
     }
 
     let body = tcx.thir_body(def)?;
