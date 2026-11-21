@@ -2474,6 +2474,7 @@ unsafe extern "C" {
         ThinLTOBuffer: Option<&mut Option<crate::back::lto::Buffer>>,
         ThinLTOSummaryBuffer: Option<&mut Option<crate::back::lto::Buffer>>,
         MergeFunctions: bool,
+        MergeRustFunctions: bool,
         UnrollLoops: bool,
         SLPVectorize: bool,
         LoopVectorize: bool,
