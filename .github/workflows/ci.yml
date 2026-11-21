@@ -198,9 +198,9 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/ui/wf/nominal-inherited-obligations.rs
           tests/ui/wf/nominal-inherited-obligations-fail.rs
+          tests/incremental/integer-operands.rs
           tests/incremental/nominal-inherited-obligations.rs
           tests/incremental/cached-trait-selection.rs
-          tests/incremental/integer-operands.rs
 
       - name: Run borrow checker dataflow regression tests
         run: >-
