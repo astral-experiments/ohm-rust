@@ -22,6 +22,14 @@ fn main() {
 #[rustc_clean(cfg = "moved")]
 {pad}pub fn read(n: Option<u32>) -> Option<u32> {{ Some(n?) }}
 
+pub fn empty(xs: &[u8]) -> bool {{
+    let check = || {{
+        let empty = matches!(xs, []);
+        empty
+    }};
+    check()
+}}
+
 pub fn shrink(s: Option<String>) -> Option<String> {{
     let mut s = s?;
     // A multibyte character elsewhere in the owner — away from the drop.
@@ -63,5 +71,17 @@ pub fn shrink(s: Option<String>) -> Option<String> {{
             ),
         );
         assert_eq!(mir("warm"), mir(&format!("fresh-{i}")));
+    }
+
+    // Move the closure within a stationary function, then edit its macro input.
+    for (i, pad, pat) in [(0, "", "0"), (1, "\n", "0"), (2, "\n", "1")] {
+        rfs::write(
+            "guard.rs",
+            format!(
+                "pub fn check(x: u8) -> bool {{ {pad} let f = || {{ \
+                 let ok = matches!(x, {pat}); ok }}; f() }}"
+            ),
+        );
+        assert_eq!(mir("closure"), mir(&format!("closure-{i}")));
     }
 }
