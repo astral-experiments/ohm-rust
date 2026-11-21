@@ -50,6 +50,7 @@ fn reader() {
 fn main() {
     check_derived_declarations();
     check_traits_and_constructors();
+    check_comment_lines();
     let moved = SOURCE.replace("private() {}", "private() {\n    let _ = 0;\n}");
     let first = hash(SOURCE, true, false);
     let disk = disk_hash();
@@ -211,4 +212,48 @@ fn check_traits_and_constructors() {
                   pub struct Hidden;\n";
     let moved = source.replace("\n\n", "\n").replace("#[doc(alias", "\n#[doc(alias");
     assert_ne!(hash(source, true, false), hash(&moved, true, false));
+}
+
+fn check_comment_lines() {
+    let original = "#[derive(Clone)] pub struct Packet;\n\
+                    impl Packet {\n\
+                    /// Read a packet.\n\
+                    /// Use the default size.\n\
+                    pub fn read(&self) {}\n\
+                    pub fn write(&self) {}\n\
+                    }\n\
+                    #[derive(Clone, Debug)] pub struct Cursor;\n";
+    let more = original.replace("/// Use", "///\n/// Another line.\n/// Use");
+    let check = |source: &str| {
+        rfs::write("main.rs", source);
+        let mut cmd = rustc();
+        cmd.input("main.rs")
+            .emit("metadata")
+            .incremental("comments")
+            .arg("-Zincremental-verify-ich")
+            .extern_("dep", "libdep.rmeta");
+        cmd
+    };
+    let first = hash(original, true, false);
+    let disk = disk_hash();
+    check("fn main() { dep::Packet.read(); }").run();
+    assert_eq!(first, hash(&more, true, false));
+    assert_ne!(disk, disk_hash());
+    // After a skipped check the next diagnostic must use the new location.
+    check("fn main() { dep::Packet.read(1); }")
+        .run_fail()
+        .assert_stderr_contains("E0061")
+        .assert_stderr_contains("dep.rs:7:");
+    for changed in [
+        more.replace("Read a", "Decode a"),
+        more.replace("/// Another line.", "#[doc = \"Example\"]"),
+        more.replace("/// Another line.", "#[doc(hidden)]"),
+        more.replace("/// Another line.", "#[deprecated]"),
+        more.replace("read(&self)", "read(&mut self)"),
+        more.replace("Clone, Debug", "Clone, Copy"),
+    ] {
+        assert_ne!(first, hash(&changed, true, false));
+    }
+    assert_ne!(hash(original, false, false), hash(&more, false, false));
+    assert_ne!(hash(original, true, true), hash(&more, true, true));
 }
