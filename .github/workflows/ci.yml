@@ -220,6 +220,11 @@ jobs:
           tests/ui/nll/maybe-initialized-drop.rs
           tests/ui/nll/match-guards-partially-borrow.rs
 
+      - name: Run bitset unit tests
+        run: >-
+          python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
+          --set rust.lto=off test --stage 1 compiler/rustc_index --test-args bit_set::tests
+
       - name: Run cached hygiene unit tests
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
