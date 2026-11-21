@@ -16,7 +16,7 @@ rustc_arena::declare_arena! {
     layout: rustc_abi::LayoutData<rustc_abi::FieldIdx, rustc_abi::VariantIdx>,
     proxy_coroutine_layout: rustc_middle::mir::CoroutineLayout<'tcx>,
     fn_abi: rustc_target::callconv::FnAbi<'tcx, Ty<'tcx>>,
-    adt_def: rustc_middle::ty::AdtDefData,
+    adt_def: rustc_middle::ty::AdtDefData<'tcx>,
     steal_thir: rustc_data_structures::steal::Steal<rustc_middle::thir::Thir<'tcx>>,
     steal_mir: rustc_data_structures::steal::Steal<rustc_middle::mir::Body<'tcx>>,
     steal_coroutine_layout:

@@ -18,6 +18,7 @@ use rustc_hir::def::{CtorKind, DefKind, Res};
 use rustc_hir::def_id::DefId;
 use rustc_index::{IndexSlice, IndexVec};
 use rustc_macros::{StableHash, TyDecodable, TyEncodable};
+use rustc_serialize::{Decodable, Encodable};
 use rustc_session::DataTypeKind;
 use rustc_span::{bug, sym};
 use rustc_type_ir::FieldInfo;
@@ -28,6 +29,7 @@ use super::{
     AsyncDestructor, Destructor, FieldDef, GenericClauses, Ty, TyCtxt, VariantDef, VariantDiscr,
 };
 use crate::mir::interpret::ErrorHandled;
+use crate::ty::codec::{TyDecoder, TyEncoder};
 use crate::ty::util::{Discr, IntTypeExt};
 use crate::ty::{self, ConstKind};
 
@@ -106,19 +108,84 @@ rustc_data_structures::external_bitflags_debug! { AdtFlags }
 ///
 /// where `x` here represents the `DefId` of `S.x`. Then, the `DefId`
 /// can be used with [`TyCtxt::type_of()`] to get the type of the field.
-#[derive(TyEncodable, TyDecodable)]
-pub struct AdtDefData {
+pub struct AdtDefData<'tcx> {
     /// The `DefId` of the struct, enum or union item.
     pub did: DefId,
     /// Variants of the ADT. If this is a struct or union, then there will be a single variant.
-    variants: IndexVec<VariantIdx, VariantDef>,
+    variants: AdtVariants<'tcx>,
     /// Flags of the ADT (e.g., is this a struct? is this non-exhaustive?).
     flags: AdtFlags,
     /// Repr options provided by the user.
     repr: ReprOptions,
 }
 
-impl AdtDefData {
+/// A field projection for incremental readers of a local record.
+#[derive(Clone, Copy, Debug, StableHash)]
+pub struct LocalStructField<'tcx> {
+    pub index: FieldIdx,
+    pub field: &'tcx ty::FieldDef,
+    /// The normalized context when this is the first field with its name
+    /// and the declaration has no parser errors.
+    pub first_ctxt: Option<rustc_span::SyntaxContext>,
+}
+
+pub(super) enum AdtVariants<'tcx> {
+    Inline(IndexVec<VariantIdx, VariantDef>),
+    /// Materialize the variant in the current session, even when we
+    /// decoded this ADT inside a type from the previous session.
+    LocalStruct(TyCtxt<'tcx>),
+}
+
+impl AdtVariants<'_> {
+    #[inline]
+    fn get(&self, did: DefId) -> &IndexSlice<VariantIdx, VariantDef> {
+        match self {
+            Self::Inline(variants) => variants,
+            Self::LocalStruct(tcx) => IndexSlice::from_raw(std::slice::from_ref(
+                tcx.local_struct_variant(did.expect_local()),
+            )),
+        }
+    }
+}
+
+impl<'tcx, E: TyEncoder<'tcx>> Encodable<E> for AdtDefData<'tcx> {
+    fn encode(&self, e: &mut E) {
+        let Self { did, variants, flags, repr } = self;
+        did.encode(e);
+        if !E::CLEAR_CROSS_CRATE
+            && let AdtVariants::LocalStruct(_) = variants
+        {
+            // A struct always has one variant in metadata. In a private cache,
+            // an empty list means to use the current session's field query.
+            e.emit_usize(0);
+        } else {
+            variants.get(*did).raw.encode(e);
+        }
+        flags.encode(e);
+        repr.encode(e);
+    }
+}
+
+impl<'tcx, D: TyDecoder<'tcx>> Decodable<D> for AdtDefData<'tcx> {
+    fn decode(d: &mut D) -> Self {
+        let did = DefId::decode(d);
+        let variants = IndexVec::<VariantIdx, VariantDef>::decode(d);
+        let flags = AdtFlags::decode(d);
+        let repr = ReprOptions::decode(d);
+        let variants = if !D::CLEAR_CROSS_CRATE
+            && did.is_local()
+            && flags.contains(AdtFlags::IS_STRUCT)
+            && variants.is_empty()
+        {
+            AdtVariants::LocalStruct(d.interner())
+        } else {
+            AdtVariants::Inline(variants)
+        };
+        Self { did, variants, flags, repr }
+    }
+}
+
+impl<'tcx> AdtDefData<'tcx> {
     /// A cached local ADT may originate in a check using another linkage salt.
     /// Refresh the seed with the canonical path of its already-remapped definition.
     pub(super) fn remap_local_layout_seed(&mut self, tcx: TyCtxt<'_>) {
@@ -129,7 +196,7 @@ impl AdtDefData {
     }
 }
 
-impl PartialEq for AdtDefData {
+impl PartialEq for AdtDefData<'_> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         // There should be only one `AdtDefData` for each `def_id`, therefore
@@ -148,7 +215,11 @@ impl PartialEq for AdtDefData {
         if cfg!(debug_assertions) && res {
             let deep = self.flags == other.flags
                 && self.repr == other.repr
-                && self.variants == other.variants;
+                && match (&self.variants, &other.variants) {
+                    (AdtVariants::Inline(a), AdtVariants::Inline(b)) => a == b,
+                    (AdtVariants::LocalStruct(_), AdtVariants::LocalStruct(_)) => true,
+                    _ => false,
+                };
             assert!(deep, "AdtDefData for the same def-id has differing data");
         }
 
@@ -156,32 +227,42 @@ impl PartialEq for AdtDefData {
     }
 }
 
-impl Eq for AdtDefData {}
+impl Eq for AdtDefData<'_> {}
 
 /// There should be only one AdtDef for each `did`, therefore
 /// it is fine to implement `Hash` only based on `did`.
-impl Hash for AdtDefData {
+impl Hash for AdtDefData<'_> {
     #[inline]
     fn hash<H: Hasher>(&self, s: &mut H) {
         self.did.hash(s)
     }
 }
 
-impl StableHash for AdtDefData {
+impl StableHash for AdtDefData<'_> {
     fn stable_hash<Hcx: StableHashCtxt>(&self, hcx: &mut Hcx, hasher: &mut StableHasher) {
         thread_local! {
             static CACHE: RefCell<FxHashMap<(usize, StableHashControls), Fingerprint>> = Default::default();
         }
 
+        // Incremental users that inspect the fields acquire the dependency
+        // in AdtVariants::get. Canonical hashes retain the full declaration.
+        let full = !hcx.stable_hash_controls().incremental_keys
+            || matches!(self.variants, AdtVariants::Inline(_));
+        let variants = full.then(|| self.variants.get(self.did));
         let hash: Fingerprint = CACHE.with(|cache| {
-            let addr = self as *const AdtDefData as usize;
+            let addr = self as *const Self as usize;
             let stable_hash_controls = hcx.stable_hash_controls();
             *cache.borrow_mut().entry((addr, stable_hash_controls)).or_insert_with(|| {
-                let ty::AdtDefData { did, ref variants, ref flags, ref repr } = *self;
+                let ty::AdtDefData { did, variants: _, ref flags, ref repr } = *self;
 
                 let mut hasher = StableHasher::new();
                 did.stable_hash(hcx, &mut hasher);
-                variants.stable_hash(hcx, &mut hasher);
+                if let Some(variants) = variants {
+                    variants.raw.stable_hash(hcx, &mut hasher);
+                } else {
+                    // Distinguish this representation from every inline struct.
+                    0usize.stable_hash(hcx, &mut hasher);
+                }
                 flags.stable_hash(hcx, &mut hasher);
                 if stable_hash_controls.incremental_keys && did.is_local() {
                     // The effective seed has a separate dependency (repr_for_layout).
@@ -201,7 +282,7 @@ impl StableHash for AdtDefData {
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, StableHash)]
 #[rustc_pass_by_value]
-pub struct AdtDef<'tcx>(pub Interned<'tcx, AdtDefData>);
+pub struct AdtDef<'tcx>(pub Interned<'tcx, AdtDefData<'tcx>>);
 
 impl<'tcx> AdtDef<'tcx> {
     #[inline]
@@ -209,14 +290,51 @@ impl<'tcx> AdtDef<'tcx> {
         self.0.0.did
     }
 
+    /// Resolve an already adjusted identifier using just one field dependency.
+    /// On a miss the caller must perform the full, tracked lookup.
+    pub fn local_field_named(
+        self,
+        ident: rustc_span::Ident,
+    ) -> Option<(FieldIdx, &'tcx ty::FieldDef)> {
+        let AdtVariants::LocalStruct(tcx) = self.0.0.variants else { return None };
+        // Only the candidate key is untracked. A successful projection proves
+        // precedence, hygiene and the absence of parser errors. Its fingerprint
+        // also covers the ordinal, visibility and other field properties.
+        let id = tcx.dep_graph.with_ignore(|| {
+            self.non_enum_variant()
+                .fields
+                .iter()
+                .find(|field| field.name == ident.name)
+                .map(|field| field.did.expect_local())
+        })?;
+        let &LocalStructField { index, field, first_ctxt } = tcx.local_struct_field(id);
+        (field.name == ident.name && first_ctxt == Some(ident.span.ctxt()))
+            .then_some((index, field))
+    }
+
+    /// Read a field at a known position without depending on its siblings.
+    #[inline]
+    pub fn field(self, variant: VariantIdx, index: FieldIdx) -> &'tcx ty::FieldDef {
+        if let AdtVariants::LocalStruct(tcx) = self.0.0.variants {
+            // The field key includes the parent. Verify the position with a
+            // tracked read so that moving or removing the field invalidates us.
+            let id = tcx.dep_graph.with_ignore(|| self.variant(variant).fields[index].did);
+            let slot = tcx.local_struct_field(id.expect_local());
+            assert_eq!(slot.index, index);
+            slot.field
+        } else {
+            &self.variant(variant).fields[index]
+        }
+    }
+
     #[inline]
     pub fn variants(self) -> &'tcx IndexSlice<VariantIdx, VariantDef> {
-        &self.0.0.variants
+        self.0.0.variants.get(self.did())
     }
 
     #[inline]
     pub fn variant(self, idx: VariantIdx) -> &'tcx VariantDef {
-        &self.0.0.variants[idx]
+        &self.variants()[idx]
     }
 
     #[inline]
@@ -376,16 +494,16 @@ impl AdtKind {
     }
 }
 
-impl AdtDefData {
+impl<'tcx> AdtDefData<'tcx> {
     /// Creates a new `AdtDefData`.
     pub(super) fn new(
         tcx: TyCtxt<'_>,
         did: DefId,
         kind: AdtKind,
-        variants: IndexVec<VariantIdx, VariantDef>,
+        variants: AdtVariants<'tcx>,
         repr: ReprOptions,
     ) -> Self {
-        debug!("AdtDef::new({:?}, {:?}, {:?}, {:?})", did, kind, variants, repr);
+        debug!("AdtDef::new({:?}, {:?}, {:?}, {:?})", did, kind, variants.get(did), repr);
         let mut flags = AdtFlags::NO_ADT_FLAGS;
 
         if kind == AdtKind::Enum && find_attr!(tcx, did, NonExhaustive(..)) {
@@ -403,7 +521,7 @@ impl AdtDefData {
             AdtKind::Struct => AdtFlags::IS_STRUCT,
         };
 
-        if kind == AdtKind::Struct && variants[FIRST_VARIANT].ctor.is_some() {
+        if kind == AdtKind::Struct && variants.get(did)[FIRST_VARIANT].ctor.is_some() {
             flags |= AdtFlags::HAS_CTOR;
         }
 

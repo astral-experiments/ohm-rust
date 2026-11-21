@@ -13,8 +13,7 @@ use rustc_hir::{self as hir, HirId};
 use rustc_middle::ty::fast_reject::{TreatParams, simplify_type};
 use rustc_middle::ty::print::{PrintPolyTraitRefExt as _, PrintTraitRefExt as _};
 use rustc_middle::ty::{
-    self, AdtDef, GenericParamDefKind, Ty, TyCtxt, TypeVisitableExt,
-    suggest_constraining_type_param,
+    self, GenericParamDefKind, Ty, TyCtxt, TypeVisitableExt, suggest_constraining_type_param,
 };
 use rustc_session::diagnostics::feature_err;
 use rustc_span::edit_distance::find_best_match_for_name;
@@ -1772,7 +1771,7 @@ pub enum GenericsArgsErrExtend<'tcx> {
     EnumVariant {
         qself: &'tcx hir::Ty<'tcx>,
         assoc_segment: &'tcx hir::PathSegment<'tcx>,
-        adt_def: AdtDef<'tcx>,
+        enum_id: DefId,
     },
     OpaqueTy,
     PrimTy(hir::PrimTy),
@@ -1793,9 +1792,9 @@ fn generics_args_err_extend<'a>(
     err_extend: GenericsArgsErrExtend<'a>,
 ) {
     match err_extend {
-        GenericsArgsErrExtend::EnumVariant { qself, assoc_segment, adt_def } => {
+        GenericsArgsErrExtend::EnumVariant { qself, assoc_segment, enum_id } => {
             err.note("enum variants can't have type parameters");
-            let type_name = tcx.item_name(adt_def.did());
+            let type_name = tcx.item_name(enum_id);
             let msg = format!(
                 "you might have meant to specify type parameters on enum \
                 `{type_name}`"
@@ -1808,7 +1807,7 @@ fn generics_args_err_extend<'a>(
             // it was done based on the end of assoc segment but that sometimes
             // led to impossible spans and caused issues like #116473
             let args_span = args.span_ext.with_lo(args.span_ext.lo() - BytePos(2));
-            if tcx.generics_of(adt_def.did()).is_empty() {
+            if tcx.generics_of(enum_id).is_empty() {
                 // FIXME(estebank): we could also verify that the arguments being
                 // work for the `enum`, instead of just looking if it takes *any*.
                 err.span_suggestion_verbose(

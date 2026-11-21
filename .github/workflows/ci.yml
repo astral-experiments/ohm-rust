@@ -321,6 +321,7 @@ jobs:
             tests/run-make/incremental-large-byte-literal
             tests/run-make/incremental-recomputed-query-spans
             tests/run-make/incremental-check-dependency-salt
+            tests/run-make/incremental-record-fields
             tests/run-make/incremental-whole-crate-metadata
             tests/run-make/incremental-vacant-dep-graph-slots
             tests/run-make/incremental-missing-query-cache
