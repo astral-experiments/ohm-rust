@@ -4615,14 +4615,53 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
         path: &Path,
         source: PathSource<'_, 'ast, 'ra>,
     ) {
+        // A bare local has no qualifications or lifetimes to check. Record both
+        // resolutions directly when there is no associated type to diagnose.
+        if qself.is_none()
+            && matches!(source, PathSource::Expr(_))
+            && let [one] = &path.segments[..]
+            && one.args.is_none()
+            && one.ident.span.ctxt().is_root()
+            && self.diag_metadata.current_trait_assoc_items.is_none()
+            && let Some(res) = self.local_in_transparent_ribs(one.ident)
+        {
+            let res = PartialRes::new(res);
+            if !self.r.partial_res_map.contains_key(&one.id) {
+                assert_ne!(one.id, DUMMY_NODE_ID);
+                self.r.record_partial_res(one.id, res);
+            }
+            self.r.record_partial_res(id, res);
+            return;
+        }
+
+        let segments: &[Segment] = match &path.segments[..] {
+            [one] => &[one.into()],
+            [first, last] => &[first.into(), last.into()],
+            _ => &Segment::from_path(path),
+        };
         self.smart_resolve_path_fragment(
             qself,
-            &Segment::from_path(path),
+            segments,
             source,
             Finalize::new(id, path.span),
             RecordPartialRes::Yes,
             None,
         );
+    }
+
+    /// Look up a root-context local without crossing imports, hygiene boundaries
+    /// or any rib that can restrict a capture in `validate_res_from_ribs`.
+    fn local_in_transparent_ribs(&self, ident: Ident) -> Option<Res> {
+        for rib in self.ribs[ValueNS].iter().rev() {
+            if !matches!(rib.kind, RibKind::Normal | RibKind::Block(None) | RibKind::FnOrCoroutine)
+            {
+                return None;
+            }
+            if let Some(&res) = rib.bindings.get(&ident) {
+                return matches!(res, Res::Local(_)).then_some(res);
+            }
+        }
+        None
     }
 
     fn smart_resolve_path_fragment(
