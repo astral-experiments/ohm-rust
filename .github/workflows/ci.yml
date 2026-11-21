@@ -312,6 +312,7 @@ jobs:
             tests/run-make/parallel-query-depth-limits
             tests/run-make/incremental-derive-call-site
             tests/run-make/incremental-declaration-locations
+            tests/run-make/incremental-mir-locations
             tests/run-make/incremental-nll-region-annotations
             tests/run-make/incremental-attribute-proc-macro-cache
             tests/run-make/incremental-proc-macro-native-inputs

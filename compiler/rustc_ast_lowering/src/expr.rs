@@ -2372,6 +2372,9 @@ impl<'hir> LoweringContext<'_, 'hir> {
 
     /// `#[allow(unreachable_code)]`
     pub(super) fn unreachable_code_attr(&mut self, span: Span) -> Attribute {
+        // Attribute lowering preserves delimited arguments verbatim. Give their
+        // tokens and delimiters the same owner-relative span as the attribute.
+        let span = self.lower_span(span);
         let attr = attr::mk_attr_nested_word(
             &self.tcx.sess.psess.attr_id_generator,
             AttrStyle::Outer,

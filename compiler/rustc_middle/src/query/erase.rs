@@ -192,6 +192,7 @@ impl_erasable_for_types_with_no_type_params! {
     Fingerprint,
     Option<&'_ OsStr>,
     Option<&'_ [rustc_hir::PreciseCapturingArgKind<rustc_span::Symbol, rustc_span::Symbol>]>,
+    Option<&'_ [rustc_span::MultiByteChar]>,
     Option<(mir::ConstValue, Ty<'_>)>,
     Option<(rustc_span::def_id::DefId, rustc_session::config::EntryFnType)>,
     Option<mir::CoroutineCodegenLayout<'_>>,
