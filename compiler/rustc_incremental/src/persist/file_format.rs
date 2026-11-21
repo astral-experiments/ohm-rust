@@ -32,7 +32,8 @@ const FILE_MAGIC: &[u8] = b"RSIC";
 // Source maps retain physical caller paths from the defining checkout.
 // Local query caches now distinguish deduplicated CTFE literals.
 // Check graphs carry a sibling compatibility key and use logical local IDs.
-const HEADER_FORMAT_VERSION: u16 = 61345;
+// Local record types can refer to the current session's field definitions.
+const HEADER_FORMAT_VERSION: u16 = 61347;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);

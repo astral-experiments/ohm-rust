@@ -2844,15 +2844,19 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             match deref_base_ty.kind() {
                 ty::Adt(base_def, args) if !base_def.is_enum() => {
                     debug!("struct named {:?}", deref_base_ty);
-                    // we don't care to report errors for a struct if the struct itself is tainted
-                    if let Err(guar) = base_def.non_enum_variant().has_errors() {
-                        return Ty::new_error(self.tcx(), guar);
-                    }
-
                     let (ident, def_scope) =
                         self.tcx.adjust_ident_and_get_scope(field, base_def.did(), self.mod_id);
 
-                    if let Some((idx, field)) = self.find_adt_field(*base_def, ident) {
+                    let field = if let Some(field) = base_def.local_field_named(ident) {
+                        Some(field)
+                    } else {
+                        // Do not report errors for a struct if the struct itself is tainted.
+                        if let Err(guar) = base_def.non_enum_variant().has_errors() {
+                            return Ty::new_error(self.tcx(), guar);
+                        }
+                        self.find_adt_field(*base_def, ident)
+                    };
+                    if let Some((idx, field)) = field {
                         self.write_field_index(expr.hir_id, idx);
 
                         let adjustments = self.adjust_steps(&autoderef);

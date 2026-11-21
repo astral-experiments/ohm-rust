@@ -195,7 +195,7 @@ pub struct CtxtInterners<'tcx> {
     const_allocation: InternedSet<'tcx, Allocation>,
     bound_variable_kinds: InternedSet<'tcx, List<ty::BoundVariableKind<'tcx>>>,
     layout: InternedSet<'tcx, LayoutData<FieldIdx, VariantIdx>>,
-    adt_def: InternedSet<'tcx, AdtDefData>,
+    adt_def: InternedSet<'tcx, AdtDefData<'tcx>>,
     external_constraints: InternedSet<'tcx, ExternalConstraintsData<TyCtxt<'tcx>>>,
     predefined_opaques_in_body: InternedSet<'tcx, List<(ty::OpaqueTypeKey<'tcx>, Ty<'tcx>)>>,
     fields: InternedSet<'tcx, List<FieldIdx>>,
@@ -1004,7 +1004,19 @@ impl<'tcx> TyCtxt<'tcx> {
         variants: IndexVec<VariantIdx, ty::VariantDef>,
         repr: ReprOptions,
     ) -> ty::AdtDef<'tcx> {
+        let variants = super::adt::AdtVariants::Inline(variants);
         self.mk_adt_def_from_data(ty::AdtDefData::new(self, did, kind, variants, repr))
+    }
+
+    pub fn mk_local_struct_def(self, did: LocalDefId, repr: ReprOptions) -> ty::AdtDef<'tcx> {
+        let variants = super::adt::AdtVariants::LocalStruct(self);
+        self.mk_adt_def_from_data(ty::AdtDefData::new(
+            self,
+            did.to_def_id(),
+            AdtKind::Struct,
+            variants,
+            repr,
+        ))
     }
 
     /// Allocates a read-only byte or string literal for `mir::interpret` with alignment 1.
@@ -1266,7 +1278,7 @@ impl<'tcx> TyCtxt<'tcx> {
         f: impl FnOnce(StableHashState<'_>) -> R,
     ) -> R {
         let mut hcx = StableHashState::new(self.sess, &self.untracked);
-        hcx.set_incremental(self.incremental_crate_id != self.stable_crate_id);
+        hcx.set_incremental(self.uses_incremental_keys());
         f(hcx)
     }
 
@@ -1657,9 +1669,15 @@ impl<'tcx> TyCtxt<'tcx> {
         self.with_untracked_stable_hashing_context(f)
     }
 
+    /// Whether incremental hashes use a salt-independent crate identity.
+    #[inline]
+    pub fn uses_incremental_keys(self) -> bool {
+        self.incremental_crate_id != self.stable_crate_id
+    }
+
     #[inline]
     pub(super) fn track_local_linkage_identity(self) {
-        if self.incremental_crate_id != self.stable_crate_id {
+        if self.uses_incremental_keys() {
             let _ = self.local_linkage_identity(());
         }
     }
@@ -2274,7 +2292,7 @@ direct_interners! {
     pat: pub mk_pat(PatternKind<'tcx>): Pattern -> Pattern<'tcx>,
     const_allocation: pub mk_const_alloc(Allocation): ConstAllocation -> ConstAllocation<'tcx>,
     layout: pub mk_layout(LayoutData<FieldIdx, VariantIdx>): Layout -> Layout<'tcx>,
-    adt_def: pub mk_adt_def_from_data(AdtDefData): AdtDef -> AdtDef<'tcx>,
+    adt_def: pub mk_adt_def_from_data(AdtDefData<'tcx>): AdtDef -> AdtDef<'tcx>,
     external_constraints: pub mk_external_constraints(ExternalConstraintsData<TyCtxt<'tcx>>):
         ExternalConstraints -> ExternalConstraints<'tcx>,
     canonical_inputs: intern_canonical_input(CanonicalInputData<TyCtxt<'tcx>>): CanonicalInput -> CanonicalInput<'tcx>,
