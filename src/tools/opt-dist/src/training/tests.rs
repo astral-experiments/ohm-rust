@@ -9,6 +9,29 @@ use super::{
 };
 use crate::environment::{Environment, EnvironmentBuilder, executable_extension};
 
+#[cfg(unix)]
+#[test]
+fn clippy_training_driver_has_its_own_executable_in_the_sysroot() {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    let directory = TempDir::new().unwrap();
+    let env = environment(&directory);
+    let source = env.build_artifacts().join("stage2-tools-bin/clippy-driver");
+    let driver = env.clippy_stage_2();
+    fs::create_dir_all(source.parent().unwrap()).unwrap();
+    fs::create_dir_all(driver.parent().unwrap()).unwrap();
+    fs::write(&source, b"driver").unwrap();
+    fs::set_permissions(&source, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::hard_link(&source, &driver).unwrap();
+
+    super::detach_training_driver(&driver).unwrap();
+
+    let metadata = fs::metadata(&driver).unwrap();
+    assert_ne!(metadata.ino(), fs::metadata(source).unwrap().ino());
+    assert_eq!(metadata.mode() & 0o777, 0o755);
+    assert_eq!(fs::read(driver).unwrap(), b"driver");
+}
+
 fn environment(directory: &TempDir) -> Environment {
     let root = Utf8Path::from_path(directory.path()).expect("UTF-8 temporary path");
     EnvironmentBuilder::default()
