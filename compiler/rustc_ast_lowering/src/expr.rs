@@ -16,7 +16,7 @@ use rustc_session::diagnostics::report_lit_error;
 use rustc_span::{
     ByteSymbol, DUMMY_SP, DesugaringKind, Ident, Span, Spanned, Symbol, respan, span_bug, sym,
 };
-use thin_vec::{ThinVec, thin_vec};
+use thin_vec::ThinVec;
 mod closure;
 
 use crate::diagnostics::{
@@ -1972,13 +1972,12 @@ impl<'hir> LoweringContext<'_, 'hir> {
             )
         };
 
-        let attrs: AttrVec = thin_vec![self.unreachable_code_attr(try_span)];
-
         // `ControlFlow::Continue(val) => #[allow(unreachable_code)] val,`
         let continue_arm = {
             let val_ident = Ident::with_dummy_span(sym::val);
             let (val_pat, val_pat_nid) = self.pat_ident(span, val_ident);
             let val_expr = self.expr_ident(span, val_ident, val_pat_nid);
+            let attrs = [self.unreachable_code_attr(try_span)];
             self.lower_attrs(val_expr.hir_id, &attrs, span, Target::Expression);
             let continue_pat = self.pat_cf_continue(unstable_span, val_pat);
             self.arm(continue_pat, val_expr, try_span)
@@ -2021,7 +2020,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
                 let ret_expr = self.checked_return(Some(from_residual_expr));
                 self.arena.alloc(self.expr(try_span, ret_expr))
             };
-            self.lower_attrs(ret_expr.hir_id, &attrs, span, Target::Expression);
+            self.alias_attrs(ret_expr.hir_id, continue_arm.body.hir_id);
 
             let break_pat = self.pat_cf_break(try_span, residual_local);
             self.arm(break_pat, ret_expr, try_span)
@@ -2377,7 +2376,9 @@ impl<'hir> LoweringContext<'_, 'hir> {
             AttrStyle::Outer,
             sym::allow,
             sym::unreachable_code,
-            span,
+            // Lower the span before building the argument tokens. Attribute lowering
+            // copies delimited arguments, including their spans, directly into HIR.
+            self.lower_span(span),
         );
         attr
     }

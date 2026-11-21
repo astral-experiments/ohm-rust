@@ -25,4 +25,27 @@ fn main() {
         rustc().input("main.rs").incremental("incr").arg("-Zohm-incremental-mono-partitions").run();
         run("main");
     }
+
+    // Keep the assertion's position relative to the function fixed in bytes,
+    // but move the question mark (and its generated lint attribute) one line.
+    for (revision, padding) in [("original", " "), ("moved", "\n")] {
+        rfs::write(
+            "lib.rs",
+            format!(
+                r#"#![feature(rustc_attrs)]
+#![allow(internal_features)]
+#[rustc_clean(cfg = "moved", loaded_from_disk = "typeck_root")]
+{padding}pub {parse}
+"#
+            ),
+        );
+        rustc()
+            .input("lib.rs")
+            .crate_type("lib")
+            .cfg(revision)
+            .incremental("check")
+            .arg("-Zquery-dep-graph")
+            .arg("-Zincremental-verify-ich")
+            .run();
+    }
 }
