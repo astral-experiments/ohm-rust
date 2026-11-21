@@ -76,6 +76,85 @@ impl PartialRes {
     }
 }
 
+/// Resolution slots for the expanded AST, indexed by node ID. Zero means
+/// absent. With the high bit set, the remaining bits are a local binding's
+/// node ID. Other slots hold a one-based index into `values`.
+#[derive(Debug, Default)]
+pub struct PartialResolutions {
+    slots: Vec<u32>,
+    values: Vec<PartialRes>,
+    extra: FxIndexMap<NodeId, PartialRes>,
+}
+
+impl PartialResolutions {
+    const LOCAL: u32 = 1 << 31;
+
+    /// Expansion assigns consecutive node IDs. Keep early and synthetic
+    /// resolutions even when their IDs are outside the allocated range.
+    pub fn prepare(&mut self, end: NodeId) {
+        assert!(self.slots.is_empty());
+        self.slots = vec![0; end.as_usize().min(Self::LOCAL as usize - 1)];
+        for (id, value) in std::mem::take(&mut self.extra) {
+            self.insert(id, value);
+        }
+    }
+
+    #[inline]
+    pub fn insert(&mut self, id: NodeId, value: PartialRes) -> Option<PartialRes> {
+        let Some(slot) = self.slots.get_mut(id.as_usize()) else {
+            return self.extra.insert(id, value);
+        };
+        let prev = match *slot {
+            0 => None,
+            local if local >= Self::LOCAL => Some(Self::local(local)),
+            // Reuse this allocation even if the replacement is a local.
+            // Each slot then allocates at most once, so indices fit in 31 bits.
+            index => return Some(std::mem::replace(&mut self.values[index as usize - 1], value)),
+        };
+        if let Some(Res::Local(binding)) = value.full_res()
+            && binding.as_u32() < Self::LOCAL
+        {
+            *slot = Self::LOCAL | binding.as_u32();
+        } else {
+            self.values.push(value);
+            *slot = self.values.len() as u32;
+        }
+        prev
+    }
+
+    #[inline]
+    fn local(slot: u32) -> PartialRes {
+        PartialRes::new(Res::Local(NodeId::from_u32(slot & !Self::LOCAL)))
+    }
+
+    #[inline]
+    pub fn get(&self, id: NodeId) -> Option<PartialRes> {
+        match self.slots.get(id.as_usize()).copied() {
+            Some(0) => None,
+            Some(local) if local >= Self::LOCAL => Some(Self::local(local)),
+            Some(index) => Some(self.values[index as usize - 1]),
+            None => self.extra.get(&id).copied(),
+        }
+    }
+
+    /// If both slots directly encode the same full local resolution,
+    /// return the binding so lowering only has to translate it once.
+    #[inline]
+    pub fn shared_local(&self, expr: NodeId, segment: NodeId) -> Option<NodeId> {
+        let &local = self.slots.get(expr.as_usize())?;
+        (local >= Self::LOCAL && self.slots.get(segment.as_usize()) == Some(&local))
+            .then(|| NodeId::from_u32(local & !Self::LOCAL))
+    }
+
+    #[inline]
+    pub fn contains_key(&self, id: NodeId) -> bool {
+        match self.slots.get(id.as_usize()) {
+            Some(&slot) => slot != 0,
+            None => self.extra.contains_key(&id),
+        }
+    }
+}
+
 /// Resolution for a lifetime appearing in a type.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum LifetimeRes {
@@ -256,7 +335,7 @@ impl<'tcx> PerOwnerResolverData<'tcx> {
 #[derive(Debug)]
 pub struct ResolverAstLowering<'tcx> {
     /// Resolutions for nodes that have a single resolution.
-    pub partial_res_map: NodeMap<PartialRes>,
+    pub partial_res_map: PartialResolutions,
 
     pub next_node_id: NodeId,
 
@@ -341,3 +420,6 @@ pub enum AstOwner {
     ImplItem(Box<ast::AssocItem>),
     ForeignItem(Box<ast::ForeignItem>),
 }
+
+#[cfg(test)]
+mod tests;

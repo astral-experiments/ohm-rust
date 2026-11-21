@@ -437,7 +437,7 @@ impl<'tcx> ResolverAstLowering<'tcx> {
         // We do not need to look at `partial_res_overrides`. That map only contains overrides for
         // `self_param` locals. And here we are looking for the function definition that `expr`
         // resolves to.
-        let def_id = self.partial_res_map.get(&expr.id)?.full_res()?.opt_def_id()?;
+        let def_id = self.partial_res_map.get(expr.id)?.full_res()?.opt_def_id()?;
 
         // We only support cross-crate argument rewriting. Uses
         // within the same crate should be updated to use the new
@@ -884,7 +884,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
     fn get_partial_res(&self, id: NodeId) -> Option<PartialRes> {
         match self.partial_res_overrides.get(&id) {
             Some(self_param_id) => Some(PartialRes::new(Res::Local(*self_param_id))),
-            None => self.resolver.partial_res_map.get(&id).copied(),
+            None => self.resolver.partial_res_map.get(id),
         }
     }
 

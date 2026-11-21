@@ -67,7 +67,8 @@ use rustc_metadata::creader::CStore;
 use rustc_middle::middle::privacy::EffectiveVisibilities;
 use rustc_middle::middle::resolve::{
     AmbigModChild, DelegationInfo, DelegationInherentFnKind, DocLinkResMap, MainDefinition,
-    ModChild, PartialRes, PerOwnerResolverData, Reexport, ResolverAstLowering, ResolverGlobalCtxt,
+    ModChild, PartialRes, PartialResolutions, PerOwnerResolverData, Reexport, ResolverAstLowering,
+    ResolverGlobalCtxt,
 };
 use rustc_middle::query::Providers;
 use rustc_middle::ty::{self, RegisteredTools, TyCtxt, TyCtxtFeed, Visibility};
@@ -1396,7 +1397,7 @@ pub struct Resolver<'ra, 'tcx> {
     pat_span_map: NodeMap<Span> = Default::default(),
 
     /// Resolutions for nodes that have a single resolution.
-    partial_res_map: NodeMap<PartialRes> = Default::default(),
+    partial_res_map: PartialResolutions,
     /// An import will be inserted into this map if it has been used.
     import_use_map: FxHashMap<Import<'ra>, Used> = default::fx_hash_map(),
 
@@ -1914,6 +1915,7 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
             multi_segment_macro_resolutions: Default::default(),
             lint_buffer: LintBuffer::default(),
             owners,
+            partial_res_map: PartialResolutions::default(),
             current_owner: PerOwnerResolverData::new(DUMMY_NODE_ID, CRATE_DEF_ID),
             invocation_parents,
             trait_impls: Default::default(),
@@ -2114,6 +2116,7 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
     /// Entry point to crate resolution.
     pub fn resolve_crate(&mut self, krate: &Crate) {
         self.tcx.sess.time("resolve_crate", || {
+            self.partial_res_map.prepare(self.next_node_id);
             self.tcx.sess.time("finalize_imports", || self.finalize_imports());
             let exported_ambiguities = self.tcx.sess.time("compute_effective_visibilities", || {
                 EffectiveVisibilitiesVisitor::compute_effective_visibilities(self, krate)
@@ -2687,7 +2690,7 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
             return None;
         }
 
-        let def_id = self.partial_res_map.get(&expr.id)?.full_res()?.opt_def_id()?;
+        let def_id = self.partial_res_map.get(expr.id)?.full_res()?.opt_def_id()?;
 
         // We only support cross-crate argument rewriting. Uses
         // within the same crate should be updated to use the new
