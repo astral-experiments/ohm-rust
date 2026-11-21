@@ -2219,11 +2219,63 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         })
     }
 
+    /// For a source-written built-in derive, a generated declaration can keep the
+    /// expansion's local identity when its enclosing item moves. The local hash
+    /// includes the macro definition, call site and expansion disambiguator.
+    /// Use it only in the terminal check's declaration fields. Spans in MIR and
+    /// macro tokens still reach the complete expansion through the regular graph.
+    fn is_source_builtin_derive(&self, id: ExpnId) -> bool {
+        use rustc_span::hygiene::{ExpnKind, MacroKind};
+
+        if !self.hash_declaration_text || id == ExpnId::root() || id.as_local().is_none() {
+            return false;
+        }
+        let data = id.expn_data();
+        if !data.call_site.ctxt().is_root() || !data.def_site.ctxt().is_root() {
+            return false;
+        }
+        match data.kind {
+            // The original item comes from the attribute. Each generated impl
+            // comes from the corresponding derive invocation within it.
+            ExpnKind::Macro(MacroKind::Attr, sym::derive) if data.parent == ExpnId::root() => {}
+            ExpnKind::Macro(MacroKind::Derive, _) => {
+                let parent = data.parent.expn_data();
+                if parent.parent != ExpnId::root()
+                    || !matches!(parent.kind, ExpnKind::Macro(MacroKind::Attr, sym::derive))
+                    || !parent.call_site.ctxt().is_root()
+                {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+        let Some(def_id) = data.macro_def_id else { return false };
+        !def_id.is_local() && find_attr!(self.tcx, def_id, RustcBuiltinMacro { .. })
+    }
+
+    fn derive_context_hash(&self, ctxt: SyntaxContext) -> Option<Fingerprint> {
+        if !self.hash_declaration_text || ctxt.is_root() {
+            return None;
+        }
+        // SyntaxContext::stable_hash includes the outer mark and its transparency.
+        // A single mark is the complete context of a source-written derive.
+        let mut parent = ctxt;
+        let id = parent.remove_mark();
+        if !parent.is_root() || !self.is_source_builtin_derive(id) {
+            return None;
+        }
+        Some(self.tcx.with_stable_hashing_context(|mut hcx| {
+            let mut hash = StableHasher::new();
+            ctxt.stable_hash(&mut hcx, &mut hash);
+            hash.finish()
+        }))
+    }
+
     /// A terminal binary check can keep its success if only the locations of ordinary
     /// declaration tokens moved. Keep their spelling and file identity in its freshness key,
     /// and retain the exact spans in metadata for compiler queries and diagnostics.
     fn declaration_text(&mut self, span: Span) -> Option<Fingerprint> {
-        if !self.hash_declaration_text || span.is_dummy() || span.from_expansion() {
+        if !self.hash_declaration_text || span.is_dummy() {
             return None;
         }
         let file = self.tcx.sess.source_map().lookup_source_file(span.lo());
@@ -2236,6 +2288,9 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         let mut hasher = StableHasher::new();
         file.stable_id.hash(&mut hasher);
         text.get(lo..hi)?.hash(&mut hasher);
+        if span.from_expansion() {
+            self.derive_context_hash(span.ctxt())?.hash(&mut hasher);
+        }
         if let Some(builder) = &mut self.metadata_prefix_manifest
             && !builder.capture_protected_span(self.tcx, span)
         {
@@ -2385,7 +2440,11 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         // context can also participate in hygienic name lookup through `def_ident_span`.
         let ctxt = if self.is_proc_macro { SyntaxContext::root() } else { span.ctxt() };
         self.with_record_mode(RecordMode::From(def_id.into()), |this| {
-            this.record_encoded_index(ctxt);
+            if let Some(hash) = this.derive_context_hash(ctxt) {
+                this.record_encoded_index(Node::MetadataLocation(hash));
+            } else {
+                this.record_encoded_index(ctxt);
+            }
             // Reification shims use a tracked function's definition span as an observable
             // `Location::caller()`, so this source location is not merely diagnostic.
             if hash_location {
@@ -2446,7 +2505,14 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 self.encode_attrs(local_id, hcx);
             }
             if should_encode_expn_that_defined(def_kind) {
-                record!(self.tables.expn_that_defined[def_id] <- self.tcx.expn_that_defined(def_id), hcx);
+                let expn = self.tcx.expn_that_defined(def_id);
+                if self.is_source_builtin_derive(expn) {
+                    // This table identifies the expansion for name resolution.
+                    let key = expn.expn_hash();
+                    record!(self.tables.expn_that_defined[def_id] <- expn, hcx, key, |_| RecordMode::None);
+                } else {
+                    record!(self.tables.expn_that_defined[def_id] <- expn, hcx);
+                }
             }
             if should_encode_span(def_kind) {
                 let ident_span = tcx.def_ident_span(def_id);
