@@ -2447,6 +2447,7 @@ pub fn provide(providers: &mut Providers) {
     print::provide(providers);
     super::util::bug::provide(providers);
     *providers = Providers {
+        implementations_of_trait: trait_def::local_implementations_of_trait,
         trait_impls_of: trait_def::trait_impls_of_provider,
         blanket_trait_impls: |tcx, trait_id| trait_def::trait_impls_for_bucket(tcx, trait_id, None),
         non_blanket_trait_impls: |tcx, (trait_id, simp)| {
