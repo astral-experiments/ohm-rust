@@ -279,7 +279,15 @@ pub(crate) fn prepare_session_directory(
     IncrCompSession { old_session_directory, new_session_directory, check_seed: None }
 }
 
-/// Finalized session candidates for a cold check, newest first.
+/// Use the first 16 bytes of the already computed source hash to rank checks.
+/// This hint grants no reuse. The graph key and query inputs still have to match.
+pub(super) fn check_root_hint(sess: &Session) -> Option<[u8; 16]> {
+    let root = rustc_span::FileName::Real(sess.local_crate_source_file()?);
+    let file = sess.source_map().get_source_file(&root)?;
+    file.src_hash.hash_bytes().first_chunk().copied()
+}
+
+/// Finalized session candidates, newest first by the timestamp prefix.
 pub(super) fn sibling_sessions(
     sess: &Session,
     name: Symbol,
