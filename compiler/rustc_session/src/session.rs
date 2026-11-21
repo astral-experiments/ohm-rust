@@ -904,6 +904,20 @@ impl Session {
         self.edition().at_least_rust_2024()
     }
 
+    /// Whether LLVM should mark GOT-relative accesses that the ELF linker may relax.
+    pub fn relax_elf_relocations(&self) -> bool {
+        self.opts.unstable_opts.relax_elf_relocations.unwrap_or_else(|| {
+            // Let the linker relax references between units that bind locally.
+            // Explicit CGU counts are untracked in incremental fingerprints,
+            // so relocation selection depends on the partitioning mode.
+            let gnu_x86_64 = matches!(
+                &self.opts.target_triple,
+                TargetTuple::TargetTuple(t) if t.as_str() == "x86_64-unknown-linux-gnu"
+            );
+            self.target.relax_elf_relocations || (gnu_x86_64 && self.ohm_wide_cgu_default())
+        })
+    }
+
     /// Returns `true` if we should use the PLT for shared library calls.
     pub fn needs_plt(&self) -> bool {
         // Check if the current target usually wants PLT to be enabled.
@@ -1223,6 +1237,12 @@ impl Session {
                 .unwrap_or(self.panic_strategy().unwinds() || self.target.default_uwtable)
     }
 
+    fn ohm_wide_cgu_default(&self) -> bool {
+        self.opts.unstable_opts.ohm_stable_cgu_merging
+            && self.opts.incremental.is_some()
+            && self.opts.optimize == config::OptLevel::Less
+    }
+
     /// Returns the number of codegen units that should be used for this
     /// compilation
     pub fn codegen_units(&self) -> CodegenUnits {
@@ -1236,6 +1256,11 @@ impl Session {
         // If incremental compilation is turned on, we default to a high number
         // codegen units in order to reduce the "collateral damage" small
         // changes cause.
+        if self.ohm_wide_cgu_default() {
+            // Give each bucket one additional hash bit. A change to one source
+            // module requires reoptimizing every module that shares its bucket.
+            return CodegenUnits::Default(512);
+        }
         if self.opts.incremental.is_some() {
             return CodegenUnits::Default(256);
         }
