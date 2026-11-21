@@ -441,6 +441,13 @@ uninstall_components() {
             if [ ! -n "$_file" ]; then critical_err "malformed installation directive"; fi
 
             case "$_command" in
+                file-relative|dir-relative)
+                    _command=${_command%-relative}
+                    _file="$_abs_libdir/../$_file"
+                    ;;
+            esac
+
+            case "$_command" in
                 file)
                 verbose_msg "removing file $_file"
                 if [ -f "$_file" ]; then
@@ -597,8 +604,17 @@ install_components() {
         make_dir_recursive "$(dirname "$_file_install_path")"
         critical_need_ok "directory creation failed"
 
-        # Make the path absolute so we can uninstall it later without
-        # starting from the installation cwd
+        # Ohm moves the whole SDK after installation. Its manifests live under
+        # <prefix>/lib, so keep the payload paths relative to that SDK root.
+        local _manifest_entry=""
+        if [ "${OHM_STAGED_INSTALL-}" = 1 ] && [ "$CFG_LIBDIR" = "$_dest_prefix/lib" ]; then
+            case "$_file_install_path" in
+                "$_dest_prefix"/*)
+                    _manifest_entry="$_command-relative:${_file_install_path#"$_dest_prefix"/}"
+                    ;;
+            esac
+        fi
+
         absolutify "$_file_install_path"
         _file_install_path="$RETVAL"
         assert_nz "$_file_install_path" "file_install_path"
@@ -619,11 +635,6 @@ install_components() {
                 run chmod 644 "$_file_install_path"
             fi
             critical_need_ok "file creation failed"
-
-            # Update the manifest
-            append_to_file "file:$_file_install_path" "$_installed_manifest"
-            critical_need_ok "failed to update manifest"
-
             ;;
 
         dir )
@@ -638,16 +649,14 @@ install_components() {
                     # Set permissions. 0755 for dirs, 644 for files
                     run chmod -R u+rwX,go+rX,go-w "$_file_install_path"
                     critical_need_ok "failed to set permissions on directory"
-
-            # Update the manifest
-            append_to_file "dir:$_file_install_path" "$_installed_manifest"
-            critical_need_ok "failed to update manifest"
             ;;
 
         *)
             critical_err "unknown installation directive"
             ;;
         esac
+        append_to_file "${_manifest_entry:-$_command:$_file_install_path}" "$_installed_manifest"
+        critical_need_ok "failed to update manifest"
     done < "$_input_manifest"
 
     done
@@ -843,7 +852,7 @@ TEMPLATE_RUST_INSTALLER_VERSION=%%TEMPLATE_RUST_INSTALLER_VERSION%%
 # OK, let's get installing ...
 
 # This is where we are installing from
-src_dir="$(abs_path $(dirname "$0"))"
+src_dir="$(abs_path "$(dirname "$0")")"
 
 # The name of the script
 src_basename="$(basename "$0")"
@@ -857,7 +866,7 @@ if [ "$src_basename" = "uninstall.sh" ]; then
     err "uninstall.sh does not take any arguments"
     fi
     CFG_UNINSTALL=1
-    CFG_DESTDIR_PREFIX="$(abs_path "$src_dir/../../")"
+    CFG_DESTDIR_PREFIX="$src_dir/../.."
     CFG_LIBDIR="$(abs_path "$src_dir/../")"
 fi
 
@@ -943,8 +952,7 @@ do_preflight_sanity_checks "$src_dir" "$dest_prefix"
 
 # Using an absolute path to libdir in a few places so that the status
 # messages are consistently using absolute paths.
-absolutify "$CFG_LIBDIR"
-abs_libdir="$RETVAL"
+abs_libdir="$(abs_path "$CFG_LIBDIR")"
 assert_nz "$abs_libdir" "abs_libdir"
 
 # Create the manifest directory, where we will put our logs
