@@ -587,10 +587,10 @@ impl EncoderState {
         index_check: bool,
         reuse_rows: bool,
     ) -> Self {
-        // Reserving the old index space lets a verified node keep its packed
-        // edges. Reclaim holes left by removed nodes once one in five slots
-        // is vacant. The first graph also uses compact, sequential allocation.
-        let slot_limit = previous.live_node_count + previous.live_node_count / 4;
+        // Preserving previous indices lets us copy verified rows verbatim.
+        // Even replacing every key can fit in two generations of slots when
+        // we refill holes. Compact once the graph has shrunk below half full.
+        let slot_limit = previous.live_node_count.saturating_mul(2);
         let retain_indices =
             reuse_rows && !record_stats && previous.index_space_len() <= slot_limit;
         let retained_rows = if retain_indices {
@@ -622,6 +622,24 @@ impl EncoderState {
 
     #[inline]
     fn next_index(&self, local: &mut LocalEncoderState) -> DepNodeIndex {
+        loop {
+            let index = self.batch_index(local);
+            // Slots before the old end are either the two singleton nodes
+            // (installed before reservation) or candidates for reclamation.
+            if index.as_usize() >= self.retained_rows.len()
+                || index.as_u32() <= DepNodeIndex::FOREVER_RED_NODE.as_u32()
+                || self.previous.nodes[SerializedDepNodeIndex::from_u32(index.as_u32())].kind
+                    == DepKind::Null
+            {
+                return index;
+            }
+            local.next_node_index += 1;
+            local.remaining_node_index -= 1;
+        }
+    }
+
+    #[inline]
+    fn batch_index(&self, local: &mut LocalEncoderState) -> DepNodeIndex {
         if local.remaining_node_index == 0 {
             const COUNT: u32 = 256;
 
@@ -952,12 +970,18 @@ impl GraphEncoder {
     }
 
     /// Called after allocating the two singleton nodes and before any
-    /// parallel work. New keys take slots beyond the previous index space.
+    /// parallel work. When over a fifth of the slots are vacant, give
+    /// each worker a disjoint range to fill before growing the index space.
     pub(super) fn reserve_previous_indices(&self) {
         self.status.local.borrow_mut().remaining_node_index = 0;
-        self.status
-            .next_node_index
-            .store(self.status.retained_rows.len() as u64, Ordering::Relaxed);
+        let slots = self.status.retained_rows.len();
+        let live = self.status.previous.live_node_count;
+        let start = if slots > live + live / 4 {
+            u64::from(DepNodeIndex::FOREVER_RED_NODE.as_u32()) + 1
+        } else {
+            slots as u64
+        };
+        self.status.next_node_index.store(start, Ordering::Relaxed);
     }
 
     #[inline]
