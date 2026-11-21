@@ -528,6 +528,7 @@ fn execute_job_incr<'tcx, C: QueryCache>(
             tcx,
             || (query.invoke_provider_fn)(tcx, key),
             query.hash_value_fn,
+            !query.will_cache_on_disk_for_key(key),
         )
     });
 
