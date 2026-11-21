@@ -1,4 +1,5 @@
 //@ ignore-cross-compile
+//@ needs-dynamic-linking
 
 use run_make_support::{rfs, rustc, serde_json};
 
@@ -47,6 +48,7 @@ fn reader() {
 }
 
 fn main() {
+    check_derived_declarations();
     let moved = SOURCE.replace("private() {}", "private() {\n    let _ = 0;\n}");
     let first = hash(SOURCE, true, false);
     let disk = disk_hash();
@@ -97,4 +99,66 @@ fn main() {
         );
     }
     assert_ne!(hash(SOURCE, true, true), hash(&moved, true, true));
+}
+
+fn check_derived_declarations() {
+    let original = "fn private() {}\n\
+                    pub mod inner {\n\
+                        #[derive(Clone, Debug)]\n\
+                        pub struct Ink { pub color: u32 }\n\
+                    }\n";
+    let moved = original.replace("private() {}", "private() {\n    let _ = 0;\n}");
+    let first = hash(original, true, false);
+    let disk = disk_hash();
+    assert_eq!(first, hash(&moved, true, false));
+    assert_ne!(disk, disk_hash());
+    assert_ne!(hash(original, false, false), hash(&moved, false, false));
+    assert_ne!(hash(original, true, true), hash(&moved, true, true));
+    assert_ne!(first, hash(&moved.replace("Clone, Debug", "Debug"), true, false));
+    assert_ne!(first, hash(&moved.replace("color", "hue"), true, false));
+
+    let generated = "pub mod inner { macro_rules! make { () => { #[derive(Clone)] pub struct Ink; } } make!(); }";
+    assert_ne!(hash(generated, true, false), hash(&format!("\n{generated}"), true, false));
+
+    // A reader can evaluate the location of a call in the dependency's MIR and
+    // pass a token from an exported macro to a proc macro that inspects its span.
+    rfs::write(
+        "observe.rs",
+        "extern crate proc_macro;\n\
+         use proc_macro::TokenStream;\n\
+         #[proc_macro]\n\
+         pub fn line(input: TokenStream) -> TokenStream {\n\
+             input.into_iter().next().unwrap().span().line().to_string().parse().unwrap()\n\
+         }\n\
+         #[proc_macro_derive(Declare)]\n\
+         pub fn declare(_: TokenStream) -> TokenStream {\n\
+             \"pub fn generated() {}\".parse().unwrap()\n\
+         }",
+    );
+    rustc().input("observe.rs").crate_type("proc-macro").run();
+    let custom = "extern crate observe;\npub mod inner { #[derive(Clone, observe::Declare)] pub struct Ink { pub color: u32 } }";
+    assert_ne!(hash(custom, true, false), hash(&format!("\n{custom}"), true, false));
+    for (producer, invocation) in [
+        ("pub const fn at() -> u32 { core::panic::Location::caller().line() }", "dep::at()"),
+        ("#[macro_export] macro_rules! at { () => { observe::line!(ink) } }", "dep::at!()"),
+    ] {
+        let line = original.lines().count() + 1;
+        rfs::write(
+            "reader.rs",
+            format!("const _: () = assert!({invocation} == {line});\nfn main() {{}}"),
+        );
+        let reader = || {
+            let mut cmd = rustc();
+            cmd.input("reader.rs")
+                .edition("2021")
+                .emit("metadata")
+                .extern_("dep", "libdep.rmeta")
+                .extern_("observe", run_make_support::dynamic_lib_name("observe"));
+            cmd
+        };
+        let hint = hash(&format!("{original}{producer}"), true, false);
+        reader().run();
+        assert_ne!(hint, hash(&format!("{moved}{producer}"), true, false));
+        reader().run_fail().assert_stderr_contains("E0080");
+    }
 }
