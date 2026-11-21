@@ -1750,6 +1750,10 @@ rustc_queries! {
         desc { "finding impls of `{}` for `{:?}`", tcx.def_path_str(key.0), key.1 }
     }
 
+    query integer_pair_impls(key: (DefId, SimplifiedType)) -> &'tcx [DefId] {
+        desc { "finding impls of `{}` for integer pairs", tcx.def_path_str(key.0) }
+    }
+
     query trait_impl_receiver_def(receiver: DefId) {
         desc { "recording the receiver of an impl lookup for `{}`", tcx.def_path_str(receiver) }
     }

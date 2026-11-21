@@ -1035,12 +1035,43 @@ impl DepGraph {
             .then_some((reader_node, supplier))
     }
 
+    /// Look for the receiver behind an old-solver evaluation read by a
+    /// type check. The edges only suggest a key. Forcing still requires
+    /// reconstructing the complete original evaluation node.
+    pub fn previous_operator_inputs(
+        &self,
+        evaluation: DepNode,
+        mut index: SerializedDepNodeIndex,
+        reader: SerializedDepNodeIndex,
+    ) -> Option<(DepNode, DepNode, SerializedDepNodeIndex)> {
+        let previous = &self.data()?.previous;
+        let reader = *previous.index_to_node(reader);
+        if reader.kind != DepKind::typeck_root
+            || evaluation.kind != DepKind::evaluate_obligation
+            || *previous.index_to_node(index) != evaluation
+        {
+            return None;
+        }
+        for kind in [DepKind::TraitSelect, DepKind::TraitSelect, DepKind::non_blanket_trait_impls] {
+            index = previous
+                .edge_targets_from(index)
+                .find(|&i| previous.index_to_node(i).kind == kind)?;
+        }
+        Some((reader, *previous.index_to_node(index), index))
+    }
+
     pub fn previous_trait_impl_inputs(
         &self,
         bucket: DepNode,
         index: SerializedDepNodeIndex,
     ) -> Option<(DepNode, Option<DepNode>)> {
         let previous = &self.data()?.previous;
+        if bucket.kind == DepKind::integer_pair_impls && *previous.index_to_node(index) == bucket {
+            // The projection reads the receiver bucket with the same key first.
+            let input = previous.edge_targets_from(index).next()?;
+            let receiver = DepNode { kind: DepKind::non_blanket_trait_impls, ..bucket };
+            return self.previous_trait_impl_inputs(receiver, input);
+        }
         if bucket.kind != DepKind::non_blanket_trait_impls
             || *previous.index_to_node(index) != bucket
         {
