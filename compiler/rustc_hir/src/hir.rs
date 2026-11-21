@@ -2222,9 +2222,8 @@ pub struct ConstBlock {
 /// the compiler and the reference.
 ///
 /// [rust lang reference]: https://doc.rust-lang.org/reference/expressions.html
-#[derive(Debug, Clone, Copy, StableHash)]
+#[derive(Debug, Clone, Copy)]
 pub struct Expr<'hir> {
-    #[stable_hash(ignore)]
     pub hir_id: HirId,
     pub kind: ExprKind<'hir>,
     pub span: Span,
