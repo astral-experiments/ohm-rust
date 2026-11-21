@@ -21,6 +21,7 @@
 #endif
 #include "llvm/Bitcode/BitcodeWriterPass.h"
 #include "llvm/CodeGen/CommandFlags.h"
+#include "llvm/Demangle/Demangle.h"
 #include "llvm/IR/AssemblyAnnotationWriter.h"
 #include "llvm/IR/AutoUpgrade.h"
 #if __has_include("llvm/IR/ClosedOptimizerContext.h")
@@ -707,6 +708,28 @@ static InlineAdvisor *createTestInlineAdvisor(Module &M,
   return new DefaultInlineAdvisor(M, FAM, Params, Context);
 }
 
+// A level-0 host library can run on every expansion. Limit the extra
+// code generation work to marked libraries that import the proc_macro API.
+static bool isMacroHelper(const Module &M) {
+  auto *Flag = mdconst::dyn_extract_or_null<ConstantInt>(
+      M.getModuleFlag("ohm.proc-macro-helper"));
+  if (!Flag || !Flag->getType()->isIntegerTy(32) || !Flag->isOne() ||
+      M.getNamedMetadata("llvm.dbg.cu"))
+    return false;
+
+  return llvm::any_of(M, [](const Function &F) {
+    StringRef Name = F.getName();
+    if (!F.isDeclaration() || F.use_empty() || !Name.starts_with("_R") ||
+        !Name.contains("proc_macro"))
+      return false;
+
+    std::string Demangled = llvm::demangle(Name);
+    StringRef Path(Demangled);
+    Path.consume_front("<");
+    return Path.starts_with("proc_macro::");
+  });
+}
+
 extern "C" LLVMRustResult LLVMRustOptimize(
     LLVMModuleRef ModuleRef, LLVMTargetMachineRef TMRef,
     LLVMRustPassBuilderOptLevel OptLevelRust, LLVMRustOptStage OptStage,
@@ -783,6 +806,22 @@ extern "C" LLVMRustResult LLVMRustOptimize(
         "", "", "", "", FS, PGOOptions::NoAction, PGOOptions::NoCSAction,
 #endif
         PGOOptions::ColdFuncOpt::Default, DebugInfoForProfiling);
+  }
+
+  // The codegen unit owns this target machine through object emission.
+  // Optimize its IR and register allocation together, preserving the
+  // original level-0 MIR, debug assertions and overflow checks.
+  if (OptLevel == OptimizationLevel::O0 &&
+      OptStage == LLVMRustOptStage::PreLinkNoLTO && !ThinLTOBufferRef &&
+      !IsLinkerPluginLTO && !NoPrepopulatePasses && !PGOOpt &&
+      !InstrumentCoverage && !EnzymePtr && !LLVMPluginsLen &&
+      !ExtraPassesLen && TM->getTargetTriple().getArch() == Triple::x86_64 &&
+      TM->getTargetTriple().isOSLinux() &&
+      TM->getOptLevel() == CodeGenOptLevel::None &&
+      isMacroHelper(*TheModule)) {
+    OptLevel = OptimizationLevel::O1;
+    TM->setOptLevel(CodeGenOptLevel::Less);
+    TM->setFastISel(true);
   }
 
   auto PB = PassBuilder(TM, PTO, PGOOpt, &PIC);
