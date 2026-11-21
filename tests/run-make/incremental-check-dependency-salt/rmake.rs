@@ -111,6 +111,10 @@ fn supplier_release() {
     consumer("fresh").run();
     assert!(warm == rfs::read("libconsumer.rmeta"));
 
+    // Adding an impl for another receiver should preserve the type check of value(Packet).
+    supplier("third").cfg("extra").run();
+    consumer("consumer-incr").cfg("extra").run();
+
     // The new key still tracks the contents of the upstream definition.
     supplier("changed").cfg("changed").run();
     consumer("consumer-incr").run_fail().assert_stderr_contains("E0308");

@@ -11,3 +11,8 @@ pub trait Pair {
     type First;
     type Second;
 }
+
+pub trait Marker {}
+impl Marker for Packet {}
+#[cfg(extra)]
+impl Marker for u32 {}
