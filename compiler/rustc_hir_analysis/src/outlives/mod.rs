@@ -13,15 +13,10 @@ pub(super) fn inferred_outlives_of(
     item_def_id: LocalDefId,
 ) -> &[(ty::Clause<'_>, Span)] {
     match tcx.def_kind(item_def_id) {
-        DefKind::Struct | DefKind::Enum | DefKind::Union => {
-            let crate_map = tcx.inferred_outlives_crate(());
-            crate_map.clauses.get(&item_def_id.to_def_id()).copied().unwrap_or(&[])
-        }
-        DefKind::TyAlias if tcx.type_alias_is_checked(item_def_id) => {
-            let crate_map = tcx.inferred_outlives_crate(());
-            crate_map.clauses.get(&item_def_id.to_def_id()).copied().unwrap_or(&[])
-        }
-        DefKind::AnonConst if tcx.features().generic_const_exprs() => {
+        DefKind::AnonConst => {
+            if !tcx.features().generic_const_exprs() {
+                return &[];
+            }
             let id = tcx.local_def_id_to_hir_id(item_def_id);
             if tcx.hir_opt_const_param_default_param_def_id(id).is_some() {
                 // In `generics_of` we set the generics' parent to be our parent's parent which means that
@@ -41,6 +36,11 @@ pub(super) fn inferred_outlives_of(
             } else {
                 &[]
             }
+        }
+        DefKind::TyAlias if !tcx.type_alias_is_checked(item_def_id) => &[],
+        kind if kind.may_have_inferred_outlives() => {
+            let crate_map = tcx.inferred_outlives_crate(());
+            crate_map.clauses.get(&item_def_id.to_def_id()).copied().unwrap_or(&[])
         }
         _ => &[],
     }

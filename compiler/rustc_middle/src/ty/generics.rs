@@ -2,6 +2,7 @@ use std::ops::ControlFlow;
 
 use rustc_ast as ast;
 use rustc_data_structures::fx::FxHashMap;
+use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
 use rustc_macros::{StableHash, TyDecodable, TyEncodable};
 use rustc_serialize::Encodable;
@@ -535,7 +536,9 @@ impl<'tcx> TyCtxt<'tcx> {
         let mut result = tcx.explicit_clauses_of(def_id);
         tracing::debug!("clauses_of: explicit_clauses_of({:?}) = {:?}", def_id, result);
 
-        let inferred_outlives = tcx.inferred_outlives_of(def_id);
+        let kind = tcx.def_kind(def_id);
+        let inferred_outlives =
+            if kind.may_have_inferred_outlives() { tcx.inferred_outlives_of(def_id) } else { &[] };
         if !inferred_outlives.is_empty() {
             tracing::debug!(
                 "clauses_of: inferred_outlives_of({:?}) = {:?}",
@@ -553,7 +556,7 @@ impl<'tcx> TyCtxt<'tcx> {
             }
         }
 
-        if tcx.is_trait(def_id) {
+        if kind == DefKind::Trait {
             // For traits, add `Self: Trait` clause. This is
             // not part of the clauses that a user writes, but it
             // is something that one must prove in order to invoke a

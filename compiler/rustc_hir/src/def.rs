@@ -374,6 +374,12 @@ impl DefKind {
         matches!(self, DefKind::Struct | DefKind::Union | DefKind::Enum)
     }
 
+    /// ADTs and checked aliases can infer clauses. An anonymous const default
+    /// can also inherit its parent's inferred clauses.
+    pub fn may_have_inferred_outlives(self) -> bool {
+        self.is_adt() || matches!(self, DefKind::TyAlias | DefKind::AnonConst)
+    }
+
     #[inline]
     pub fn is_fn_like(self) -> bool {
         matches!(
