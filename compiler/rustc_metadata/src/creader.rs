@@ -15,7 +15,7 @@ use rustc_data_structures::sync::{self, FreezeReadGuard, FreezeWriteGuard};
 use rustc_data_structures::unord::UnordMap;
 use rustc_expand::base::SyntaxExtension;
 use rustc_hir::def_id::{CrateNum, LOCAL_CRATE, LocalDefId, StableCrateId};
-use rustc_hir::definitions::Definitions;
+use rustc_hir::definitions::{DefPathHashColumn, Definitions};
 use rustc_index::IndexVec;
 use rustc_lint_defs as lint;
 use rustc_lint_defs::builtin::UNUSED_CRATE_DEPENDENCIES;
@@ -276,6 +276,12 @@ impl CStore {
     /// May be `None` if the crate wasn't used
     pub fn resolved_extern_crate(&self, externs_name: Symbol) -> Option<CrateNum> {
         self.resolved_externs.get(&externs_name).copied()
+    }
+
+    /// Full-width path hash columns in crate number order, with vacant slots
+    /// for the local crate and tables that require decoding.
+    pub fn def_path_hash_columns(&self) -> Vec<Option<DefPathHashColumn>> {
+        self.metas.iter().map(|m| m.as_ref()?.def_path_hash_column()).collect()
     }
 
     pub(crate) fn iter_crate_data(&self) -> impl Iterator<Item = (CrateNum, &CrateMetadata)> {

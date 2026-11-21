@@ -23,7 +23,7 @@ use rustc_hashes::Hash64;
 use rustc_hir::Safety;
 use rustc_hir::def::Res;
 use rustc_hir::def_id::{CRATE_DEF_INDEX, LOCAL_CRATE};
-use rustc_hir::definitions::{DefPath, DefPathData};
+use rustc_hir::definitions::{DefPath, DefPathData, DefPathHashColumn};
 use rustc_index::Idx;
 use rustc_middle::middle::lib_features::LibFeatures;
 use rustc_middle::mir::interpret::{AllocDecodingSession, AllocDecodingState};
@@ -1967,6 +1967,18 @@ impl CrateMetadata {
     fn def_path(&self, id: DefIndex) -> DefPath {
         debug!("def_path(cnum={:?}, id={:?})", self.cnum, id);
         DefPath::make(self.cnum, id, |parent| self.def_key(parent))
+    }
+
+    pub(crate) fn def_path_hash_column(&self) -> Option<DefPathHashColumn> {
+        let table = self.root.tables.def_path_hashes;
+        // A dense, full-width u64 table already has the column layout.
+        // Narrow and bitmap-indexed tables use LazyTable::get as usual.
+        if table.width != 8 {
+            return None;
+        }
+        let range = table.encoded_range(&self.blob.bytes)?;
+        let bytes = self.blob.bytes.clone().slice(|bytes| &bytes[range]);
+        Some(DefPathHashColumn::from_le_bytes(self.root.stable_crate_id, bytes))
     }
 
     #[inline]
