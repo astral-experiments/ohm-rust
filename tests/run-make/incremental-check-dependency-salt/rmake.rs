@@ -70,6 +70,68 @@ fn main() {
 
     dependency().metadata("new-dependency").cfg("changed").run();
     subject("third", "metadata", Some("loaded")).run_fail().assert_stderr_contains("E0308");
+
+    revisit_salt();
+}
+
+// Check an old package version, change the source, and bump the version
+// back. A newer compatible session now has the current crate root.
+fn revisit_salt() {
+    let check = |salt: &str| {
+        let mut cmd = rustc();
+        cmd.input("revisit.rs")
+            .edition("2024")
+            .crate_type("lib")
+            .emit("metadata")
+            .env("CARGO_PKG_NAME", "revisit")
+            .metadata(salt)
+            .arg("-Zohm-shared-stages")
+            .arg("-Zpublic-api-hash")
+            .arg("-Zincremental-verify-ich");
+        cmd.arg("-Zquery-dep-graph").cfg("check").incremental("salts");
+        cmd
+    };
+    let root = |ty: &str| {
+        rfs::write(
+            "revisit.rs",
+            format!(
+                "#![feature(rustc_attrs)]\n#![allow(internal_features)]\n\
+                 pub type Arg = {ty}; pub mod child;"
+            ),
+        );
+    };
+    let child = |value: &str, cfg: &str| {
+        rfs::write(
+            "child.rs",
+            format!("#[rustc_clean(cfg = \"{cfg}\")] pub fn value() -> super::Arg {{ {value} }}"),
+        );
+    };
+
+    root("u8");
+    child("1", "never");
+    check("a").run();
+    root("u16");
+    child("2", "never");
+    check("b").run();
+
+    // The newest check has the same crate root but incompatible flags.
+    child("3", "never");
+    check("c").cfg("other").run();
+    child("2", "check");
+    check("a").run();
+
+    // When both roots match, prefer the original salt.
+    child("4", "never");
+    check("d").run();
+    child("2", "check");
+    check("a").run();
+
+    // Matching the root must not hide a change in another file.
+    root("u32");
+    child("5", "never");
+    check("e").run();
+    child("false", "never");
+    check("a").run_fail().assert_stderr_contains("E0308");
 }
 
 fn check_library(name: &str, salt: &str) -> Rustc {
