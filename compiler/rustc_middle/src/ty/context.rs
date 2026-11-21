@@ -3420,6 +3420,18 @@ pub fn provide(providers: &mut Providers) {
         };
         rustc_data_structures::fingerprint::Fingerprint::new(canonical.as_u64(), 0)
     };
+    providers.artifact_linkage = |tcx, ()| {
+        let mut hasher = rustc_data_structures::stable_hash::StableHasher::new();
+        tcx.stable_crate_id.hash(&mut hasher);
+        // `crates` freezes the crate store. Include every slot, even when
+        // a supplier has no alternate key or a duplicate took its place.
+        for &krate in tcx.crates(()) {
+            krate.as_u32().hash(&mut hasher);
+            tcx.untracked_stable_crate_id(krate).hash(&mut hasher);
+            tcx.incremental_crate_id(krate).hash(&mut hasher);
+        }
+        hasher.finish()
+    };
     providers.codegen_output_mode = |tcx, ()| {
         (tcx.sess.opts.output_types.should_codegen(), tcx.sess.opts.output_types.should_link())
     };

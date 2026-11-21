@@ -265,6 +265,12 @@ rustc_queries! {
         desc { "tracking crate linkage identities" }
     }
 
+    /// Canonical identities and their lookup keys after crate loading has finished.
+    query artifact_linkage(_: ()) -> Fingerprint {
+        eval_always
+        desc { "checking crate identities for incremental work products" }
+    }
+
     query codegen_output_mode(_: ()) -> (bool, bool) {
         eval_always
         desc { "tracking code generation and linking output modes" }

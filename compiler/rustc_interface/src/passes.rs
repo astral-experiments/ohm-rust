@@ -1070,11 +1070,16 @@ pub static DEFAULT_QUERY_PROVIDERS: LazyLock<Providers> = LazyLock::new(|| {
 
 /// Cargo changes its metadata salt on both package releases and dependency updates.
 /// Use the package name to keep local query keys stable across those changes.
-fn ohm_lookup_id(sess: &Session, crate_name: Symbol, is_exe: bool) -> Option<StableCrateId> {
+fn ohm_lookup_id(
+    sess: &Session,
+    crate_name: Symbol,
+    crate_types: &[CrateType],
+) -> Option<StableCrateId> {
+    let is_exe = crate_types.contains(&CrateType::Executable);
     // An immutable Cargo dependency can publish these keys for incremental
     // consumers without using them for its own queries.
     let exports_keys = !is_exe
-        && !sess.opts.output_types.should_codegen()
+        && !crate_types.contains(&CrateType::ProcMacro)
         && sess.opts.unstable_opts.layout_seed.is_none();
     if !sess.opts.unstable_opts.ohm_shared_stages
         || (sess.opts.incremental.is_none() && !exports_keys)
@@ -1119,7 +1124,7 @@ pub fn create_and_enter_global_ctxt<T, F: for<'tcx> FnOnce(TyCtxt<'tcx>) -> T>(
 
     let outputs = util::build_output_filenames(&pre_configured_attrs, sess);
 
-    let lookup_id = ohm_lookup_id(sess, crate_name, crate_types.contains(&CrateType::Executable));
+    let lookup_id = ohm_lookup_id(sess, crate_name, &crate_types);
     let (dep_graph, incr_comp_session, query_result_on_disk_cache) = setup_dep_graph(
         sess,
         crate_name,
