@@ -5493,7 +5493,14 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
             ident.span,
             Some((ident.name, ValueNS)),
         );
-        self.r.current_owner.trait_map.insert(node_id, traits);
+        // An absent entry already means there are no candidates. Avoid carrying
+        // empty slices through both the AST and HIR maps and their fingerprints.
+        let map = &mut self.r.current_owner.trait_map;
+        if traits.is_empty() {
+            map.remove(&node_id);
+        } else {
+            map.insert(node_id, traits);
+        }
     }
 
     fn resolve_and_cache_rustdoc_path(&mut self, path_str: &str, ns: Namespace) -> Option<Res> {
