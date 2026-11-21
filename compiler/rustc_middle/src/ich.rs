@@ -153,6 +153,7 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
 
         // If this is not an empty or invalid span, we want to hash the last position that belongs
         // to it, as opposed to hashing the first position past it.
+        let incremental = self.stable_hash_controls.incremental_keys;
         let Some((file, line_lo, col_lo, line_hi, col_hi)) =
             self.source_map().span_data_to_lines_and_cols(&span)
         else {
@@ -173,7 +174,8 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
         }
 
         Hash::hash(&TAG_VALID_SPAN, hasher);
-        Hash::hash(&file.stable_id, hasher);
+        let id = if incremental { file.incremental_id } else { file.stable_id };
+        Hash::hash(&id, hasher);
 
         // Hash both the length and the end location (line/column) of a span. If we hash only the
         // length, for example, then two otherwise equal spans with different end locations will
@@ -187,6 +189,11 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
         Hash::hash(&((line_lo as u64) << 32 | u64::from(col_lo.0)), hasher);
         Hash::hash(&((line_hi as u64) << 32 | u64::from(col_hi.0)), hasher);
         Hash::hash(&(span.hi - span.lo).0, hasher);
+    }
+
+    fn has_external_incremental_key(&self, raw: RawDefId) -> bool {
+        let def = DefId::from_raw_def_id(raw);
+        self.untracked.suppliers.read().get(def.krate).is_some()
     }
 
     fn with_incremental_keys<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> Option<T> {

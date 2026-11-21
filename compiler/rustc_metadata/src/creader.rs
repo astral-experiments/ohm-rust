@@ -616,7 +616,13 @@ impl CStore {
 
         let Library { source, metadata } = lib;
         let crate_root = metadata.get_root();
-        let unhashed = metadata.get_root_unhashed();
+        let (unhashed, paths) = if tcx.uses_incremental_keys()
+            && !tcx.sess.opts.unstable_opts.incremental_ignore_spans
+        {
+            metadata.get_root_with_incremental_paths()
+        } else {
+            (metadata.get_root_unhashed(), None)
+        };
         let host_hash = host_lib.as_ref().map(|lib| {
             let host_root = lib.metadata.get_crate_hashes();
             assert_eq!(
@@ -673,6 +679,14 @@ impl CStore {
             None
         };
 
+        // Separate versions of one package can have identical incremental
+        // identities. Keep the first mapping immutable and use canonical
+        // paths for each additional copy so reverse lookups stay unique.
+        if let Some(paths) = paths
+            && tcx.lookup_incremental_crate(paths.id).is_none()
+        {
+            tcx.untracked().suppliers.write().insert(cnum, crate_root.stable_crate_id(), paths);
+        }
         let crate_metadata = CrateMetadata::new(
             metadata,
             crate_root,

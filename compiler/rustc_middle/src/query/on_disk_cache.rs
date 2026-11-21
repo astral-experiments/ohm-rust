@@ -173,7 +173,7 @@ impl EncodedSourceFileId {
     #[inline]
     fn new(tcx: TyCtxt<'_>, file: &SourceFile) -> EncodedSourceFileId {
         EncodedSourceFileId {
-            stable_source_file_id: file.stable_id,
+            stable_source_file_id: file.incremental_id,
             stable_crate_id: tcx.incremental_crate_id(file.cnum),
         }
     }

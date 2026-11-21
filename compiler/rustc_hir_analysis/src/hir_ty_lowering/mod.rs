@@ -1541,7 +1541,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
                             GenericsArgsErrExtend::EnumVariant {
                                 qself: hir_self_ty,
                                 assoc_segment: segment,
-                                adt_def,
+                                enum_id: adt_def.did(),
                             },
                         );
                         let ty::Adt(_, enum_args) = self_ty.kind() else { unreachable!() };
@@ -1554,7 +1554,7 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
                             GenericsArgsErrExtend::EnumVariant {
                                 qself: hir_self_ty,
                                 assoc_segment: segment,
-                                adt_def,
+                                enum_id: adt_def.did(),
                             },
                         );
                         return Ok(TypeRelativePath::Variant {

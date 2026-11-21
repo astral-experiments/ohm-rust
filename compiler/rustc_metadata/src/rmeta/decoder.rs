@@ -923,6 +923,25 @@ impl MetadataBlob {
         LazyValue::<CrateRootUnhashed>::from_position(pos).decode(self)
     }
 
+    pub(crate) fn get_root_with_incremental_paths(
+        &self,
+    ) -> (CrateRootUnhashed, Option<rustc_hir::def_path_hash_map::ExternalDefPaths>) {
+        use super::INCREMENTAL_PATHS;
+        use super::def_path_hash_map::{decode_bytes, decode_map};
+        let mut d = self.decoder(self.unhashed_pos().get());
+        let root = CrateRootUnhashed::decode(&mut d);
+        let len = INCREMENTAL_PATHS.len();
+        if d.opaque.remaining() < len || d.read_raw_bytes(len) != INCREMENTAL_PATHS {
+            return (root, None);
+        }
+        let paths = rustc_hir::def_path_hash_map::ExternalDefPaths {
+            id: StableCrateId::decode(&mut d),
+            hashes: decode_bytes(&mut d),
+            indices: decode_map(&mut d),
+        };
+        (root, Some(paths))
+    }
+
     pub(crate) fn get_dep_extra_filenames(&self) -> IndexVec<CrateNum, String> {
         self.get_root_unhashed().dep_extra_filenames
     }
@@ -2189,6 +2208,20 @@ impl CrateMetadata {
                     stable_id,
                     ..
                 } = source_file_to_import;
+                // Compute both identities before applying consumer-side remapping.
+                // Forwarded files may belong to another crate. Only re-key a file
+                // if its original ID confirms this supplier owns it.
+                let incremental_id = if let Some(paths) =
+                    tcx.untracked().suppliers.read().get(self.cnum)
+                    && stable_id
+                        == rustc_span::StableSourceFileId::from_filename_for_export(
+                            &name,
+                            self.root.stable_crate_id,
+                        ) {
+                    rustc_span::StableSourceFileId::from_filename_for_export(&name, paths.id)
+                } else {
+                    stable_id
+                };
 
                 // If this file is under $sysroot/lib/rustlib/src/
                 // and the user wish to simulate remapping with -Z simulate-remapped-rust-src-base,
@@ -2242,6 +2275,7 @@ impl CrateMetadata {
                     src_hash,
                     checksum_hash,
                     stable_id,
+                    incremental_id,
                     normalized_source_len.to_u32(),
                     unnormalized_source_len,
                     self.cnum,

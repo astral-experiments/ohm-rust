@@ -255,9 +255,20 @@ rustc_queries! {
         feedable
     }
 
-    query local_linkage_identity(_: ()) -> Fingerprint {
+    query external_linkage_scope(_: CrateNum) -> Fingerprint {
         eval_always
-        desc { "tracking the local crate identity" }
+        desc { "tracking the imported crates' linkage identities" }
+    }
+
+    query linkage_identity(_: CrateNum) -> Fingerprint {
+        eval_always
+        desc { "tracking crate linkage identities" }
+    }
+
+    /// Canonical identities and their lookup keys after crate loading has finished.
+    query artifact_linkage(_: ()) -> Fingerprint {
+        eval_always
+        desc { "checking crate identities for incremental work products" }
     }
 
     query codegen_output_mode(_: ()) -> (bool, bool) {
@@ -992,6 +1003,15 @@ rustc_queries! {
         arena_cache
         cache_on_disk
         separate_provide_extern
+    }
+    query local_struct_variant(key: LocalDefId) -> &'tcx ty::VariantDef {
+        arena_cache
+        desc { "computing fields of `{}`", tcx.def_path_str(key) }
+    }
+
+    query local_struct_field(key: LocalDefId) -> &'tcx ty::LocalStructField<'tcx> {
+        arena_cache
+        desc { "computing local field `{}`", tcx.def_path_str(key) }
     }
     query adt_def(key: DefId) -> ty::AdtDef<'tcx> {
         desc { "computing ADT definition for `{}`", tcx.def_path_str(key) }

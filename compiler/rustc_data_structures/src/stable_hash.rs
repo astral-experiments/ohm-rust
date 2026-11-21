@@ -31,6 +31,10 @@ pub trait StableHashCtxt {
         None
     }
 
+    fn has_external_incremental_key(&self, _raw: RawDefId) -> bool {
+        false
+    }
+
     fn hashes_metadata_spans(&self) -> bool {
         false
     }

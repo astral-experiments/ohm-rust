@@ -250,7 +250,7 @@ impl<'tcx> SymbolUseVisitor<'tcx> {
         match self.typeck_results().expr_ty_adjusted(lhs).kind() {
             ty::Adt(def, _) => {
                 let index = self.typeck_results().field_index(hir_id);
-                self.insert_def_id(def.non_enum_variant().fields[index].did);
+                self.insert_def_id(def.field(rustc_abi::FIRST_VARIANT, index).did);
             }
             ty::Tuple(..) => {}
             ty::Error(_) => {}

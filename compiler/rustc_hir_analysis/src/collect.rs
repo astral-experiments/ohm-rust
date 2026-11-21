@@ -89,6 +89,8 @@ pub(crate) fn provide(providers: &mut Providers) {
         type_param_clauses: clauses_of::type_param_clauses,
         trait_def,
         adt_def,
+        local_struct_variant,
+        local_struct_field,
         fn_sig,
         impl_trait_header,
         impl_is_fully_generic_for_reflection,
@@ -1035,6 +1037,36 @@ fn lower_variant<'tcx>(
     )
 }
 
+fn local_struct_field(tcx: TyCtxt<'_>, id: LocalDefId) -> ty::LocalStructField<'_> {
+    let variant = tcx.local_struct_variant(tcx.local_parent(id));
+    let (index, field) = variant
+        .fields
+        .iter_enumerated()
+        .find(|(_, field)| field.did == id.to_def_id())
+        .expect("missing field of a local struct");
+    let earlier = &variant.fields.raw[..index.as_usize()];
+    let first_ctxt = (variant.has_errors().is_ok()
+        && !earlier.iter().any(|f| f.name == field.name))
+    .then(|| field.ident(tcx).normalize_to_macros_2_0().span.ctxt());
+    ty::LocalStructField { index, field, first_ctxt }
+}
+
+fn local_struct_variant(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::VariantDef {
+    let item = tcx.hir_expect_item(def_id);
+    let hir::ItemKind::Struct(ident, _, def) = &item.kind else {
+        bug!("expected a struct");
+    };
+    lower_variant(
+        tcx,
+        None,
+        *ident,
+        ty::VariantDiscr::Relative(0),
+        def,
+        ty::AdtKind::Struct,
+        def_id,
+    )
+}
+
 fn adt_def(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::AdtDef<'_> {
     use rustc_hir::*;
 
@@ -1071,6 +1103,13 @@ fn adt_def(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::AdtDef<'_> {
                 .collect();
 
             (AdtKind::Enum, variants)
+        }
+        // A record with multiple fields can change without affecting
+        // readers of a particular field. Bound the scan for its ordinal.
+        ItemKind::Struct(_, _, VariantData::Struct { fields, .. })
+            if tcx.uses_incremental_keys() && (2..=128).contains(&fields.len()) =>
+        {
+            return tcx.mk_local_struct_def(def_id, repr);
         }
         ItemKind::Struct(ident, _, def) | ItemKind::Union(ident, _, def) => {
             let adt_kind = match item.kind {
