@@ -511,7 +511,7 @@ trait UnusedDelimLint {
                     Closure(ref closure)
                         if matches!(closure.fn_decl.output, FnRetTy::Default(_)) =>
                     {
-                        (&[closure.body.clone()][..], UnusedDelimsCtx::ClosureBody, false)
+                        (std::slice::from_ref(&closure.body), UnusedDelimsCtx::ClosureBody, false)
                     }
                     // actual catch-all arm
                     _ => {
