@@ -240,6 +240,13 @@ rustc_queries! {
         desc { "getting the source span" }
     }
 
+    /// Multibyte characters at offsets relative to a local definition's span.
+    /// These determine character widths independently of the owner's position.
+    query source_span_multibyte_chars(key: LocalDefId) -> Option<&'tcx [rustc_span::MultiByteChar]> {
+        eval_always
+        desc { "checking character widths in the source of a definition" }
+    }
+
     query resolve_type_relative_delegations(_: ()) -> &'tcx FxIndexMap<LocalDefId, TypeRelativeDelegationRes> {
         arena_cache
         desc { "resolving type relative delegations" }

@@ -343,7 +343,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         let scrutinee_span = self.thir[scrutinee_id].span;
         let scrutinee_place = unpack!(block = self.lower_scrutinee(block, scrutinee_id));
 
-        let match_start_span = span.shrink_to_lo().to(scrutinee_span);
+        let match_start_span = self.tcx.hir_span_to(span.shrink_to_lo(), scrutinee_span);
         let patterns = arms
             .iter()
             .map(|&arm| {
@@ -467,9 +467,10 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         // all the arm blocks will rejoin here
         let end_block = self.cfg.start_new_block();
 
-        let end_brace = self.source_info(
-            outer_source_info.span.with_lo(outer_source_info.span.hi() - BytePos::from_usize(1)),
-        );
+        // Taking the last byte preserves the span's parent and relative endpoint.
+        let span = outer_source_info.span;
+        let data = if span.is_empty() { span.data() } else { span.data_untracked() };
+        let end_brace = self.source_info(data.with_lo(data.hi - BytePos::from_usize(1)));
         for arm_block in arm_end_blocks {
             let block = &self.cfg.basic_blocks[arm_block];
             let last_location = block.statements.last().map(|s| s.source_info);
@@ -2355,7 +2356,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 };
                 self.declare_bindings(
                     source_scope,
-                    pat.span.to(scope_span),
+                    self.tcx.hir_span_to(pat.span, scope_span),
                     pat,
                     None,
                     opt_match_place,
@@ -2460,7 +2461,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             }
 
             let source_info = self.source_info(guard_span);
-            let guard_end = self.source_info(tcx.sess.source_map().end_point(guard_span));
+            let guard_end = self.source_info(tcx.hir_span_end_point(guard_span));
             let guard_frame = self.guard_context.pop().unwrap();
             debug!("Exiting guard building context with locals: {:?}", guard_frame);
 

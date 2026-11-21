@@ -5,6 +5,7 @@
 pub mod map;
 pub mod nested_filter;
 pub mod place;
+mod spans;
 
 use rustc_attr_ir::Attribute;
 use rustc_attr_ir::lang_items::LangItem;
@@ -456,6 +457,7 @@ impl<'tcx> ProjectedMaybeOwner<'tcx> {
 }
 
 pub fn provide(providers: &mut Providers) {
+    providers.source_span_multibyte_chars = spans::source_span_multibyte_chars;
     providers.hir_crate_items = map::hir_crate_items;
     providers.crate_hash = map::crate_hash;
     providers.ohm_metadata_input_hashes = map::metadata_input_hashes;

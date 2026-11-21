@@ -300,7 +300,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     let scrutinee_place_builder =
                         unpack!(body_block = this.lower_scrutinee(body_block, scrutinee));
 
-                    let match_start_span = match_span.shrink_to_lo().to(scrutinee_span);
+                    let match_start_span =
+                        this.tcx.hir_span_to(match_span.shrink_to_lo(), scrutinee_span);
 
                     let mut patterns = Vec::with_capacity(arms.len());
                     for &arm_id in arms.iter() {
