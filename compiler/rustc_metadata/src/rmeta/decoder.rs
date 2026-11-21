@@ -242,6 +242,8 @@ pub(crate) struct CrateMetadata {
     // --- Some data pre-decoded from the metadata blob, usually for performance ---
     /// Data about the top-level items in a crate, as well as various crate-level metadata.
     pub(super) root: CrateRoot,
+    /// Whether consumers can cheaply track this input by its whole-crate hash.
+    pub(super) forward_whole_crate_reads: bool,
     /// Crate-level metadata that is not in the SVH.
     unhashed: CrateRootUnhashed,
     trait_impls: Vec<TraitGroup>,
@@ -2337,6 +2339,7 @@ impl CrateMetadata {
 
 impl CrateMetadata {
     pub(crate) fn new(
+        sysroot_lib_dir: &std::path::Path,
         blob: MetadataBlob,
         root: CrateRoot,
         unhashed: CrateRootUnhashed,
@@ -2384,7 +2387,14 @@ impl CrateMetadata {
         // that does not copy any data. It just does some data verification.
         let def_path_hash_map = root.def_path_hash_map.decode(&blob);
 
+        // Cargo compiles registry dependencies separately for check and build.
+        // When their hashes change between stages, per-query fingerprints let
+        // callers stay green. Proc macros and sysroot libraries serve both stages.
+        let forward_whole_crate_reads = !root.public_api_hash_opt_enabled
+            && (root.is_proc_macro_crate()
+                || source.paths().any(|path| path.parent() == Some(sysroot_lib_dir)));
         CrateMetadata {
+            forward_whole_crate_reads,
             blob,
             root,
             unhashed,

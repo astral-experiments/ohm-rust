@@ -170,7 +170,7 @@ macro_rules! provide_one {
             // The input hash provider may itself acquire the crate store during import resolution.
             let $store = CStore::from_tcx($tcx);
             let $cdata = $store.get_crate_data($def_id.krate);
-            if reads_metadata_input && !$cdata.root.public_api_hash_opt_enabled {
+            if reads_metadata_input && $cdata.forward_whole_crate_reads {
                 $tcx.dep_graph.mark_whole_crate_read($tcx);
             }
             $compute
