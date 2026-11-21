@@ -1149,19 +1149,15 @@ impl CStore {
     }
 
     fn inject_allocator_crate(&mut self, tcx: TyCtxt<'_>, krate: &ast::Crate) {
-        self.has_global_allocator =
-            match &*fn_spans(krate, Symbol::intern(&global_fn_name(sym::alloc))) {
-                [span1, span2, ..] => {
-                    tcx.dcx().emit_err(diagnostics::NoMultipleGlobalAlloc {
-                        span2: *span2,
-                        span1: *span1,
-                    });
-                    true
-                }
-                spans => !spans.is_empty(),
-            };
-        let alloc_error_handler = Symbol::intern(&global_fn_name(ALLOC_ERROR_HANDLER));
-        self.has_alloc_error_handler = match &*fn_spans(krate, alloc_error_handler) {
+        self.has_global_allocator = match &*allocator_fn_spans(krate, sym::alloc) {
+            [span1, span2, ..] => {
+                tcx.dcx()
+                    .emit_err(diagnostics::NoMultipleGlobalAlloc { span2: *span2, span1: *span1 });
+                true
+            }
+            spans => !spans.is_empty(),
+        };
+        self.has_alloc_error_handler = match &*allocator_fn_spans(krate, ALLOC_ERROR_HANDLER) {
             [span1, span2, ..] => {
                 tcx.dcx().emit_err(diagnostics::NoMultipleAllocErrorHandler {
                     span2: *span2,
@@ -1464,7 +1460,7 @@ impl CStore {
     }
 }
 
-fn fn_spans(krate: &ast::Crate, name: Symbol) -> Vec<Span> {
+fn allocator_fn_spans(krate: &ast::Crate, method: Symbol) -> Vec<Span> {
     struct Finder {
         name: Symbol,
         spans: Vec<Span>,
@@ -1481,6 +1477,8 @@ fn fn_spans(krate: &ast::Crate, name: Symbol) -> Vec<Span> {
         }
     }
 
+    // Expansion has finished, so every item name in the AST is already interned.
+    let Some(name) = Symbol::interned(&global_fn_name(method)) else { return Vec::new() };
     let mut f = Finder { name, spans: Vec::new() };
     visit::walk_crate(&mut f, krate);
     f.spans
