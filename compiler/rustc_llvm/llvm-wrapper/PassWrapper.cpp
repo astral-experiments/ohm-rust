@@ -713,8 +713,8 @@ extern "C" LLVMRustResult LLVMRustOptimize(
     bool CompactTestInlining, bool IsLinkerPluginLTO, bool NoPrepopulatePasses, bool VerifyIR,
     bool LintIR, LLVMRustBuffer **ThinLTOBufferRef,
     LLVMRustBuffer **ThinLTOSummaryBufferRef, bool MergeFunctions,
-    bool UnrollLoops, bool SLPVectorize, bool LoopVectorize,
-    bool DisableSimplifyLibCalls, bool EmitLifetimeMarkers,
+    bool MergeRustFunctions, bool UnrollLoops, bool SLPVectorize,
+    bool LoopVectorize, bool DisableSimplifyLibCalls, bool EmitLifetimeMarkers,
     registerEnzymeAndPassPipelineFn EnzymePtr, bool PrintBeforeEnzyme,
     bool PrintAfterEnzyme, bool PrintPasses,
     LLVMRustSanitizerOptions *SanitizerOptions, const char *PGOGenPath,
@@ -736,6 +736,9 @@ extern "C" LLVMRustResult LLVMRustOptimize(
   PTO.LoopVectorization = LoopVectorize;
   PTO.SLPVectorization = SLPVectorize;
   PTO.MergeFunctions = MergeFunctions;
+#ifdef LLVM_OHM_RUST_FUNCTION_MERGING_OPTION
+  PTO.MergeRustFunctions &= MergeRustFunctions;
+#endif
 
   PassInstrumentationCallbacks PIC;
 
