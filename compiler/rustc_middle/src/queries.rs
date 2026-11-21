@@ -255,9 +255,14 @@ rustc_queries! {
         feedable
     }
 
-    query local_linkage_identity(_: ()) -> Fingerprint {
+    query external_linkage_scope(_: CrateNum) -> Fingerprint {
         eval_always
-        desc { "tracking the local crate identity" }
+        desc { "tracking the imported crates' linkage identities" }
+    }
+
+    query linkage_identity(_: CrateNum) -> Fingerprint {
+        eval_always
+        desc { "tracking crate linkage identities" }
     }
 
     query codegen_output_mode(_: ()) -> (bool, bool) {

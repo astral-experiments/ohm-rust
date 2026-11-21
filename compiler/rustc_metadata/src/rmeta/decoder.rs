@@ -923,6 +923,25 @@ impl MetadataBlob {
         LazyValue::<CrateRootUnhashed>::from_position(pos).decode(self)
     }
 
+    pub(crate) fn get_root_with_incremental_paths(
+        &self,
+    ) -> (CrateRootUnhashed, Option<rustc_hir::def_path_hash_map::ExternalDefPaths>) {
+        use super::INCREMENTAL_PATHS;
+        use super::def_path_hash_map::{decode_bytes, decode_map};
+        let mut d = self.decoder(self.unhashed_pos().get());
+        let root = CrateRootUnhashed::decode(&mut d);
+        let len = INCREMENTAL_PATHS.len();
+        if d.opaque.remaining() < len || d.read_raw_bytes(len) != INCREMENTAL_PATHS {
+            return (root, None);
+        }
+        let paths = rustc_hir::def_path_hash_map::ExternalDefPaths {
+            id: StableCrateId::decode(&mut d),
+            hashes: decode_bytes(&mut d),
+            indices: decode_map(&mut d),
+        };
+        (root, Some(paths))
+    }
+
     pub(crate) fn get_dep_extra_filenames(&self) -> IndexVec<CrateNum, String> {
         self.get_root_unhashed().dep_extra_filenames
     }

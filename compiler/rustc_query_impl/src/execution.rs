@@ -749,11 +749,7 @@ const FINITE_IMPL_RECEIVERS: &[SimplifiedType] = &[
 fn registered_def_id(tcx: TyCtxt<'_>, dep_node: DepNode) -> Option<DefId> {
     let hash = DefPathHash(dep_node.key_fingerprint.into());
     let id = hash.stable_crate_id();
-    if id != tcx.incremental_crate_id(LOCAL_CRATE)
-        && !tcx.untracked().stable_crate_ids.read().contains_key(&id)
-    {
-        return None;
-    }
+    tcx.lookup_incremental_crate(id)?;
     dep_node.extract_def_id(tcx)
 }
 
@@ -848,7 +844,7 @@ pub(crate) fn force_implementations_of_trait(
             _ => return None,
         };
         let supplier = DefPathHash(supplier_node.key_fingerprint.into()).stable_crate_id();
-        let cnum = *tcx.untracked().stable_crate_ids.read().get(&supplier)?;
+        let cnum = tcx.lookup_incremental_crate(supplier)?;
         if trait_id.is_local()
             || cnum == LOCAL_CRATE
             || DepNode::construct(tcx, DepKind::external_metadata_input_hash, &cnum)

@@ -79,6 +79,9 @@ pub struct Definitions {
     /// Optional second set of local keys for the incremental cache. Public
     /// identifiers keep both halves of their original canonical hash.
     incremental_paths: Option<Box<IncrementalPaths>>,
+    /// Non-incremental suppliers build the same table for their consumers
+    /// while using canonical paths throughout their own compilation.
+    export_only_paths: Option<Box<IncrementalPaths>>,
     stable_crate_id: StableCrateId,
     def_id_to_key: IndexVec<LocalDefId, DefKey>,
     // We do only store the local hash, as all the definitions are from the current crate.
@@ -395,7 +398,7 @@ impl Definitions {
 
     /// Adds a root definition (no parent) and a few other reserved definitions.
     pub fn new(stable_crate_id: StableCrateId) -> Definitions {
-        Self::with_incremental_identity(stable_crate_id, stable_crate_id)
+        Self::with_incremental_identity(stable_crate_id, stable_crate_id, false)
     }
 
     /// Share the canonical and incremental hash columns for the definitions
@@ -408,6 +411,18 @@ impl Definitions {
             .as_mut()
             .map_or_else(|| local.clone(), |p| p.hashes.publish(p.crate_id));
         (local, incremental)
+    }
+
+    pub fn exported_incremental_paths(
+        &self,
+    ) -> Option<(StableCrateId, &[u8], &[u8], &DefPathHashMap)> {
+        let p = self.incremental_paths.as_ref().or(self.export_only_paths.as_ref())?;
+        Some((
+            p.crate_id,
+            p.hashes.prefix().as_flattened(),
+            p.hashes.pending.as_flattened(),
+            &p.indices,
+        ))
     }
 
     pub fn has_incremental_paths(&self) -> bool {
@@ -433,6 +448,7 @@ impl Definitions {
     pub fn with_incremental_identity(
         stable_crate_id: StableCrateId,
         incremental_crate_id: StableCrateId,
+        incremental: bool,
     ) -> Definitions {
         let key = DefKey {
             parent: None,
@@ -453,14 +469,16 @@ impl Definitions {
         let def_path_hash =
             DefPathHash::new(stable_crate_id, Hash64::new(stable_crate_id.as_u64()));
 
+        let mut paths = (stable_crate_id != incremental_crate_id).then(|| {
+            Box::new(IncrementalPaths {
+                crate_id: incremental_crate_id,
+                hashes: LocalPathHashes::default(),
+                indices: Default::default(),
+            })
+        });
         let mut defs = Definitions {
-            incremental_paths: (stable_crate_id != incremental_crate_id).then(|| {
-                Box::new(IncrementalPaths {
-                    crate_id: incremental_crate_id,
-                    hashes: LocalPathHashes::default(),
-                    indices: Default::default(),
-                })
-            }),
+            incremental_paths: if incremental { paths.take() } else { None },
+            export_only_paths: paths,
             stable_crate_id,
             def_path_hashes: Default::default(),
             def_id_to_key: Default::default(),
@@ -482,7 +500,7 @@ impl Definitions {
         let def_id = self.def_id_to_key.push(key);
         debug!("def_id_to_key.push() - {key:?} <-> {:?}", def_id.local_def_index);
 
-        if let Some(paths) = &mut self.incremental_paths {
+        if let Some(paths) = self.incremental_paths.as_mut().or(self.export_only_paths.as_mut()) {
             let hash = match key.parent {
                 Some(local_def_index) => {
                     let parent = paths.hashes.get(LocalDefId { local_def_index });

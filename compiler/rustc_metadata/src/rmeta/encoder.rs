@@ -1268,10 +1268,26 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             }
         }
 
-        self.lazy(CrateRootUnhashed {
+        let root = self.lazy(CrateRootUnhashed {
             extra_filename: self.tcx.sess.opts.cg.extra_filename.clone(),
             dep_extra_filenames,
-        })
+        });
+        // Place these private tables after the unhashed root, where older readers
+        // stop decoding. The consumer derives the effective layout seed from
+        // the canonical path, which requires the default producer seed.
+        if !self.tcx.sess.opts.output_types.should_codegen()
+            && self.tcx.sess.opts.unstable_opts.layout_seed.is_none()
+            && let Some((id, prefix, tail, indices)) =
+                self.tcx.untracked().definitions.freeze().exported_incremental_paths()
+        {
+            self.emit_raw_bytes(super::INCREMENTAL_PATHS);
+            id.encode(self);
+            self.emit_usize(prefix.len() + tail.len());
+            self.emit_raw_bytes(prefix);
+            self.emit_raw_bytes(tail);
+            DefPathHashMapRef::BorrowedFromTcx(indices).encode(self);
+        }
+        root
     }
 
     fn encode_crate_root<'h>(
