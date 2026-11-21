@@ -1,7 +1,8 @@
 use std::fmt;
 
 use rustc_data_structures::stable_hash::{StableHash, StableHashCtxt, StableHasher};
-use rustc_span::LocalExpnId;
+use rustc_serialize::{Decodable, Encodable};
+use rustc_span::{LocalExpnId, SpanDecoder, SpanEncoder};
 
 rustc_index::newtype_index! {
     /// Identifies an AST node.
@@ -10,12 +11,25 @@ rustc_index::newtype_index! {
     /// This is later turned into [`DefId`] and `HirId` for the HIR.
     ///
     /// [`DefId`]: rustc_span::def_id::DefId
-    #[encodable]
     #[orderable]
     #[debug_format = "NodeId({})"]
     pub struct NodeId {
         /// The [`NodeId`] used to represent the root of the crate.
         const CRATE_NODE_ID = 0;
+    }
+}
+
+impl<E: SpanEncoder> Encodable<E> for NodeId {
+    #[inline]
+    fn encode(&self, encoder: &mut E) {
+        encoder.encode_node_id(self.as_u32());
+    }
+}
+
+impl<D: SpanDecoder> Decodable<D> for NodeId {
+    #[inline]
+    fn decode(decoder: &mut D) -> Self {
+        Self::from_u32(decoder.decode_node_id())
     }
 }
 
