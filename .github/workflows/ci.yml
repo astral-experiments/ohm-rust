@@ -205,6 +205,7 @@ jobs:
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1
+          tests/incremental/dropck-region-free-kinds.rs
           tests/ui/borrowck/borrowck-lend-flow-loop.rs
           tests/ui/borrowck/two-phase-cannot-nest-mut-self-calls.rs
           tests/ui/nll/maybe-initialized-drop.rs
