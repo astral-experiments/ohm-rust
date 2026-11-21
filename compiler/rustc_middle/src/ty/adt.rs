@@ -119,12 +119,16 @@ pub struct AdtDefData {
 }
 
 impl AdtDefData {
-    /// A cached local ADT may originate in a check using another linkage salt.
+    /// A cached ADT may originate in a check using another linkage salt.
     /// Refresh the seed with the canonical path of its already-remapped definition.
-    pub(super) fn remap_local_layout_seed(&mut self, tcx: TyCtxt<'_>) {
+    pub(super) fn remap_layout_seed(&mut self, tcx: TyCtxt<'_>) {
         if let Some(local) = self.did.as_local() {
             let path = tcx.definitions_untracked().def_path_hash(local);
             self.repr.field_shuffle_seed = tcx.path_layout_seed(path);
+        } else if tcx.untracked().suppliers.read().get(self.did.krate).is_some() {
+            // Only suppliers using the default layout seed export alternate paths.
+            self.repr.field_shuffle_seed =
+                tcx.untracked_def_path_hash(self.did).0.to_smaller_hash();
         }
     }
 }
@@ -183,7 +187,9 @@ impl StableHash for AdtDefData {
                 did.stable_hash(hcx, &mut hasher);
                 variants.stable_hash(hcx, &mut hasher);
                 flags.stable_hash(hcx, &mut hasher);
-                if stable_hash_controls.incremental_keys && did.is_local() {
+                if stable_hash_controls.incremental_keys
+                    && (did.is_local() || hcx.has_external_incremental_key(did.to_raw_def_id()))
+                {
                     // The effective seed has a separate dependency (repr_for_layout).
                     // The user seed is a tracked compiler option.
                     repr.without_seed().stable_hash(hcx, &mut hasher);
@@ -232,9 +238,7 @@ impl<'tcx> AdtDef<'tcx> {
 
     /// The full representation, including its canonical layout seed.
     pub fn repr_for_layout(self, tcx: TyCtxt<'tcx>) -> ReprOptions {
-        if self.did().is_local() {
-            tcx.track_local_linkage_identity();
-        }
+        tcx.track_linkage_identity(self.did().krate);
         self.0.0.repr
     }
 

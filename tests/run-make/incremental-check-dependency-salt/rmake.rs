@@ -43,6 +43,8 @@ fn truncate_check_key() {
 }
 
 fn main() {
+    supplier_release();
+    changed_binding();
     dependency().run();
     subject("damaged", "metadata", Some("not-loaded")).run();
     truncate_check_key();
@@ -67,4 +69,72 @@ fn main() {
 
     dependency().metadata("new-dependency").cfg("changed").run();
     subject("third", "metadata", Some("loaded")).run_fail().assert_stderr_contains("E0308");
+}
+
+fn check_library(name: &str, salt: &str) -> Rustc {
+    let mut cmd = rustc();
+    cmd.input(format!("{name}.rs"))
+        .edition("2024")
+        .crate_type("lib")
+        .emit("metadata")
+        .env("CARGO_PKG_NAME", name)
+        .metadata(salt)
+        .arg("-Zohm-shared-stages")
+        .arg("-Zpublic-api-hash")
+        .arg("-Zincremental-verify-ich");
+    cmd
+}
+
+fn supplier_release() {
+    let supplier = |salt: &str| {
+        let mut cmd = check_library("supplier", salt);
+        cmd.arg("-Zrandomize-layout");
+        cmd
+    };
+    let consumer = |directory: &str| {
+        let mut cmd = check_library("consumer", "fixed");
+        cmd.incremental(directory);
+        cmd.arg("-Zquery-dep-graph").extern_("supplier", "libsupplier.rmeta");
+        cmd
+    };
+    supplier("first").run();
+    consumer("consumer-incr").run();
+    // Reload an ordered pair of external projections before changing the salt.
+    consumer("consumer-incr").run();
+    supplier("second").run();
+    consumer("consumer-incr").cfg("release").run();
+
+    // Compare the encoded type and randomized layout with a fresh check.
+    supplier("third").run();
+    consumer("consumer-incr").run();
+    let warm = rfs::read("libconsumer.rmeta");
+    consumer("fresh").run();
+    assert!(warm == rfs::read("libconsumer.rmeta"));
+
+    // The new key still tracks the contents of the upstream definition.
+    supplier("changed").cfg("changed").run();
+    consumer("consumer-incr").run_fail().assert_stderr_contains("E0308");
+}
+
+// A private path changes without altering the canonical metadata of the bridge.
+// The reader must interpret the re-export using the new binding.
+fn changed_binding() {
+    rfs::write("dep.rs", "pub struct Packet;");
+    rfs::write("bridge.rs", "pub use dep::Packet;");
+    rfs::write("reader.rs", "pub fn read() -> bridge::Packet { bridge::Packet }");
+
+    let dep = |package| {
+        check_library("dep", "fixed").env("CARGO_PKG_NAME", package).incremental("dep-incr").run();
+    };
+    let read = || {
+        check_library("reader", "fixed")
+            .extern_("bridge", "libbridge.rmeta")
+            .incremental("reader-incr")
+            .run();
+    };
+    dep("original");
+    check_library("bridge", "fixed").extern_("dep", "libdep.rmeta").run();
+    read();
+    dep("changed");
+    read();
 }

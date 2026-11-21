@@ -1268,10 +1268,26 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             }
         }
 
-        self.lazy(CrateRootUnhashed {
+        let root = self.lazy(CrateRootUnhashed {
             extra_filename: self.tcx.sess.opts.cg.extra_filename.clone(),
             dep_extra_filenames,
-        })
+        });
+        // Place these private tables after the unhashed root, where older readers
+        // stop decoding. The consumer derives the effective layout seed from
+        // the canonical path, which requires the default producer seed.
+        if !self.tcx.sess.opts.output_types.should_codegen()
+            && self.tcx.sess.opts.unstable_opts.layout_seed.is_none()
+            && let Some((id, prefix, tail, indices)) =
+                self.tcx.untracked().definitions.freeze().exported_incremental_paths()
+        {
+            self.emit_raw_bytes(super::INCREMENTAL_PATHS);
+            id.encode(self);
+            self.emit_usize(prefix.len() + tail.len());
+            self.emit_raw_bytes(prefix);
+            self.emit_raw_bytes(tail);
+            DefPathHashMapRef::BorrowedFromTcx(indices).encode(self);
+        }
+        root
     }
 
     fn encode_crate_root<'h>(
@@ -2486,7 +2502,11 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 });
                 self.tables.generics_of.set_some_hashed(def_id.index, lazy, (def_id, &wire), hcx);
                 record!(self.tables.explicit_clauses_of[def_id] <- self.tcx.explicit_clauses_of(def_id), hcx);
-                let inferred_outlives = self.tcx.inferred_outlives_of(def_id);
+                let inferred_outlives = if def_kind.may_have_inferred_outlives() {
+                    tcx.inferred_outlives_of(def_id)
+                } else {
+                    &[]
+                };
                 record_defaulted_array!(self.tables.inferred_outlives_of[def_id] <- inferred_outlives, hcx);
 
                 for param in &g.own_params {

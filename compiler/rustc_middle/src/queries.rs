@@ -255,9 +255,14 @@ rustc_queries! {
         feedable
     }
 
-    query local_linkage_identity(_: ()) -> Fingerprint {
+    query external_linkage_scope(_: CrateNum) -> Fingerprint {
         eval_always
-        desc { "tracking the local crate identity" }
+        desc { "tracking the imported crates' linkage identities" }
+    }
+
+    query linkage_identity(_: CrateNum) -> Fingerprint {
+        eval_always
+        desc { "tracking crate linkage identities" }
     }
 
     query codegen_output_mode(_: ()) -> (bool, bool) {
@@ -1538,9 +1543,9 @@ rustc_queries! {
         cache_on_disk
     }
 
-    /// Per-body `region::ScopeTree`. The `DefId` should be the owner `DefId` for the body;
-    /// in the case of closures, this will be redirected to the enclosing function.
-    query region_scope_tree(def_id: LocalDefId) -> &'tcx crate::middle::region::ScopeTree {
+    /// Computes drop scopes for a type-checking root and its nested bodies.
+    /// Use [`TyCtxt::region_scope_tree`] for an arbitrary body.
+    query region_scope_tree_root(def_id: LocalDefId) -> &'tcx crate::middle::region::ScopeTree {
         desc { "computing drop scopes for `{}`", tcx.def_path_str(def_id) }
     }
 

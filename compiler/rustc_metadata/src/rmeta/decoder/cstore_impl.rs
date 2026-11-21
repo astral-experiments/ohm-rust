@@ -445,11 +445,32 @@ provide! { tcx, def_id, other, cdata, cstore,
         let mixed_rust_lto = crate_types.len() > 1
             && crate_types.contains(&CrateType::Rlib)
             && matches!(tcx.sess.lto(), Lto::Thin | Lto::Fat);
-        if (rust_dylib || mixed_rust_lto) && tcx.codegen_output_mode(()).1 {
+        let hash = if (rust_dylib || mixed_rust_lto) && tcx.codegen_output_mode(()).1 {
             cdata.private_hash()
         } else {
             cdata.public_hash()
+        };
+        // The supplier's metadata describes canonical paths. Decoding can
+        // resolve those paths to different incremental keys when several
+        // versions compete for the same alternate identity. Revalidate the
+        // decoded queries when any binding in this supplier's map changes.
+        if !tcx.uses_incremental_keys() {
+            return hash;
         }
+        let aliases = tcx.untracked().suppliers.read();
+        let mut bindings = cdata.dependencies().filter_map(|cnum| {
+            let alias = aliases.get(cnum)?;
+            Some((aliases.canonical(cnum).as_u64(), alias.id.as_u64()))
+        }).peekable();
+        if bindings.peek().is_none() {
+            return hash;
+        }
+        let mut hasher = StableHasher::new();
+        hash.as_fingerprint().hash(&mut hasher);
+        for binding in bindings {
+            binding.hash(&mut hasher);
+        }
+        rustc_data_structures::svh::Svh::new(hasher.finish())
     }
     crate_host_hash => { cdata.host_hash }
     crate_name => { cdata.root.header.name }

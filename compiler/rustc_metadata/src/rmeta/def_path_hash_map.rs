@@ -1,6 +1,6 @@
 use rustc_data_structures::owned_slice::OwnedSlice;
 use rustc_hashes::Hash64;
-use rustc_hir::def_path_hash_map::{Config as HashMapConfig, DefPathHashMap};
+use rustc_hir::def_path_hash_map::{DefPathHashMap, MappedDefPathHashMap};
 use rustc_serialize::{Decodable, Decoder, Encodable, Encoder};
 use rustc_span::def_id::DefIndex;
 
@@ -9,7 +9,7 @@ use crate::rmeta::decoder::BlobDecodeContext;
 use crate::rmeta::encoder::MetadataEncoder;
 
 pub(crate) enum DefPathHashMapRef<'tcx> {
-    OwnedFromMetadata(odht::HashTable<HashMapConfig, OwnedSlice>),
+    OwnedFromMetadata(MappedDefPathHashMap),
     BorrowedFromTcx(&'tcx DefPathHashMap),
 }
 
@@ -47,18 +47,25 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> Encodable<EncodeContext<'a, 'tcx, M>>
 
 impl<'a> Decodable<BlobDecodeContext<'a>> for DefPathHashMapRef<'static> {
     fn decode(d: &mut BlobDecodeContext<'a>) -> DefPathHashMapRef<'static> {
-        let len = d.read_usize();
-        let pos = d.position();
-        let o = d.blob().bytes().clone().slice(|blob| &blob[pos..pos + len]);
-
-        // Although we already have the data we need via the `OwnedSlice`, we still need
-        // to advance the `DecodeContext`'s position so it's in a valid state after
-        // the method. We use `read_raw_bytes()` for that.
-        let _ = d.read_raw_bytes(len);
-
-        let inner = odht::HashTable::from_raw_bytes(o).unwrap_or_else(|e| {
-            panic!("decode error: {e}");
-        });
-        DefPathHashMapRef::OwnedFromMetadata(inner)
+        DefPathHashMapRef::OwnedFromMetadata(decode_map(d))
     }
+}
+
+pub(super) fn decode_bytes(d: &mut BlobDecodeContext<'_>) -> OwnedSlice {
+    let len = d.read_usize();
+    let pos = d.position();
+    let o = d.blob().bytes().clone().slice(|blob| &blob[pos..pos + len]);
+
+    // Although we already have the data we need via the `OwnedSlice`, we still need
+    // to advance the `DecodeContext`'s position so it's in a valid state after
+    // the method. We use `read_raw_bytes()` for that.
+    let _ = d.read_raw_bytes(len);
+
+    o
+}
+
+pub(super) fn decode_map(d: &mut BlobDecodeContext<'_>) -> MappedDefPathHashMap {
+    odht::HashTable::from_raw_bytes(decode_bytes(d)).unwrap_or_else(|e| {
+        panic!("decode error: {e}");
+    })
 }

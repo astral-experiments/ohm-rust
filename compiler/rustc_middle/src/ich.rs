@@ -189,6 +189,11 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
         Hash::hash(&(span.hi - span.lo).0, hasher);
     }
 
+    fn has_external_incremental_key(&self, raw: RawDefId) -> bool {
+        let def = DefId::from_raw_def_id(raw);
+        self.untracked.suppliers.read().get(def.krate).is_some()
+    }
+
     fn with_incremental_keys<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> Option<T> {
         if !self.untracked.definitions.read().has_incremental_paths() {
             return None;
