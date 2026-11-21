@@ -1003,16 +1003,26 @@ where
     Op: Fn(Word, Word) -> Word,
 {
     assert_eq!(lhs.len(), rhs.len());
-    let mut changed = 0;
-    for (lhs_slot, &rhs_val) in iter::zip(lhs, rhs) {
-        let old_val = *lhs_slot;
-        let new_val = op(old_val, rhs_val);
-        *lhs_slot = new_val;
-        // This is essentially equivalent to a != with changed being a bool, but
-        // in practice this code gets auto-vectorized by the compiler for most
-        // operators. Using != here causes us to generate quite poor code as the
-        // compiler tries to go back to a boolean on each loop iteration.
-        changed |= old_val ^ new_val;
+    let update = |a: &mut Word, b| {
+        let old = *a;
+        *a = op(old, b);
+        old ^ *a
+    };
+
+    // Give the vectorizer independent lanes to accumulate the changed bits.
+    // Reducing to a boolean at each step makes this loop harder to vectorize.
+    const LANES: usize = 4;
+    let (lhs, lhs_tail) = lhs.as_chunks_mut::<LANES>();
+    let (rhs, rhs_tail) = rhs.as_chunks::<LANES>();
+    let mut changes = [0; LANES];
+    for (a, b) in iter::zip(lhs, rhs) {
+        for i in 0..LANES {
+            changes[i] |= update(&mut a[i], b[i]);
+        }
+    }
+    let mut changed = changes.into_iter().fold(0, |a, b| a | b);
+    for (a, &b) in iter::zip(lhs_tail, rhs_tail) {
+        changed |= update(a, b);
     }
     changed != 0
 }
