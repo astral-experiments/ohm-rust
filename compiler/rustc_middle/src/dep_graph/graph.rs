@@ -1061,6 +1061,9 @@ impl DepGraph {
                         return None;
                     }
                 }
+                // Reading the canonical trait ID adds a linkage dependency.
+                // The trait and receiver nodes still determine the bucket key.
+                DepKind::linkage_identity => {}
                 DepKind::crates
                 | DepKind::upstream_trait_impls_key_hash
                 | DepKind::implementations_of_trait
