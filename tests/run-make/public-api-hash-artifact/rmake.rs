@@ -180,14 +180,14 @@ fn downstream_exported_macro_value() -> u32 {
     run("macro-value-user").stdout_utf8().trim().parse().unwrap()
 }
 
-fn check_refreshed_dependency_hash() {
+fn check_refreshed_dependency_hash(output: &str) {
     let compile = |name: &str, incremental: &str| {
         let mut command = rustc();
         command
             .input(format!("{name}.rs"))
             .crate_type("rlib")
             .edition("2024")
-            .emit("metadata")
+            .emit(output)
             .arg("-Zpublic-api-hash")
             .arg("-Zincremental-verify-ich")
             .json("artifacts")
@@ -239,7 +239,11 @@ fn check_refreshed_dependency_hash() {
     let manifest = metadata_work_product_in("refresh-facade")
         .with_file_name("metadata-prefix-v3.ohm-prefix-v3");
     let mut manifest_bytes = rfs::read(&manifest);
-    let magic = b"ohm-metadata-prefix-v4\0";
+    let magic = if output == "metadata" {
+        b"ohm-metadata-prefix-v4\0"
+    } else {
+        b"ohm-metadata-prefix-v5\0"
+    };
     assert!(manifest_bytes.starts_with(magic));
     manifest_bytes[magic.len() - 2] = b'3';
     rfs::write(&manifest, manifest_bytes);
@@ -254,10 +258,42 @@ fn check_refreshed_dependency_hash() {
     supplier("repaired-cold-supplier");
     facade("repaired-cold-facade");
     assert_eq!(repaired, rfs::read("librefresh_facade.rmeta"));
+
+    if output == "metadata,link" {
+        // A local-only refresh keeps the initial item bytes. A subsequent supplier
+        // edit must validate their original source state across both sessions.
+        let facade_src =
+            "pub use refresh_supplier::Marker;\n#[expect(dead_code)] fn hidden() -> u32 { 1 }\n";
+        rfs::write("refresh_facade.rs", facade_src);
+        facade("local-facade");
+        rfs::write("refresh_facade.rs", facade_src.replace("{ 1 }", "{ 2 }"));
+        facade("local-facade").assert_stderr_contains("reused metadata item prefix");
+        rfs::write("refresh_supplier.rs", "pub struct Marker;\n");
+        supplier("refresh-supplier");
+        facade("local-facade").assert_stderr_not_contains("reused metadata item prefix");
+        let local = rfs::read("librefresh_facade.rmeta");
+        facade("cold-local-facade");
+        assert_eq!(local, rfs::read("librefresh_facade.rmeta"));
+
+        // An imported macro supplies producer-local positions to the facade.
+        let supplier_src = "#[macro_export] macro_rules! make { () => { pub struct Marker; } }\n";
+        rfs::write("refresh_supplier.rs", supplier_src);
+        rfs::write("refresh_facade.rs", "refresh_supplier::make!();\n");
+        supplier("refresh-supplier");
+        facade("expanded-facade");
+        rfs::write("refresh_supplier.rs", format!("{supplier_src}pub struct Addition;\n"));
+        supplier("refresh-supplier");
+        facade("expanded-facade").assert_stderr_not_contains("reused metadata item prefix");
+        let expanded = rfs::read("librefresh_facade.rmeta");
+        facade("cold-expanded-facade");
+        assert_eq!(expanded, rfs::read("librefresh_facade.rmeta"));
+    }
 }
 
 fn main() {
-    check_refreshed_dependency_hash();
+    for output in ["metadata", "metadata,link"] {
+        run_make_support::run_in_tmpdir(|| check_refreshed_dependency_hash(output));
+    }
     let fresh_hash = compile_and_read_public_api_hash(false);
     let original_metadata = metadata_work_product();
     let prefix_manifest = original_metadata.with_file_name("metadata-prefix-v3.ohm-prefix-v3");

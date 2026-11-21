@@ -10,7 +10,7 @@ use std::path::Path;
 use rustc_ast::token::{Delimiter, TokenKind};
 use rustc_ast::tokenstream::TokenTree;
 use rustc_data_structures::fingerprint::Fingerprint;
-use rustc_data_structures::fx::FxIndexSet;
+use rustc_data_structures::fx::{FxIndexMap, FxIndexSet};
 use rustc_data_structures::memmap::Mmap;
 use rustc_data_structures::stable_hash::{StableHash, StableHasher};
 use rustc_hir::def_id::{DefId, LOCAL_CRATE, LocalDefId};
@@ -19,17 +19,98 @@ use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::codec::TyEncoder;
 use rustc_serialize::{Decodable, Decoder, Encodable, Encoder, opaque};
 use rustc_session::IncrCompSession;
-use rustc_span::{BytePos, SourceFile, Span, StableSourceFileId, SyntaxContext};
+use rustc_span::{BytePos, ExternalSource, SourceFile, Span, StableSourceFileId, SyntaxContext};
 
 use super::{DefPathHashDefIdEncoder, EncodeContext, EncodedMetadata};
 use crate::rmeta::LazyTable;
 use crate::rmeta::table::FixedSizeEncoding;
 
-fn manifest_magic(refreshes_dependency_hashes: bool) -> &'static [u8] {
-    if refreshes_dependency_hashes {
-        b"ohm-metadata-prefix-v4\0"
-    } else {
-        b"ohm-metadata-prefix-v3\0"
+/// Conditions at the fresh native encoding that produced the retained item bytes.
+#[derive(Encodable, Decodable)]
+pub(super) struct NativePrefixInputs {
+    crate_identity: Fingerprint,
+    sources: FxIndexMap<StableSourceFileId, Fingerprint>,
+}
+
+impl NativePrefixInputs {
+    /// Only the upstream SVHs may change. Preserve the HIR supplement and the mapping
+    /// from serialized crate numbers to stable producer identities.
+    fn crate_identity(tcx: TyCtxt<'_>) -> Fingerprint {
+        let mut hasher = StableHasher::new();
+        tcx.dep_graph.with_ignore(|| tcx.ohm_metadata_input_hashes(()).0).hash(&mut hasher);
+        for &cnum in tcx.crates(()) {
+            tcx.stable_crate_id(cnum).as_u64().hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+
+    fn unchanged(&self, tcx: TyCtxt<'_>) -> bool {
+        let sm = tcx.sess.source_map();
+        self.crate_identity == Self::crate_identity(tcx)
+            && self.sources.iter().all(|(&id, &old)| {
+                sm.source_file_by_stable_id(id)
+                    .is_some_and(|file| Self::source_fingerprint(&file) == old)
+            })
+    }
+
+    /// Native item hashes depend on display columns and may include DWARF checksums.
+    /// Foreign locations also retain a source-table index in the producer's metadata.
+    fn source_fingerprint(file: &SourceFile) -> Fingerprint {
+        let mut hasher = StableHasher::new();
+        file.src_hash.hash(&mut hasher);
+        file.cnum.as_u32().hash(&mut hasher);
+        if let ExternalSource::Foreign { metadata_index, .. } = &*file.external_src.read() {
+            metadata_index.hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+}
+
+pub(super) enum DependencyHashMode {
+    Tracked,
+    Check,
+    Native(NativePrefixInputs),
+}
+
+impl DependencyHashMode {
+    pub(super) fn refreshable(tcx: TyCtxt<'_>) -> Self {
+        if tcx.sess.opts.output_types.should_codegen() {
+            Self::Native(NativePrefixInputs {
+                crate_identity: NativePrefixInputs::crate_identity(tcx),
+                sources: FxIndexMap::default(),
+            })
+        } else {
+            Self::Check
+        }
+    }
+
+    fn magic(&self) -> &'static [u8] {
+        match self {
+            Self::Tracked => b"ohm-metadata-prefix-v3\0",
+            Self::Check => b"ohm-metadata-prefix-v4\0",
+            Self::Native(_) => b"ohm-metadata-prefix-v5\0",
+        }
+    }
+
+    pub(super) fn record_source(&mut self, tcx: TyCtxt<'_>, file: &SourceFile) {
+        if let Self::Native(inputs) = self {
+            // Suffix refreshes keep the original item bytes across local edits.
+            // Keep their original source state until the next fresh encoding.
+            inputs.sources.entry(file.stable_id).or_insert_with(|| {
+                if file.is_imported() {
+                    tcx.ensure_ok().public_api_hash(file.cnum);
+                }
+                NativePrefixInputs::source_fingerprint(file)
+            });
+        }
+    }
+
+    pub(super) fn can_refresh(&self, tcx: TyCtxt<'_>) -> bool {
+        match self {
+            Self::Tracked => false,
+            Self::Check => true,
+            Self::Native(inputs) => inputs.unchanged(tcx),
+        }
     }
 }
 
@@ -54,7 +135,7 @@ pub(super) struct MetadataPrefixManifest {
 }
 
 pub(super) struct MetadataPrefixManifestBuilder {
-    pub(super) refreshes_dependency_hashes: bool,
+    pub(super) dependency_hashes: DependencyHashMode,
     pub(super) manifest: MetadataPrefixManifest,
     pub(super) protected_span_keys: FxIndexSet<(StableSourceFileId, u32, u32)>,
     pub(super) definition_span_hasher: StableHasher,
@@ -66,14 +147,14 @@ pub(super) fn metadata_fingerprint(bytes: &[u8]) -> Fingerprint {
     hasher.finish()
 }
 
-// A v4 prefix may omit dependency-hash reads from the graph. Protect this capability
+// A refreshable prefix may omit dependency-hash reads from the graph. Protect this capability
 // together with the payload. Released v3 manifests use the original payload-only hash.
-fn manifest_fingerprint(payload: &[u8], refreshes_dependency_hashes: bool) -> Fingerprint {
-    if !refreshes_dependency_hashes {
+fn manifest_fingerprint(payload: &[u8], mode: &DependencyHashMode) -> Fingerprint {
+    if matches!(mode, DependencyHashMode::Tracked) {
         return metadata_fingerprint(payload);
     }
     let mut hasher = StableHasher::new();
-    (manifest_magic(true), payload).hash(&mut hasher);
+    (mode.magic(), payload).hash(&mut hasher);
     hasher.finish()
 }
 
@@ -264,7 +345,7 @@ impl MetadataPrefixManifestBuilder {
                 definition_span_count: 0,
                 definition_span_fingerprint: Fingerprint::ZERO,
             },
-            refreshes_dependency_hashes: false,
+            dependency_hashes: DependencyHashMode::Tracked,
             protected_span_keys: FxIndexSet::default(),
             definition_span_hasher: StableHasher::new(),
         }
@@ -332,7 +413,7 @@ impl MetadataPrefixManifestBuilder {
 
 impl MetadataPrefixManifest {
     /// Validates the infallible decoder's wire format before allowing it to allocate or decode.
-    fn validate_payload(payload: &[u8]) -> Option<()> {
+    fn validate_payload(payload: &[u8], mode: &DependencyHashMode) -> Option<()> {
         fn read_unsigned(bytes: &mut &[u8], bits: u32) -> Option<u64> {
             let mut value = 0_u64;
             for index in 0..bits.div_ceil(7) as usize {
@@ -360,6 +441,11 @@ impl MetadataPrefixManifest {
         }
 
         let mut bytes = payload.strip_suffix(opaque::MAGIC_END_BYTES)?;
+        if matches!(mode, DependencyHashMode::Native(_)) {
+            skip(&mut bytes, 16)?;
+            let count = usize::try_from(read_unsigned(&mut bytes, usize::BITS)?).ok()?;
+            skip(&mut bytes, count.checked_mul(32)?)?;
+        }
         read_unsigned(&mut bytes, u64::BITS)?;
         read_unsigned(&mut bytes, usize::BITS)?;
         read_unsigned(&mut bytes, usize::BITS)?;
@@ -394,7 +480,10 @@ impl MetadataPrefixManifest {
         bytes.is_empty().then_some(())
     }
 
-    pub(super) fn load(path: &Path, allow_dependency_hash_refresh: bool) -> Option<(Self, bool)> {
+    pub(super) fn load(
+        path: &Path,
+        permitted: DependencyHashMode,
+    ) -> Option<(Self, DependencyHashMode)> {
         const MAX_MANIFEST_SIZE: u64 = 16 * 1024 * 1024;
 
         let file = File::open(path).ok()?;
@@ -406,26 +495,24 @@ impl MetadataPrefixManifest {
         if bytes.len() > MAX_MANIFEST_SIZE as usize {
             return None;
         }
-        // A v3 prefix keeps its original tracked dependency hashes. Only v4
-        // delegates those fields to the refresh below the immutable item data.
-        let (payload, refreshes_dependency_hashes) = if allow_dependency_hash_refresh
-            && let Some(payload) = bytes.strip_prefix(manifest_magic(true))
-        {
-            (payload, true)
+        let (payload, mut mode) = if let Some(payload) = bytes.strip_prefix(permitted.magic()) {
+            (payload, permitted)
         } else {
-            (bytes.strip_prefix(manifest_magic(false))?, false)
+            (bytes.strip_prefix(DependencyHashMode::Tracked.magic())?, DependencyHashMode::Tracked)
         };
         let (expected_fingerprint, payload) = payload.split_first_chunk::<16>()?;
-        if manifest_fingerprint(payload, refreshes_dependency_hashes)
-            != Fingerprint::from_le_bytes(*expected_fingerprint)
+        if manifest_fingerprint(payload, &mode) != Fingerprint::from_le_bytes(*expected_fingerprint)
         {
             return None;
         }
-        Self::validate_payload(payload)?;
+        Self::validate_payload(payload, &mode)?;
         let mut decoder = opaque::MemDecoder::new(payload, 0).ok()?;
+        if let DependencyHashMode::Native(sources) = &mut mode {
+            *sources = Decodable::decode(&mut decoder);
+        }
         let manifest = Self::decode(&mut decoder);
         (decoder.position() + opaque::MAGIC_END_BYTES.len() == payload.len())
-            .then_some((manifest, refreshes_dependency_hashes))
+            .then_some((manifest, mode))
     }
 
     /// A fresh encoder which delegates dependency SVHs must never leave behind a usable v3
@@ -443,9 +530,9 @@ impl MetadataPrefixManifest {
     pub(super) fn save(
         &self,
         incr_comp_session: Option<&IncrCompSession>,
-        refreshes_dependency_hashes: bool,
+        mode: &DependencyHashMode,
     ) -> std::io::Result<()> {
-        let magic = manifest_magic(refreshes_dependency_hashes);
+        let magic = mode.magic();
         let Some(path) = EncodedMetadata::prefix_manifest_path(incr_comp_session) else {
             return Ok(());
         };
@@ -459,6 +546,9 @@ impl MetadataPrefixManifest {
         let mut encoder = opaque::FileEncoder::new(temporary_file.path())?;
         encoder.emit_raw_bytes(magic);
         encoder.emit_raw_bytes(&[0; 16]);
+        if let DependencyHashMode::Native(sources) = mode {
+            sources.encode(&mut encoder);
+        }
         self.encode(&mut encoder);
         if let Err((_, error)) = encoder.finish() {
             return Err(error);
@@ -469,7 +559,7 @@ impl MetadataPrefixManifest {
             // SAFETY: This private temporary file has finished encoding and is not mutated while
             // its read-only mapping is alive.
             let manifest = unsafe { Mmap::map(file)? };
-            manifest_fingerprint(&manifest[magic.len() + 16..], refreshes_dependency_hashes)
+            manifest_fingerprint(&manifest[magic.len() + 16..], mode)
         };
         let mut file = File::options().write(true).open(temporary_file.path())?;
         file.seek(std::io::SeekFrom::Start(magic.len() as u64))?;
