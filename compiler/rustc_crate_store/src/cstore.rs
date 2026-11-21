@@ -10,7 +10,7 @@ use rustc_abi::ExternAbi;
 use rustc_attr_ir::{CfgEntry, PeImportNameType};
 use rustc_data_structures::svh::Svh;
 use rustc_data_structures::sync::{self, AppendOnlyIndexVec, FreezeLock};
-use rustc_hir_id::definitions::{DefKey, DefPath, Definitions};
+use rustc_hir_id::definitions::{DefKey, DefPath, DefPathHashColumn, Definitions};
 use rustc_macros::{BlobDecodable, Decodable, Encodable, StableHash};
 use rustc_span::def_id::{
     CrateNum, DefId, DefPathHash, LOCAL_CRATE, LocalDefId, StableCrateId, StableCrateIdMap,
@@ -215,7 +215,13 @@ pub trait CrateStore: std::fmt::Debug {
 
 pub type CrateStoreDyn = dyn CrateStore + sync::DynSync + sync::DynSend;
 
+pub struct ResolvedPathHashes {
+    columns: Vec<Option<DefPathHashColumn>>,
+    incremental: DefPathHashColumn,
+}
+
 pub struct Untracked {
+    pub resolved_paths: OnceLock<ResolvedPathHashes>,
     pub cstore: FreezeLock<Box<CrateStoreDyn>>,
     /// Reference span for definitions.
     pub source_span: AppendOnlyIndexVec<LocalDefId, Span>,
@@ -227,6 +233,47 @@ pub struct Untracked {
 }
 
 impl Untracked {
+    /// Publish the resolved definitions and upstream metadata together.
+    /// Crate number zero is reserved for the local crate.
+    pub fn publish_path_hashes(&self, mut columns: Vec<Option<DefPathHashColumn>>) {
+        self.resolved_paths.get_or_init(|| {
+            let (local, incremental) = self.definitions.write().publish_path_hashes();
+            columns[0] = Some(local);
+            ResolvedPathHashes { columns, incremental }
+        });
+    }
+
+    #[inline]
+    pub fn def_path_hash(&self, id: DefId, incremental: bool) -> DefPathHash {
+        if let Some(paths) = self.resolved_paths.get() {
+            let column = if incremental && id.is_local() {
+                Some(&paths.incremental)
+            } else {
+                paths.columns[id.krate.as_usize()].as_ref()
+            };
+            if let Some(hash) = column.and_then(|column| column.get(id.index)) {
+                return hash;
+            }
+        }
+        self.unpublished_path_hash(id, incremental)
+    }
+
+    /// Handles reads during resolution, synthetic definitions added later,
+    /// and upstream tables that require decoding.
+    #[inline(never)]
+    fn unpublished_path_hash(&self, id: DefId, incremental: bool) -> DefPathHash {
+        if let Some(local) = id.as_local() {
+            let definitions = self.definitions.read();
+            if incremental {
+                definitions.incremental_def_path_hash(local)
+            } else {
+                definitions.def_path_hash(local)
+            }
+        } else {
+            self.cstore.read().def_path_hash(id)
+        }
+    }
+
     /// Freezes the cstore and, with it, the `StableCrateId` map, making reads of
     /// both lock-free. The cstore is frozen first so any in-flight crate loading
     /// (which writes the map) finishes before the map is frozen.

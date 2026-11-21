@@ -8,6 +8,7 @@ use std::fmt::{self, Write};
 use std::hash::Hash;
 
 use rustc_data_structures::fx::FxHashMap;
+use rustc_data_structures::owned_slice::{OwnedSlice, slice_owned};
 use rustc_data_structures::stable_hash::StableHasher;
 use rustc_hashes::Hash64;
 use rustc_index::IndexVec;
@@ -54,15 +55,92 @@ pub struct Definitions {
     stable_crate_id: StableCrateId,
     def_id_to_key: IndexVec<LocalDefId, DefKey>,
     // We do only store the local hash, as all the definitions are from the current crate.
-    def_path_hashes: IndexVec<LocalDefId, Hash64>,
+    def_path_hashes: LocalPathHashes,
     def_path_hash_to_index: DefPathHashMap,
 }
 
 #[derive(Debug)]
 struct IncrementalPaths {
     crate_id: StableCrateId,
-    hashes: IndexVec<LocalDefId, Hash64>,
+    hashes: LocalPathHashes,
     indices: DefPathHashMap,
+}
+
+/// An immutable, full-width column of little-endian path hashes, indexed by
+/// the definition index in one crate. Both resolution and crate metadata yield
+/// this representation without copying the hashes.
+#[derive(Clone)]
+pub struct DefPathHashColumn {
+    crate_id: StableCrateId,
+    bytes: OwnedSlice,
+}
+
+impl DefPathHashColumn {
+    pub fn from_le_bytes(crate_id: StableCrateId, bytes: OwnedSlice) -> Self {
+        assert!(bytes.len().is_multiple_of(8));
+        Self { crate_id, bytes }
+    }
+
+    #[inline]
+    fn hashes(&self) -> &[[u8; 8]] {
+        self.bytes.as_chunks().0
+    }
+
+    #[inline]
+    pub fn get(&self, index: DefIndex) -> Option<DefPathHash> {
+        let bytes = self.hashes().get(index.as_usize())?;
+        Some(DefPathHash::new(self.crate_id, Hash64::new(u64::from_le_bytes(*bytes))))
+    }
+}
+
+impl fmt::Debug for DefPathHashColumn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_list().entries(self.hashes().iter().map(|b| u64::from_le_bytes(*b))).finish()
+    }
+}
+
+/// Resolution appends hashes to `pending`. On publication we transfer the
+/// buffer to `resolved`, so later definitions start a new tail at the next
+/// local index. Both views share the original allocation.
+#[derive(Debug, Default)]
+struct LocalPathHashes {
+    resolved: Option<DefPathHashColumn>,
+    pending: Vec<[u8; 8]>,
+}
+
+impl LocalPathHashes {
+    fn publish(&mut self, crate_id: StableCrateId) -> DefPathHashColumn {
+        self.resolved
+            .get_or_insert_with(|| {
+                let hashes = std::mem::take(&mut self.pending);
+                DefPathHashColumn::from_le_bytes(
+                    crate_id,
+                    slice_owned(hashes, |v| v.as_flattened()),
+                )
+            })
+            .clone()
+    }
+
+    #[inline]
+    fn prefix(&self) -> &[[u8; 8]] {
+        self.resolved.as_ref().map_or(&[], |column| column.hashes())
+    }
+
+    #[inline]
+    fn get(&self, id: LocalDefId) -> Hash64 {
+        let i = id.local_def_index.as_usize();
+        let prefix = self.prefix();
+        let bytes = prefix.get(i).unwrap_or_else(|| &self.pending[i - prefix.len()]);
+        Hash64::new(u64::from_le_bytes(*bytes))
+    }
+
+    fn push(&mut self, hash: Hash64) {
+        self.pending.push(hash.as_u64().to_le_bytes());
+    }
+
+    fn len(&self) -> usize {
+        self.prefix().len() + self.pending.len()
+    }
 }
 
 /// A unique identifier that we can use to lookup a definition
@@ -273,7 +351,7 @@ impl Definitions {
     #[instrument(level = "trace", skip(self, id), fields(def_index=?id.local_def_index), ret)]
     #[inline(always)]
     pub fn def_path_hash(&self, id: LocalDefId) -> DefPathHash {
-        DefPathHash::new(self.stable_crate_id, self.def_path_hashes[id])
+        DefPathHash::new(self.stable_crate_id, self.def_path_hashes.get(id))
     }
 
     /// Returns the path from the crate root to `index`. The root
@@ -293,6 +371,18 @@ impl Definitions {
         Self::with_incremental_identity(stable_crate_id, stable_crate_id)
     }
 
+    /// Share the canonical and incremental hash columns for the definitions
+    /// already assigned indices. If the crate identities match, the two
+    /// handles refer to the same column.
+    pub fn publish_path_hashes(&mut self) -> (DefPathHashColumn, DefPathHashColumn) {
+        let local = self.def_path_hashes.publish(self.stable_crate_id);
+        let incremental = self
+            .incremental_paths
+            .as_mut()
+            .map_or_else(|| local.clone(), |p| p.hashes.publish(p.crate_id));
+        (local, incremental)
+    }
+
     pub fn has_incremental_paths(&self) -> bool {
         self.incremental_paths.is_some()
     }
@@ -300,7 +390,7 @@ impl Definitions {
     #[inline]
     pub fn incremental_def_path_hash(&self, id: LocalDefId) -> DefPathHash {
         match &self.incremental_paths {
-            Some(paths) => DefPathHash::new(paths.crate_id, paths.hashes[id]),
+            Some(paths) => DefPathHash::new(paths.crate_id, paths.hashes.get(id)),
             None => self.def_path_hash(id),
         }
     }
@@ -340,7 +430,7 @@ impl Definitions {
             incremental_paths: (stable_crate_id != incremental_crate_id).then(|| {
                 Box::new(IncrementalPaths {
                     crate_id: incremental_crate_id,
-                    hashes: IndexVec::new(),
+                    hashes: LocalPathHashes::default(),
                     indices: Default::default(),
                 })
             }),
@@ -368,7 +458,7 @@ impl Definitions {
         if let Some(paths) = &mut self.incremental_paths {
             let hash = match key.parent {
                 Some(local_def_index) => {
-                    let parent = paths.hashes[LocalDefId { local_def_index }];
+                    let parent = paths.hashes.get(LocalDefId { local_def_index });
                     key.compute_stable_hash(DefPathHash::new(paths.crate_id, parent)).local_hash()
                 }
                 None => Hash64::new(paths.crate_id.as_u64()),

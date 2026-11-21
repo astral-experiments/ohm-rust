@@ -1238,11 +1238,7 @@ impl<'tcx> TyCtxt<'tcx> {
     /// Reads the linkage-dependent path hash for invariant checks during interning.
     #[inline]
     fn untracked_def_path_hash(self, def_id: DefId) -> DefPathHash {
-        if let Some(def_id) = def_id.as_local() {
-            self.definitions_untracked().def_path_hash(def_id)
-        } else {
-            self.cstore_untracked().def_path_hash(def_id)
-        }
+        self.untracked.def_path_hash(def_id, false)
     }
 
     #[inline]
@@ -1261,11 +1257,7 @@ impl<'tcx> TyCtxt<'tcx> {
 
     #[inline]
     pub fn incremental_def_path_hash(self, id: DefId) -> DefPathHash {
-        if let Some(local) = id.as_local() {
-            self.untracked.definitions.read().incremental_def_path_hash(local)
-        } else {
-            self.cstore_untracked().def_path_hash(id)
-        }
+        self.untracked.def_path_hash(id, true)
     }
 
     #[inline]

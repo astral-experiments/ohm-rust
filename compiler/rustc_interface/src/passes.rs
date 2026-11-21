@@ -942,6 +942,7 @@ fn resolver_for_lowering_raw<'tcx>(
 
     // Don't mutate the cstore or stable crate id map from here on.
     tcx.untracked().freeze_cstore();
+    tcx.untracked().publish_path_hashes(CStore::from_tcx(tcx).def_path_hash_columns());
 
     let ResolverOutputs {
         global_ctxt: untracked_resolutions,
@@ -1126,6 +1127,7 @@ pub fn create_and_enter_global_ctxt<T, F: for<'tcx> FnOnce(TyCtxt<'tcx>) -> T>(
 
     let stable_crate_ids = FreezeLock::new(StableCrateIdMap::default());
     let untracked = Untracked {
+        resolved_paths: Default::default(),
         cstore,
         source_span: AppendOnlyIndexVec::new(),
         definitions,

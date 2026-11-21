@@ -203,17 +203,7 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
     #[inline]
     fn def_path_hash(&self, raw_def_id: RawDefId) -> Fingerprint {
         let def_id = DefId::from_raw_def_id(raw_def_id);
-        if let Some(def_id) = def_id.as_local() {
-            let definitions = self.untracked.definitions.read();
-            if self.stable_hash_controls.incremental_keys {
-                definitions.incremental_def_path_hash(def_id)
-            } else {
-                definitions.def_path_hash(def_id)
-            }
-        } else {
-            self.untracked.cstore.read().def_path_hash(def_id)
-        }
-        .0
+        self.untracked.def_path_hash(def_id, self.stable_hash_controls.incremental_keys).0
     }
 
     /// Assert that the provided `StableHashCtxt` is configured with the default
