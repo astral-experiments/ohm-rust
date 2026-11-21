@@ -688,6 +688,7 @@ impl CStore {
             tcx.untracked().suppliers.write().insert(cnum, crate_root.stable_crate_id(), paths);
         }
         let crate_metadata = CrateMetadata::new(
+            &tcx.sess.target_tlib_path.dir,
             metadata,
             crate_root,
             unhashed,
