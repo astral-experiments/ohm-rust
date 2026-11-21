@@ -315,6 +315,27 @@ bulk_directory() {
 }
 runtest bulk_directory
 
+ohm_staged_uninstall() {
+    try sh "$S/gen-installer.sh" \
+    --image-dir="$TEST_DIR/image1" \
+    --work-dir="$WORK_DIR" \
+    --output-dir="$OUT_DIR" \
+    --bulk-dirs=dir-to-install
+    try env OHM_STAGED_INSTALL=1 "$WORK_DIR/package/install.sh" --prefix="$PREFIX_DIR"
+    local activated="$WORK_DIR/activated SDK"
+    mv "$PREFIX_DIR" "$activated"
+    mkdir -p "$PREFIX_DIR/bin" "$PREFIX_DIR/dir-to-install"
+    touch "$PREFIX_DIR/bin/program"
+    test -f "$activated/bin/program"
+    test -d "$activated/dir-to-install"
+    sh "$activated/lib/packagelib/uninstall.sh"
+    test ! -e "$activated/bin/program"
+    test ! -e "$activated/dir-to-install"
+    test -f "$PREFIX_DIR/bin/program"
+    test -d "$PREFIX_DIR/dir-to-install"
+}
+runtest ohm_staged_uninstall
+
 bulk_directory_overwrite() {
     try sh "$S/gen-installer.sh" \
     --image-dir="$TEST_DIR/image1" \
