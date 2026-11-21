@@ -169,6 +169,30 @@ pub fn registered_lint_tools_ast(
     registered_tools
 }
 
+/// Inside a closure, HIR spans are relative to the enclosing function. Use
+/// that same anchor for a source macro's call site so THIR can trim a let
+/// binding to its initializer without depending on absolute positions.
+fn closure_call_site_anchor(tcx: TyCtxt<'_>, span: Span) -> Option<LocalDefId> {
+    let data = span.data_untracked();
+    let parent = data.parent?;
+    if !data.ctxt.is_root() || data.is_dummy() {
+        return None;
+    }
+    let mut owner = parent;
+    while tcx.def_kind(owner) == DefKind::Closure {
+        owner = tcx.local_parent(owner);
+    }
+    if owner == parent || !matches!(tcx.def_kind(owner), DefKind::Fn | DefKind::AssocFn) {
+        return None;
+    }
+    let item = tcx.source_span_untracked(owner).data_untracked();
+    if !item.ctxt.is_root() || !item.contains(data) {
+        return None;
+    }
+    let file = tcx.sess.source_map().lookup_source_file(item.lo);
+    (!file.is_imported() && file.contains(item.hi)).then_some(owner)
+}
+
 impl<'ra, 'tcx> ResolverExpand for Resolver<'ra, 'tcx> {
     fn next_node_id(&mut self) -> NodeId {
         self.next_node_id()
@@ -342,6 +366,15 @@ impl<'ra, 'tcx> ResolverExpand for Resolver<'ra, 'tcx> {
         )?;
 
         let mut span = invoc.span();
+        if self.tcx.sess.opts.incremental.is_some()
+            && parent_scope.expansion == LocalExpnId::ROOT
+            && invoc.fragment_kind == AstFragmentKind::Expr
+            && matches!(invoc.kind, InvocationKind::Bang { .. })
+            && matches!(ext.kind, SyntaxExtensionKind::MacroRules(_))
+            && let Some(owner) = closure_call_site_anchor(self.tcx, span)
+        {
+            span = span.with_parent(Some(owner));
+        }
         if let Some(anchor) = invocation_parent.preceding_source_item
             && parent_scope.expansion != LocalExpnId::ROOT
             && self.tcx.def_kind(invocation_parent.parent_def) == DefKind::AssocFn
