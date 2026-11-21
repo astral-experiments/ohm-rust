@@ -2042,6 +2042,8 @@ pub struct SourceFile {
     /// files within the crate graph and for speeding up hashing in incremental
     /// compilation.
     pub stable_id: StableSourceFileId,
+    /// File identity used to hash and relocate spans in incremental query results.
+    pub incremental_id: StableSourceFileId,
     /// Indicates which crate this `SourceFile` was imported from.
     pub cnum: CrateNum,
 }
@@ -2061,6 +2063,7 @@ impl Clone for SourceFile {
             multibyte_chars: self.multibyte_chars.clone(),
             normalized_pos: self.normalized_pos.clone(),
             stable_id: self.stable_id,
+            incremental_id: self.incremental_id,
             cnum: self.cnum,
         }
     }
@@ -2181,6 +2184,7 @@ impl<D: SpanDecoder> Decodable<D> for SourceFile {
             multibyte_chars,
             normalized_pos,
             stable_id,
+            incremental_id: stable_id,
             cnum,
         }
     }
@@ -2297,6 +2301,7 @@ impl SourceFile {
             multibyte_chars,
             normalized_pos,
             stable_id,
+            incremental_id: stable_id,
             cnum: LOCAL_CRATE,
         })
     }
