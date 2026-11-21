@@ -372,6 +372,21 @@ fn private_from_input<'tcx>(
     .then_some(local)
 }
 
+/// A mixed impl can be public while some of its methods cannot be called downstream.
+/// Keep their signatures and identities, including the hygiene of their names.
+fn private_check_method(tcx: TyCtxt<'_>, id: LocalDefId) -> bool {
+    if tcx.local_visibility(id).is_public()
+        || !matches!(tcx.associated_item(id).container, ty::AssocContainer::InherentImpl)
+        || tcx.def_span(id).from_expansion()
+        || tcx.is_const_fn(id.to_def_id())
+        || !tcx.explicit_clauses_of(id).clauses.is_empty()
+    {
+        return false;
+    }
+    let attrs = tcx.codegen_fn_attrs(id);
+    !attrs.contains_extern_indicator() && !attrs.flags.contains(CodegenFnAttrFlags::TRACK_CALLER)
+}
+
 /// Such a block cannot supply an accessible inherent item. References from exported MIR
 /// still reach exactly the methods it uses and retain their individual metadata hashes.
 fn private_inherent_impl(
@@ -2472,6 +2487,8 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
 
         let tcx = self.tcx;
 
+        let terminal = self.hash_declaration_text;
+        let ordinary_check = M::HASH_PUBLIC_API && !terminal && !tcx.codegen_output_mode(()).0;
         for local_id in metadata_definitions(tcx, self.early_bodies.as_ref()) {
             let def_id = local_id.to_def_id();
             let def_kind = tcx.def_kind(local_id);
@@ -2513,6 +2530,13 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 } else {
                     record!(self.tables.expn_that_defined[def_id] <- expn, hcx);
                 }
+            }
+            // Apply the terminal spelling rule only to the identifier, late-bound
+            // region and argument names. Attributes and expansion data above and
+            // the rest of the metadata below retain their usual hashes.
+            if ordinary_check && def_kind == DefKind::AssocFn && private_check_method(tcx, local_id)
+            {
+                self.hash_declaration_text = true;
             }
             if should_encode_span(def_kind) {
                 let ident_span = tcx.def_ident_span(def_id);
@@ -2641,6 +2665,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                     (def_id, digest),
                     hcx,
                 );
+                self.hash_declaration_text = terminal;
             }
             if let Some(name) = tcx.intrinsic(def_id) {
                 record!(self.tables.intrinsic[def_id] <- name, hcx);
