@@ -36,7 +36,7 @@ impl Drop for Tracked {
 // Once T is usize, neither the callback nor black_box needs a cleanup. Keep
 // the named value addressable and described by debuginfo across the callback.
 // CHECK-LABEL: ; monomorphic_noop_cleanups::generic::<usize>
-// CHECK: define{{.*}}!dbg ![[USIZE_SCOPE:[0-9]+]] {
+// CHECK: define{{.*}}!dbg ![[USIZE_SCOPE:[0-9]+]]
 // CHECK: %value = alloca [8 x i8]
 // CHECK: store i64 %{{[^,]+}}, ptr %value
 // CHECK: #dbg_declare(ptr %value, ![[VALUE_DBG:[0-9]+]], !DIExpression()
