@@ -2728,6 +2728,17 @@ impl Symbol {
         with_session_globals(|session_globals| session_globals.symbol_interner.intern_str(str))
     }
 
+    /// Look up a string without adding it to the session's interner.
+    pub fn interned(str: &str) -> Option<Self> {
+        let bytes = str.as_bytes();
+        let hash = FxBuildHasher::default().hash_one(bytes);
+        with_session_globals(|globals| {
+            globals.symbol_interner.0.with_lock(|inner| {
+                inner.indices.find(hash, |&(s, _)| s == bytes).map(|&(_, n)| Self::new(n))
+            })
+        })
+    }
+
     /// Access the underlying string. This is a slowish operation because it
     /// requires locking the symbol interner.
     ///
