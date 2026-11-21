@@ -81,7 +81,7 @@ pub struct OnDiskCache {
     /// Most retained rows keep their graph index. Only remapped rows need a second index.
     remapped_queries: FxHashMap<SerializedDepNodeIndex, SerializedDepNodeIndex>,
     loaded_query_values: Lock<GrowableBitSet<SerializedDepNodeIndex>>,
-    pending_query_values: Lock<Vec<(SerializedDepNodeIndex, SerializedDepNodeIndex)>>,
+    pending_query_values: Lock<ForwardedQueries>,
 
     file_index_to_stable_id: FxHashMap<SourceFileIndex, EncodedSourceFileId>,
 
@@ -123,11 +123,25 @@ pub struct OnDiskCache {
     foreign_expn_data: UnhashMap<ExpnHash, u32>,
 }
 
+/// With retained graph indices, a bitmap describes all aliases. Graph
+/// compaction can move indices, which need an explicit pair.
+#[derive(Default, Encodable, Decodable)]
+struct ForwardedQueries {
+    unchanged: GrowableBitSet<SerializedDepNodeIndex>,
+    moved: Vec<(SerializedDepNodeIndex, SerializedDepNodeIndex)>,
+}
+
+impl ForwardedQueries {
+    fn is_empty(&self) -> bool {
+        self.moved.is_empty() && self.unchanged.is_empty()
+    }
+}
+
 // This type is used only for serialization and deserialization.
 #[derive(Encodable, Decodable)]
 struct Footer {
     previous_cache_len: Option<usize>,
-    forwarded_query_values: Vec<(SerializedDepNodeIndex, SerializedDepNodeIndex)>,
+    forwarded_query_values: ForwardedQueries,
     forwarded_allocations: Vec<(usize, usize, usize)>,
     file_index_to_stable_id: FxHashMap<SourceFileIndex, EncodedSourceFileId>,
     query_values_index: Vec<(SerializedDepNodeIndex, AbsoluteBytePos)>,
@@ -148,7 +162,7 @@ pub struct QueryCachePromotion {
     data: Arc<Mmap>,
     data_len: usize,
     start_pos: usize,
-    query_values: Vec<(SerializedDepNodeIndex, SerializedDepNodeIndex)>,
+    query_values: ForwardedQueries,
     allocation_origins: FxHashMap<interpret::AllocId, (usize, usize)>,
 }
 
@@ -270,24 +284,21 @@ impl OnDiskCache {
         let alloc_decoding_state =
             Arc::new(AllocDecodingState::new(footer.interpret_alloc_index).with_aliases(aliases));
 
-        // Bound both the number of queries to promote and the bytes to re-encode.
-        // The footer can be large even for tiny changes because it lists each alias.
+        let ForwardedQueries { unchanged: mut saved_query_slots, moved } =
+            footer.forwarded_query_values;
+        // Bound the number of queries to promote and the bytes to re-encode.
         // Let normal compaction discard the prefix if few of its queries remain.
-        let small_overlay = previous_cache.as_ref().is_some_and(|prev| {
-            let saved = prev.saved_query_slots.count();
-            footer_pos - prev.data_len <= prev.data_len / 8
-                && footer.query_values_index.len() <= saved / 8
-                && footer.forwarded_query_values.len() >= saved / 2
-        });
-        let mut saved_query_slots = GrowableBitSet::with_capacity(
-            footer.forwarded_query_values.last().map_or(0, |(index, _)| index.as_usize() + 1),
-        );
+        let replace_overlay = moved.is_empty()
+            && previous_cache.as_ref().is_some_and(|prev| {
+                let saved = prev.saved_query_slots.count();
+                footer_pos - prev.data_len <= prev.data_len / 8
+                    && footer.query_values_index.len() <= saved / 8
+                    && saved_query_slots.count() >= saved / 2
+            });
         let mut remapped_queries = FxHashMap::default();
-        for (index, previous) in footer.forwarded_query_values {
+        for (index, previous) in moved {
             saved_query_slots.insert(index);
-            if index != previous {
-                remapped_queries.insert(index, previous);
-            }
+            remapped_queries.insert(index, previous);
         }
         for &(index, _) in &footer.query_values_index {
             saved_query_slots.insert(index);
@@ -299,7 +310,7 @@ impl OnDiskCache {
             start_pos,
             data_len,
             generation_count,
-            replace_overlay: small_overlay && remapped_queries.is_empty(),
+            replace_overlay,
             previous_cache,
             saved_query_slots,
             remapped_queries,
@@ -370,7 +381,12 @@ impl OnDiskCache {
             return false;
         }
         let current_index = SerializedDepNodeIndex::from_curr_for_serialization(current_index);
-        self.pending_query_values.lock().push((current_index, previous_index));
+        let mut pending = self.pending_query_values.lock();
+        if current_index == previous_index {
+            pending.unchanged.insert(current_index);
+        } else {
+            pending.moved.push((current_index, previous_index));
+        }
         true
     }
 
@@ -380,7 +396,7 @@ impl OnDiskCache {
         if query_values.is_empty() {
             return None;
         }
-        query_values.sort_unstable_by_key(|(index, _)| index.as_u32());
+        query_values.moved.sort_unstable_by_key(|(index, _)| index.as_u32());
         let mut allocation_origins = FxHashMap::default();
         let retained =
             if self.replace_overlay { self.previous_cache.as_deref().unwrap() } else { self };
@@ -424,7 +440,7 @@ impl OnDiskCache {
                         .emit_raw_bytes(&promotion.data[promotion.start_pos..promotion.data_len]);
                     (Some(promotion.data_len), promotion.query_values, promotion.allocation_origins)
                 } else {
-                    (None, Vec::new(), FxHashMap::default())
+                    (None, ForwardedQueries::default(), FxHashMap::default())
                 };
 
             // Allocate `SourceFileIndex`es.
@@ -446,19 +462,20 @@ impl OnDiskCache {
                 (file_to_file_index, file_index_to_stable_id)
             };
 
-            let mut forwarded_queries = GrowableBitSet::with_capacity(
-                forwarded_query_values.last().map_or(0, |(index, _)| index.as_usize() + 1),
-            );
-            if let Some(cache) = &tcx.query_system.on_disk_cache {
+            let forwarded_queries = if let Some(cache) = &tcx.query_system.on_disk_cache {
                 let loaded = cache.loaded_query_values.lock();
-                for &(index, previous) in &forwarded_query_values {
-                    // A recomputed query can be green even when its diagnostic spans changed.
-                    // Only skip encoding a live value if we actually decoded its previous bytes.
+                // A recomputed query can be green even when its diagnostic spans changed.
+                // Only skip encoding a live value if we actually decoded its previous bytes.
+                let mut forwarded_queries = loaded.intersection(&forwarded_query_values.unchanged);
+                for &(index, previous) in &forwarded_query_values.moved {
                     if loaded.contains(previous) {
                         forwarded_queries.insert(index);
                     }
                 }
-            }
+                forwarded_queries
+            } else {
+                GrowableBitSet::default()
+            };
 
             let mut encoder = CacheEncoder {
                 tcx,
