@@ -87,6 +87,26 @@ fn union_two_sets() {
 }
 
 #[test]
+fn report_a_change_in_any_word() {
+    // Several complete groups of words followed by a partial group.
+    // Only one word changes, possibly in an earlier group or in the tail.
+    for words in 1..=11 {
+        let len = (words - 1) * WORD_BITS + 1;
+        for bit in (0..len).step_by(WORD_BITS) {
+            let mut single = DenseBitSet::new_empty(len);
+            single.insert(bit);
+            let mut set = DenseBitSet::new_empty(len);
+            assert!(set.union(&single));
+            assert!(!set.union(&single));
+            assert_eq!(set, single);
+            assert!(set.subtract(&single));
+            assert!(!set.subtract(&single));
+            assert!(set.is_empty());
+        }
+    }
+}
+
+#[test]
 fn union_not() {
     let mut a = DenseBitSet::<usize>::new_empty(100);
     let mut b = DenseBitSet::<usize>::new_empty(100);
