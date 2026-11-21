@@ -608,8 +608,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         let drcx = DeepRejectCtxt::relate_rigid_infer(self.tcx());
         let obligation_args = obligation.predicate.skip_binder().trait_ref.args;
         self.tcx().for_each_relevant_impl_for_selection(
-            obligation.predicate.def_id(),
-            obligation.predicate.skip_binder().trait_ref.self_ty(),
+            obligation.predicate.skip_binder().trait_ref,
             |impl_def_id| {
                 // Before we create the generic parameters and everything, first
                 // consider a "quick reject". This avoids creating more types

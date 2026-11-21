@@ -180,10 +180,11 @@ impl<'tcx> TyCtxt<'tcx> {
     /// parameter or placeholder in the obligation. Callers must not instantiate those arguments.
     pub fn for_each_relevant_impl_for_selection(
         self,
-        trait_def_id: DefId,
-        self_ty: Ty<'tcx>,
+        trait_ref: ty::TraitRef<'tcx>,
         mut f: impl FnMut(DefId),
     ) {
+        let trait_def_id = trait_ref.def_id;
+        let self_ty = trait_ref.self_ty();
         if let ty::Adt(adt, args) = self_ty.kind()
             && let Some(ct) = args.iter().find_map(|arg| arg.as_const())
         {
@@ -205,7 +206,10 @@ impl<'tcx> TyCtxt<'tcx> {
                 return;
             }
         }
-        self.for_each_relevant_impl(trait_def_id, self_ty, f);
+        let integer_rhs = self_ty.is_integral()
+            && trait_ref.args.get(1).and_then(|arg| arg.as_type()).is_some_and(Ty::is_integral)
+            && self.dep_graph.is_fully_enabled();
+        self.for_each_relevant_impl_inner(trait_def_id, self_ty, integer_rhs, f);
     }
 
     /// Iterate over every impl that could possibly match the self type `self_ty`.
@@ -215,11 +219,27 @@ impl<'tcx> TyCtxt<'tcx> {
         self,
         trait_def_id: DefId,
         self_ty: Ty<'tcx>,
+        f: impl FnMut(DefId) -> R,
+    ) -> R {
+        self.for_each_relevant_impl_inner(trait_def_id, self_ty, false, f)
+    }
+
+    fn for_each_relevant_impl_inner<R: VisitorResult>(
+        self,
+        trait_def_id: DefId,
+        self_ty: Ty<'tcx>,
+        integer_rhs: bool,
         mut f: impl FnMut(DefId) -> R,
     ) -> R {
         let tcx = self;
         let mut consider_impls_for_simplified_type = |simp| {
-            for &impl_def_id in tcx.non_blanket_trait_impls((trait_def_id, simp)) {
+            let key = (trait_def_id, simp);
+            let ids = if integer_rhs {
+                tcx.integer_pair_impls(key)
+            } else {
+                tcx.non_blanket_trait_impls(key)
+            };
+            for &impl_def_id in ids {
                 try_visit!(f(impl_def_id))
             }
 
@@ -499,6 +519,35 @@ pub(super) fn trait_impls_of_provider(tcx: TyCtxt<'_>, trait_id: DefId) -> Trait
         None => impls.blanket_impls.push(id),
     });
     impls
+}
+
+/// Project the integer receivers onto the impls that may accept an integer as their second
+/// argument. Adding `impl From<NewType> for usize` changes the `usize` bucket but leaves this
+/// projection green for callers converting between integers.
+pub(super) fn integer_pair_impls(tcx: TyCtxt<'_>, key: (DefId, SimplifiedType)) -> &[DefId] {
+    let impls = tcx.non_blanket_trait_impls(key);
+    let accepts_integer = |id: DefId| {
+        let args = tcx.impl_trait_header(id).trait_ref.skip_binder().args;
+        // Same test as DeepRejectCtxt::var_and_ty_may_unify for an integer variable.
+        args.get(1)
+            .and_then(|arg| arg.as_type())
+            .is_none_or(|ty| !ty.is_known_rigid() || ty.is_integral())
+    };
+    let Some(first) = impls.iter().position(|&id| !accepts_integer(id)) else {
+        return impls;
+    };
+    let mut tail = impls[first + 1..].iter().copied().filter(|&id| accepts_integer(id));
+    let Some(next) = tail.next() else { return &impls[..first] };
+
+    // Only a gap needs a new slice. Reserve the upper bound and compact the
+    // tail in the arena, inspecting each impl header just once.
+    let selected = tcx.arena.alloc_slice(&impls[..impls.len() - 1]);
+    let mut len = first;
+    for id in std::iter::once(next).chain(tail) {
+        selected[len] = id;
+        len += 1;
+    }
+    &selected[..len]
 }
 
 pub(super) fn trait_impls_for_bucket(
