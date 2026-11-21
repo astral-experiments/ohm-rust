@@ -37,7 +37,7 @@ use rustc_data_structures::sync::{
 use rustc_errors::{Applicability, Diag, DiagCtxtHandle, Diagnostic, MultiSpan};
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{CrateNum, DefId, LOCAL_CRATE, LocalDefId};
-use rustc_hir::definitions::{DefPathData, Definitions, PerParentDisambiguatorState};
+use rustc_hir::definitions::{DefPathData, DefPathSlot, Definitions, PerParentDisambiguatorState};
 use rustc_hir::intravisit::Visitor;
 use rustc_hir::{self as hir, CRATE_HIR_ID, HirId, Node, TraitCandidate};
 use rustc_index::IndexVec;
@@ -1507,7 +1507,24 @@ impl<'tcx> TyCtxt<'tcx> {
         override_def_path_data: Option<DefPathData>,
         disambiguator: &mut PerParentDisambiguatorState,
     ) -> TyCtxtFeed<'tcx, LocalDefId> {
-        let data = override_def_path_data.unwrap_or_else(|| def_kind.def_path_data(name));
+        self.create_def_in_slot(
+            parent,
+            name,
+            def_kind,
+            override_def_path_data.map(Into::into),
+            disambiguator,
+        )
+    }
+
+    pub fn create_def_in_slot(
+        self,
+        parent: LocalDefId,
+        name: Option<Symbol>,
+        def_kind: DefKind,
+        slot: Option<DefPathSlot>,
+        disambiguator: &mut PerParentDisambiguatorState,
+    ) -> TyCtxtFeed<'tcx, LocalDefId> {
+        let slot = slot.unwrap_or_else(|| def_kind.def_path_data(name).into());
         // The following call has the side effect of modifying the tables inside `definitions`.
         // These very tables are relied on by the incr. comp. engine to decode DepNodes and to
         // decode the on-disk cache.
@@ -1517,7 +1534,7 @@ impl<'tcx> TyCtxt<'tcx> {
         // - has been created by this call to `create_def`.
         // As a consequence, this LocalDefId is always re-created before it is needed by the incr.
         // comp. engine itself.
-        let def_id = self.untracked.definitions.write().create_def(parent, data, disambiguator);
+        let def_id = self.untracked.definitions.write().create_def(parent, slot, disambiguator);
 
         // This function modifies `self.definitions` using a side-effect.
         // We need to ensure that these side effects are re-run by the incr. comp. engine.

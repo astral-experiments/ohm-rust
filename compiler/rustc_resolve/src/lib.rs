@@ -57,7 +57,9 @@ use rustc_hir::def::{self, CtorOf, DefKind, MacroKinds, NonMacroAttrKind, PerNS}
 use rustc_hir::def_id::{
     CRATE_DEF_ID, CrateNum, DefId, LOCAL_CRATE, LocalDefId, LocalDefIdMap, VisibilityDefId,
 };
-use rustc_hir::definitions::{PerParentDisambiguatorState, PerParentDisambiguatorsMap};
+use rustc_hir::definitions::{
+    DefPathSlot, PerParentDisambiguatorState, PerParentDisambiguatorsMap,
+};
 use rustc_hir::{PrimTy, TraitCandidate};
 use rustc_index::bit_set::DenseBitSet;
 use rustc_lint_defs::builtin::PRIVATE_MACRO_USE;
@@ -1709,6 +1711,7 @@ impl<'tcx> Resolver<'_, 'tcx> {
         expn_id: ExpnId,
         span: Span,
         is_owner: bool,
+        slot: Option<DefPathSlot>,
     ) -> TyCtxtFeed<'tcx, LocalDefId> {
         assert!(
             !self.current_owner.node_id_to_def_id.contains_key(&node_id),
@@ -1724,7 +1727,7 @@ impl<'tcx> Resolver<'_, 'tcx> {
         let disambiguator = self.disambiguators.get_or_create(parent);
 
         // FIXME: remove `def_span` body, pass in the right spans here and call `tcx.at().create_def()`
-        let feed = self.tcx.create_def(parent, name, def_kind, None, disambiguator);
+        let feed = self.tcx.create_def_in_slot(parent, name, def_kind, slot, disambiguator);
         let def_id = feed.def_id();
 
         // Create the definition.

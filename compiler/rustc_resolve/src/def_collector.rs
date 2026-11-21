@@ -2,6 +2,7 @@ use std::mem;
 
 use rustc_ast::visit::FnKind;
 use rustc_ast::*;
+use rustc_ast_pretty::pprust;
 use rustc_attr_ir::target::Target;
 use rustc_attr_parsing::{AttributeParser, ShouldEmit};
 use rustc_expand::expand::AstFragment;
@@ -9,6 +10,7 @@ use rustc_hir as hir;
 use rustc_hir::def::DefKind;
 use rustc_hir::def::Namespace::{TypeNS, ValueNS};
 use rustc_hir::def_id::LocalDefId;
+use rustc_hir::definitions::DefPathSlot;
 use rustc_middle::middle::resolve::PerOwnerResolverData;
 use rustc_middle::ty::TyCtxtFeed;
 use rustc_span::hygiene::LocalExpnId;
@@ -63,6 +65,7 @@ impl<'a, 'ra, 'tcx> DefCollector<'a, 'ra, 'tcx> {
             self.parent_scope.expansion.to_expn_id(),
             span.with_parent(None),
             false,
+            None,
         )
     }
 
@@ -74,12 +77,33 @@ impl<'a, 'ra, 'tcx> DefCollector<'a, 'ra, 'tcx> {
         self.invocation_parent.preceding_source_item = preceding;
     }
 
+    /// Select an impl's slot before type resolution, using its header as written.
+    /// The expansion and syntax context checks exclude macro-generated items,
+    /// including tokens with a call-site span from a procedural macro.
+    fn written_impl_slot(&self, item: &Item) -> Option<DefPathSlot> {
+        let ItemKind::Impl(imp) = &item.kind else { return None };
+        let opts = &self.r.tcx.sess.opts;
+        if !opts.unstable_opts.ohm_incremental_mono_partitions
+            || opts.incremental.is_none()
+            || self.parent_scope.expansion != LocalExpnId::ROOT
+            || item.span.is_dummy()
+            || !item.span.ctxt().is_root()
+        {
+            return None;
+        }
+
+        let self_ty = pprust::ty_to_string(&imp.self_ty);
+        let trait_path = imp.of_trait.as_ref().map(|t| pprust::path_to_string(&t.trait_ref.path));
+        Some(DefPathSlot::written_impl(&self_ty, trait_path.as_deref()))
+    }
+
     pub(super) fn with_owner<F: FnOnce(&mut Self, TyCtxtFeed<'tcx, LocalDefId>)>(
         &mut self,
         owner: NodeId,
         name: Option<Symbol>,
         def_kind: DefKind,
         span: Span,
+        slot: Option<DefPathSlot>,
         f: F,
     ) {
         debug_assert_ne!(owner, DUMMY_NODE_ID);
@@ -96,6 +120,7 @@ impl<'a, 'ra, 'tcx> DefCollector<'a, 'ra, 'tcx> {
             self.parent_scope.expansion.to_expn_id(),
             span.with_parent(None),
             true,
+            slot,
         );
         let tables = PerOwnerResolverData::new(owner, feed.key());
 
@@ -203,7 +228,7 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
             ItemKind::GlobalAsm(..) => DefKind::GlobalAsm,
             ItemKind::Use(tree) => {
                 let name = tree.prefix.segments.last().map(|segment| segment.ident.name);
-                return self.with_owner(i.id, name, DefKind::Use, i.span, |this, feed| {
+                return self.with_owner(i.id, name, DefKind::Use, i.span, None, |this, feed| {
                     this.with_parent(feed.def_id(), |this| {
                         this.brg_visit_item(i, feed);
                     })
@@ -222,6 +247,7 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
             i.kind.ident().map(|ident| ident.name),
             def_kind,
             i.span,
+            self.written_impl_slot(i),
             |this, feed| {
                 if let Some(ext) = opt_syn_ext {
                     this.r.local_macro_map.insert(feed.def_id(), this.r.arenas.alloc_macro(ext));
@@ -338,7 +364,7 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
             }
         };
 
-        self.with_owner(fi.id, Some(ident.name), def_kind, fi.span, |this, def| {
+        self.with_owner(fi.id, Some(ident.name), def_kind, fi.span, None, |this, def| {
             this.with_parent(def.def_id(), |this| {
                 this.build_reduced_graph_for_foreign_item(fi, ident, def);
                 visit::walk_item(this, fi)
@@ -418,7 +444,7 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
             }
         };
 
-        self.with_owner(i.id, Some(ident.name), def_kind, i.span, |this, feed| {
+        self.with_owner(i.id, Some(ident.name), def_kind, i.span, None, |this, feed| {
             let def_id = feed.def_id();
             let previous = this.invocation_parent.preceding_source_item;
             this.with_parent(def_id, |this| {

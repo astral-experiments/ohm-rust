@@ -43,3 +43,35 @@ fn def_path_hash_depends_on_crate_id() {
         }
     })
 }
+
+#[test]
+fn written_impl_slots_skip_occupied_keys() {
+    use DefPathSlot::WrittenImpl;
+    use rustc_span::def_id::CRATE_DEF_ID;
+
+    use crate::definitions::{DefPathData, DefPathSlot, Definitions, PerParentDisambiguatorState};
+
+    rustc_span::create_default_session_globals_then(|| {
+        let mut defs =
+            Definitions::new(StableCrateId::new(rustc_span::sym::test, false, vec![], "test"));
+        let mut state = PerParentDisambiguatorState::new(CRATE_DEF_ID);
+        let mut allocate = |slot: DefPathSlot| {
+            let def = defs.create_def(CRATE_DEF_ID, slot, &mut state);
+            let path = defs.def_key(def).disambiguated_data;
+            assert_eq!(path.data, DefPathData::Impl);
+            path.disambiguator
+        };
+
+        let high = 1 << 31;
+        assert_eq!(allocate(WrittenImpl(high)), high);
+        assert_eq!(allocate(WrittenImpl(high + 1)), high + 1);
+        assert_eq!(allocate(WrittenImpl(high)), high + 2);
+        assert_eq!(allocate(WrittenImpl(high + 1)), high + 3);
+
+        let ordinary = DefPathData::Impl.into();
+        assert_eq!(allocate(ordinary), 0);
+        assert_eq!(allocate(WrittenImpl(u32::MAX)), u32::MAX);
+        assert_eq!(allocate(WrittenImpl(u32::MAX)), 1);
+        assert_eq!(allocate(ordinary), 2);
+    });
+}
