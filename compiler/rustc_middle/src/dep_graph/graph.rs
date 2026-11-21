@@ -1324,7 +1324,7 @@ impl DepGraph {
 
         // Only nodes with saved query values can need promotion. Avoid scanning the entire old
         // graph and recovering keys for queries that never had a disk-cached value.
-        for prev_index in on_disk_cache.cached_query_indices(previous_node_count).iter() {
+        for prev_index in on_disk_cache.cached_query_indices(previous_node_count) {
             let DepNodeColor::Green(dep_node_index) = data.colors.get(prev_index) else {
                 // Red nodes were recomputed and their values are already in memory.
                 continue;
