@@ -42,6 +42,8 @@ pub static MODULE_CACHE: rustc_data_structures::AtomicRef<ModuleCacheHook> =
 
 // Amortize the per-file query and the symbol dictionary.
 const MIN_FILE_BYTES: u32 = 1024;
+// Both encoding and decoding recurse through boxed AST nodes and their children.
+const MAX_NESTING: usize = 256;
 
 // Token streams of nested annotated items can overlap. Bound the amount
 // materialized by the source size, checking before each lazy stream.
@@ -182,7 +184,7 @@ fn snapshot(
     let table_pos = data.position();
     data.emit_raw_bytes(&[0; 4]);
     let mut encoder =
-        ModuleEncoder { data, symbols: FxIndexSet::default(), attrs, file, valid: true };
+        ModuleEncoder { data, symbols: FxIndexSet::default(), attrs, file, depth: 0, valid: true };
     effects.encode(&mut encoder);
     let mut omitted = Vec::new();
     let selected = inputs.keyword_lint_inert.then(|| {
@@ -244,6 +246,7 @@ struct ModuleEncoder<'a> {
     symbols: FxIndexSet<Symbol>,
     attrs: std::ops::Range<u32>,
     file: &'a SourceFile,
+    depth: usize,
     valid: bool,
 }
 
@@ -258,6 +261,17 @@ struct ModuleDecoder<'a> {
 macro_rules! codecs {
     ($($ty:ty => $emit:ident, $read:ident;)*) => {
         impl Encoder for ModuleEncoder<'_> {
+            #[inline]
+            fn encode_nested<T: ?Sized + Encodable<Self>>(&mut self, value: &T) {
+                if self.depth >= MAX_NESTING {
+                    self.valid = false;
+                    return;
+                }
+                self.depth += 1;
+                value.encode(self);
+                self.depth -= 1;
+            }
+
             fn emit_raw_bytes(&mut self, bytes: &[u8]) { self.data.emit_raw_bytes(bytes); }
             $(#[inline] fn $emit(&mut self, value: $ty) { self.data.$emit(value); })*
         }
