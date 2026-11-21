@@ -99,10 +99,22 @@ impl ProcessQueryValue<'_, Option<DeprecationEntry>> for Option<Deprecation> {
     }
 }
 
+/// A check hash may include only the spelling of a private method. When a
+/// query observes its position, decode it again from the current metadata.
+fn track_private_method_location(tcx: TyCtxt<'_>, def_id: DefId, cdata: &super::CrateMetadata) {
+    if cdata.root.public_api_hash_opt_enabled
+        && cdata.def_kind(def_id.index) == DefKind::AssocFn
+        && !cdata.get_visibility(tcx, def_id.index).is_public()
+    {
+        tcx.dep_graph.read_index(rustc_middle::dep_graph::DepNodeIndex::FOREVER_RED_NODE);
+    }
+}
+
 macro_rules! provide_one {
-    ($tcx:ident, $def_id:ident, $other:ident, $cdata:ident, $store:ident, $name:ident => { table }) => {
+    ($tcx:ident, $def_id:ident, $other:ident, $cdata:ident, $store:ident, $name:ident => { table $(, $track:ident)? }) => {
         provide_one! {
             $tcx, $def_id, $other, $cdata, $store, $name => {
+                $($track($tcx, $def_id, $cdata);)?
                 $cdata
                     .root
                     .tables
@@ -254,6 +266,7 @@ provide! { tcx, def_id, other, cdata, cstore,
         wire.decode((cdata, tcx)).into_query(def_id)
     }
     late_bound_regions_span => {
+        track_private_method_location(tcx, def_id, cdata);
         let wire = cdata.root.tables.generics_of.get(cdata, def_id.index).unwrap();
         wire.decode((cdata, tcx)).late_bound_region_source
     }
@@ -277,8 +290,8 @@ provide! { tcx, def_id, other, cdata, cstore,
     mir_coroutine_witnesses => { table }
     mir_coroutine_runtime_info => { table }
     promoted_mir => { table }
-    def_span => { table }
-    def_ident_span => { table }
+    def_span => { table, track_private_method_location }
+    def_ident_span => { table, track_private_method_location }
     lookup_stability => { table }
     lookup_const_stability => { table }
     lookup_default_body_stability => { table }
@@ -303,7 +316,7 @@ provide! { tcx, def_id, other, cdata, cstore,
     rendered_const => { table }
     rendered_precise_capturing_args => { table }
     asyncness => { table_direct }
-    fn_arg_idents => { table }
+    fn_arg_idents => { table, track_private_method_location }
     coroutine_kind => { table_direct }
     coroutine_for_closure => { table }
     coroutine_by_move_body_def_id => { table }
