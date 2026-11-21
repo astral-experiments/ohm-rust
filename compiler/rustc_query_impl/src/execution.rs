@@ -740,10 +740,6 @@ const FINITE_IMPL_RECEIVERS: &[SimplifiedType] = &[
     SimplifiedType::Ref(Mutability::Mut),
     SimplifiedType::Ptr(Mutability::Not),
     SimplifiedType::Ptr(Mutability::Mut),
-    SimplifiedType::Tuple(0),
-    SimplifiedType::Tuple(1),
-    SimplifiedType::Tuple(2),
-    SimplifiedType::Tuple(3),
 ];
 
 fn registered_def_id(tcx: TyCtxt<'_>, dep_node: DepNode) -> Option<DefId> {
@@ -783,7 +779,12 @@ fn recover_trait_impl_bucket(
         };
         matching_key(receiver)
     } else {
-        let mut matches = FINITE_IMPL_RECEIVERS.iter().copied().filter_map(matching_key);
+        // Function pointers and tuples have no receiver definition. Try
+        // common arities, requiring the same unique, complete key match.
+        let by_arity =
+            (0..=12).flat_map(|n| [SimplifiedType::Tuple(n), SimplifiedType::Function(n)]);
+        let mut matches =
+            FINITE_IMPL_RECEIVERS.iter().copied().chain(by_arity).filter_map(matching_key);
         let key = matches.next()?;
         matches.next().is_none().then_some(key)
     }
