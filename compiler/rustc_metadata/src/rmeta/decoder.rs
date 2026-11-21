@@ -2208,6 +2208,20 @@ impl CrateMetadata {
                     stable_id,
                     ..
                 } = source_file_to_import;
+                // Compute both identities before applying consumer-side remapping.
+                // Forwarded files may belong to another crate. Only re-key a file
+                // if its original ID confirms this supplier owns it.
+                let incremental_id = if let Some(paths) =
+                    tcx.untracked().suppliers.read().get(self.cnum)
+                    && stable_id
+                        == rustc_span::StableSourceFileId::from_filename_for_export(
+                            &name,
+                            self.root.stable_crate_id,
+                        ) {
+                    rustc_span::StableSourceFileId::from_filename_for_export(&name, paths.id)
+                } else {
+                    stable_id
+                };
 
                 // If this file is under $sysroot/lib/rustlib/src/
                 // and the user wish to simulate remapping with -Z simulate-remapped-rust-src-base,
@@ -2261,6 +2275,7 @@ impl CrateMetadata {
                     src_hash,
                     checksum_hash,
                     stable_id,
+                    incremental_id,
                     normalized_source_len.to_u32(),
                     unnormalized_source_len,
                     self.cnum,
