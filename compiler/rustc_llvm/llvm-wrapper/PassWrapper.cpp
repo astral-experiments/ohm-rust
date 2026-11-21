@@ -820,6 +820,7 @@ extern "C" LLVMRustResult LLVMRustOptimize(
       TM->getOptLevel() == CodeGenOptLevel::None &&
       isMacroHelper(*TheModule)) {
     OptLevel = OptimizationLevel::O1;
+    PTO.InlinerThreshold = InlineConstants::OptSizeThreshold;
     TM->setOptLevel(CodeGenOptLevel::Less);
     TM->setFastISel(true);
   }
