@@ -195,8 +195,11 @@ impl Scope {
 
             // To avoid issues with macro-generated spans, the span
             // of the statement must be nested in that of the block.
-            if span.lo() <= stmt_span.lo() && stmt_span.lo() <= span.hi() {
-                return span.with_lo(stmt_span.lo());
+            let (block, stmt) = tcx
+                .hir_span_pair(span, stmt_span)
+                .unwrap_or_else(|| (span.data(), stmt_span.data()));
+            if block.lo <= stmt.lo && stmt.lo <= block.hi {
+                return block.with_lo(stmt.lo);
             }
         }
         span

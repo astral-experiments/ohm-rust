@@ -74,15 +74,9 @@ impl<'tcx> ThirBuildCx<'tcx> {
                         let pattern = self.pattern_from_hir_with_annotation(local.pat, local.ty);
                         debug!(?pattern);
 
-                        let span = match local.init {
-                            Some(init)
-                                if let Some(init_span) =
-                                    init.span.find_ancestor_inside_same_ctxt(local.span) =>
-                            {
-                                local.span.with_hi(init_span.hi())
-                            }
-                            Some(_) | None => local.span,
-                        };
+                        let span = local.init.map_or(local.span, |init| {
+                            self.tcx.hir_span_through_child(local.span, init.span, true)
+                        });
                         let initializer = local.init.map(|init| self.mirror_expr(init));
                         let stmt = Stmt {
                             kind: StmtKind::Let {

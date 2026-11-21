@@ -1025,7 +1025,14 @@ impl<'tcx> TyCtxt<'tcx> {
                 ..
             }) => {
                 // Ensure that the returned span has the closure expression's SyntaxContext.
-                fn_decl_span.find_ancestor_inside_same_ctxt(*span).unwrap_or(*span)
+                if let Some((outer, decl)) = self.hir_span_pair(*span, *fn_decl_span)
+                    && outer.contains(decl)
+                    && outer.ctxt == decl.ctxt
+                {
+                    *fn_decl_span
+                } else {
+                    fn_decl_span.find_ancestor_inside_same_ctxt(*span).unwrap_or(*span)
+                }
             }
             _ => self.hir_span_with_body(hir_id),
         };

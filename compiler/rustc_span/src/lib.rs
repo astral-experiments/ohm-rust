@@ -1205,13 +1205,17 @@ impl Span {
         a_orig: Span,
         b_orig: Span,
     ) -> Result<(SpanData, SpanData, Option<LocalDefId>), Span> {
-        let (a, b) = (a_orig.data(), b_orig.data());
+        let (a, b) = (a_orig.data_untracked(), b_orig.data_untracked());
+        let parents = [a.parent, b.parent];
+        let (a, b) =
+            if a.ctxt == b.ctxt { (a, b) } else { Span::try_metavars(a, b, a_orig, b_orig) };
         if a.ctxt == b.ctxt {
-            return Ok((a, b, if a.parent == b.parent { a.parent } else { None }));
-        }
-
-        let (a, b) = Span::try_metavars(a, b, a_orig, b_orig);
-        if a.ctxt == b.ctxt {
+            // Track both original positions when we can combine them. If the
+            // contexts still differ, only hygiene determines the fallback.
+            // `try_metavars` tracks any additional metavariable spans it reads.
+            for parent in parents.into_iter().flatten() {
+                (*SPAN_TRACK)(parent);
+            }
             return Ok((a, b, if a.parent == b.parent { a.parent } else { None }));
         }
 
