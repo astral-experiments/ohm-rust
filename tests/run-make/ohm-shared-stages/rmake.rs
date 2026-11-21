@@ -212,4 +212,35 @@ fn main() {
         .run();
     compile("metadata,link", "other_output", true, true);
     consumer(47);
+
+    let stage = |emit| {
+        let mut command = rustc();
+        command
+            .input("api.rs")
+            .crate_type("rlib")
+            .arg("-Zohm-shared-stages")
+            .incremental("output-incremental")
+            .out_dir("outputs")
+            .emit(emit);
+        command
+    };
+    rfs::create_dir("outputs");
+    for (flag, directory) in [("-Zdump-mir=all", "mir_dump"), ("-Znll-facts", "nll-facts")] {
+        stage("link").run();
+        stage("metadata").arg(flag).run();
+        assert!(
+            fs::read_dir(directory).is_ok_and(|mut entries| entries.next().is_some()),
+            "{flag}"
+        );
+    }
+
+    // A saved build checkpoint can also skip the passes that write bitcode.
+    stage("link").run();
+    stage("metadata").run();
+    stage("link").arg("-Csave-temps").run();
+    assert!(
+        fs::read_dir("outputs")
+            .unwrap()
+            .any(|file| { file.unwrap().path().extension().is_some_and(|ext| ext == "bc") })
+    );
 }
