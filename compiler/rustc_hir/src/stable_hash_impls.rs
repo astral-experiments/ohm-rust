@@ -26,7 +26,7 @@ impl<'tcx> StableHash for AttributeMap<'tcx> {
     fn stable_hash<Hcx: StableHashCtxt>(&self, hcx: &mut Hcx, hasher: &mut StableHasher) {
         // We ignore the `map` since it refers to information included in `opt_hash` which is
         // hashed in the collector and used for the crate hash.
-        let AttributeMap { opt_hash, define_opaque: _, map: _ } = *self;
+        let AttributeMap { opt_hash, define_opaque: _, map: _, lint_roots: _ } = *self;
         opt_hash.unwrap().stable_hash(hcx, hasher);
     }
 }
