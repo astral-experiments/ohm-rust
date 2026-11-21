@@ -43,6 +43,7 @@ fn truncate_check_key() {
 }
 
 fn main() {
+    native_supplier();
     supplier_release();
     changed_binding();
     dependency().run();
@@ -72,11 +73,15 @@ fn main() {
 }
 
 fn check_library(name: &str, salt: &str) -> Rustc {
+    library(name, salt, "metadata")
+}
+
+fn library(name: &str, salt: &str, emit: &str) -> Rustc {
     let mut cmd = rustc();
     cmd.input(format!("{name}.rs"))
         .edition("2024")
         .crate_type("lib")
-        .emit("metadata")
+        .emit(emit)
         .env("CARGO_PKG_NAME", name)
         .metadata(salt)
         .arg("-Zohm-shared-stages")
@@ -141,4 +146,76 @@ fn changed_binding() {
     read();
     dep("changed");
     read();
+}
+
+// A codegen session must agree with a check on the keys for imported types.
+// Its work products must also agree with the canonical identity of the supplier.
+fn native_supplier() {
+    rfs::write(
+        "api.rs",
+        r#"
+pub struct Packet;
+#[inline(never)]
+pub fn read(_: Packet) -> u32 { 40 }
+"#,
+    );
+    let reader = r#"
+#![feature(rustc_attrs)]
+#![allow(internal_features)]
+#![rustc_partition_reused(module = "reader-fixed", cfg = "same")]
+#![rustc_partition_codegened(module = "reader-fixed", cfg = "changed")]
+
+pub mod fixed {
+    #[inline(never)]
+    pub fn value() -> u32 { 1 }
+}
+
+#[rustc_clean(cfg = "from_build", loaded_from_disk = "fn_sig")]
+pub fn typed(_: api::Packet) {}
+
+#[rustc_clean(
+    cfg = "same", except = "hir_owner,optimized_mir", loaded_from_disk = "typeck_root,mir_borrowck"
+)]
+pub fn value() -> u32 { api::read(api::Packet) + DELTA }
+
+pub const ID: std::any::TypeId = std::any::TypeId::of::<api::Packet>();
+"#;
+    rfs::write(
+        "main.rs",
+        r#"
+fn main() {
+    reader::typed(api::Packet);
+    assert_eq!(reader::ID, std::any::TypeId::of::<api::Packet>());
+    println!("{}", reader::value());
+}
+"#,
+    );
+
+    for (build, salt, revision, delta) in [
+        (true, "a", "initial", 1),
+        (false, "a", "from_build", 2),
+        (true, "a", "same", 2),
+        (false, "b", "check_b", 2),
+        (true, "b", "changed", 2),
+    ] {
+        rfs::write("reader.rs", reader.replace("DELTA", &delta.to_string()));
+        let emit = if build { "metadata,link" } else { "metadata" };
+        library("api", salt, emit).run();
+        library("reader", "fixed", emit)
+            .extern_("api", if build { "libapi.rlib" } else { "libapi.rmeta" })
+            .incremental("native-incr")
+            .codegen_units(16)
+            .cfg(revision)
+            .arg("-Zquery-dep-graph")
+            .run();
+        if build {
+            rustc()
+                .input("main.rs")
+                .edition("2024")
+                .extern_("api", "libapi.rlib")
+                .extern_("reader", "libreader.rlib")
+                .run();
+            run("main").assert_stdout_equals(format!("{}\n", 40 + delta));
+        }
+    }
 }

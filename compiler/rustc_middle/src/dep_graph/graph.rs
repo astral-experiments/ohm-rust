@@ -363,7 +363,25 @@ impl DepGraph {
         OP: FnOnce() -> R,
     {
         match self.data() {
-            Some(data) => data.with_task(dep_node, tcx, op, hash_result, false),
+            Some(data) => {
+                let op = || {
+                    // Stable query keys can hide a change of symbol names or layout
+                    // seeds. Work products must agree with their original supplier
+                    // bindings even across intervening metadata-only sessions.
+                    if tcx.uses_incremental_keys()
+                        && matches!(
+                            dep_node.kind,
+                            DepKind::CompileCodegenUnit
+                                | DepKind::CompileMonoItem
+                                | DepKind::Metadata
+                        )
+                    {
+                        let _ = tcx.artifact_linkage(());
+                    }
+                    op()
+                };
+                data.with_task(dep_node, tcx, op, hash_result, false)
+            }
             None => (op(), self.next_virtual_depnode_index()),
         }
     }
