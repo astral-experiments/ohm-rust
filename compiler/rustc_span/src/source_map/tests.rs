@@ -237,11 +237,13 @@ fn t10() {
         ..
     } = (*src_file).clone();
 
+    let incremental_id = StableSourceFileId::from_u128(17);
     let imported_src_file = sm.new_imported_source_file(
         name,
         src_hash,
         checksum_hash,
         stable_id,
+        incremental_id,
         normalized_source_len.to_u32(),
         unnormalized_source_len,
         CrateNum::ZERO,
@@ -250,6 +252,11 @@ fn t10() {
         normalized_pos,
         0,
     );
+
+    for id in [stable_id, incremental_id] {
+        let file = sm.source_file_by_stable_id(id).unwrap();
+        assert!(std::sync::Arc::ptr_eq(&file, &imported_src_file));
+    }
 
     assert!(
         imported_src_file.external_src.borrow().get_source().is_none(),

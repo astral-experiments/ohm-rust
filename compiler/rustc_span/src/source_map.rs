@@ -345,6 +345,9 @@ impl SourceMap {
         let file = Arc::new(file);
         files.source_files.push(Arc::clone(&file));
         files.stable_id_to_source_file.insert(file_id, Arc::clone(&file));
+        if file.incremental_id != file_id {
+            files.stable_id_to_source_file.insert(file.incremental_id, Arc::clone(&file));
+        }
 
         Ok(file)
     }
@@ -419,6 +422,7 @@ impl SourceMap {
         src_hash: SourceFileHash,
         checksum_hash: Option<SourceFileHash>,
         stable_id: StableSourceFileId,
+        incremental_id: StableSourceFileId,
         normalized_source_len: u32,
         unnormalized_source_len: u32,
         cnum: CrateNum,
@@ -445,6 +449,7 @@ impl SourceMap {
             multibyte_chars,
             normalized_pos,
             stable_id,
+            incremental_id,
             cnum,
         };
 
