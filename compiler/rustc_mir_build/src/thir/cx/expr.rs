@@ -1341,6 +1341,12 @@ impl<'tcx> ThirBuildCx<'tcx> {
             hir::ExprKind::DropTemps(source) => {
                 ExprKind::ValueExpr { source: self.mirror_expr(source) }
             }
+            hir::ExprKind::Array(fields)
+                if fields.len() >= 64
+                    && let Some(alloc_id) = self.string_table(expr_ty, expr) =>
+            {
+                ExprKind::LiteralArray { alloc_id }
+            }
             hir::ExprKind::Array(fields) => match self.literal_array(expr_ty, fields) {
                 Some(alloc_id) => ExprKind::LiteralArray { alloc_id },
                 None => ExprKind::Array { fields: self.mirror_exprs(fields) },
