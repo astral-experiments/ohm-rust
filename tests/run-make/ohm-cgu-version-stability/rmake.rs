@@ -40,14 +40,17 @@ fn compile(
     case: &str,
     version: &str,
     roots: &[String],
-    units: usize,
+    units: Option<usize>,
     split: bool,
 ) -> BTreeMap<String, BTreeSet<String>> {
-    let output = rustc()
+    let mut command = rustc();
+    if let Some(limit) = units {
+        command.codegen_units(limit);
+    }
+    let output = command
         .input("fixture.rs")
         .crate_name("fixture")
         .opt_level("1")
-        .codegen_units(units)
         .incremental(format!("{case}-{version}"))
         .env("RUSTC_FORCE_RUSTC_VERSION", version)
         .arg("-Zohm-stable-cgu-merging")
@@ -65,15 +68,21 @@ fn compile(
         let unit = unit.split_whitespace().next().unwrap().split('[').next().unwrap();
         groups.entry(unit.to_owned()).or_default().insert(root.clone());
     }
-    assert!(groups.len() > 1 && groups.len() <= units, "{groups:?}");
+    if let Some(limit) = units {
+        assert!(groups.len() > 1 && groups.len() <= limit, "{groups:?}");
+    } else {
+        assert_eq!(groups.len(), roots.len());
+    }
     groups
 }
 
 fn main() {
     let mut moved = Vec::new();
-    for (case, modules, functions, operations, units, split) in
-        [("merge", 9, 2, 8, 4, false), ("split", 2, 64, 256, 16, true)]
-    {
+    for (case, modules, functions, operations, units, split) in [
+        ("merge", 9, 2, 8, Some(4), false),
+        ("split", 2, 64, 256, Some(16), true),
+        ("default", 257, 1, 1, None, false),
+    ] {
         let roots = source(modules, functions, operations);
         let before = compile(case, "version-one", &roots, units, split);
         let expected = run("fixture").stdout_utf8();
