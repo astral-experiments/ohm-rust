@@ -22,6 +22,6 @@ fn main() {
             .arg("--relocations")
             .arg("libcaller.rlib")
             .run()
-            .assert_stdout_contains(format!("{relocation} other_unit"));
+            .assert_stdout_contains_regex(format!(r"{relocation}\s+\S+\s+other_unit"));
     }
 }
