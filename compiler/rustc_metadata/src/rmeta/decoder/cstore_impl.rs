@@ -152,22 +152,27 @@ macro_rules! provide_one {
             assert!(!$def_id.is_local());
 
             use rustc_middle::dep_graph::DepKind;
-            match DepKind::$name {
+            let reads_metadata_input = match DepKind::$name {
                 DepKind::public_api_hash | DepKind::crate_hash
-                | DepKind::external_metadata_input_hash => (),
+                | DepKind::external_metadata_input_hash => false,
                 DepKind::exported_non_generic_symbols => {
                     // Non-generic symbols are only consumed during linking and remain outside
                     // the public API hash.
                     $tcx.ensure_ok().crate_hash($def_id.krate);
+                    false
                 }
                 _ => {
                     $tcx.ensure_ok().external_metadata_input_hash($def_id.krate);
+                    true
                 }
-            }
+            };
 
+            // The input hash provider may itself acquire the crate store during import resolution.
             let $store = CStore::from_tcx($tcx);
             let $cdata = $store.get_crate_data($def_id.krate);
-
+            if reads_metadata_input && !$cdata.root.public_api_hash_opt_enabled {
+                $tcx.dep_graph.mark_whole_crate_read($tcx);
+            }
             $compute
         }
     };

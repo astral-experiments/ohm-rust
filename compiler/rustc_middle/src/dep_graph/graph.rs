@@ -363,8 +363,25 @@ impl DepGraph {
         OP: FnOnce() -> R,
     {
         match self.data() {
-            Some(data) => data.with_task(dep_node, tcx, op, hash_result),
+            Some(data) => data.with_task(dep_node, tcx, op, hash_result, false),
             None => (op(), self.next_virtual_depnode_index()),
+        }
+    }
+
+    /// Mark the external metadata input just read by this provider as a
+    /// whole-crate hash. Those hashes typically identify immutable dependencies
+    /// such as registry crates. Suppliers with public API hashes retain per-query
+    /// fingerprints so unrelated edits can still stop at individual queries.
+    pub fn mark_whole_crate_read(&self, tcx: TyCtxt<'_>) {
+        if tcx.sess.opts.unstable_opts.public_api_hash
+            && tcx.sess.opts.unstable_opts.ohm_shared_stages
+            && self.data.is_some()
+        {
+            read_deps(|task_deps| {
+                if let TaskDepsRef::Allow(deps) = task_deps {
+                    deps.lock().whole_crate_read = true;
+                }
+            });
         }
     }
 
@@ -396,6 +413,7 @@ impl DepGraphData {
         tcx: TyCtxt<'tcx>,
         op: OP,
         hash_result: Option<fn(&mut StableHashState<'_>, &R) -> Fingerprint>,
+        may_forward_input: bool,
     ) -> (R, DepNodeIndex)
     where
         OP: FnOnce() -> R,
@@ -420,8 +438,21 @@ impl DepGraphData {
         };
 
         let edges: &[DepNodeIndex] = task_deps.as_ref().map_or(&[], |deps| deps.edges());
-        let dep_node_index =
-            self.hash_result_and_alloc_node(tcx, dep_node, edges, &result, hash_result);
+        // Forward a whole-crate hash when it is the only input to a decode.
+        // Extra reads (including diagnostics and query feeds) need their own
+        // row. Keep existing keys for coloring and distinct invocation indices
+        // for on-disk values, profiling and dep-graph inspection.
+        let dep_node_index = if may_forward_input
+            && let [input] = edges
+            && task_deps.as_ref().is_some_and(|deps| deps.whole_crate_read)
+            && !tcx.sess.opts.unstable_opts.query_dep_graph
+            && !tcx.sess.opts.unstable_opts.self_profile.enabled()
+            && self.previous.node_to_index_opt(&dep_node).is_none()
+        {
+            *input
+        } else {
+            self.hash_result_and_alloc_node(tcx, dep_node, edges, &result, hash_result)
+        };
         if let Some(TaskDeps { reads: TaskReads::Recorded(recorder), .. }) = task_deps {
             recorder.release(&self.read_recorder_pool);
         }
@@ -1026,6 +1057,7 @@ impl DepGraph {
                 DepKind::crates
                 | DepKind::upstream_trait_impls_key_hash
                 | DepKind::implementations_of_trait
+                | DepKind::external_metadata_input_hash
                 | DepKind::type_of => direct_bucket_inputs = true,
                 _ => return None,
             }
@@ -1532,6 +1564,7 @@ pub enum TaskDepsRef<'a> {
 
 #[derive(Debug)]
 pub struct TaskDeps {
+    whole_crate_read: bool,
     #[cfg(debug_assertions)]
     node: Option<DepNode>,
 
@@ -1545,6 +1578,7 @@ impl TaskDeps {
             #[cfg(debug_assertions)]
             node,
             reads: TaskReads::new(),
+            whole_crate_read: false,
         }
     }
 
