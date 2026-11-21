@@ -5,8 +5,10 @@ use std::hash::Hash;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::sync::Lock;
 
-use crate::dep_graph::DepNodeIndex;
-use crate::ty::TyCtxt;
+use super::SelectionResult;
+use super::select::SelectionCandidate;
+use crate::dep_graph::{DepKind, DepNode, DepNodeIndex};
+use crate::ty::{self, TyCtxt};
 
 pub struct WithDepNodeCache<Key, Value> {
     hashmap: Lock<FxHashMap<Key, WithDepNode<Value>>>,
@@ -31,6 +33,40 @@ impl<Key: Eq + Hash, Value: Clone> WithDepNodeCache<Key, Value> {
 
     pub fn insert(&self, key: Key, dep_node: DepNodeIndex, value: Value) {
         self.hashmap.borrow_mut().insert(key, WithDepNode::new(dep_node, value));
+    }
+}
+
+impl<'tcx> TyCtxt<'tcx> {
+    /// The first caller reads the anonymous selection task directly. Later callers
+    /// only need the cached answer. Give that answer a stable identity so that
+    /// selecting the same impl after a change to the candidate list can keep
+    /// those callers green. The same applies when selection remains ambiguous.
+    pub fn cache_global_candidate(
+        self,
+        key: (ty::TypingEnv<'tcx>, ty::TraitClause<'tcx>),
+        task: DepNodeIndex,
+        result: SelectionResult<'tcx, SelectionCandidate<'tcx>>,
+    ) {
+        let cache = &self.caches.selection_cache;
+        let Some(graph) = self.dep_graph.data() else {
+            return cache.insert(key, task, result);
+        };
+        let answer = match &result {
+            Ok(None) => None,
+            Ok(Some(SelectionCandidate::ImplCandidate(id))) => Some(*id),
+            _ => return cache.insert(key, task, result),
+        };
+        let node = DepNode::construct(self, DepKind::CachedTraitSelection, &(key, answer));
+        let mut cache = cache.hashmap.borrow_mut();
+        let entry = cache.entry(key);
+        // Concurrent producers can compute this goal independently. Create one
+        // named node and keep each replacement tied to the task producing it.
+        let dep_node = if matches!(entry, std::collections::hash_map::Entry::Vacant(_)) {
+            graph.record_cache_entry(node, task)
+        } else {
+            task
+        };
+        entry.insert_entry(WithDepNode::new(dep_node, result));
     }
 }
 

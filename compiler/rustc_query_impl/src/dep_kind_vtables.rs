@@ -68,6 +68,10 @@ mod non_query {
         }
     }
 
+    pub(crate) fn CachedTraitSelection<'tcx>() -> DepKindVTable<'tcx> {
+        DepKindVTable { key_fingerprint_style: KeyFingerprintStyle::Opaque, ..TraitSelect() }
+    }
+
     pub(crate) fn CompileCodegenUnit<'tcx>() -> DepKindVTable<'tcx> {
         DepKindVTable {
             is_eval_always: false,

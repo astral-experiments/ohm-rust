@@ -3094,6 +3094,9 @@ rustc_queries! {
     // These special tasks are also similar to queries, and have an associated key.
     // But they bypass the usual query system machinery for various reasons.
 
+    /// The global selection cache observed this answer for this trait goal.
+    non_query CachedTraitSelection
+
     /// Special task for compiling a CGU.
     non_query CompileCodegenUnit
     /// Special task for compiling a single `MonoItem`. Used by `rustc_codegen_cranelift`.

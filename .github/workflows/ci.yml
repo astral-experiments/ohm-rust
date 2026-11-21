@@ -199,6 +199,7 @@ jobs:
           --set rust.lto=off test --stage 1 tests/ui/wf/nominal-inherited-obligations.rs
           tests/ui/wf/nominal-inherited-obligations-fail.rs
           tests/incremental/nominal-inherited-obligations.rs
+          tests/incremental/cached-trait-selection.rs
 
       - name: Run borrow checker dataflow regression tests
         run: >-
