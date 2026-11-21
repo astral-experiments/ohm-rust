@@ -365,7 +365,7 @@ impl<'a, 'tcx> LoanInvalidationsGenerator<'a, 'tcx> {
             self.body,
             (sd, place),
             self.borrow_set,
-            |_| true,
+            None,
             |this, borrow_index, borrow| {
                 match (rw, borrow.kind) {
                     // Obviously an activation is compatible with its own

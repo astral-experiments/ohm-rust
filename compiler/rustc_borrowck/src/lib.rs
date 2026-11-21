@@ -1288,7 +1288,7 @@ impl<'a, 'tcx> MirBorrowckCtxt<'a, '_, 'tcx> {
             self.body,
             (sd, place_span.0),
             self.borrow_set,
-            |borrow_index| borrows_in_scope.contains(borrow_index),
+            Some(&borrows_in_scope),
             |this, borrow_index, borrow| match (rw, borrow.kind) {
                 // Obviously an activation is compatible with its own
                 // reservation (or even prior activating uses of same
@@ -1429,7 +1429,7 @@ impl<'a, 'tcx> MirBorrowckCtxt<'a, '_, 'tcx> {
             self.body,
             (sd, place),
             self.borrow_set,
-            |borrow_index| borrows_in_scope.contains(borrow_index),
+            Some(&borrows_in_scope),
             |this, _borrow_index, borrow| {
                 if matches!(borrow.kind, BorrowKind::Fake(_)) {
                     return ControlFlow::Continue(());
