@@ -58,7 +58,11 @@ fn main() {
     fs::create_dir("out").unwrap();
     compile().assert_stderr_contains("ohm_dwarf_line_stored");
     let object = fs::read(certificate().with_extension("o")).unwrap();
-    rebuild(|_| {}).assert_stderr_contains("exact=true");
+    let check_replay = || {
+        rebuild(|_| {}).assert_stderr_contains("ohm_dwarf_line_hit");
+        assert_eq!(fs::read(certificate().with_extension("o")).unwrap(), object);
+    };
+    check_replay();
     // Neither a different layout nor an unauthenticated compiler configuration is usable.
     for at in [0, 8, 88] {
         rebuild(|record| {
@@ -77,5 +81,5 @@ fn main() {
     .assert_stderr_not_contains("ohm_dwarf_line_hit")
     .assert_stderr_contains("ohm_dwarf_line_stored");
     assert_eq!(fs::read(certificate().with_extension("o")).unwrap(), object);
-    rebuild(|_| {}).assert_stderr_contains("exact=true");
+    check_replay();
 }
