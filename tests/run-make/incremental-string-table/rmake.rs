@@ -4,9 +4,15 @@ use run_make_support::{rfs, run, rustc};
 
 fn table(rows: usize, last: &str) {
     let prefix = r#"(&["key"], &["value"]), "#.repeat(rows - 1);
+    let ranges = "(1, 'a', &['A', 'λ']), ".repeat(rows - 1);
     rfs::write(
         "table.rs",
-        format!(r#"pub const TABLE: &[(&[&str], &[&str])] = &[{prefix}(&[], &["", {last}])];"#),
+        format!(
+            r#"
+pub const TABLE: &[(&[&str], &[&str])] = &[{prefix}(&[], &["", {last}])];
+pub const MIXED: &[(u8, char, &[char])] = &[{ranges}(255, '🦀', &[])];
+"#
+        ),
     );
 }
 
@@ -24,6 +30,9 @@ fn main() {
     check("64 λ");
     table(64, r#""π""#);
     check("64 π");
+    let thir =
+        rustc().input("table.rs").crate_type("lib").arg("-Zunpretty=thir-tree").run().stdout_utf8();
+    assert_eq!(thir.matches("LiteralArray(").count(), 2);
 
     // A non-literal in the last row must still go through ordinary const evaluation.
     table(64, r#"panic!("invalid row")"#);
