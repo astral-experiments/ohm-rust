@@ -121,7 +121,7 @@ struct Frame<'a> {
 
 enum FrameKind {
     Delimited { delim: Delimiter, span: DelimSpan, spacing: DelimSpacing },
-    Sequence { sep: Option<Token>, kleene_op: KleeneOp },
+    Sequence { sep: Option<Token> },
 }
 
 impl<'a> Frame<'a> {
@@ -133,12 +133,8 @@ impl<'a> Frame<'a> {
         }
     }
 
-    fn new_sequence(
-        src: &'a mbe::SequenceRepetition,
-        sep: Option<Token>,
-        kleene_op: KleeneOp,
-    ) -> Frame<'a> {
-        Frame { tts: &src.tts, idx: 0, kind: FrameKind::Sequence { sep, kleene_op } }
+    fn new_sequence(src: &'a mbe::SequenceRepetition, sep: Option<Token>) -> Frame<'a> {
+        Frame { tts: &src.tts, idx: 0, kind: FrameKind::Sequence { sep } }
     }
 }
 
@@ -208,7 +204,7 @@ pub(super) fn transcribe<'a>(
             // Otherwise, if we have just reached the end of a sequence and we can keep repeating,
             // go back to the beginning of the sequence.
             let frame = tscx.stack.last_mut().unwrap();
-            if let FrameKind::Sequence { sep, .. } = &frame.kind {
+            if let FrameKind::Sequence { sep } = &frame.kind {
                 let (repeat_idx, repeat_len) = tscx.repeats.last_mut().unwrap();
                 *repeat_idx += 1;
                 if repeat_idx < repeat_len {
@@ -310,6 +306,33 @@ fn transcribe_sequence<'tx, 'itp>(
 ) -> PResult<'tx, ()> {
     let dcx = tscx.psess.dcx();
 
+    // With a single metavariable the repetition count is exactly the
+    // number of captures at this depth. Look up the name and walk the
+    // enclosing repetitions just once, then stream the captures.
+    if seq_rep.separator.is_none()
+        && matches!(seq_rep.kleene.op, KleeneOp::ZeroOrMore | KleeneOp::OneOrMore)
+        && let &[mbe::TokenTree::MetaVar(sp, name)] = seq_rep.tts.as_slice()
+    {
+        let ident = MacroRulesNormalizedIdent::new(name);
+        if let Some(MatchedSeq(captures)) = lookup_cur_matched(ident, tscx.interp, &tscx.repeats)
+            && !captures.is_empty()
+        {
+            tscx.result.reserve(captures.len());
+            for capture in captures {
+                match capture {
+                    // Undelimited runs of `tt`s preserve their original
+                    // spans and don't register metavariable locations.
+                    MatchedSingle(ParseNtResult::Tt(tt)) => tscx.result.push(tt.clone()),
+                    MatchedSingle(nt) => transcribe_pnr(tscx, sp, nt)?,
+                    MatchedSeq(_) => {
+                        return Err(dcx.create_err(MacroVarStillRepeating { span: sp, ident }));
+                    }
+                }
+            }
+            return Ok(());
+        }
+    }
+
     // We are descending into a sequence. We first make sure that the matchers in the RHS
     // and the matches in `interp` have the same shape. Otherwise, either the caller or the
     // macro writer has made a mistake.
@@ -406,7 +429,7 @@ fn transcribe_sequence<'tx, 'itp>(
                 // The first time we encounter the sequence we push it to the stack. It
                 // then gets reused (see the beginning of the loop) until we are done
                 // repeating.
-                tscx.stack.push(Frame::new_sequence(seq_rep, seq.separator, seq.kleene.op));
+                tscx.stack.push(Frame::new_sequence(seq_rep, seq.separator));
             }
         }
     }
@@ -496,7 +519,7 @@ fn transcribe_pnr<'tx>(
             // without wrapping them into groups. Other variables are emitted into
             // the output stream as groups with `Delimiter::Invisible` to maintain
             // parsing priorities.
-            maybe_use_metavar_location(tscx.psess, &tscx.stack, sp, tt, &mut tscx.marker)
+            maybe_use_metavar_location(tscx.psess, sp, tt, &mut tscx.marker)
         }
         ParseNtResult::Ident(ident, kind) => {
             tscx.marker.mark_span(&mut sp);
@@ -737,36 +760,15 @@ fn metavar_expr_concat<'tx>(
 /// - The metavariable location is useful when we need to somehow combine the token span with spans
 ///   of its surrounding tokens. This is the most common way to use token spans.
 ///
-/// So this function replaces the original location with the metavariable location in all cases
-/// except these two:
-/// - The metavariable is an element of undelimited sequence `$($tt)*`.
-///   These are typically used for passing larger amounts of code, and tokens in that code usually
-///   combine with each other and not with tokens outside of the sequence.
-/// - The metavariable span comes from a different crate, then we prefer the more local span.
+/// Prefer the local span when the metavariable comes from another crate.
+/// Undelimited sequences `$($tt)*` are handled in `transcribe_sequence`,
+/// since those tokens usually combine with each other.
 fn maybe_use_metavar_location(
     psess: &ParseSess,
-    stack: &[Frame<'_>],
     mut metavar_span: Span,
     orig_tt: &TokenTree,
     marker: &mut Marker,
 ) -> TokenTree {
-    let undelimited_seq = matches!(
-        stack.last(),
-        Some(Frame {
-            tts: [_],
-            kind: FrameKind::Sequence {
-                sep: None,
-                kleene_op: KleeneOp::ZeroOrMore | KleeneOp::OneOrMore,
-                ..
-            },
-            ..
-        })
-    );
-    if undelimited_seq {
-        // Do not record metavar spans for tokens from undelimited sequences, for perf reasons.
-        return orig_tt.clone();
-    }
-
     marker.mark_span(&mut metavar_span);
     let no_collision = match orig_tt {
         TokenTree::Token(token, ..) => {

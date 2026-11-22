@@ -1336,6 +1336,8 @@ pub struct OwnerNodes<'tcx> {
     pub bodies: SortedMap<ItemLocalId, &'tcx Body<'tcx>>,
     /// Whether any node in this owner has a parsed `#[loop_match]` or `#[const_continue]`.
     pub has_loop_control_attrs: bool,
+    /// Whether the item collector can encounter other items, nested bodies, or opaque types.
+    pub has_inner_defs: bool,
 }
 
 impl<'tcx> OwnerNodes<'tcx> {
@@ -1356,6 +1358,7 @@ impl<'tcx> OwnerNodes<'tcx> {
             ),
             bodies: SortedMap::new(),
             has_loop_control_attrs: false,
+            has_inner_defs: false,
         }
     }
 }

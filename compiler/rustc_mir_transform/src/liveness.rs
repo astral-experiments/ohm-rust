@@ -52,6 +52,14 @@ struct Access {
 
 #[tracing::instrument(level = "debug", skip(tcx), ret)]
 pub(crate) fn check_liveness<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) -> DenseBitSet<FieldIdx> {
+    // The only other consumer of dead captures is this same lint pass on the enclosing
+    // body. Skip both together when neither lint can be emitted anywhere in the crate.
+    if !tcx.sess.opts.unstable_opts.dump_mir_dataflow
+        && tcx.can_skip_capped_lints(&[UNUSED_VARIABLES, UNUSED_ASSIGNMENTS])
+    {
+        return DenseBitSet::new_empty(0);
+    }
+
     // Don't run on synthetic MIR, as that will ICE trying to access HIR.
     if tcx.is_synthetic_mir(def_id) {
         return DenseBitSet::new_empty(0);

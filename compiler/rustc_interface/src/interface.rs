@@ -404,8 +404,20 @@ pub fn run_compiler<R: Send>(config: Config, f: impl FnOnce(&Compiler) -> R + Se
     );
     let file_loader = config.file_loader.unwrap_or_else(|| Box::new(RealFileLoader));
     let path_mapping = config.opts.file_path_mapping();
-    let hash_kind = config.opts.unstable_opts.src_hash_algorithm(&target);
-    let checksum_hash_kind = config.opts.unstable_opts.checksum_hash_algorithm();
+    let unstable = &config.opts.unstable_opts;
+    let checksum_hash_kind = unstable.checksum_hash_algorithm();
+    // No object file needs a DWARF checksum during a check. Reuse Cargo's BLAKE3
+    // digest for source identity as well, unless a different algorithm was requested.
+    let hash_kind = if unstable.ohm_shared_stages
+        && unstable.src_hash_algorithm.is_none()
+        && !config.opts.output_types.should_codegen()
+        && checksum_hash_kind == Some(rustc_span::SourceFileHashAlgorithm::Blake3)
+        && !target.is_like_msvc
+    {
+        rustc_span::SourceFileHashAlgorithm::Blake3
+    } else {
+        unstable.src_hash_algorithm(&target)
+    };
 
     util::run_in_thread_pool_with_globals(
         &early_dcx,

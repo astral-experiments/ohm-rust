@@ -13,6 +13,9 @@ pub(super) struct FunctionItemReferences;
 
 impl<'tcx> crate::MirLint<'tcx> for FunctionItemReferences {
     fn run_lint(&self, tcx: TyCtxt<'tcx>, body: &Body<'tcx>) {
+        if tcx.can_skip_capped_lints(&[FUNCTION_ITEM_REFERENCES]) {
+            return;
+        }
         let mut checker = FunctionItemRefChecker { tcx, body };
         checker.visit_body(body);
     }

@@ -333,6 +333,9 @@ impl MutVisitor for PlaceholderExpander {
     }
 
     fn visit_expr(&mut self, expr: &mut ast::Expr) {
+        if expr.is_plain_leaf() {
+            return;
+        }
         match expr.kind {
             ast::ExprKind::MacCall(_) => *expr = *self.remove(expr.id).make_expr(),
             _ => walk_expr(self, expr),
@@ -340,6 +343,9 @@ impl MutVisitor for PlaceholderExpander {
     }
 
     fn visit_method_receiver_expr(&mut self, expr: &mut ast::Expr) {
+        if expr.is_plain_leaf() {
+            return;
+        }
         match expr.kind {
             ast::ExprKind::MacCall(_) => *expr = *self.remove(expr.id).make_method_receiver_expr(),
             _ => walk_expr(self, expr),
@@ -347,6 +353,9 @@ impl MutVisitor for PlaceholderExpander {
     }
 
     fn filter_map_expr(&mut self, expr: Box<ast::Expr>) -> Option<Box<ast::Expr>> {
+        if expr.is_plain_leaf() {
+            return Some(expr);
+        }
         match expr.kind {
             ast::ExprKind::MacCall(_) => self.remove(expr.id).make_opt_expr(),
             _ => walk_filter_map_expr(self, expr),

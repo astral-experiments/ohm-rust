@@ -842,7 +842,7 @@ pub(crate) fn region_scope_tree_root(tcx: TyCtxt<'_>, def_id: LocalDefId) -> &Sc
     let scope_tree = if let Some(body) = tcx.hir_maybe_body_owned_by(def_id) {
         let mut visitor = ScopeResolutionVisitor {
             tcx,
-            scope_tree: ScopeTree::default(),
+            scope_tree: ScopeTree::new(tcx, tcx.local_def_id_to_hir_id(def_id)),
             cx: Context { parent: None, var_parent: None },
             extended_super_lets: Default::default(),
         };

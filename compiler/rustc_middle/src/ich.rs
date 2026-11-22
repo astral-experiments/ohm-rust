@@ -122,10 +122,8 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
     /// Instead, we hash the (file name, line, column) triple, which stays the same even if the
     /// containing `SourceFile` has moved within the `SourceMap`.
     ///
-    /// Also note that we are hashing byte offsets for the column, not unicode codepoint offsets.
-    /// For the purpose of the hash that's sufficient. Also, hashing filenames is expensive so we
-    /// avoid doing it twice when the span starts and ends in the same file, which is almost always
-    /// the case.
+    /// We hash byte columns and, for public metadata, the difference between byte and
+    /// character columns. We hash the filename once when both endpoints share it.
     ///
     /// IMPORTANT: changes to this method should be reflected in implementations of `SpanEncoder`.
     #[inline]
@@ -139,6 +137,7 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
         const TAG_VALID_SPAN: u8 = 0;
         const TAG_INVALID_SPAN: u8 = 1;
         const TAG_RELATIVE_SPAN: u8 = 2;
+        const TAG_MULTIBYTE_COLUMNS: u8 = 3;
 
         if HASH_SPANS_AS_PARENTLESS {
             span.parent = None
@@ -202,6 +201,27 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
             let hi = span.hi.0.wrapping_sub(parent.lo.0);
             Hash::hash(&(((hi as u64) << 32) | lo as u64), hasher);
             return;
+        }
+
+        // Metadata consumers can observe character columns through Location::caller.
+        // Replacing ASCII with a multibyte character can leave both byte columns intact.
+        if HASH_SPANS_AS_PARENTLESS && !file.multibyte_chars.is_empty() {
+            let extra_bytes = |pos, col: rustc_span::BytePos| {
+                let end = file.relative_position(pos).0;
+                let start = end - col.0;
+                let first = file.multibyte_chars.partition_point(|ch| ch.pos.0 < start);
+                file.multibyte_chars[first..]
+                    .iter()
+                    .take_while(|ch| ch.pos.0 < end)
+                    .map(|ch| u32::from(ch.bytes - 1))
+                    .sum::<u32>()
+            };
+            let lo = extra_bytes(span.lo, col_lo);
+            let hi = extra_bytes(span.hi, col_hi);
+            if lo != 0 || hi != 0 {
+                Hash::hash(&TAG_MULTIBYTE_COLUMNS, hasher);
+                Hash::hash(&((u64::from(hi) << 32) | u64::from(lo)), hasher);
+            }
         }
 
         Hash::hash(&TAG_VALID_SPAN, hasher);

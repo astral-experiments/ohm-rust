@@ -13,20 +13,24 @@ use super::ThirBuildCx;
 
 /// Check the entire row type, including elements of empty slices. Bound the walk
 /// since a small number of tuple aliases can describe a very large type.
-fn string_row(ty: Ty<'_>, remaining: &mut usize) -> bool {
+fn check_row(ty: Ty<'_>, remaining: &mut usize, has_ref: &mut bool) -> bool {
     if *remaining == 0 {
         return false;
     }
     *remaining -= 1;
     match *ty.kind() {
         ty::Tuple(fields) => {
-            !fields.is_empty() && fields.iter().all(|ty| string_row(ty, remaining))
+            !fields.is_empty() && fields.iter().all(|ty| check_row(ty, remaining, has_ref))
         }
-        ty::Ref(_, pointee, Mutability::Not) => match *pointee.kind() {
-            ty::Str => true,
-            ty::Slice(ty) => string_row(ty, remaining),
-            _ => false,
-        },
+        ty::Ref(_, pointee, Mutability::Not) => {
+            *has_ref = true;
+            match *pointee.kind() {
+                ty::Str => true,
+                ty::Slice(ty) => check_row(ty, remaining, has_ref),
+                _ => false,
+            }
+        }
+        ty::Char | ty::Uint(ty::UintTy::U8 | ty::UintTy::U16 | ty::UintTy::U32) => true,
         _ => false,
     }
 }
@@ -38,7 +42,10 @@ impl<'tcx> ThirBuildCx<'tcx> {
     pub(super) fn string_table(&self, ty: Ty<'tcx>, expr: &Expr<'tcx>) -> Option<AllocId> {
         let tcx = self.tcx;
         let ty::Array(row, _) = *ty.kind() else { return None };
-        if !string_row(row, &mut 32)
+        // Keep tables with no references on the scalar and tuple packing path.
+        let mut has_ref = false;
+        if !check_row(row, &mut 32, &mut has_ref)
+            || !has_ref
             || tcx.def_kind(self.body_owner) != DefKind::Const
             || tcx.generics_of(self.body_owner).count() != 0
             || tcx.sess.instrument_coverage()
@@ -55,11 +62,11 @@ impl<'tcx> ThirBuildCx<'tcx> {
         if root.hir_id != expr.hir_id {
             return None;
         }
-        self.pack_strings(expr, ty)
+        self.pack_rows(expr, ty)
     }
 
     /// Keep each borrowed array in its own immutable allocation.
-    fn pack_strings(&self, array: &Expr<'tcx>, ty: Ty<'tcx>) -> Option<AllocId> {
+    fn pack_rows(&self, array: &Expr<'tcx>, ty: Ty<'tcx>) -> Option<AllocId> {
         let ExprKind::Array(items) = array.kind else { return None };
         let ty::Array(row, _) = *ty.kind() else { return None };
         if !self.tcx.hir_attrs(array.hir_id).is_empty()
@@ -70,7 +77,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
         let layout = self.tcx.layout_of(self.typing_env.as_query_input(ty)).ok()?;
         let mut alloc = Allocation::new(layout.size, layout.align.abi, AllocInit::Uninit, ());
         for (i, item) in items.iter().enumerate() {
-            self.write_string_row(&mut alloc, layout.fields.offset(i), item, row)?;
+            self.write_row(&mut alloc, layout.fields.offset(i), item, row)?;
         }
         alloc.mutability = Mutability::Not;
         Some(self.tcx.reserve_and_set_memory_alloc(self.tcx.mk_const_alloc(alloc)))
@@ -78,7 +85,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
 
     /// Take field offsets from target layout and write pointer provenance with
     /// the interpreter's scalar operations. Only built-in unsizing is allowed.
-    fn write_string_row(
+    fn write_row(
         &self,
         alloc: &mut Allocation,
         offset: Size,
@@ -96,14 +103,14 @@ impl<'tcx> ThirBuildCx<'tcx> {
         let (id, len) = match (expr.kind, *ty.kind()) {
             (ExprKind::Tup(items), ty::Tuple(fields)) if adjustments.is_empty() => {
                 for (i, item) in items.iter().enumerate() {
-                    self.write_string_row(
-                        alloc,
-                        offset + layout.fields.offset(i),
-                        item,
-                        fields[i],
-                    )?;
+                    self.write_row(alloc, offset + layout.fields.offset(i), item, fields[i])?;
                 }
                 return Some(());
+            }
+            (ExprKind::Lit(lit), ty::Char | ty::Uint(_)) if adjustments.is_empty() => {
+                let bits = ty.table_literal_bits(&lit.node)?;
+                let scalar = Scalar::from_uint(bits, layout.size);
+                return alloc.write_scalar(&tcx, alloc_range(offset, layout.size), scalar).ok();
             }
             (ExprKind::Lit(lit), ty::Ref(_, inner, _))
                 if inner.is_str() && adjustments.is_empty() =>
@@ -134,7 +141,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                     ] => {}
                     _ => return None,
                 }
-                (self.pack_strings(array, source)?, items.len())
+                (self.pack_rows(array, source)?, items.len())
             }
             _ => return None,
         };

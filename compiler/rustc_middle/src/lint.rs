@@ -243,6 +243,20 @@ impl ShallowLintLevelMap {
 }
 
 impl TyCtxt<'_> {
+    /// Can an analysis used only to emit these lints be omitted under `--cap-lints=allow`?
+    ///
+    /// Check the crate-wide set to retain forced warnings and future incompatibility
+    /// reports. Avoid introducing a dependency on that set for ordinary local builds.
+    pub fn can_skip_capped_lints(self, lints: &[&'static Lint]) -> bool {
+        if self.sess.opts.lint_cap != Some(Level::Allow)
+            || self.sess.opts.unstable_opts.future_incompat_test
+        {
+            return false;
+        }
+        let skippable = self.skippable_lints(());
+        lints.iter().all(|lint| skippable.contains(&LintId::of(lint)))
+    }
+
     /// Fetch and return the user-visible lint level spec for the given lint at the given HirId.
     pub fn lint_level_spec_at_node(self, lint: &'static Lint, id: HirId) -> StableLevelSpec {
         self.shallow_lint_levels_on(id.owner).lint_level_spec_at_node(self, LintId::of(lint), id)

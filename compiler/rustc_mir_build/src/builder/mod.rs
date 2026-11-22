@@ -682,6 +682,59 @@ fn construct_fn<'tcx>(
     body
 }
 
+/// A shared borrow of an immutable literal array, coerced to its slice, can
+/// use the same slice constant as a string literal. Restrict this to the entire
+/// body of a monomorphic free constant with no other operations or adjustments.
+fn literal_slice<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def: LocalDefId,
+    thir: &Thir<'tcx>,
+    root: ExprId,
+    ty: Ty<'tcx>,
+) -> Option<ConstValue> {
+    use rustc_middle::thir::ExprKind;
+    use rustc_middle::ty::adjustment::PointerCoercion;
+    use rustc_middle::ty::consts::ConstExt;
+
+    let ty::Ref(_, slice, hir::Mutability::Not) = *ty.kind() else { return None };
+    let ty::Slice(element) = *slice.kind() else { return None };
+    let ExprKind::Scope { hir_id, value, .. } = thir[root].kind else { return None };
+    let ExprKind::PointerCoercion { cast: PointerCoercion::Unsize, source, is_from_as_cast: false } =
+        thir[value].kind
+    else {
+        return None;
+    };
+    let ExprKind::Borrow { borrow_kind: BorrowKind::Shared, mut arg } = thir[source].kind else {
+        return None;
+    };
+    // The coercion can insert a built-in reborrow.
+    if let ExprKind::Deref { arg: inner } = thir[arg].kind
+        && let ExprKind::Borrow { borrow_kind: BorrowKind::Shared, arg: original } =
+            thir[inner].kind
+    {
+        arg = original;
+    }
+    let ExprKind::Scope { hir_id: array_id, value, .. } = thir[arg].kind else { return None };
+    let ExprKind::LiteralArray { alloc_id } = thir[value].kind else { return None };
+    let array = thir[value].ty;
+    let ty::Array(row, len) = *array.kind() else { return None };
+    if row != element
+        || thir[root].ty != ty
+        || tcx.def_kind(def) != DefKind::Const
+        || tcx.generics_of(def).count() != 0
+        || !tcx.hir_attrs(tcx.local_def_id_to_hir_id(def)).is_empty()
+        || !tcx.hir_attrs(hir_id).is_empty()
+        || !tcx.hir_attrs(array_id).is_empty()
+        || tcx.sess.instrument_coverage()
+        || tcx.sess.opts.unstable_opts.maximal_hir_to_mir_coverage
+    {
+        return None;
+    }
+    // Check the array fits the target even though it no longer needs a MIR local.
+    tcx.layout_of(ty::TypingEnv::fully_monomorphized().as_query_input(array)).ok()?;
+    Some(ConstValue::Slice { alloc_id, meta: len.try_to_target_usize(tcx)? })
+}
+
 fn construct_const<'a, 'tcx>(
     tcx: TyCtxt<'tcx>,
     def: LocalDefId,
@@ -726,7 +779,18 @@ fn construct_const<'a, 'tcx>(
         Builder::new(thir, infcx, def, hir_id, span, 0, const_ty, const_ty_span, None);
 
     let mut block = START_BLOCK;
-    block = builder.expr_into_dest(Place::return_place(), block, expr).into_block();
+    if let Some(slice) = literal_slice(tcx, def, thir, expr, const_ty) {
+        let span = thir[expr].span;
+        let operand = ConstOperand { span, user_ty: None, const_: Const::Val(slice, const_ty) };
+        builder.cfg.push_assign(
+            block,
+            SourceInfo::outermost(span),
+            Place::return_place(),
+            Rvalue::Use(Operand::Constant(Box::new(operand)), WithRetag::Yes),
+        );
+    } else {
+        block = builder.expr_into_dest(Place::return_place(), block, expr).into_block();
+    }
 
     let source_info = builder.source_info(span);
     builder.cfg.terminate(block, source_info, TerminatorKind::Return);

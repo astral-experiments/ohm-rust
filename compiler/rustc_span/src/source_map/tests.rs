@@ -819,3 +819,20 @@ fn read_binary_file_handles_lying_stat() {
     let bin = RealFileLoader.read_binary_file(kernel_max).unwrap();
     assert_eq!(&real[..], &bin[..]);
 }
+
+#[test]
+fn file_lookup_at_page_boundaries() {
+    let sm = SourceMap::new(FilePathMapping::empty());
+    let page = SourceMapFiles::PAGE_SIZE as usize;
+    let mut starts = Vec::new();
+    for (idx, len) in [0, 1, page - 4, 0, page * 3, 1, 0, page + 2].into_iter().enumerate() {
+        let file = sm.new_source_file(filename(&sm, &format!("{idx}.rs")), "x".repeat(len));
+        starts.push(file.start_pos);
+        for offset in 0..=file.end_position().0 {
+            let pos = BytePos(offset);
+            let expected = starts.partition_point(|&start| start <= pos) - 1;
+            assert_eq!(sm.lookup_source_file_idx(pos), expected);
+        }
+        assert_eq!(sm.lookup_source_file_idx(BytePos(u32::MAX)), idx);
+    }
+}

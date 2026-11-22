@@ -12,6 +12,9 @@ pub(super) struct CheckConstItemMutation;
 
 impl<'tcx> crate::MirLint<'tcx> for CheckConstItemMutation {
     fn run_lint(&self, tcx: TyCtxt<'tcx>, body: &Body<'tcx>) {
+        if tcx.can_skip_capped_lints(&[CONST_ITEM_MUTATION]) {
+            return;
+        }
         let mut checker = ConstMutationChecker { body, tcx, target_local: None };
         checker.visit_body(body);
     }

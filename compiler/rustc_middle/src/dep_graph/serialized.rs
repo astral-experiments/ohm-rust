@@ -205,6 +205,53 @@ impl SerializedDepGraph {
         })
     }
 
+    /// Visit a packed row in order, stopping at the first dependency that cannot
+    /// be marked green. Dispatch once so the hot loop uses fixed-size loads.
+    #[inline(always)]
+    pub(super) fn try_for_each_edge(
+        &self,
+        source: SerializedDepNodeIndex,
+        visit: impl FnMut(SerializedDepNodeIndex) -> Option<()>,
+    ) -> Option<()> {
+        #[inline(always)]
+        fn walk<const WIDTH: usize>(
+            bytes: &[u8],
+            mut visit: impl FnMut(SerializedDepNodeIndex) -> Option<()>,
+        ) -> Option<()> {
+            let (edges, tail) = bytes.as_chunks::<WIDTH>();
+            debug_assert!(tail.is_empty());
+            for edge in edges {
+                let mut index = [0; DEP_NODE_SIZE];
+                index[..WIDTH].copy_from_slice(edge);
+                visit(SerializedDepNodeIndex::from_u32(u32::from_le_bytes(index)))?;
+            }
+            Some(())
+        }
+
+        let row = self.row_index[source];
+        let bytes = &self.row_bytes()[row.edges_start..row.end()];
+        match row.width {
+            1 => walk::<1>(bytes, visit),
+            2 => walk::<2>(bytes, visit),
+            3 => walk::<3>(bytes, visit),
+            4 => walk::<4>(bytes, visit),
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub(super) fn has_same_short_edges(
+        &self,
+        index: SerializedDepNodeIndex,
+        edges: &[DepNodeIndex],
+    ) -> bool {
+        match (self.row_index[index].num_edges, edges) {
+            (0, []) => true,
+            (1, [edge]) => self.edge_targets_from(index).next().unwrap().as_u32() == edge.as_u32(),
+            _ => false,
+        }
+    }
+
     #[inline]
     pub fn index_to_node(&self, dep_node_index: SerializedDepNodeIndex) -> &DepNode {
         &self.nodes[dep_node_index]
@@ -712,7 +759,10 @@ impl EncoderState {
         let start = encoder.position();
         encoder.emit_raw_bytes(&local.encoder.data);
         if let Some(index) = &self.seek_index {
-            index.lock().record_chunk(start, &mut local.seek_offsets, &mut local.seek_roots);
+            // New nodes precede the worker's next index. Re-executed nodes
+            // can also occupy any of the previous session's reserved slots.
+            let slots = self.retained_rows.len().max(local.next_node_index as usize);
+            index.lock().record_chunk(start, slots, &mut local.seek_offsets, &mut local.seek_roots);
         }
         local.encoder.data.clear();
     }

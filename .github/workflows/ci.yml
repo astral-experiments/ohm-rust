@@ -123,11 +123,15 @@ jobs:
           tests/ui/traits/object/rerun-impossible-predicates-post-analysis.rs
           tests/ui/impl-trait/precise-capturing/outlives-pair-isolation.rs
           tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.rs
+          tests/incremental/resolve-fresh-variables.rs
 
       - name: Run metadata UI tests
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/ui/rmeta
+          tests/incremental/multiple-public-reexports
+          tests/ui/privacy/effective_visibilities_glob.rs
+          tests/ui/imports/ambiguous-import-visibility-globglob.rs
           tests/ui/privacy/pub-priv-dep/shared_direct_private.rs
 
       - name: Run LLVM prelink function-merging regression
@@ -140,9 +144,11 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1
           tests/ui/coroutine/metadata-sufficient-for-layout.rs
+          tests/ui/consts/const-eval/ub-char-array.rs
           tests/ui/coroutine/storage-conflicts-subsets.rs
           tests/ui/coroutine/storage-conflicts-overlapping-sets.rs
           tests/ui/coroutine/storage-conflicts-many-locals.rs
+          tests/ui/parser/ascii-token-boundaries.rs
           tests/ui/coroutine/storage-conflicts-resume-and-unwind.rs
           tests/ui/coroutine/xcrate.rs tests/ui/coroutine/drop-env.rs
           tests/ui/async-await/async-closures/drop.rs
@@ -188,6 +194,7 @@ jobs:
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1
+          tests/ui/resolve/trait-value-lookups.rs
           tests/ui/associated-types/closed-definition-proofs.rs
           tests/ui/associated-types/closed-definition-proof-failures.rs
           tests/ui/associated-types/concrete-impl-bound-normalization.rs
@@ -204,25 +211,54 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/ui/wf/nominal-inherited-obligations.rs
           tests/ui/wf/nominal-inherited-obligations-fail.rs
+          tests/incremental/nested-ast-owners.rs
+          tests/incremental/aggregate-wf-sized.rs
+          tests/incremental/nested-wf-bounds.rs
+          tests/incremental/nominal-wf-bounds.rs
           tests/incremental/integer-operands.rs
           tests/ui/const-generics/issues/issue-70180-1-stalled_on.rs
           tests/ui/const-generics/issues/issue-70180-2-stalled_on.rs
           tests/ui/coroutine/stalled-coroutine-obligations.rs
           tests/ui/inference/projection-cache-registers-obligations.rs
+          tests/ui/consts/integer-literal-const-overflow.rs
+          tests/ui/consts/integer-literal-const-suffix.rs
+          tests/incremental/foreign-integer-literal-const
+          tests/incremental/implied-reference-bounds.rs
+          tests/ui/implied-bounds/bevy_world_query.rs
+          tests/ui/implied-bounds/normalization-placeholder-leak.rs
+          tests/incremental/generalize-aggregate.rs
+          tests/ui/const-generics/occurs-check/unify-n-nplusone.rs
+          tests/ui/coherence/generalize-associated-type-alias.rs
           tests/incremental/nominal-inherited-obligations.rs
           tests/incremental/cached-trait-selection.rs
           tests/incremental/arity-receiver-lookup.rs
+          tests/incremental/coerce-simple-target.rs
+          tests/incremental/coerce-enum-bound.rs
+          tests/ui/coercion/infer-coerce-unsized-trait-object.rs
+          tests/ui/coercion/unsize-lifetime-shrinking.rs
+          tests/ui/unsized/issue-75899-but-gats.rs
+          tests/incremental/nested-ast-owners.rs
 
       - name: Run borrow checker dataflow regression tests
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1
           tests/incremental/dropck-region-free-kinds.rs
+          tests/incremental/copy-assignment-regions.rs
+          tests/ui/fn/implied-bounds-unnorm-associated-type.rs
+          tests/ui/fn/implied-bounds-unnorm-associated-type-3.rs
+          tests/mir-opt/building/storage_live_dead_in_statics.rs
           tests/ui/borrowck/borrowck-lend-flow-loop.rs
           tests/ui/borrowck/many-borrows-on-one-local.rs
           tests/ui/borrowck/two-phase-cannot-nest-mut-self-calls.rs
+          tests/incremental/call-nested-reference.rs
+          tests/incremental/impl-outlives-fulfillment.rs
           tests/ui/nll/maybe-initialized-drop.rs
           tests/ui/nll/match-guards-partially-borrow.rs
+          tests/incremental/projected-field-parent.rs
+          tests/ui/unsafe-binders/cat-projection.rs
+          tests/ui/sized/reject-unsized-fn-params.rs
+          tests/incremental/region-scope-parents.rs
 
       - name: Run bitset unit tests
         run: >-
@@ -232,7 +268,7 @@ jobs:
       - name: Run cached hygiene unit tests
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1 compiler/rustc_span --test-args hygiene::tests
+          --set rust.lto=off test --stage 1 compiler/rustc_span --test-args 'hygiene::tests source_map::tests::file_lookup_at_page_boundaries'
 
       - name: Run the large byte-string interning regression
         run: >-
@@ -262,15 +298,21 @@ jobs:
           --set rust.lto=off test --stage 1
           --compiletest-rustc-args=-Zthreads=8
           --compiletest-rustc-args=-Zincremental-verify-ich
+          tests/incremental/complete-expansion-items.rs
           tests/incremental/hygiene tests/incremental/derive_macro_expansion
+          tests/incremental/nested-items-in-associated-item-macro.rs
+          tests/incremental/repeated-token-tree-tail.rs
+          tests/incremental/forward-metavariable-sequence.rs
           tests/incremental/promote-cached-query-value.rs
+          tests/ui/macros/required-token.rs
+          tests/ui/macros/required-token-errors.rs
           tests/incremental/forward-cached-query-value.rs
 
       - name: Run retained allocation and check-index tests
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 compiler/rustc_middle
-          --test-args 'aliases_preserve_allocation_identity resolver_slots_ check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges lazy_worker_cache recorder_ c_linker_generic_summary_keeps_retention_exceptions'
+          --test-args 'aliases_preserve_allocation_identity resolver_slots_ query::job::tests:: dep_graph::serialized::tests:: lazy_worker_cache recorder_ c_linker_generic_summary_keeps_retention_exceptions'
 
       - name: Run library search tests
         run: >-
@@ -336,10 +378,14 @@ jobs:
             tests/run-make/incremental-attribute-proc-macro-cache
             tests/run-make/incremental-proc-macro-native-inputs
             tests/run-make/incremental-proc-macro-parse-source
+            tests/run-make/active-literal-tables
+            tests/run-make/inactive-literal-tables
             tests/run-make/incremental-retained-cache-snapshot
             tests/run-make/incremental-loaded-cache-values
             tests/run-make/incremental-module-syntax
             tests/run-make/incremental-large-byte-literal
+            tests/run-make/static-integer-array-literals
+            tests/run-make/literal-array-slices
             tests/run-make/incremental-string-table
             tests/run-make/incremental-check-body-attrs
             tests/run-make/incremental-recomputed-query-spans
@@ -351,6 +397,7 @@ jobs:
             tests/run-make/incremental-missing-query-cache
             tests/run-make/ohm-retained-mono-values
             tests/run-make/ohm-written-impl-paths
+            tests/run-make/capped-mir-lints
             tests/run-make/incremental-lint-owners
             tests/run-make/incremental-lint-visibilities
             tests/run-make/split-debuginfo-incremental

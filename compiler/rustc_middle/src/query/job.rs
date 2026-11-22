@@ -4,8 +4,8 @@ use std::num::NonZero;
 use std::sync::Arc;
 
 use parking_lot::{Condvar, Mutex};
-use rustc_data_structures::hash_table::HashTable;
-use rustc_data_structures::sharded::Sharded;
+use rustc_data_structures::hash_table::{Entry, HashTable};
+use rustc_data_structures::sharded::{self, Sharded};
 use rustc_span::Span;
 
 use crate::queries::TaggedQueryKey;
@@ -53,13 +53,93 @@ pub enum ActiveKeyStatus<'tcx> {
     Poisoned,
 }
 
+/// Active keys for one shard of one query. Most jobs finish before another
+/// key enters their shard. Keep the first job inline and use a table only
+/// for overlapping keys. Jobs stay where they started until completion.
+pub struct ActiveJobs<'tcx, K> {
+    first: Option<(K, ActiveKeyStatus<'tcx>)>,
+    rest: HashTable<(K, ActiveKeyStatus<'tcx>)>,
+}
+
+impl<'tcx, K> Default for ActiveJobs<'tcx, K> {
+    fn default() -> Self {
+        Self { first: None, rest: HashTable::new() }
+    }
+}
+
+impl<'tcx, K> ActiveJobs<'tcx, K> {
+    pub fn is_empty(&self) -> bool {
+        self.first.is_none() && self.rest.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &(K, ActiveKeyStatus<'tcx>)> {
+        self.first.iter().chain(self.rest.iter())
+    }
+}
+
+impl<'tcx, K: Eq + Hash + Copy> ActiveJobs<'tcx, K> {
+    pub fn is_poisoned(&self, hash: u64, key: K) -> bool {
+        let entry = self
+            .first
+            .as_ref()
+            .filter(|(k, _)| *k == key)
+            .or_else(|| self.rest.find(hash, |(k, _)| *k == key));
+        matches!(entry, Some((_, ActiveKeyStatus::Poisoned)))
+    }
+
+    #[inline]
+    pub fn start(
+        &mut self,
+        hash: u64,
+        key: K,
+        new_job: impl FnOnce() -> QueryJob<'tcx>,
+    ) -> Result<QueryJobId, &mut ActiveKeyStatus<'tcx>> {
+        // An empty first slot may have outlived its job while an overlapping
+        // job is still running. In that case look in the table before inserting.
+        if self.is_empty() {
+            let job = new_job();
+            let id = job.id;
+            self.first = Some((key, ActiveKeyStatus::Started(job)));
+            return Ok(id);
+        }
+        if let Some((first, status)) = &mut self.first
+            && *first == key
+        {
+            return Err(status);
+        }
+        match self.rest.entry(hash, |(k, _)| *k == key, |(k, _)| sharded::make_hash(k)) {
+            Entry::Occupied(entry) => Err(&mut entry.into_mut().1),
+            Entry::Vacant(entry) => {
+                let job = new_job();
+                let id = job.id;
+                entry.insert((key, ActiveKeyStatus::Started(job)));
+                Ok(id)
+            }
+        }
+    }
+
+    #[inline]
+    pub fn finish(&mut self, hash: u64, key: K, poison: bool) -> Option<ActiveKeyStatus<'tcx>> {
+        if self.first.as_ref().is_some_and(|(k, _)| *k == key) {
+            let replacement = poison.then_some((key, ActiveKeyStatus::Poisoned));
+            return std::mem::replace(&mut self.first, replacement).map(|(_, status)| status);
+        }
+        let entry = self.rest.find_entry(hash, |(k, _)| *k == key).ok()?;
+        let ((_, status), vacant) = entry.remove();
+        if poison {
+            vacant.insert((key, ActiveKeyStatus::Poisoned));
+        }
+        Some(status)
+    }
+}
+
 /// For a particular query, keeps track of "active" keys, i.e. keys whose
 /// evaluation has started but has not yet finished successfully.
 ///
 /// (Successful query evaluation for a key is represented by an entry in the
 /// query's in-memory cache.)
 pub struct QueryState<'tcx, K> {
-    pub active: Sharded<HashTable<(K, ActiveKeyStatus<'tcx>)>>,
+    pub active: Sharded<ActiveJobs<'tcx, K>>,
 }
 
 impl<'tcx, K> Default for QueryState<'tcx, K> {
@@ -111,3 +191,6 @@ impl<'tcx> QueryLatch<'tcx> {
         QueryLatch { waiters: Arc::new(Mutex::new(Some(Vec::new()))) }
     }
 }
+
+#[cfg(test)]
+mod tests;

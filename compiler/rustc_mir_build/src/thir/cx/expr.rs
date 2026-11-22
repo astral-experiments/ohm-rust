@@ -402,8 +402,22 @@ impl<'tcx> ThirBuildCx<'tcx> {
         ty: Ty<'tcx>,
         fields: &[hir::Expr<'tcx>],
     ) -> Option<mir::interpret::AllocId> {
-        if fields.len() < 1024 {
-            return None;
+        if fields.len() < 16 {
+            // Even a short table can avoid a promotion and a separate CTFE
+            // body when an immutable borrow forms the entire free const.
+            if !matches!(ty.kind(), ty::Array(row, _) if matches!(row.kind(), ty::Tuple(ts) if ts.len() >= 2))
+            {
+                return None;
+            }
+            if fields.is_empty() || self.tcx.def_kind(self.body_owner) != DefKind::Const {
+                return None;
+            }
+            let root = self.tcx.hir_body_owned_by(self.body_owner.expect_local()).value;
+            if !matches!(root.kind, hir::ExprKind::AddrOf(hir::BorrowKind::Ref, hir::Mutability::Not, array)
+                if matches!(array.kind, hir::ExprKind::Array(items) if std::ptr::eq(items, fields)))
+            {
+                return None;
+            }
         }
         match self.tcx.def_kind(self.body_owner) {
             DefKind::Static { mutability: hir::Mutability::Not, .. } => {}

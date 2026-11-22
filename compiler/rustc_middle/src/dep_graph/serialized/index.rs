@@ -18,20 +18,21 @@ fn key(node: &DepNode) -> (u16, [u8; 16]) {
 
 #[derive(Default)]
 pub(super) struct SeekIndexBuilder {
-    offsets: Vec<u64>,
+    /// Little-endian file offsets, ready to write as one contiguous slice.
+    offsets: Vec<[u8; 8]>,
     roots: Vec<(DepNode, DepNodeIndex)>,
 }
 
 impl SeekIndexBuilder {
     pub(super) fn reserve_slots(&mut self, len: usize) {
         if self.offsets.len() < len {
-            self.offsets.resize(len, 0);
+            self.offsets.resize(len, [0; 8]);
         }
     }
 
     pub(super) fn record_node(&mut self, node: DepNode, index: DepNodeIndex, offset: usize) {
-        debug_assert_eq!(self.offsets[index.as_usize()], 0);
-        self.offsets[index.as_usize()] = offset as u64;
+        debug_assert_eq!(self.offsets[index.as_usize()], [0; 8]);
+        self.offsets[index.as_usize()] = (offset as u64).to_le_bytes();
         if matches!(node.kind, super::DepKind::typeck_root | super::DepKind::mir_borrowck) {
             self.roots.push((node, index));
         }
@@ -40,16 +41,14 @@ impl SeekIndexBuilder {
     pub(super) fn record_chunk(
         &mut self,
         start: usize,
+        slots: usize,
         offsets: &mut Vec<(DepNodeIndex, usize)>,
         roots: &mut Vec<(DepNode, DepNodeIndex)>,
     ) {
+        self.reserve_slots(slots);
         for (index, offset) in offsets.drain(..) {
-            let index = index.as_u32() as usize;
-            if index >= self.offsets.len() {
-                self.offsets.resize(index + 1, 0);
-            }
-            debug_assert_eq!(self.offsets[index], 0);
-            self.offsets[index] = (start + offset).try_into().unwrap();
+            debug_assert_eq!(self.offsets[index.as_usize()], [0; 8]);
+            self.offsets[index.as_usize()] = u64::try_from(start + offset).unwrap().to_le_bytes();
         }
         self.roots.append(roots);
     }
@@ -57,10 +56,8 @@ impl SeekIndexBuilder {
     /// Appends an optional seek directory before the ordinary graph footer.
     pub(super) fn encode(&mut self, encoder: &mut impl Encoder, start: usize, node_max: u32) {
         assert!(self.offsets.len() <= node_max as usize);
-        self.offsets.resize(node_max as usize, 0);
-        for offset in &self.offsets {
-            encoder.emit_raw_bytes(&offset.to_le_bytes());
-        }
+        self.reserve_slots(node_max as usize);
+        encoder.emit_raw_bytes(self.offsets.as_flattened());
         self.roots.sort_unstable_by_key(|(node, _)| key(node));
         for (_, index) in &self.roots {
             encoder.emit_raw_bytes(&index.as_u32().to_le_bytes());

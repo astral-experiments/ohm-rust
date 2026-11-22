@@ -297,7 +297,9 @@ impl<'a> Visitor<'a> for PostExpansionVisitor<'a> {
             },
             _ => {}
         }
-        visit::walk_expr(self, e)
+        if !e.is_plain_leaf() {
+            visit::walk_expr(self, e)
+        }
     }
 
     fn visit_pat(&mut self, pattern: &'a ast::Pat) {

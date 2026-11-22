@@ -4,7 +4,6 @@ use std::num::NonZero;
 use std::sync::Arc;
 
 use parking_lot::{Condvar, Mutex};
-use rustc_data_structures::hash_table::Entry;
 use rustc_data_structures::{defer, outline, sharded, sync};
 use rustc_errors::FatalError;
 use rustc_hir::def::DefKind;
@@ -29,11 +28,6 @@ use crate::incremental::should_verify_loaded_value;
 use crate::job::{
     CollectActiveJobsKind, collect_active_query_jobs, find_cycle_in_stack, find_dep_kind_root,
 };
-
-#[inline]
-fn equivalent_key<K: Eq, V>(k: K) -> impl Fn(&(K, V)) -> bool {
-    move |x| x.0 == k
-}
 
 #[cold]
 #[inline(never)]
@@ -123,21 +117,12 @@ where
     fn drop_and_maybe_poison(&mut self, poison: bool) {
         let status = {
             let mut shard = self.state.active.lock_shard_by_hash(self.key_hash);
-            match shard.find_entry(self.key_hash, equivalent_key(self.key)) {
-                Err(_) => {
-                    // Note: we must not panic while holding the lock, because unwinding also looks
-                    // at this map, which can result in a double panic. So drop it first.
-                    drop(shard);
-                    panic!();
-                }
-                Ok(occupied) => {
-                    let ((key, status), vacant) = occupied.remove();
-                    if poison {
-                        vacant.insert((key, ActiveKeyStatus::Poisoned));
-                    }
-                    status
-                }
-            }
+            let Some(status) = shard.finish(self.key_hash, self.key, poison) else {
+                // Unwinding also looks at this shard.
+                drop(shard);
+                panic!();
+            };
+            status
         };
 
         // Also signal the completion of the job, so waiters will continue execution.
@@ -243,14 +228,14 @@ fn wait_for_query<'tcx, C: QueryCache>(
                     // We didn't find the query result in the query cache. Check if it was
                     // poisoned due to a panic instead.
                     let shard = query.state.active.lock_shard_by_hash(key_hash);
-                    match shard.find(key_hash, equivalent_key(key)) {
+                    if shard.is_poisoned(key_hash, key) {
                         // The query we waited on panicked. Continue unwinding here.
-                        Some((_, ActiveKeyStatus::Poisoned)) => FatalError.raise(),
-                        _ => panic!(
-                            "query '{}' result must be in the cache or the query must be poisoned after a wait",
-                            query.name
-                        ),
+                        FatalError.raise()
                     }
+                    panic!(
+                        "query '{}' result must be in the cache or the query must be poisoned after a wait",
+                        query.name
+                    )
                 })
             };
 
@@ -303,14 +288,9 @@ fn try_execute_query<'tcx, C: QueryCache, const INCR: bool>(
 
     let current_job_id = current_query_job();
 
-    match state_lock.entry(key_hash, equivalent_key(key), |(k, _)| sharded::make_hash(k)) {
-        Entry::Vacant(entry) => {
-            // Nothing has computed or is computing the query, so we start a new job and insert it
-            // in the state map.
-            let id = next_job_id(tcx);
-            let job = QueryJob::new(id, span, current_job_id);
-            entry.insert((key, ActiveKeyStatus::Started(job)));
-
+    match state_lock.start(key_hash, key, || QueryJob::new(next_job_id(tcx), span, current_job_id))
+    {
+        Ok(id) => {
             // Drop the lock before we start executing the query.
             drop(state_lock);
 
@@ -335,8 +315,8 @@ fn try_execute_query<'tcx, C: QueryCache, const INCR: bool>(
 
             (value, Some(dep_node_index))
         }
-        Entry::Occupied(mut entry) => {
-            match &mut entry.get_mut().1 {
+        Err(status) => {
+            match status {
                 ActiveKeyStatus::Started(job) => {
                     if sync::is_dyn_thread_safe() {
                         // Get the latch out

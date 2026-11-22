@@ -280,18 +280,20 @@ impl<'cx, 'tcx> Visitor<'tcx> for WritebackCx<'cx, 'tcx> {
 
         self.visit_node_id(e.span, e.hir_id);
         if let hir::ExprKind::Array(fields) = e.kind
-            && fields.len() >= 1024
+            && fields.len() >= 16
             && let ty::Array(element, _) = *self.typeck_results.node_type(e.hir_id).kind()
-            && self.fcx.is_scalar_literal_table(e, fields, element)
+            && self.fcx.is_literal_table(e, fields, element)
         {
             let inferred = self.fcx.typeck_results.borrow();
-            if fields.iter().all(|field| {
-                inferred.node_type_opt(field.hir_id) == Some(element)
+            let nodes = crate::expr::literal_table_nodes(fields, element);
+            if nodes.clone().all(|(field, ty)| {
+                inferred.node_type_opt(field.hir_id) == Some(ty)
                     && inferred.expr_adjustments(field).is_empty()
             }) {
-                self.typeck_results
-                    .node_types_mut()
-                    .extend(UnordItems::new(fields.iter().map(|field| (field.hir_id, element))));
+                let mut node_types = self.typeck_results.node_types_mut();
+                let nodes_per_row = 1 + element.opt_tuple_fields().map_or(0, |tys| tys.len());
+                node_types.reserve(fields.len() * nodes_per_row);
+                node_types.extend(UnordItems::new(nodes.map(|(field, ty)| (field.hir_id, ty))));
                 return;
             }
         }

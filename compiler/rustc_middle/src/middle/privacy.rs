@@ -142,6 +142,9 @@ impl EffectiveVisibilities {
         match self.map.entry(def_id) {
             IndexEntry::Occupied(mut occupied) => {
                 let old_eff_vis = occupied.get_mut();
+                if old_eff_vis == eff_vis {
+                    return;
+                }
                 for l in Level::all_levels() {
                     let vis_at_level = eff_vis.at_level(l);
                     let old_vis_at_level = old_eff_vis.at_level_mut(l);
@@ -236,6 +239,12 @@ impl<Id: Eq + Hash> EffectiveVisibilities<Id> {
     ) -> bool {
         let mut changed = false;
         let current_effective_vis = self.effective_vis_or_private(id, || private_vis);
+
+        // Capping an inherited visibility can only make it more restrictive.
+        // Keep the insertion above, even when no level can change.
+        if *current_effective_vis == inherited_effective_vis {
+            return false;
+        }
 
         let mut inherited_effective_vis_at_prev_level = *inherited_effective_vis.at_level(level);
         let mut calculated_effective_vis = inherited_effective_vis_at_prev_level;
