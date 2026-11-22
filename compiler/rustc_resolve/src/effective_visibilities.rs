@@ -114,7 +114,9 @@ impl<'a, 'ra, 'tcx> EffectiveVisibilitiesVisitor<'a, 'ra, 'tcx> {
                 // The `unreachable_pub` lint also needs to know whether any of the nested entries are
                 // exported by this use statement.
                 // FIXME: We could compute this lazily in `unreachable_pub` directly, but this is less invasive.
-                r.effective_visibilities.update_eff_vis(root, eff_vis, r.tcx);
+                if def_id != root {
+                    r.effective_visibilities.update_eff_vis(root, eff_vis, r.tcx);
+                }
             }
             if decl.ambiguity.get().is_some() && eff_vis.is_public_at_level(Level::Reexported) {
                 exported_ambiguities.insert(*decl);
@@ -153,6 +155,17 @@ impl<'a, 'ra, 'tcx> EffectiveVisibilitiesVisitor<'a, 'ra, 'tcx> {
             ParentId::Import(_) => this.r.private_vis_decl(decl),
         };
         while let DeclKind::Import { source_decl, .. } = decl.kind {
+            // A public declaration has already propagated the maximum possible
+            // visibility to its source. Ambiguous chains also visit declarations
+            // outside the source path, so keep walking those as usual.
+            if self
+                .import_effective_visibilities
+                .effective_vis(decl)
+                .is_some_and(|vis| vis.is_public_at_level(parent_id.level()))
+                && !Self::has_ambiguity(decl)
+            {
+                return;
+            }
             self.update_import(decl, parent_id, priv_vis(self, parent_id, decl));
             // `ambiguity_vis_max` can cycle on mutual globs; follow each once.
             if let Some(most_visible) = decl.ambiguity_vis_max.get()
@@ -167,6 +180,16 @@ impl<'a, 'ra, 'tcx> EffectiveVisibilitiesVisitor<'a, 'ra, 'tcx> {
             let priv_vis = priv_vis(self, parent_id, decl);
             self.update_def(def_id, decl.vis().expect_local(), parent_id, priv_vis);
         }
+    }
+
+    fn has_ambiguity(mut decl: Decl<'ra>) -> bool {
+        while let DeclKind::Import { source_decl, .. } = decl.kind {
+            if decl.ambiguity_vis_max.get().is_some() {
+                return true;
+            }
+            decl = source_decl;
+        }
+        false
     }
 
     fn effective_vis_or_private(&mut self, parent_id: ParentId<'ra>) -> EffectiveVisibility {
