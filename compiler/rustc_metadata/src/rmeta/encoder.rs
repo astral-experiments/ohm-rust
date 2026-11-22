@@ -114,8 +114,10 @@ macro_rules! hashed_lazy_array {
 /// format used by public API hashing.
 pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
     type EncodedDefIndex: for<'a> Encodable<EncodeContext<'a, 'tcx, Self>>;
-    /// Must agree with [`PublicApiHashState::enabled`] for the active encoding context.
-    const HASH_PUBLIC_API: bool;
+    /// Encode stable definition identities and the matching metadata tables.
+    const PUBLIC_API_FORMAT: bool;
+    /// Build the per-item reachability graph to distinguish private changes.
+    const HASH_PUBLIC_API: bool = Self::PUBLIC_API_FORMAT;
     fn encoded_def_index(tcx: TyCtxt<'_>, def_id: DefId) -> Self::EncodedDefIndex;
     fn into_raw_def_id(tcx: TyCtxt<'_>, def_id: DefId) -> RawDefId;
     fn public_api_hasher<'h>(hcx: StableHashState<'h>) -> impl PublicApiHashState<'h>;
@@ -143,7 +145,7 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
         // Both the producing slot and stable identity matter when the same input is rebound.
         let slot_and_hash = |id: DefId| (id.krate.as_u32(), tcx.def_path_hash(id));
         let mut shapes = StableHasher::new();
-        if Self::HASH_PUBLIC_API {
+        if Self::PUBLIC_API_FORMAT {
             trait_impls_map.len().hash(&mut shapes);
         }
         let groups = trait_impls_map
@@ -151,7 +153,7 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
             .map(|(&trait_id, impls)| {
                 let mut kinds = 0;
                 let mut local_nominals = true;
-                if Self::HASH_PUBLIC_API {
+                if Self::PUBLIC_API_FORMAT {
                     slot_and_hash(trait_id).hash(&mut shapes);
                     impls.len().hash(&mut shapes);
                 }
@@ -161,7 +163,7 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
                         && !tcx.trait_is_auto(trait_id);
                     let mut hasher = PublicApiHasher::default();
                     let array = ecx.lazy_array_with(impls, |ecx, &(id, simplified_ty)| {
-                        if Self::HASH_PUBLIC_API {
+                        if Self::PUBLIC_API_FORMAT {
                             kinds |= trait_impl_receiver_kind(simplified_ty);
                             let receiver = simplified_ty.map(|ty| {
                                 ty.map_def(|id| {
@@ -200,7 +202,7 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
                     hcx.add_node_hash(&trait_id.into(), hash);
                     array
                 };
-                if Self::HASH_PUBLIC_API && local_nominals {
+                if Self::PUBLIC_API_FORMAT && local_nominals {
                     kinds |= LOCAL_NOMINAL_RECEIVERS;
                 }
                 let key = (trait_id.krate.as_u32(), Self::encoded_def_index(tcx, trait_id));
@@ -391,14 +393,15 @@ fn private_inherent_impl(
 }
 
 #[derive(Default)]
-struct DefPathHashDefIdEncoder<'tcx> {
+struct DefPathHashDefIdEncoder<'tcx, const HASH: bool = true> {
     reachability_graph_builder: ReachabilityGraphBuilder<'tcx>,
 }
-impl<'tcx> MetadataEncoder<'tcx> for DefPathHashDefIdEncoder<'tcx> {
+impl<'tcx, const HASH: bool> MetadataEncoder<'tcx> for DefPathHashDefIdEncoder<'tcx, HASH> {
     /// The encoding of the DefIndex in DefId-s in the metadata. All DefId-s should use this
     /// encoding, but it is not necessary to encode LocalDefId-s with this encoding.
     type EncodedDefIndex = Hash64;
-    const HASH_PUBLIC_API: bool = true;
+    const PUBLIC_API_FORMAT: bool = true;
+    const HASH_PUBLIC_API: bool = HASH;
     fn encode_trait_directory(
         ecx: &mut EncodeContext<'_, 'tcx, Self>,
         groups: Vec<(TraitImpls<Hash64>, u32)>,
@@ -420,7 +423,7 @@ impl<'tcx> MetadataEncoder<'tcx> for DefPathHashDefIdEncoder<'tcx> {
         }
     }
     fn public_api_hasher<'h>(hcx: StableHashState<'h>) -> impl PublicApiHashState<'h> {
-        PublicApiHashingContext::<true>::new(hcx)
+        PublicApiHashingContext::<HASH>::new(hcx)
     }
 
     fn crate_hashes<'h>(
@@ -428,26 +431,34 @@ impl<'tcx> MetadataEncoder<'tcx> for DefPathHashDefIdEncoder<'tcx> {
         hcx: &mut impl PublicApiHashState<'h>,
         root: &HashableCrateRoot,
     ) -> (Option<Svh>, Option<ItemPublicHashes>) {
-        public_api_hasher::crate_hashes(ecx, hcx, root)
+        if HASH { public_api_hasher::crate_hashes(ecx, hcx, root) } else { (None, None) }
     }
 
     #[inline]
     fn record_encoded_index(&mut self, node: Node<'tcx>) {
-        self.reachability_graph_builder.record(node);
+        if HASH {
+            self.reachability_graph_builder.record(node);
+        }
     }
 
     #[inline]
     fn retain_public_hash(&mut self, node: Node<'tcx>) {
-        self.reachability_graph_builder.retain_public_hash(node);
+        if HASH {
+            self.reachability_graph_builder.retain_public_hash(node);
+        }
     }
 
     fn push_record_mode(&mut self, mode: RecordMode<'tcx>) {
-        self.reachability_graph_builder.push_record_mode(mode);
+        if HASH {
+            self.reachability_graph_builder.push_record_mode(mode);
+        }
     }
 
     #[inline]
     fn pop_record_mode(&mut self) {
-        self.reachability_graph_builder.pop_record_mode();
+        if HASH {
+            self.reachability_graph_builder.pop_record_mode();
+        }
     }
 }
 
@@ -456,7 +467,7 @@ struct DefIndexDefIdEncoder;
 impl<'tcx> MetadataEncoder<'tcx> for DefIndexDefIdEncoder {
     type EncodedDefIndex = DefIndex;
 
-    const HASH_PUBLIC_API: bool = false;
+    const PUBLIC_API_FORMAT: bool = false;
     fn encode_trait_directory(
         ecx: &mut EncodeContext<'_, 'tcx, Self>,
         groups: Vec<(TraitImpls<DefIndex>, u32)>,
@@ -1362,7 +1373,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         let traits = stat!("traits", || self.encode_traits(hcx));
 
         // Encode the def IDs of impls, for coherence checking.
-        let policy = if M::HASH_PUBLIC_API && !self.is_proc_macro {
+        let policy = if M::PUBLIC_API_FORMAT && !self.is_proc_macro {
             private_impl_policy(self.tcx)
         } else {
             PrivateImpls::None
@@ -1426,7 +1437,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         let has_generic_symbols_for_c_linker =
             proc_macro_data.is_none() && tcx.has_generic_symbols_for_c_linker(LOCAL_CRATE);
 
-        if M::HASH_PUBLIC_API {
+        if M::PUBLIC_API_FORMAT {
             for (symbol, info) in tcx.exported_non_generic_symbols(LOCAL_CRATE) {
                 // An extern item implementation exports the symbol for its declaration,
                 // which can belong to a dependency. These tables index local definitions.
@@ -1523,7 +1534,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             expn_hashes,
             def_path_hash_map,
             specialization_enabled_in: tcx.specialization_enabled_in(LOCAL_CRATE),
-            public_api_hash_opt_enabled: hcx.enabled(),
+            public_api_hash_opt_enabled: M::PUBLIC_API_FORMAT,
         };
         let (crate_root, public_hash) =
             stat!("public hashes", || crate_root.into_crate_root(self, hcx));
@@ -1598,7 +1609,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
 
         // Green marking stops at the first red edge. Record all fields that the prefix must
         // preserve before the inputs whose bytes or source maps can be refreshed.
-        if M::HASH_PUBLIC_API
+        if M::PUBLIC_API_FORMAT
             && tcx.dep_graph.is_fully_enabled()
             && tcx.sess.opts.unstable_opts.metadata_crate_hash
         {
@@ -2223,7 +2234,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
     /// Opaque macros can resolve names in their defining module, including through
     /// nested macros whose imports are private even to the outer macro.
     fn remove_private_children(&self) -> bool {
-        M::HASH_PUBLIC_API && !self.tcx.resolutions(()).has_opaque_macros
+        M::PUBLIC_API_FORMAT && !self.tcx.resolutions(()).has_opaque_macros
     }
 
     /// Encode local items by index. Share the source metadata for bindings
@@ -3489,7 +3500,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
     ) -> Hashed<LazyArray<DefIndex>> {
         empty_proc_macro!(self);
         let tcx = self.tcx;
-        let visibilities = hcx.enabled().then(|| tcx.effective_visibilities(()));
+        let visibilities = M::PUBLIC_API_FORMAT.then(|| tcx.effective_visibilities(()));
         let traits = tcx
             .traits(LOCAL_CRATE)
             .iter()
@@ -3607,7 +3618,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         hcx: &mut impl PublicApiHashState<'h>,
     ) -> GraphHashed<LazyArray<DefIndex>> {
         empty_proc_macro!(self);
-        if hcx.enabled() {
+        if M::PUBLIC_API_FORMAT {
             for def_id in self.tcx.exportable_items(LOCAL_CRATE) {
                 self.tables.is_exportable.set_local_hashed(def_id.expect_local(), true, hcx);
             }
@@ -4034,7 +4045,7 @@ fn try_reuse_metadata_prefix(
         previous_root.source_map = source_map.0;
         refreshed_source_files = source_files;
         tcx.with_stable_hashing_context(|hcx| {
-            let mut hcx = DefPathHashDefIdEncoder::public_api_hasher(hcx);
+            let mut hcx = DefPathHashDefIdEncoder::<true>::public_api_hasher(hcx);
             previous_root.target_modifiers = ecx.encode_target_modifiers(&mut hcx).value;
             previous_root.denied_partial_mitigations =
                 ecx.encode_enabled_denied_partial_mitigations(&mut hcx).value;
@@ -4191,11 +4202,22 @@ fn encode_fresh_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>, 
         || {
             tcx.with_stable_hashing_context(|hcx| {
                 let is_proc_macro = tcx.crate_types().contains(&CrateType::ProcMacro);
-                let hash_public_api = tcx.sess.opts.unstable_opts.public_api_hash && !is_proc_macro;
-                if hash_public_api {
-                    encode_crate_root::<DefPathHashDefIdEncoder<'_>>(tcx, path, hcx, &mut hashes);
-                } else {
+                let opts = &tcx.sess.opts.unstable_opts;
+                if !opts.public_api_hash || is_proc_macro {
                     encode_crate_root::<DefIndexDefIdEncoder>(tcx, path, hcx, &mut hashes);
+                } else if opts.metadata_crate_hash && opts.ohm_prefer_full_crate_hash {
+                    // Keep stable DefPathHash references and dependency public SVHs. The byte
+                    // digest covers the encoded metadata, including those SVHs. Readers use it
+                    // for all items when the reachability hashes are absent. Either representation
+                    // is valid, so this untracked hint also accepts a green work product or prefix.
+                    encode_crate_root::<DefPathHashDefIdEncoder<'_, false>>(
+                        tcx,
+                        path,
+                        hcx,
+                        &mut hashes,
+                    );
+                } else {
+                    encode_crate_root::<DefPathHashDefIdEncoder<'_>>(tcx, path, hcx, &mut hashes);
                 }
             })
         },
@@ -4235,7 +4257,7 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
     if metadata_crate_hash {
         // Fold in inputs that are not part of the encoded metadata bytes, reduced to a single
         // fingerprint via the stable hasher and then mixed into the byte digest.
-        let hir_body_hash = if M::HASH_PUBLIC_API && tcx.dep_graph.is_fully_enabled() {
+        let hir_body_hash = if M::PUBLIC_API_FORMAT && tcx.dep_graph.is_fully_enabled() {
             // Record this dependency last. The prefix proof needs the encoder's other inputs
             // checked before a private HIR edit stops normal green marking.
             tcx.dep_graph.with_ignore(|| tcx.ohm_metadata_input_hashes(()).0)
