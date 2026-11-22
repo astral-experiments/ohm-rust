@@ -189,6 +189,7 @@ jobs:
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1
+          tests/ui/resolve/trait-value-lookups.rs
           tests/ui/associated-types/closed-definition-proofs.rs
           tests/ui/associated-types/closed-definition-proof-failures.rs
           tests/ui/associated-types/concrete-impl-bound-normalization.rs
