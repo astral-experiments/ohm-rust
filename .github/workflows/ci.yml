@@ -258,7 +258,7 @@ jobs:
       - name: Run cached hygiene unit tests
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1 compiler/rustc_span --test-args hygiene::tests
+          --set rust.lto=off test --stage 1 compiler/rustc_span --test-args 'hygiene::tests source_map::tests::file_lookup_at_page_boundaries'
 
       - name: Run the large byte-string interning regression
         run: >-
