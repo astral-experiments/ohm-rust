@@ -8,7 +8,8 @@
 static XXX: &'static Foo = &Foo {
     tup: "hi",
     data: &[
-        (0, 1), (0, 2), (0, 3),
+        // Keep the tuple temporaries even when literal arrays are packed.
+        #[cfg(all())] (0, 1), (0, 2), (0, 3),
         (0, 1), (0, 2), (0, 3),
         (0, 1), (0, 2), (0, 3),
         (0, 1), (0, 2), (0, 3),

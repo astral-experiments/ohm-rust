@@ -402,7 +402,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
         ty: Ty<'tcx>,
         fields: &[hir::Expr<'tcx>],
     ) -> Option<mir::interpret::AllocId> {
-        if fields.len() < 1024 {
+        if fields.len() < 16 {
             return None;
         }
         match self.tcx.def_kind(self.body_owner) {
