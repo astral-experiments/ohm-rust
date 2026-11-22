@@ -37,7 +37,8 @@ const FILE_MAGIC: &[u8] = b"RSIC";
 // Parsed module snapshots follow the retained generations.
 // Parsed module snapshots omit dummy node IDs and pack short spans.
 // Trait selection projects impls for integral operands.
-const HEADER_FORMAT_VERSION: u16 = 61377;
+// HIR fingerprints encode owner-local IDs and short source ranges.
+const HEADER_FORMAT_VERSION: u16 = 61378;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);
