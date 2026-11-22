@@ -50,6 +50,19 @@ mod tests {
     rfs::write("cached.rs", source.replace("unresolved();", "let = 0;"));
     check("warm").run_fail().assert_stderr_contains("expected pattern");
 
+    // A statement, an expression and its path segment each have a dummy
+    // node ID. Encoding those five-byte IDs would exceed the snapshot limit.
+    // Also exercise the first span length that needs the wide representation.
+    let name = "d".repeat(255);
+    rfs::write(
+        "cached.rs",
+        format!("#[allow(path_statements)] pub fn {name}(a: u32) {{ {} }}", "a;".repeat(1200)),
+    );
+    check("dense").run();
+    let metadata = rfs::read("liblib.rmeta");
+    check("dense").run().assert_stderr_contains("reused parsed module");
+    assert!(metadata == rfs::read("liblib.rmeta"));
+
     // Overlapping token streams would make a snapshot quadratic in the
     // depth of the annotated items. The encoder should abandon this file.
     let nested = format!(
