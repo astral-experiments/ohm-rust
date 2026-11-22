@@ -9,6 +9,14 @@ fn directories(path: &Path) -> impl Iterator<Item = PathBuf> + use<> {
     fs::read_dir(path).unwrap().map(|entry| entry.unwrap().path()).filter(|path| path.is_dir())
 }
 
+fn session(dir: &str) -> PathBuf {
+    directories(Path::new(dir))
+        .flat_map(|path| directories(&path))
+        .filter(|path| !path.to_string_lossy().ends_with("-working"))
+        .max()
+        .unwrap()
+}
+
 fn main() {
     let mut large = String::from(
         "#[rustc_clean(cfg = \"loaded\", loaded_from_disk = \"typeck_root\")]\n\
@@ -51,11 +59,7 @@ fn main() {
             run("main").assert_stdout_equals(format!("{}\n", 7 + revision));
         }
 
-        let session = directories(Path::new("incr"))
-            .flat_map(|path| directories(&path))
-            .filter(|path| !path.to_string_lossy().ends_with("-working"))
-            .max()
-            .unwrap();
+        let session = session("incr");
         let size = fs::metadata(session.join("query-cache.bin")).unwrap().len();
         match revision {
             1 => check_size = size,
@@ -73,6 +77,38 @@ fn main() {
             fs::hard_link(session.join(filename), &snapshot).unwrap();
             let bytes = fs::read(&snapshot).unwrap();
             snapshots.push((snapshot, bytes));
+        }
+    }
+
+    // Check that a sequence of small edits retains the original generation's
+    // bytes and keeps allocations shared with the new results.
+    let mut constants = String::from("pub const LABEL: &str = \"shared allocation\";\n");
+    for index in 0..64 {
+        constants.push_str(&format!("pub const C{index}: (&str, u32) = (LABEL, {index});\n"));
+    }
+    let mut base = Vec::new();
+    for value in 0..5 {
+        rfs::write(
+            "lib.rs",
+            format!("{constants}pub const EDITED: (&str, u32) = (LABEL, {value});\n"),
+        );
+        let compile = |dir: &str| {
+            rustc()
+                .input("lib.rs")
+                .crate_type("rlib")
+                .emit("metadata")
+                .incremental(dir)
+                .arg("-Zincremental-verify-ich")
+                .run();
+            rfs::read("liblib.rmeta")
+        };
+        assert!(compile("overlays") == compile("fresh"), "metadata mismatch at edit {value}");
+        rfs::remove_dir_all("fresh");
+        let bytes = fs::read(session("overlays").join("query-cache.bin")).unwrap();
+        if value == 0 {
+            base = bytes;
+        } else {
+            assert!(bytes.starts_with(&base), "lost original cache at edit {value}");
         }
     }
 }
