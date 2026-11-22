@@ -231,6 +231,11 @@ jobs:
           tests/incremental/nominal-inherited-obligations.rs
           tests/incremental/cached-trait-selection.rs
           tests/incremental/arity-receiver-lookup.rs
+          tests/incremental/coerce-simple-target.rs
+          tests/incremental/coerce-enum-bound.rs
+          tests/ui/coercion/infer-coerce-unsized-trait-object.rs
+          tests/ui/coercion/unsize-lifetime-shrinking.rs
+          tests/ui/unsized/issue-75899-but-gats.rs
 
       - name: Run borrow checker dataflow regression tests
         run: >-
