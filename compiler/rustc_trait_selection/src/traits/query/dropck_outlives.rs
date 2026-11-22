@@ -3,7 +3,9 @@ use rustc_infer::traits::TraitErrors;
 use rustc_infer::traits::query::type_op::DropckOutlives;
 use rustc_middle::traits::query::{DropckConstraint, DropckOutlivesResult};
 use rustc_middle::ty::consts::ConstExt;
-use rustc_middle::ty::{self, EarlyBinder, ParamEnvAnd, Ty, TyCtxt, Unnormalized};
+use rustc_middle::ty::{
+    self, EarlyBinder, ParamEnvAnd, Ty, TyCtxt, TypeVisitableExt, Unnormalized,
+};
 use rustc_span::Span;
 use thin_vec::ThinVec;
 use tracing::{debug, instrument};
@@ -385,10 +387,15 @@ pub fn dtorck_constraint_for_ty_inner<'tcx>(
                     .iter()
                     .map(|t| EarlyBinder::bind(tcx, *t).instantiate(tcx, args).skip_norm_wip()),
             );
+            // Borrow checking visits the free regions in these kinds. After
+            // substitution, a kind without any regions, variables or aliases
+            // contributes nothing. Discard it before propagating constraints
+            // through enclosing ADTs and into the drop-check result.
             constraints.outlives.extend(
                 outlives
                     .iter()
-                    .map(|t| EarlyBinder::bind(tcx, *t).instantiate(tcx, args).skip_norm_wip()),
+                    .map(|t| EarlyBinder::bind(tcx, *t).instantiate(tcx, args).skip_norm_wip())
+                    .filter(|kind| kind.has_type_flags(ty::TypeFlags::all())),
             );
             constraints.overflows.extend(
                 overflows
