@@ -140,6 +140,7 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1
           tests/ui/coroutine/metadata-sufficient-for-layout.rs
+          tests/ui/consts/const-eval/ub-char-array.rs
           tests/ui/coroutine/storage-conflicts-subsets.rs
           tests/ui/coroutine/storage-conflicts-overlapping-sets.rs
           tests/ui/coroutine/storage-conflicts-many-locals.rs

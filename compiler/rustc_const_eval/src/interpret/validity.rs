@@ -844,6 +844,51 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValidityVisitor<'rt, 'tcx, M> {
         interp_ok(())
     }
 
+    /// Validates a contiguous sequence of characters without projecting each field.
+    /// Return false for invalid data so the ordinary visitor reports the precise path.
+    fn valid_char_array(
+        &self,
+        value: &PlaceTy<'tcx, M::Provenance>,
+        element: Ty<'tcx>,
+    ) -> InterpResult<'tcx, bool> {
+        let columns = match element.kind() {
+            ty::Char => 1,
+            ty::Tuple(fields) if !fields.is_empty() && fields.iter().all(|ty| ty.is_char()) => {
+                fields.len() as u64
+            }
+            _ => return interp_ok(false),
+        };
+        let len = value.len(self.ecx)?;
+        if len < 16 {
+            return interp_ok(false);
+        }
+
+        // Field order does not matter. With no padding, each four-byte chunk holds a char.
+        let stride = self.ecx.layout_of(element)?.size;
+        if stride.bytes() != columns * 4 {
+            return interp_ok(false);
+        }
+        let Left(place) = value.to_op(self.ecx)?.as_mplace_or_imm() else {
+            return interp_ok(false);
+        };
+        let Some(bytes) =
+            self.ecx.read_bytes_ptr_strip_provenance(place.ptr(), stride * len).discard_err()
+        else {
+            // Uninitialized bytes and pointers are diagnosed on the field-by-field path.
+            return interp_ok(false);
+        };
+        let (chars, rest) = bytes.as_chunks::<4>();
+        debug_assert!(rest.is_empty());
+        let valid = chars.iter().all(|&bytes| {
+            let scalar = match self.ecx.tcx.data_layout.endian {
+                rustc_abi::Endian::Little => u32::from_le_bytes(bytes),
+                rustc_abi::Endian::Big => u32::from_be_bytes(bytes),
+            };
+            char::from_u32(scalar).is_some()
+        });
+        interp_ok(valid)
+    }
+
     /// Check if this is a value of primitive type, and if yes check the validity of the value
     /// at that type. Return `true` if the type is indeed primitive.
     ///
@@ -1469,6 +1514,10 @@ impl<'rt, 'tcx, M: Machine<'tcx>> ValueVisitor<'tcx, M> for ValidityVisitor<'rt,
                     self.add_data_range(mplace.ptr(), size);
                 }
             }
+            ty::Array(element, ..) | ty::Slice(element)
+                if self.ctfe_mode.is_some()
+                    && !self.reset_provenance_and_padding
+                    && self.valid_char_array(val, *element)? => {}
             // Fast path for arrays and slices of ZSTs. We only need to check a single ZST element
             // of an array and not all of them, because there's only a single value of a specific
             // ZST type, so either validation fails for all elements or none.
