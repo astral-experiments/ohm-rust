@@ -1,37 +1,47 @@
-use std::ops::ControlFlow;
+use std::ops::{ControlFlow, Range};
 
 use rustc_abi::FieldIdx;
 use rustc_data_structures::graph::dominators::Dominators;
+use rustc_index::bit_set::MixedBitSet;
 use rustc_middle::mir::{BasicBlock, Body, Location, Place, PlaceRef, ProjectionElem};
 use rustc_middle::ty::TyCtxt;
+use rustc_middle::ty::data_structures::IndexSet;
 use tracing::debug;
 
 use crate::borrow_set::{BorrowData, BorrowSet, TwoPhaseActivation};
 use crate::{AccessDepth, BorrowIndex, places_conflict};
 
-/// Encapsulates the idea of iterating over every borrow that involves a particular path
-pub(super) fn each_borrow_involving_path<'tcx, F, I, S>(
+/// Visits the loans on a path that may conflict with an access.
+/// Legacy Polonius passes `None` to find invalidations for all loans.
+pub(super) fn each_borrow_involving_path<'tcx, F, S>(
     s: &mut S,
     tcx: TyCtxt<'tcx>,
     body: &Body<'tcx>,
     access_place: (AccessDepth, Place<'tcx>),
     borrow_set: &BorrowSet<'tcx>,
-    is_candidate: I,
+    in_scope: Option<&MixedBitSet<BorrowIndex>>,
     mut op: F,
 ) where
     F: FnMut(&mut S, BorrowIndex, &BorrowData<'tcx>) -> ControlFlow<()>,
-    I: Fn(BorrowIndex) -> bool,
 {
     let (access, place) = access_place;
 
     // The number of candidates can be large, but borrows for different locals cannot conflict with
     // each other, so we restrict the working set a priori.
-    let Some(borrows_for_place_base) = borrow_set.borrows_on_local(place.local) else { return };
+    let Some(local_borrows) = borrow_set.borrows_on_local(place.local) else { return };
 
-    // check for loan restricting path P being used. Accounts for
-    // borrows of P, P.a.b, etc.
-    for &i in borrows_for_place_base {
-        if !is_candidate(i) {
+    let mut candidates = local_borrows.as_slice();
+    // A local such as `self` can have thousands of loans but very few live
+    // at once. Bound both the bitset scan and the number of hash lookups.
+    if let Some(live) = in_scope
+        && candidates.len() >= 32
+        && live.domain_size().div_ceil(8) <= candidates.len()
+    {
+        candidates = &candidates[live_borrow_range(local_borrows, live)];
+    }
+
+    for &i in candidates {
+        if in_scope.is_some_and(|live| !live.contains(i)) {
             continue;
         }
         let borrowed = &borrow_set[i];
@@ -55,6 +65,30 @@ pub(super) fn each_borrow_involving_path<'tcx, F, I, S>(
             }
         }
     }
+}
+
+/// Find a contiguous range containing every live loan on this local. Return
+/// the full range if we stop searching early. In either case the caller can
+/// check for conflicts in the original order.
+// Keep this uncommon bitset walk out of the per-place conflict check.
+#[inline(never)]
+fn live_borrow_range(
+    local_borrows: &IndexSet<BorrowIndex>,
+    live: &MixedBitSet<BorrowIndex>,
+) -> Range<usize> {
+    let mut first = local_borrows.len();
+    let mut end = 0;
+    for (i, loan) in live.iter().enumerate() {
+        if i == 8 {
+            return 0..local_borrows.len();
+        }
+        if let Some(index) = local_borrows.get_index_of(&loan) {
+            first = first.min(index);
+            end = end.max(index + 1);
+        }
+    }
+
+    if end == 0 { 0..0 } else { first..end }
 }
 
 pub(super) fn is_active<'tcx>(
