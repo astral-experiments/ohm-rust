@@ -221,17 +221,21 @@ where
     codegen_units
 }
 
+/// With LLVM optimizations enabled, spreading instances across their callers
+/// can duplicate helpers across codegen units and increase rebuild work.
+fn place_by_user(tcx: TyCtxt<'_>) -> bool {
+    tcx.sess.opts.incremental.is_some()
+        && tcx.sess.opts.unstable_opts.ohm_caller_local_cgus
+        && tcx.sess.opts.optimize == OptLevel::No
+}
+
 fn place_mono_items<'tcx, I>(cx: &PartitioningCx<'_, 'tcx>, mono_items: I) -> PlacedMonoItems<'tcx>
 where
     I: Iterator<Item = MonoItem<'tcx>>,
 {
     let mut codegen_units = UnordMap::default();
     let is_incremental_build = cx.tcx.sess.opts.incremental.is_some();
-    // With LLVM optimizations enabled, spreading instances across their callers
-    // can duplicate helpers across codegen units and increase rebuild work.
-    let place_by_user = is_incremental_build
-        && cx.tcx.sess.opts.unstable_opts.ohm_caller_local_cgus
-        && cx.tcx.sess.opts.optimize == OptLevel::No;
+    let place_by_user = place_by_user(cx.tcx);
     let mut internalization_candidates = UnordSet::default();
 
     // Determine if monomorphizations instantiated in this crate will be made
@@ -361,10 +365,11 @@ fn split_large_codegen_units<'tcx>(
     const TARGET_SIZE: usize = 16_384;
     let split_limit =
         cx.tcx.sess.opts.unstable_opts.ohm_cgu_split_limit.map_or(8, |limit| limit.get());
-    // Splitting only spends unused slots from the existing CGU budget. Stable root hashes
-    // keep ordinary body edits in the same shard, along with the root's private inline copies.
+    // Splitting only spends unused slots from the existing CGU budget.
     let mut remaining = cx.tcx.sess.codegen_units().as_usize() - codegen_units.len();
     let mut size_shards = Vec::new();
+    let place_by_user = place_by_user(cx.tcx);
+    let mut owner_hashes = UnordMap::default();
     codegen_units.sort_by(|a, b| a.partition_key().as_str().cmp(b.partition_key().as_str()));
     for source in std::mem::take(codegen_units) {
         if remaining == 0
@@ -397,12 +402,28 @@ fn split_large_codegen_units<'tcx>(
             .collect();
 
         for (&item, &data) in roots {
-            // DefPathHash and interned types carry the compiler version. The fully qualified
-            // instance text retains generic arguments without that artifact namespace.
-            let mut hasher = StableHasher::new();
-            with_no_trimmed_paths!(item.to_string()).hash(&mut hasher);
-            let hash: Fingerprint = hasher.finish();
-            let shard = &mut shards[(hash.to_smaller_hash().as_u64() % count as u64) as usize];
+            let hash = if place_by_user {
+                // Keep instances with the same owner together, including closures
+                // in the enclosing body. Hash its path once per partitioning pass.
+                let mut owner = caller_local_def_id(cx, item).unwrap_or_else(|| item.def_id());
+                while cx.tcx.def_kind(owner) == DefKind::Closure {
+                    owner = cx.tcx.parent(owner);
+                }
+                *owner_hashes.entry(owner).or_insert_with(|| {
+                    let mut hasher = StableHasher::new();
+                    cx.tcx.def_path(owner).to_string_no_crate_verbose().hash(&mut hasher);
+                    let hash: Fingerprint = hasher.finish();
+                    hash.to_smaller_hash().as_u64()
+                })
+            } else {
+                // DefPathHash and interned types carry the compiler version. The fully qualified
+                // instance text retains generic arguments without that artifact namespace.
+                let mut hasher = StableHasher::new();
+                with_no_trimmed_paths!(item.to_string()).hash(&mut hasher);
+                let hash: Fingerprint = hasher.finish();
+                hash.to_smaller_hash().as_u64()
+            };
+            let shard = &mut shards[(hash % count as u64) as usize];
             place_split_root(cx, shard, source.items(), item, data);
         }
 
