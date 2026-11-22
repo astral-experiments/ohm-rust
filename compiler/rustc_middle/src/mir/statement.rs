@@ -462,9 +462,14 @@ impl<'tcx> Place<'tcx> {
     where
         D: ?Sized + HasLocalDecls<'tcx>,
     {
-        // If there's a field projection element in `projection`, we *could* skip everything
-        // before that, but on 2026-01-31 a perf experiment showed no benefit from doing so.
-        PlaceTy::from_ty(local_decls.local_decls()[local].ty).multi_projection_ty(tcx, projection)
+        // Handle bare locals and the type stored on a final field projection
+        // without walking the path. A field access resets the variant index.
+        match projection.last() {
+            None => PlaceTy::from_ty(local_decls.local_decls()[local].ty),
+            Some(ProjectionElem::Field(_, ty)) => PlaceTy::from_ty(*ty),
+            Some(_) => PlaceTy::from_ty(local_decls.local_decls()[local].ty)
+                .multi_projection_ty(tcx, projection),
+        }
     }
 
     pub fn ty<D: ?Sized>(&self, local_decls: &D, tcx: TyCtxt<'tcx>) -> PlaceTy<'tcx>

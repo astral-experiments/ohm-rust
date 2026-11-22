@@ -954,8 +954,9 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
     }
 
     fn visit_place(&mut self, place: &Place<'tcx>, cntxt: PlaceContext, location: Location) {
-        // Set off any `bug!`s in the type computation code
-        let _ = place.ty(&self.body.local_decls, self.tcx);
+        // Check every step even if the last field already carries the result type.
+        let base = PlaceTy::from_ty(self.body.local_decls[place.local].ty);
+        let _ = base.multi_projection_ty(self.tcx, place.projection);
 
         if self.body.phase >= MirPhase::Runtime(RuntimePhase::Initial)
             && place.projection.len() > 1

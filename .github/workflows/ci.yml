@@ -253,6 +253,9 @@ jobs:
           tests/incremental/impl-outlives-fulfillment.rs
           tests/ui/nll/maybe-initialized-drop.rs
           tests/ui/nll/match-guards-partially-borrow.rs
+          tests/incremental/projected-field-parent.rs
+          tests/ui/unsafe-binders/cat-projection.rs
+          tests/ui/sized/reject-unsized-fn-params.rs
           tests/incremental/region-scope-parents.rs
 
       - name: Run bitset unit tests
