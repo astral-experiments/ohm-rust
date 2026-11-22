@@ -674,9 +674,20 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             && self.infcx.obligation_inspector.get().is_none()
             && !term.has_non_region_infer()
             && !term.has_escaping_bound_vars()
-            && term.is_trivially_wf(self.tcx)
         {
-            return;
+            // Reference WF adds only type-outlives obligations to those of
+            // the referent. The old solver drops them when ignoring regions.
+            let trivial = if !self.infcx.considering_regions
+                && !self.infcx.next_trait_solver()
+                && let Some(ty) = term.as_type()
+            {
+                ty.peel_refs().is_trivially_wf(self.tcx)
+            } else {
+                term.is_trivially_wf(self.tcx)
+            };
+            if trivial {
+                return;
+            }
         }
 
         // WF obligations never themselves fail, so no real need to give a detailed cause:

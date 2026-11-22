@@ -132,8 +132,12 @@ where
         if !infcx.disable_trait_solver_fast_paths()
             && let Some(output) = Q::try_fast_path(infcx.tcx, &self)
         {
-            // A fast-path result has no obligations or inference changes. Still
-            // resolve its variables and collect/reset any region constraints.
+            // Resolution doesn't generate region constraints. Avoid taking and
+            // replacing the empty region vectors on every MIR normalization.
+            if infcx.region_state_is_empty() {
+                let output = infcx.deeply_resolve_ignoring_regions(output);
+                return Ok(TypeOpOutput { output, constraints: None, error_info: None });
+            }
             return Ok(collect_region_constraints(infcx, || Ok(output))?.0);
         }
 
