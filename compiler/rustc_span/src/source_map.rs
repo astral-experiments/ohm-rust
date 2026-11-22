@@ -172,7 +172,39 @@ impl FileLoader for RealFileLoader {
 struct SourceMapFiles {
     read_text_from_binary_placeholder: bool,
     source_files: monotonic::MonotonicVec<Arc<SourceFile>>,
+    /// Last file starting on or before each 4 KiB page in the source map.
+    page_ends: Vec<u32>,
     stable_id_to_source_file: UnhashMap<StableSourceFileId, Arc<SourceFile>>,
+}
+
+impl SourceMapFiles {
+    const PAGE_SIZE: u32 = 4096;
+
+    fn index_file(&mut self, start: BytePos) {
+        let page = (start.0 / Self::PAGE_SIZE) as usize;
+        // Even an empty file occupies a position, so the index fits in u32.
+        let index = self.source_files.len() as u32;
+        self.page_ends.resize(page + 1, index.saturating_sub(1));
+        self.page_ends[page] = index;
+    }
+
+    #[inline]
+    fn lookup(&self, pos: BytePos) -> usize {
+        let page = (pos.0 / Self::PAGE_SIZE) as usize;
+        let Some(&last) = self.page_ends.get(page) else {
+            // Only the final file can extend beyond the indexed pages.
+            return self.source_files.len() - 1;
+        };
+        let last = last as usize;
+        if self.source_files[last].start_pos <= pos {
+            return last;
+        }
+
+        // A position before the last start on this page can belong to
+        // the preceding page's last file or to another start on this page.
+        let first = if page == 0 { 0 } else { self.page_ends[page - 1] as usize };
+        first + self.source_files[first + 1..last].partition_point(|f| f.start_pos <= pos)
+    }
 }
 
 impl std::fmt::Debug for SourceMapFiles {
@@ -343,6 +375,7 @@ impl SourceMap {
         });
 
         let file = Arc::new(file);
+        files.index_file(file.start_pos);
         files.source_files.push(Arc::clone(&file));
         files.stable_id_to_source_file.insert(file_id, Arc::clone(&file));
         if file.incremental_id != file_id {
@@ -473,8 +506,8 @@ impl SourceMap {
 
     /// Return the SourceFile that contains the given `BytePos`
     pub fn lookup_source_file(&self, pos: BytePos) -> Arc<SourceFile> {
-        let idx = self.lookup_source_file_idx(pos);
-        Arc::clone(&(*self.files.borrow().source_files)[idx])
+        let files = self.files.borrow();
+        Arc::clone(&files.source_files[files.lookup(pos)])
     }
 
     /// Looks up source information about a `BytePos`.
@@ -636,37 +669,39 @@ impl SourceMap {
     where
         F: FnMut(&str, usize, usize) -> Result<T, SpanSnippetError>,
     {
-        let local_begin = self.lookup_byte_offset(sp.lo());
-        let local_end = self.lookup_byte_offset(sp.hi());
+        let lo = sp.lo();
+        let hi = sp.hi();
+        let file = self.lookup_source_file(lo);
+        if !file.contains(hi) {
+            let end = self.lookup_source_file(hi);
+            if file.start_pos != end.start_pos {
+                return Err(SpanSnippetError::DistinctSources(Box::new(DistinctSources {
+                    begin: (file.name.clone(), file.start_pos),
+                    end: (end.name.clone(), end.start_pos),
+                })));
+            }
+        }
 
-        if local_begin.sf.start_pos != local_end.sf.start_pos {
-            Err(SpanSnippetError::DistinctSources(Box::new(DistinctSources {
-                begin: (local_begin.sf.name.clone(), local_begin.sf.start_pos),
-                end: (local_end.sf.name.clone(), local_end.sf.start_pos),
-            })))
+        self.ensure_source_file_source_present(&file);
+        let start_index = (lo - file.start_pos).to_usize();
+        let end_index = (hi - file.start_pos).to_usize();
+        let source_len = file.normalized_source_len.to_usize();
+
+        if start_index > end_index || end_index > source_len {
+            return Err(SpanSnippetError::MalformedForSourcemap(MalformedSourceMapPositions {
+                name: file.name.clone(),
+                source_len,
+                begin_pos: lo - file.start_pos,
+                end_pos: hi - file.start_pos,
+            }));
+        }
+
+        if let Some(ref src) = file.src {
+            extract_source(src, start_index, end_index)
+        } else if let Some(src) = file.external_src.read().get_source() {
+            extract_source(src, start_index, end_index)
         } else {
-            self.ensure_source_file_source_present(&local_begin.sf);
-
-            let start_index = local_begin.pos.to_usize();
-            let end_index = local_end.pos.to_usize();
-            let source_len = local_begin.sf.normalized_source_len.to_usize();
-
-            if start_index > end_index || end_index > source_len {
-                return Err(SpanSnippetError::MalformedForSourcemap(MalformedSourceMapPositions {
-                    name: local_begin.sf.name.clone(),
-                    source_len,
-                    begin_pos: local_begin.pos,
-                    end_pos: local_end.pos,
-                }));
-            }
-
-            if let Some(ref src) = local_begin.sf.src {
-                extract_source(src, start_index, end_index)
-            } else if let Some(src) = local_begin.sf.external_src.read().get_source() {
-                extract_source(src, start_index, end_index)
-            } else {
-                Err(SpanSnippetError::SourceNotAvailable { filename: local_begin.sf.name.clone() })
-            }
+            Err(SpanSnippetError::SourceNotAvailable { filename: file.name.clone() })
         }
     }
 
@@ -1108,8 +1143,7 @@ impl SourceMap {
 
     /// For a global `BytePos`, computes the local offset within the containing `SourceFile`.
     pub fn lookup_byte_offset(&self, bpos: BytePos) -> SourceFileAndBytePos {
-        let idx = self.lookup_source_file_idx(bpos);
-        let sf = Arc::clone(&(*self.files.borrow().source_files)[idx]);
+        let sf = self.lookup_source_file(bpos);
         let offset = bpos - sf.start_pos;
         SourceFileAndBytePos { sf, pos: offset }
     }
@@ -1118,7 +1152,7 @@ impl SourceMap {
     /// This index is guaranteed to be valid for the lifetime of this `SourceMap`,
     /// since `source_files` is a `MonotonicVec`
     pub fn lookup_source_file_idx(&self, pos: BytePos) -> usize {
-        self.files.borrow().source_files.partition_point(|x| x.start_pos <= pos) - 1
+        self.files.borrow().lookup(pos)
     }
 
     pub fn count_lines(&self) -> usize {
