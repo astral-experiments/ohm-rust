@@ -17,6 +17,12 @@ fn main() {
         .run()
         .assert_stderr_equals("");
 
+    // The local deny is capped unless the caller forces the lint.
+    capped()
+        .arg("--force-warn=unused-results")
+        .run()
+        .assert_stderr_contains(r#""code":"unused_results""#);
+
     // Liveness in the closure and its parent must still run if just one lint is forced.
     capped()
         .arg("--force-warn=unused-assignments")
