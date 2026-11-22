@@ -267,7 +267,8 @@ where
                 owner = *user;
             }
         }
-        let characteristic_def_id = characteristic_def_id_of_mono_item(cx.tcx, owner);
+        let characteristic_def_id =
+            characteristic_def_id_of_mono_item(cx.tcx, owner, place_by_user);
         let is_volatile = is_incremental_build && mono_item.is_generic_fn();
 
         let (cgu_name, partition_key) = match characteristic_def_id {
@@ -983,11 +984,22 @@ fn mark_code_coverage_dead_code_cgu<'tcx>(codegen_units: &mut [CodegenUnit<'tcx>
 fn characteristic_def_id_of_mono_item<'tcx>(
     tcx: TyCtxt<'tcx>,
     mono_item: MonoItem<'tcx>,
+    place_by_user: bool,
 ) -> Option<DefId> {
     match mono_item {
         MonoItem::Fn(instance) => {
             let def_id = match instance.def {
                 ty::InstanceKind::Item(def) => def,
+                // A coroutine's drop glue is generated from its body. If several
+                // callers share it, a body edit could invalidate the entire fallback
+                // unit, even if only the line numbers in the glue changed.
+                ty::InstanceKind::Shim(ty::ShimKind::DropGlue(_, Some(ty)))
+                    if place_by_user
+                        && let ty::Coroutine(def, _) = *ty.kind()
+                        && def.is_local() =>
+                {
+                    return Some(def);
+                }
                 ty::InstanceKind::Intrinsic(..)
                 | ty::InstanceKind::LlvmIntrinsic(..)
                 | ty::InstanceKind::Virtual(..)
