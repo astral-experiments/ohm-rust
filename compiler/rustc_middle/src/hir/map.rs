@@ -1444,12 +1444,12 @@ impl<'hir> Visitor<'hir> for ItemCollector<'hir> {
         self.tcx
     }
 
-    fn visit_item(&mut self, item: &'hir Item<'hir>) {
+    fn visit_nested_item(&mut self, item_id: ItemId) {
+        let nodes = self.tcx.hir_owner_nodes(item_id.owner_id);
+        let item = nodes.node().expect_item();
         if Node::Item(item).associated_body().is_some() {
             self.body_owners.push(item.owner_id.def_id);
         }
-
-        let item_id = item.item_id();
 
         if self.crate_collector
             && self.proc_macro_decls.is_none()
@@ -1473,14 +1473,18 @@ impl<'hir> Visitor<'hir> for ItemCollector<'hir> {
             if self.crate_collector {
                 intravisit::walk_mod(self, module);
             }
-        } else {
+        } else if nodes.has_nested_items {
             intravisit::walk_item(self, item)
         }
     }
 
-    fn visit_foreign_item(&mut self, item: &'hir ForeignItem<'hir>) {
-        self.foreign_items.push(item.foreign_item_id());
-        intravisit::walk_foreign_item(self, item)
+    fn visit_nested_foreign_item(&mut self, id: ForeignItemId) {
+        let nodes = self.tcx.hir_owner_nodes(id.owner_id);
+        let item = nodes.node().expect_foreign_item();
+        self.foreign_items.push(id);
+        if nodes.has_nested_items {
+            intravisit::walk_foreign_item(self, item)
+        }
     }
 
     fn visit_anon_const(&mut self, c: &'hir AnonConst) {
@@ -1507,23 +1511,29 @@ impl<'hir> Visitor<'hir> for ItemCollector<'hir> {
         intravisit::walk_expr(self, ex)
     }
 
-    fn visit_trait_item(&mut self, item: &'hir TraitItem<'hir>) {
+    fn visit_nested_trait_item(&mut self, id: TraitItemId) {
+        let nodes = self.tcx.hir_owner_nodes(id.owner_id);
+        let item = nodes.node().expect_trait_item();
         if Node::TraitItem(item).associated_body().is_some() {
             self.body_owners.push(item.owner_id.def_id);
         }
 
-        self.trait_items.push(item.trait_item_id());
-
-        intravisit::walk_trait_item(self, item)
+        self.trait_items.push(id);
+        if nodes.has_nested_items {
+            intravisit::walk_trait_item(self, item)
+        }
     }
 
-    fn visit_impl_item(&mut self, item: &'hir ImplItem<'hir>) {
+    fn visit_nested_impl_item(&mut self, id: ImplItemId) {
+        let nodes = self.tcx.hir_owner_nodes(id.owner_id);
+        let item = nodes.node().expect_impl_item();
         if Node::ImplItem(item).associated_body().is_some() {
             self.body_owners.push(item.owner_id.def_id);
         }
 
-        self.impl_items.push(item.impl_item_id());
-
-        intravisit::walk_impl_item(self, item)
+        self.impl_items.push(id);
+        if nodes.has_nested_items {
+            intravisit::walk_impl_item(self, item)
+        }
     }
 }

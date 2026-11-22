@@ -21,6 +21,7 @@ struct NodeCollector<'a, 'hir> {
     parenting: LocalDefIdMap<ItemLocalId>,
     lint_roots: &'hir mut [u32],
     num_lint_roots: usize,
+    has_nested_items: bool,
 
     /// The parent of this node
     parent_node: ItemLocalId,
@@ -35,7 +36,7 @@ pub(super) fn index_hir<'hir>(
     bodies: &SortedMap<ItemLocalId, &'hir Body<'hir>>,
     num_nodes: usize,
     attrs: &SortedMap<ItemLocalId, &[Attribute]>,
-) -> (IndexVec<ItemLocalId, ParentedNode<'hir>>, LocalDefIdMap<ItemLocalId>, &'hir [u32]) {
+) -> (IndexVec<ItemLocalId, ParentedNode<'hir>>, LocalDefIdMap<ItemLocalId>, &'hir [u32], bool) {
     let err_node = ParentedNode { parent: ItemLocalId::ZERO, node: Node::Err(item.span()) };
     let mut nodes = IndexVec::from_elem_n(err_node, num_nodes);
     // A single attribute entry needs no ordering. Otherwise mark the still-empty node slots
@@ -63,6 +64,9 @@ pub(super) fn index_hir<'hir>(
         parenting: Default::default(),
         lint_roots,
         num_lint_roots,
+        // Closures, anon consts and inline consts each add a body distinct
+        // from the owner's own body. Record nested items and opaques below.
+        has_nested_items: bodies.len() > usize::from(Node::from(item).associated_body().is_some()),
     };
 
     match item {
@@ -82,7 +86,12 @@ pub(super) fn index_hir<'hir>(
         }
     }
 
-    (collector.nodes, collector.parenting, &collector.lint_roots[..collector.num_lint_roots])
+    (
+        collector.nodes,
+        collector.parenting,
+        &collector.lint_roots[..collector.num_lint_roots],
+        collector.has_nested_items,
+    )
 }
 
 impl<'a, 'hir> NodeCollector<'a, 'hir> {
@@ -152,6 +161,7 @@ impl<'a, 'hir> NodeCollector<'a, 'hir> {
     }
 
     fn insert_nested(&mut self, item: LocalDefId) {
+        self.has_nested_items = true;
         if self.parent_node != ItemLocalId::ZERO {
             self.parenting.insert(item, self.parent_node);
         }
@@ -284,6 +294,7 @@ impl<'a, 'hir> Visitor<'hir> for NodeCollector<'a, 'hir> {
     }
 
     fn visit_opaque_ty(&mut self, opaq: &'hir OpaqueTy<'hir>) {
+        self.has_nested_items = true;
         self.insert(opaq.span, opaq.hir_id, Node::OpaqueTy(opaq));
 
         self.with_parent(opaq.hir_id, |this| {
