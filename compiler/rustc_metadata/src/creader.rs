@@ -1148,8 +1148,13 @@ impl CStore {
         }
     }
 
-    fn inject_allocator_crate(&mut self, tcx: TyCtxt<'_>, krate: &ast::Crate) {
-        self.has_global_allocator = match &*allocator_fn_spans(krate, sym::alloc) {
+    fn inject_allocator_crate(
+        &mut self,
+        tcx: TyCtxt<'_>,
+        krate: &ast::Crate,
+        std_internal_symbols: &[(Symbol, Span)],
+    ) {
+        self.has_global_allocator = match &*allocator_fn_spans(std_internal_symbols, sym::alloc) {
             [span1, span2, ..] => {
                 tcx.dcx()
                     .emit_err(diagnostics::NoMultipleGlobalAlloc { span2: *span2, span1: *span1 });
@@ -1157,16 +1162,17 @@ impl CStore {
             }
             spans => !spans.is_empty(),
         };
-        self.has_alloc_error_handler = match &*allocator_fn_spans(krate, ALLOC_ERROR_HANDLER) {
-            [span1, span2, ..] => {
-                tcx.dcx().emit_err(diagnostics::NoMultipleAllocErrorHandler {
-                    span2: *span2,
-                    span1: *span1,
-                });
-                true
-            }
-            spans => !spans.is_empty(),
-        };
+        self.has_alloc_error_handler =
+            match &*allocator_fn_spans(std_internal_symbols, ALLOC_ERROR_HANDLER) {
+                [span1, span2, ..] => {
+                    tcx.dcx().emit_err(diagnostics::NoMultipleAllocErrorHandler {
+                        span2: *span2,
+                        span1: *span1,
+                    });
+                    true
+                }
+                spans => !spans.is_empty(),
+            };
 
         // Check to see if we actually need an allocator. This desire comes
         // about through the `#![needs_allocator]` attribute and is typically
@@ -1374,11 +1380,16 @@ impl CStore {
         }
     }
 
-    pub fn postprocess(&mut self, tcx: TyCtxt<'_>, krate: &ast::Crate) {
+    pub fn postprocess(
+        &mut self,
+        tcx: TyCtxt<'_>,
+        krate: &ast::Crate,
+        std_internal_symbols: &[(Symbol, Span)],
+    ) {
         self.inject_compiler_builtins(tcx, krate);
         self.inject_forced_externs(tcx);
         self.inject_profiler_runtime(tcx);
-        self.inject_allocator_crate(tcx, krate);
+        self.inject_allocator_crate(tcx, krate, std_internal_symbols);
         self.inject_panic_runtime(tcx, krate);
 
         self.report_unused_deps_in_crate(tcx, krate);
@@ -1460,26 +1471,8 @@ impl CStore {
     }
 }
 
-fn allocator_fn_spans(krate: &ast::Crate, method: Symbol) -> Vec<Span> {
-    struct Finder {
-        name: Symbol,
-        spans: Vec<Span>,
-    }
-    impl<'ast> visit::Visitor<'ast> for Finder {
-        fn visit_item(&mut self, item: &'ast ast::Item) {
-            if let Some(ident) = item.kind.ident()
-                && ident.name == self.name
-                && attr::contains_name(&item.attrs, sym::rustc_std_internal_symbol)
-            {
-                self.spans.push(item.span);
-            }
-            visit::walk_item(self, item)
-        }
-    }
-
+fn allocator_fn_spans(symbols: &[(Symbol, Span)], method: Symbol) -> Vec<Span> {
     // Expansion has finished, so every item name in the AST is already interned.
     let Some(name) = Symbol::interned(&global_fn_name(method)) else { return Vec::new() };
-    let mut f = Finder { name, spans: Vec::new() };
-    visit::walk_crate(&mut f, krate);
-    f.spans
+    symbols.iter().filter_map(|&(symbol, span)| (symbol == name).then_some(span)).collect()
 }

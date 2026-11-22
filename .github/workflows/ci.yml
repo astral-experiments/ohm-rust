@@ -211,6 +211,7 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/ui/wf/nominal-inherited-obligations.rs
           tests/ui/wf/nominal-inherited-obligations-fail.rs
+          tests/incremental/nested-ast-owners.rs
           tests/incremental/aggregate-wf-sized.rs
           tests/incremental/nested-wf-bounds.rs
           tests/incremental/nominal-wf-bounds.rs
@@ -298,6 +299,7 @@ jobs:
           --compiletest-rustc-args=-Zincremental-verify-ich
           tests/incremental/complete-expansion-items.rs
           tests/incremental/hygiene tests/incremental/derive_macro_expansion
+          tests/incremental/nested-items-in-associated-item-macro.rs
           tests/incremental/repeated-token-tree-tail.rs
           tests/incremental/forward-metavariable-sequence.rs
           tests/incremental/promote-cached-query-value.rs
