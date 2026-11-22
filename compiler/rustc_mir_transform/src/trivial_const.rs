@@ -67,6 +67,10 @@ where
         return None;
     }
 
+    if let Some(lit) = tcx.integer_literal_const(def) {
+        return Some(lit);
+    }
+
     let body = body_provider();
 
     if body.has_opaque_types() {

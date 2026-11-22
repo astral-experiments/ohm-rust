@@ -219,6 +219,9 @@ jobs:
           tests/ui/const-generics/issues/issue-70180-2-stalled_on.rs
           tests/ui/coroutine/stalled-coroutine-obligations.rs
           tests/ui/inference/projection-cache-registers-obligations.rs
+          tests/ui/consts/integer-literal-const-overflow.rs
+          tests/ui/consts/integer-literal-const-suffix.rs
+          tests/incremental/foreign-integer-literal-const
           tests/incremental/implied-reference-bounds.rs
           tests/ui/implied-bounds/bevy_world_query.rs
           tests/ui/implied-bounds/normalization-placeholder-leak.rs
