@@ -6,7 +6,7 @@ use run_make_support::{rfs, run, rustc};
 fn main() {
     write_source("255");
     let thir = rustc().input("table.rs").arg("-Zunpretty=thir-tree").run().stdout_utf8();
-    assert_eq!(thir.matches("LiteralArray(").count(), 8);
+    assert_eq!(thir.matches("LiteralArray(").count(), 9);
     rustc().input("table.rs").incremental("incr").run();
     assert_eq!(run("table").stdout_utf8(), "255\n");
 
@@ -20,6 +20,12 @@ fn main() {
             .assert_stderr_contains(r#""code":"overflowing_literals""#);
     }
 
+    let valid = "('x','y'),".repeat(15);
+    for invalid in ["('x',)", "('x','y','z')", "('x',0)"] {
+        rfs::write("invalid.rs", format!("const _: &[(char, char)] = &[{valid}{invalid}];"));
+        rustc().input("invalid.rs").crate_type("lib").run_fail().assert_stderr_contains("E0308");
+    }
+
     write_source("254");
     for dir in ["incr", "empty"] {
         rustc().input("table.rs").incremental(dir).run();
@@ -30,7 +36,8 @@ fn main() {
 /// Changes one byte in the source table while keeping its element count and source length.
 fn write_source(last: &str) {
     let prefix = "0,".repeat(1023);
-    let short = "0,".repeat(1022);
+    let short = "0,".repeat(14);
+    let ranges = "('x','y'),".repeat(15);
     let chars = "'x',".repeat(1023);
     let pairs = "(1,'x'),".repeat(1023);
     let nested = "(1,(2,3)),".repeat(1023);
@@ -45,11 +52,12 @@ static BYTES: &[u8] = &[{prefix}{last}];
 static WORDS: [u16; 1024] = [{prefix}0x201];
 static COPY: [u16; 1024] = [{prefix}0x201];
 static DWORDS: [u32; 1024] = [{prefix}0x8172_6354];
-static SHORT: [u8; 1023] = [{short}17];
+static SHORT: [u8; 15] = [{short}17];
 static SUFFIX: [u8; 1024] = [{prefix}7u8];
 static EXPR: [u8; 1024] = [{prefix}1 + 2];
 const SCALARS: &[u16] = &[{prefix}0x1234];
 const CHARS: &[char] = &[{chars}'🦀'];
+const RANGES: &[(char, char)] = &[{ranges}('λ','🦀')];
 const PAIRS: &[(u32, char)] = &[{pairs}(0xdeadbeef,'λ')];
 const NESTED: &[(u32, (u16, u16))] = &[{nested}(0x12345678,(0xabcd,{tuple_end}))];
 const PADDED: &[(u32, u8)] = &[{padded}(0x12345678,255)];
@@ -61,8 +69,9 @@ fn main() {{
     assert_eq!(WORDS[1023], 513);
     assert_eq!(DWORDS[1023], 0x8172_6354);
     assert!(!std::ptr::eq(&WORDS, &COPY));
-    assert_eq!((SHORT[1022], SUFFIX[1023], EXPR[1023]), (17, 7, 3));
+    assert_eq!((SHORT[14], SUFFIX[1023], EXPR[1023]), (17, 7, 3));
     assert_eq!((SCALARS[1023], PAIRS[1023].1), (0x1234, 'λ'));
+    assert_eq!(RANGES[15], ('λ', '🦀'));
     assert_eq!(NESTED[1023], (0x12345678, (0xabcd, {last})));
     assert_eq!(PADDED[1023], (0x12345678, 255));
     println!("{{}}", BYTES[1023]);

@@ -218,6 +218,7 @@ jobs:
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1
           tests/incremental/dropck-region-free-kinds.rs
+          tests/mir-opt/building/storage_live_dead_in_statics.rs
           tests/ui/borrowck/borrowck-lend-flow-loop.rs
           tests/ui/borrowck/many-borrows-on-one-local.rs
           tests/ui/borrowck/two-phase-cannot-nest-mut-self-calls.rs
@@ -340,6 +341,7 @@ jobs:
             tests/run-make/incremental-loaded-cache-values
             tests/run-make/incremental-module-syntax
             tests/run-make/incremental-large-byte-literal
+            tests/run-make/static-integer-array-literals
             tests/run-make/incremental-string-table
             tests/run-make/incremental-check-body-attrs
             tests/run-make/incremental-recomputed-query-spans
