@@ -1,0 +1,65 @@
+error[E0080]: constructing invalid value of type [char; 16]: at [15], encountered 0x0000d800, but expected a valid unicode scalar value (in `0..=0x10FFFF` but not in `0xD800..=0xDFFF`)
+  --> $DIR/ub-char-array.rs:6:1
+   |
+LL | const SURROGATE: [char; 16] = unsafe {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^ it is undefined behavior to use this value
+   |
+   = note: the rules on what exactly is undefined behavior aren't clear, so this check might be overzealous. Please open an issue on the rustc repository if you believe it should not be considered undefined behavior.
+   = note: the raw bytes of the constant (size: 64, align: 4) {
+               HEX_DUMP
+               HEX_DUMP
+               HEX_DUMP
+               HEX_DUMP
+           }
+
+error[E0080]: constructing invalid value of type [(char, char); 16]: at [7].1, encountered 0x00110000, but expected a valid unicode scalar value (in `0..=0x10FFFF` but not in `0xD800..=0xDFFF`)
+  --> $DIR/ub-char-array.rs:13:1
+   |
+LL | const OUT_OF_RANGE: [(char, char); 16] = unsafe {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ it is undefined behavior to use this value
+   |
+   = note: the rules on what exactly is undefined behavior aren't clear, so this check might be overzealous. Please open an issue on the rustc repository if you believe it should not be considered undefined behavior.
+   = note: the raw bytes of the constant (size: 128, align: 4) {
+               HEX_DUMP
+               HEX_DUMP
+               HEX_DUMP
+               HEX_DUMP
+               HEX_DUMP
+               HEX_DUMP
+               HEX_DUMP
+               HEX_DUMP
+           }
+
+error[E0080]: constructing invalid value of type [char; 16]: at [9], encountered uninitialized memory, but expected a unicode scalar value
+  --> $DIR/ub-char-array.rs:20:1
+   |
+LL | const UNINIT: [char; 16] = unsafe {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^ it is undefined behavior to use this value
+   |
+   = note: the rules on what exactly is undefined behavior aren't clear, so this check might be overzealous. Please open an issue on the rustc repository if you believe it should not be considered undefined behavior.
+   = note: the raw bytes of the constant (size: 64, align: 4) {
+               HEX_DUMP
+               HEX_DUMP
+               HEX_DUMP
+               HEX_DUMP
+           }
+
+error[E0080]: constructing invalid value of type [char; 16]: at [0], encountered a pointer, but expected a unicode scalar value
+  --> $DIR/ub-char-array.rs:33:1
+   |
+LL | const POINTER: [char; 16] = unsafe {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^ it is undefined behavior to use this value
+   |
+   = help: this code performed an operation that depends on the underlying bytes representing a pointer
+   = help: the absolute address of a pointer is not known at compile-time, so such operations are not supported
+   = note: the rules on what exactly is undefined behavior aren't clear, so this check might be overzealous. Please open an issue on the rustc repository if you believe it should not be considered undefined behavior.
+   = note: the raw bytes of the constant (size: 64, align: 4) {
+               HEX_DUMP
+               HEX_DUMP
+               HEX_DUMP
+               HEX_DUMP
+           }
+
+error: aborting due to 4 previous errors
+
+For more information about this error, try `rustc --explain E0080`.
