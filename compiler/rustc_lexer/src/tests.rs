@@ -2,6 +2,21 @@ use expect_test::{Expect, expect};
 
 use super::*;
 
+#[test]
+fn skip_ascii_whitespace() {
+    let mut cursor = Cursor::new(" \t---cargo\n", FrontmatterAllowed::Yes);
+    assert_eq!(cursor.skip_ascii_whitespace(), 0);
+
+    let mut cursor = Cursor::new("a \n\u{000b}\t\u{200e} λ", FrontmatterAllowed::Yes);
+    assert_eq!(cursor.advance_token().kind, Ident);
+    assert_eq!(cursor.skip_ascii_whitespace(), 4);
+    assert_eq!(cursor.advance_token().len, 4);
+    assert_eq!(cursor.skip_ascii_whitespace(), 0);
+    assert_eq!(cursor.advance_token().len, 2);
+    assert_eq!(cursor.skip_ascii_whitespace(), 0);
+    assert_eq!(cursor.advance_token().kind, Eof);
+}
+
 fn check_raw_str(s: &str, expected: Result<u8, RawStrError>) {
     let s = &format!("r{}", s);
     let mut cursor = Cursor::new(s, FrontmatterAllowed::No);
