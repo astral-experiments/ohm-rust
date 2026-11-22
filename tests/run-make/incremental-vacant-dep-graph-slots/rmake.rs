@@ -23,7 +23,16 @@ fn main() {
     // Finally shrink the graph so the next session compacts it.
     let mut state = "not-loaded";
     for (start, len) in [(0, 160), (64, 160), (128, 160), (0, 160), (0, 8), (64, 160)] {
-        let mut source = String::new();
+        // Switch PICK to a different dependency of equal value. When NEW
+        // changes next time, the array length must follow the new dependency.
+        let dependency = if start == 0 { "OLD" } else { "NEW" };
+        let value = if start == 128 { 2 } else { 1 };
+        let mut source = format!(
+            "pub const OLD: usize = 1;\n\
+             pub const NEW: usize = {value};\n\
+             pub const PICK: usize = {dependency};\n\
+             const _: [(); {value}] = [(); PICK];\n"
+        );
         for i in start..start + len {
             writeln!(source, "pub const VALUE_{i}: usize = {i};").unwrap();
             writeln!(source, "#[inline] pub fn f{i}() -> usize {{ VALUE_{i} }}").unwrap();
