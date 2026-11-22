@@ -3492,7 +3492,9 @@ pub fn provide(providers: &mut Providers) {
         sm.ensure_source_file_source_present(&file);
         let available = file.src.is_some()
             || file.external_src.get().is_some_and(|source| source.get_source().is_some());
-        available.then_some(file.src_hash)
+        // Source reads depend on the bytes. Metadata below also depends on
+        // the hash algorithm emitted with the source file.
+        available.then_some(file.input_hash())
     };
     providers.metadata_source_file_hash =
         |tcx, id| tcx.sess.source_map().source_file_by_stable_id(id).map(|file| file.src_hash);

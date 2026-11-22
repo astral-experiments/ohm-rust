@@ -92,7 +92,9 @@ pub(super) fn parse<'s>(
     }
     let keyword_lint_inert = keyword_lint_only && sess.edition() == Edition::Edition2024;
     let inputs = Inputs {
-        source: file.src_hash,
+        // Use the byte checksum in both stages, even if codegen needs
+        // a separate source hash for debug info.
+        source: file.input_hash(),
         edition: sess.edition() as u8,
         keyword_lint_inert,
         test_bodies_inert: keyword_lint_inert
