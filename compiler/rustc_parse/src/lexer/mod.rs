@@ -22,6 +22,7 @@ use crate::lexer::diagnostics::TokenTreeDiagInfo;
 use crate::lexer::unicode_chars::UNICODE_ARRAY;
 
 mod diagnostics;
+mod inactive;
 mod tokentrees;
 mod unescape_error_reporting;
 mod unicode_chars;
@@ -69,6 +70,7 @@ pub(crate) fn lex_token_trees<'psess, 'src>(
     mut start_pos: BytePos,
     override_span: Option<Span>,
     strip_tokens: StripTokens,
+    module_cfg: Option<&rustc_session::config::Cfg>,
 ) -> Result<TokenStream, Vec<Diag<'psess>>> {
     match strip_tokens {
         StripTokens::Shebang | StripTokens::ShebangAndFrontmatter => {
@@ -98,7 +100,7 @@ pub(crate) fn lex_token_trees<'psess, 'src>(
         token: Token::dummy(),
         diag_info: TokenTreeDiagInfo::default(),
     };
-    let res = lexer.lex_token_trees(/* is_delimited */ false);
+    let res = lexer.lex_token_trees(/* is_delimited */ false, module_cfg);
 
     let mut unmatched_closing_delims: Vec<_> =
         make_errors_for_mismatched_closing_delims(&lexer.diag_info.unmatched_delims, psess);
