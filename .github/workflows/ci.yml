@@ -343,6 +343,7 @@ jobs:
             tests/run-make/incremental-string-table
             tests/run-make/incremental-check-body-attrs
             tests/run-make/incremental-recomputed-query-spans
+            tests/run-make/incremental-scheduled-drop-spans
             tests/run-make/incremental-check-dependency-salt
             tests/run-make/incremental-record-fields
             tests/run-make/incremental-whole-crate-metadata
