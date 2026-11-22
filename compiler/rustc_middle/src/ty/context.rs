@@ -1308,6 +1308,19 @@ impl<'tcx> TyCtxt<'tcx> {
         })
     }
 
+    /// Whether Ohm can identify this metadata-only library by its full metadata and inputs.
+    pub fn is_capped_library_check(self) -> bool {
+        let opts = &self.sess.opts;
+        opts.incremental.is_none()
+            && opts.unstable_opts.ohm_shared_stages
+            && opts.unstable_opts.metadata_crate_hash
+            && opts.unstable_opts.public_api_hash
+            && !opts.unstable_opts.ohm_terminal_check_hash
+            && opts.lint_cap == Some(rustc_lint_defs::Level::Allow)
+            && !opts.output_types.should_codegen()
+            && self.crate_types() == [CrateType::Rlib]
+    }
+
     pub fn needs_hir_hash(self) -> bool {
         // Why is the hir hash needed for these configurations?
         // - debug_assertions: for the "fingerprint the result" check in
@@ -1322,7 +1335,7 @@ impl<'tcx> TyCtxt<'tcx> {
         //   of the proof of concept impl for the metrics initiative project goal)
         cfg!(debug_assertions)
             || self.sess.opts.incremental.is_some()
-            || self.needs_metadata()
+            || (self.needs_metadata() && !self.is_capped_library_check())
             || self.sess.instrument_coverage()
             || self.sess.opts.unstable_opts.metrics_dir.is_some()
     }
