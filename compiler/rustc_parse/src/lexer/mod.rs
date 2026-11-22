@@ -168,8 +168,74 @@ impl<'psess, 'src> Lexer<'psess, 'src> {
 
     /// Returns the next token, paired with a bool indicating if the token was
     /// preceded by whitespace.
+    #[inline]
     fn next_token_from_cursor(&mut self) -> (Token, bool) {
-        let mut preceded_by_whitespace = false;
+        let skipped = self.cursor.skip_ascii_whitespace();
+        self.pos = self.pos + BytePos(skipped);
+        let input = self.cursor.as_str();
+        // These characters are unconditionally single-byte tokens. Gluing
+        // happens later. Leave slash, minus and pound to the regular lexer
+        // for comments, frontmatter, and guarded strings.
+        let kind = match input.as_bytes().first().copied().unwrap_or(0) {
+            b';' => token::Semi,
+            b',' => token::Comma,
+            b'.' => token::Dot,
+            b'(' => token::OpenParen,
+            b')' => token::CloseParen,
+            b'{' => token::OpenBrace,
+            b'}' => token::CloseBrace,
+            b'[' => token::OpenBracket,
+            b']' => token::CloseBracket,
+            b'@' => token::At,
+            b'~' => token::Tilde,
+            b'?' => token::Question,
+            b':' => token::Colon,
+            b'$' => token::Dollar,
+            b'=' => token::Eq,
+            b'!' => token::Bang,
+            b'<' => token::Lt,
+            b'>' => token::Gt,
+            b'&' => token::And,
+            b'|' => token::Or,
+            b'+' => token::Plus,
+            b'*' => token::Star,
+            b'^' => token::Caret,
+            b'%' => token::Percent,
+            b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
+                // ASCII identifiers are NFC. The next byte must rule out an
+                // identifier continuation, literal prefix, or invalid emoji.
+                let mut len = 1;
+                while let Some(&byte) = input.as_bytes().get(len) {
+                    if !(byte.is_ascii_alphanumeric() || byte == b'_') {
+                        if !byte.is_ascii() || matches!(byte, b'#' | b'"' | b'\'') {
+                            return self.next_cooked_token(skipped != 0);
+                        }
+                        break;
+                    }
+                    len += 1;
+                }
+                let (name, rest) = input.split_at(len);
+                let symbol = Symbol::intern(name);
+                let start = self.pos;
+                self.pos = start + BytePos(len as u32);
+                self.cursor = Cursor::new(rest, FrontmatterAllowed::No);
+                let span = self.mk_sp(start, self.pos);
+                self.psess.symbol_gallery.insert(symbol, span);
+                return (Token::new(token::Ident(symbol, IdentKind::Normal), span), skipped != 0);
+            }
+            _ => return self.next_cooked_token(skipped != 0),
+        };
+        if matches!(kind, token::Semi | token::CloseParen | token::CloseBracket | token::CloseBrace)
+        {
+            self.last_lifetime = None;
+        }
+        let start = self.pos;
+        self.pos = start + BytePos(1);
+        self.cursor = Cursor::new(&input[1..], FrontmatterAllowed::No);
+        (Token::new(kind, self.mk_sp(start, self.pos)), skipped != 0)
+    }
+
+    fn next_cooked_token(&mut self, mut preceded_by_whitespace: bool) -> (Token, bool) {
         let mut swallow_next_invalid = 0;
         // Skip trivial (whitespace & comments) tokens
         loop {

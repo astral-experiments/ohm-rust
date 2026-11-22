@@ -148,6 +148,7 @@ jobs:
           tests/ui/coroutine/storage-conflicts-subsets.rs
           tests/ui/coroutine/storage-conflicts-overlapping-sets.rs
           tests/ui/coroutine/storage-conflicts-many-locals.rs
+          tests/ui/parser/ascii-token-boundaries.rs
           tests/ui/coroutine/storage-conflicts-resume-and-unwind.rs
           tests/ui/coroutine/xcrate.rs tests/ui/coroutine/drop-env.rs
           tests/ui/async-await/async-closures/drop.rs
