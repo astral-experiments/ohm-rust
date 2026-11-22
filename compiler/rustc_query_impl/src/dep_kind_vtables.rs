@@ -191,8 +191,12 @@ pub(crate) fn make_dep_kind_vtables<'tcx>(arena: &'tcx Arena<'tcx>) -> &'tcx [De
 
     // Non-query vtables must come before query vtables, to match the order of `DepKind`.
     let vtables = arena.alloc_from_iter(nq_vtables.into_iter().chain(q_vtables.into_iter()));
+    vtables[DepKind::evaluate_obligation.as_usize()].force_from_dep_node_fn =
+        Some(crate::execution::force_operator_goal);
     vtables[DepKind::associated_value.as_usize()].force_from_dep_node_fn =
         Some(crate::execution::force_associated_value);
+    vtables[DepKind::integer_pair_impls.as_usize()].force_from_dep_node_fn =
+        Some(crate::execution::force_trait_impl_bucket);
     vtables[DepKind::non_blanket_trait_impls.as_usize()].force_from_dep_node_fn =
         Some(crate::execution::force_trait_impl_bucket);
     vtables[DepKind::implementations_of_trait.as_usize()].force_from_dep_node_fn =

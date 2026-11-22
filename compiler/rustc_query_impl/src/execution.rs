@@ -762,7 +762,7 @@ fn recover_trait_impl_bucket(
     }
     let matching_key = |receiver: SimplifiedType| {
         let key = (trait_id, receiver);
-        (DepNode::construct(tcx, DepKind::non_blanket_trait_impls, &key) == dep_node).then_some(key)
+        (DepNode::construct(tcx, dep_node.kind, &key) == dep_node).then_some(key)
     };
     if let Some(receiver_node) = receiver_node {
         let id = registered_def_id(tcx, receiver_node)?;
@@ -784,6 +784,86 @@ fn recover_trait_impl_bucket(
         let key = matches.next()?;
         matches.next().is_none().then_some(key)
     }
+}
+
+fn recover_operator_goal<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    dep_node: DepNode,
+    prev_index: SerializedDepNodeIndex,
+    reader: SerializedDepNodeIndex,
+) -> Option<rustc_middle::traits::query::CanonicalPredicateGoal<'tcx>> {
+    use rustc_middle::infer::canonical::{Canonical, CanonicalQueryInput, CanonicalVarKind};
+    use rustc_middle::ty::{self, Ty, Upcast};
+
+    if tcx.next_trait_solver_globally() {
+        return None;
+    }
+    let (body, bucket, index) =
+        tcx.dep_graph.previous_operator_inputs(dep_node, prev_index, reader)?;
+    let (trait_id, receiver) = recover_trait_impl_bucket(tcx, bucket, index)?;
+    if trait_id.is_local() {
+        return None;
+    }
+    let integer = match receiver {
+        SimplifiedType::Int(ty) => Ty::new_int(tcx, ty),
+        SimplifiedType::Uint(ty) => Ty::new_uint(tcx, ty),
+        _ => return None,
+    };
+    let generics = tcx.generics_of(trait_id);
+    if generics.count() != 2
+        || !matches!(generics.param_at(1, tcx).kind, ty::GenericParamDefKind::Type { .. })
+    {
+        return None;
+    }
+    let owner = body.extract_def_id(tcx)?.as_local()?;
+    if !matches!(tcx.def_kind(owner), DefKind::Fn | DefKind::AssocFn) {
+        return None;
+    }
+    tcx.hir_maybe_body_owned_by(owner)?;
+    let typing_mode = ty::TypingModeEqWrapper(ty::TypingMode::typeck_for_body(tcx, owner).into());
+    let env = tcx.param_env(owner);
+    // Avoid environments whose own variables would need canonicalization.
+    if !env.caller_bounds().all(|bound| {
+        matches!(bound.kind().skip_binder(), ty::ClauseKind::ConstArgHasType(_, ty)
+            if ty.is_integral() || ty == tcx.types.bool)
+    }) {
+        return None;
+    }
+    let ui = ty::UniverseIndex::ROOT;
+    let var = |i| ty::BoundVar::from_u32(i);
+    let ty_var = |i| CanonicalVarKind::Ty { ui, sub_root: var(i) };
+    let bound = |i| Ty::new_canonical_bound(tcx, var(i));
+    // Operator lookup probes the receiver before checking the right operand.
+    // An integer literal may itself still be an integer inference variable.
+    let probes = [
+        ([integer, bound(0)], tcx.mk_canonical_var_kinds(&[ty_var(0)])),
+        ([bound(0), bound(1)], tcx.mk_canonical_var_kinds(&[CanonicalVarKind::Int, ty_var(1)])),
+    ];
+    let mut matches = probes.into_iter().filter_map(|(args, var_kinds)| {
+        let pred: ty::Predicate<'tcx> = ty::TraitRef::new(tcx, trait_id, args).upcast(tcx);
+        let canonical = Canonical { value: env.and(pred), max_universe: ui, var_kinds };
+        let key = CanonicalQueryInput { canonical, typing_mode };
+        (DepNode::construct(tcx, DepKind::evaluate_obligation, &key) == dep_node).then_some(key)
+    });
+    let key = matches.next()?;
+    matches.next().is_none().then_some(key)
+}
+
+pub(crate) fn force_operator_goal(
+    tcx: TyCtxt<'_>,
+    dep_node: DepNode,
+    prev_index: SerializedDepNodeIndex,
+    reader: Option<SerializedDepNodeIndex>,
+) -> bool {
+    let Some(reader) = reader else { return false };
+    let Some(key) =
+        tcx.dep_graph.with_ignore(|| recover_operator_goal(tcx, dep_node, prev_index, reader))
+    else {
+        return false;
+    };
+    let query = &tcx.query_system.query_vtables.evaluate_obligation;
+    try_execute_query::<_, true>(query, tcx, DUMMY_SP, key, Some(dep_node));
+    true
 }
 
 pub(crate) fn force_associated_value(
@@ -819,7 +899,11 @@ pub(crate) fn force_trait_impl_bucket(
     else {
         return false;
     };
-    let query = &tcx.query_system.query_vtables.non_blanket_trait_impls;
+    let query = if dep_node.kind == DepKind::integer_pair_impls {
+        &tcx.query_system.query_vtables.integer_pair_impls
+    } else {
+        &tcx.query_system.query_vtables.non_blanket_trait_impls
+    };
     try_execute_query::<_, true>(query, tcx, DUMMY_SP, key, Some(dep_node));
     true
 }

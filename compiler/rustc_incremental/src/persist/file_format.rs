@@ -36,7 +36,8 @@ const FILE_MAGIC: &[u8] = b"RSIC";
 // Retained query results use a bitmap for aliases whose graph index has not changed.
 // Parsed module snapshots follow the retained generations.
 // Parsed module snapshots omit dummy node IDs and pack short spans.
-const HEADER_FORMAT_VERSION: u16 = 61376;
+// Trait selection projects impls for integral operands.
+const HEADER_FORMAT_VERSION: u16 = 61377;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);

@@ -2449,6 +2449,7 @@ pub fn provide(providers: &mut Providers) {
     *providers = Providers {
         implementations_of_trait: trait_def::local_implementations_of_trait,
         trait_impls_of: trait_def::trait_impls_of_provider,
+        integer_pair_impls: trait_def::integer_pair_impls,
         blanket_trait_impls: |tcx, trait_id| trait_def::trait_impls_for_bucket(tcx, trait_id, None),
         non_blanket_trait_impls: |tcx, (trait_id, simp)| {
             let impls = trait_def::trait_impls_for_bucket(tcx, trait_id, Some(simp));
