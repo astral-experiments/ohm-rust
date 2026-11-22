@@ -729,3 +729,35 @@ fn remove_old_key_of_completed_root_after_stall() {
         forest.process_obligations(&mut C(|_| ProcessResult::Changed(thin_vec![]), |_| {}));
     assert_eq!(outcome.completed, ["stalled", "unresolved"]);
 }
+
+#[test]
+fn independent_trees_finish_without_a_cycle_stack() {
+    let mut forest = ObligationForest::new();
+    forest.register_obligation("old");
+    forest.process_obligations(&mut C(|_| ProcessResult::Unchanged, |_| {}));
+    forest.register_obligation("new");
+    let outcome = forest.process_obligations(&mut C(
+        |obligation| match *obligation {
+            "old" => ProcessResult::Unchanged,
+            "new" => ProcessResult::Changed(thin_vec!["child"]),
+            "child" => ProcessResult::Changed(thin_vec![]),
+            _ => unreachable!(),
+        },
+        |_| {},
+    ));
+    assert_eq!(outcome.completed, ["new", "child"]);
+    assert_eq!(forest.len(), 1);
+    assert_eq!(forest.reused_node_vec.capacity(), 0);
+
+    // A non-parent edge can close a cycle, even if all nodes succeeded.
+    let outcome = forest.process_obligations(&mut C(
+        |obligation| match *obligation {
+            "old" => ProcessResult::Changed(thin_vec!["another"]),
+            "another" => ProcessResult::Changed(thin_vec!["old"]),
+            _ => unreachable!(),
+        },
+        |_| {},
+    ));
+    assert_eq!(outcome.completed, ["old", "another"]);
+    assert!(forest.reused_node_vec.capacity() >= 2);
+}
