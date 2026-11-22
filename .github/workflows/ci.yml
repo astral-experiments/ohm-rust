@@ -245,6 +245,7 @@ jobs:
           tests/incremental/impl-outlives-fulfillment.rs
           tests/ui/nll/maybe-initialized-drop.rs
           tests/ui/nll/match-guards-partially-borrow.rs
+          tests/incremental/region-scope-parents.rs
 
       - name: Run bitset unit tests
         run: >-
