@@ -4493,7 +4493,18 @@ fn encode_fresh_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>, 
                 let opts = &tcx.sess.opts.unstable_opts;
                 if !opts.public_api_hash || is_proc_macro {
                     encode_crate_root::<DefIndexDefIdEncoder>(tcx, path, hcx, &mut hashes);
-                } else if opts.metadata_crate_hash && opts.ohm_prefer_full_crate_hash {
+                } else if opts.metadata_crate_hash
+                    && (opts.ohm_prefer_full_crate_hash
+                        || (opts.ohm_shared_stages
+                            && !opts.ohm_terminal_check_hash
+                            && tcx.sess.opts.incremental.is_none()
+                            && !tcx.sess.opts.output_types.should_codegen()
+                            && tcx.sess.opts.lint_cap == Some(rustc_lint_defs::Level::Allow)))
+                {
+                    // Cargo checks registry libraries without incremental state and caps their
+                    // lints. A new package version also changes its identity, so distinguishing
+                    // individual item changes rarely recovers work. For editable crates with
+                    // these options the full hash may invalidate more consumers.
                     // Keep stable DefPathHash references and dependency public SVHs. The byte
                     // digest covers the encoded metadata, including those SVHs. Readers use it
                     // for all items when the reachability hashes are absent. Either representation
