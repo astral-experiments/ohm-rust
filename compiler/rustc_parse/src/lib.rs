@@ -236,13 +236,48 @@ pub fn new_parser_from_source_file(
     new_parser_from_module(psess, source_file, strip_tokens, None)
 }
 
-/// Passing a configuration allows omission of inert literal tables from
-/// disabled items. The caller must rule out observers of the original syntax.
-pub fn new_parser_from_module<'psess>(
+/// The module lexer can construct literal rows directly. Only the parser
+/// for this module may see the shortened stream. Restore the rows before
+/// expansion, or retry with ordinary tokens if the parsed shape differs.
+pub fn parse_module_from_source_file<'psess>(
+    psess: &'psess ParseSess,
+    file: Arc<SourceFile>,
+    cfg: Option<&rustc_session::config::Cfg>,
+) -> PResult<'psess, (ast::AttrVec, thin_vec::ThinVec<Box<ast::Item>>, ast::ModSpans)> {
+    if let Some(cfg) = cfg
+        && psess.dcx().has_errors().is_none()
+    {
+        let mut module = lexer::ModuleLexer { cfg, tables: Vec::new() };
+        let mut parser = unwrap_or_emit_fatal(new_parser_from_module(
+            psess,
+            file.clone(),
+            StripTokens::ShebangAndFrontmatter,
+            Some(&mut module),
+        ));
+        let mut parsed = parser.parse_mod(exp!(Eof))?;
+        if module.tables.is_empty() || module.restore_tables(&mut parsed.1) {
+            return Ok(parsed);
+        }
+        // Error recovery can discard items. Don't emit the same errors again
+        // or allow compilation to succeed with missing rows.
+        if psess.dcx().has_errors().is_some() {
+            return Ok(parsed);
+        }
+    }
+
+    let mut parser = unwrap_or_emit_fatal(new_parser_from_source_file(
+        psess,
+        file,
+        StripTokens::ShebangAndFrontmatter,
+    ));
+    parser.parse_mod(exp!(Eof))
+}
+
+fn new_parser_from_module<'psess>(
     psess: &'psess ParseSess,
     source_file: Arc<SourceFile>,
     strip_tokens: StripTokens,
-    module_cfg: Option<&rustc_session::config::Cfg>,
+    module_cfg: Option<&mut lexer::ModuleLexer<'_>>,
 ) -> Result<Parser<'psess>, Vec<Diag<'psess>>> {
     let end_pos = source_file.end_position();
     let stream = source_file_to_stream(psess, source_file, None, strip_tokens, module_cfg)?;
@@ -278,7 +313,7 @@ fn source_file_to_stream<'psess>(
     source_file: Arc<SourceFile>,
     override_span: Option<Span>,
     strip_tokens: StripTokens,
-    module_cfg: Option<&rustc_session::config::Cfg>,
+    module_cfg: Option<&mut lexer::ModuleLexer<'_>>,
 ) -> Result<TokenStream, Vec<Diag<'psess>>> {
     let src = source_file.src.as_ref().unwrap_or_else(|| {
         psess.dcx().bug(format!(

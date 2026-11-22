@@ -74,7 +74,11 @@ pub(crate) fn parse_external_mod(
             &mp.file_path,
             span,
             simple_lints,
-            attrs.iter().all(|attr| matches!(attr.kind, rustc_ast::AttrKind::DocComment(..))),
+            attrs.iter().all(|attr| {
+                matches!(attr.kind, rustc_ast::AttrKind::DocComment(..))
+                    || sess.opts.incremental.is_none()
+                        && matches!(attr.kind, rustc_ast::AttrKind::Synthetic(..))
+            }),
             &mut lint_items,
         )
         .map_err(ModError::ParserError)?;

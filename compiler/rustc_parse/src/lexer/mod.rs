@@ -21,6 +21,7 @@ use tracing::debug;
 use crate::lexer::diagnostics::TokenTreeDiagInfo;
 use crate::lexer::unicode_chars::UNICODE_ARRAY;
 
+mod active;
 mod diagnostics;
 mod inactive;
 mod tokentrees;
@@ -64,13 +65,20 @@ pub enum StripTokens {
     Nothing,
 }
 
+pub(crate) type LiteralTables = Vec<(BytePos, thin_vec::ThinVec<Box<ast::Expr>>)>;
+
+pub(crate) struct ModuleLexer<'a> {
+    pub cfg: &'a rustc_session::config::Cfg,
+    pub tables: LiteralTables,
+}
+
 pub(crate) fn lex_token_trees<'psess, 'src>(
     psess: &'psess ParseSess,
     mut src: &'src str,
     mut start_pos: BytePos,
     override_span: Option<Span>,
     strip_tokens: StripTokens,
-    module_cfg: Option<&rustc_session::config::Cfg>,
+    module_cfg: Option<&mut ModuleLexer<'_>>,
 ) -> Result<TokenStream, Vec<Diag<'psess>>> {
     match strip_tokens {
         StripTokens::Shebang | StripTokens::ShebangAndFrontmatter => {
