@@ -64,15 +64,15 @@ fn main() {
     run("main").assert_stdout_contains("dropped:false:true:7:11");
 
     let caller_local = compile(Some("caller-local"), true, "0");
-    assert_placement(&caller_local, coroutine_glue, "main.", "-tasks.volatile[");
+    assert_placement(&caller_local, "::evaluate_first", "main.", "-first[");
+    assert_placement(&caller_local, coroutine_glue, "main.", "-tasks[");
     for function in ["upstream::apply::<", "upstream::invoke::<"] {
-        assert_placement(&caller_local, function, "main.", "-first.volatile[");
-        assert_placement(&caller_local, function, "main.", "-second.volatile[");
+        assert_placement(&caller_local, function, "main.", "-first[");
+        assert_placement(&caller_local, function, "main.", "-second[");
     }
-    for function in
-        ["upstream::identity::<u64>", "as std::ops::Drop>::drop", "drop_glue::<upstream::Wrapper<"]
-    {
-        assert_placement(&caller_local, function, "main.", ".volatile[");
+    assert_placement(&caller_local, "upstream::identity::<u64>", "main.", "-second[");
+    for function in ["as std::ops::Drop>::drop", "drop_glue::<upstream::Wrapper<"] {
+        assert_placement(&caller_local, function, "main.", "-tasks[");
     }
     run("main").assert_stdout_contains("dropped:false:true:7:11");
 
@@ -85,9 +85,9 @@ fn main() {
     // The flag is inert without incremental compilation.
     let nonincremental = compile(None, true, "0");
     assert!(
-        !nonincremental.lines().any(|line| {
-            line.contains("upstream::apply::<") && line.contains("-first.volatile[")
-        }),
+        !nonincremental
+            .lines()
+            .any(|line| { line.contains("upstream::apply::<") && line.contains("-first") }),
         "caller-local partitioning unexpectedly affected a nonincremental build",
     );
 
@@ -97,7 +97,7 @@ fn main() {
     rfs::write("main.rs", changed);
 
     let rebuilt = compile(Some("caller-local"), true, "0");
-    assert_placement(&rebuilt, "upstream::apply::<", "main.", "-first.volatile[");
+    assert_placement(&rebuilt, "upstream::apply::<", "main.", "-first[");
     run("main").assert_stdout_contains("dropped:true:true:7:11");
 
     // Add a second user in another module, then remove it in the same cache.
@@ -109,6 +109,6 @@ fn main() {
 
     rfs::write("main.rs", original);
     let rebuilt = compile(Some("caller-local"), true, "0");
-    assert_placement(&rebuilt, "upstream::identity::<u64>", "main.", ".volatile[");
+    assert_placement(&rebuilt, "upstream::identity::<u64>", "main.", "-second[");
     run("main").assert_stdout_contains("dropped:false:true:7:11");
 }
