@@ -285,6 +285,7 @@ jobs:
           --set rust.lto=off test --stage 1
           --compiletest-rustc-args=-Zthreads=8
           --compiletest-rustc-args=-Zincremental-verify-ich
+          tests/incremental/complete-expansion-items.rs
           tests/incremental/hygiene tests/incremental/derive_macro_expansion
           tests/incremental/repeated-token-tree-tail.rs
           tests/incremental/forward-metavariable-sequence.rs
