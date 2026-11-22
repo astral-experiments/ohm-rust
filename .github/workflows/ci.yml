@@ -123,6 +123,7 @@ jobs:
           tests/ui/traits/object/rerun-impossible-predicates-post-analysis.rs
           tests/ui/impl-trait/precise-capturing/outlives-pair-isolation.rs
           tests/ui/impl-trait/precise-capturing/outlives-pair-isolation-reject.rs
+          tests/incremental/resolve-fresh-variables.rs
 
       - name: Run metadata UI tests
         run: >-
@@ -230,6 +231,8 @@ jobs:
           tests/ui/borrowck/borrowck-lend-flow-loop.rs
           tests/ui/borrowck/many-borrows-on-one-local.rs
           tests/ui/borrowck/two-phase-cannot-nest-mut-self-calls.rs
+          tests/incremental/call-nested-reference.rs
+          tests/incremental/impl-outlives-fulfillment.rs
           tests/ui/nll/maybe-initialized-drop.rs
           tests/ui/nll/match-guards-partially-borrow.rs
 

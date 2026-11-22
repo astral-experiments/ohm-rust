@@ -58,9 +58,9 @@ impl<'tcx> ForestObligation for PendingPredicateObligation<'tcx> {
 /// method `evaluate_obligations_error_on_ambiguity` can be used to report any remaining
 /// ambiguous cases as errors.
 pub struct FulfillmentContext<'tcx, E: 'tcx> {
-    /// A list of all obligations that have been registered with this
-    /// fulfillment context.
-    predicates: ObligationForest<PendingPredicateObligation<'tcx>>,
+    /// Probes and type operations often finish without any nontrivial
+    /// obligations. Build the forest only when we need to insert one.
+    predicates: Option<ObligationForest<PendingPredicateObligation<'tcx>>>,
 
     /// The snapshot in which this context was created. Using the context
     /// outside of this snapshot leads to subtle bugs if the snapshot
@@ -119,37 +119,29 @@ where
             infcx is set up for new trait solver"
         );
         FulfillmentContext {
-            predicates: ObligationForest::new(),
+            predicates: None,
             usable_in_snapshot: infcx.num_open_snapshots(),
             _errors: PhantomData,
         }
     }
+}
 
-    /// Attempts to select obligations using `selcx`.
-    fn select(&mut self, selcx: SelectionContext<'_, 'tcx>) -> TraitErrors<E> {
-        let span = debug_span!("select", obligation_forest_size = ?self.predicates.len());
-        let _enter = span.enter();
-        let infcx = selcx.infcx;
-
-        // Process pending obligations.
-        let outcome: Outcome<_, _> =
-            self.predicates.process_obligations(&mut FulfillProcessor { selcx });
-
-        // FIXME: if we kept the original cache key, we could mark projection
-        // obligations as complete for the projection cache here.
-
-        let errors = TraitErrors::from_iter(
-            outcome.errors.into_iter().map(|err| E::from_solver_error(infcx, OldSolverError(err))),
-        );
-
-        debug!(
-            "select({} predicates remaining, {} errors) done",
-            self.predicates.len(),
-            errors.len()
-        );
-
-        errors
-    }
+/// Outlives clauses do no work in the old solver when it ignores regions.
+/// Keep anything requiring variable resolution, normalization or entering a
+/// binder, since those steps may have effects of their own.
+#[inline]
+fn ignored_outlives<'tcx>(infcx: &InferCtxt<'tcx>, predicate: ty::Predicate<'tcx>) -> bool {
+    !infcx.considering_regions
+        && matches!(
+            predicate.kind().skip_binder(),
+            ty::PredicateKind::Clause(
+                ty::ClauseKind::TypeOutlives(_) | ty::ClauseKind::RegionOutlives(_)
+            )
+        )
+        && !predicate.has_aliases()
+        && !predicate.has_non_region_infer()
+        && predicate.kind().no_bound_vars().is_some()
+        && infcx.obligation_inspector.get().is_none()
 }
 
 impl<'tcx, E> TraitEngine<'tcx, E> for FulfillmentContext<'tcx, E>
@@ -171,20 +163,24 @@ where
         debug!(?obligation, "register_predicate_obligation");
 
         if !infcx.disable_trait_solver_fast_paths()
-            && sizedness_fast_path(infcx.tcx, obligation.predicate, obligation.param_env)
+            && (sizedness_fast_path(infcx.tcx, obligation.predicate, obligation.param_env)
+                || ignored_outlives(infcx, obligation.predicate))
         {
             return;
         }
 
-        self.predicates.register_obligation(PendingPredicateObligation {
-            obligation,
-            stalled_on: StalledOn::Nothing,
-        });
+        self.predicates.get_or_insert_with(ObligationForest::new).register_obligation(
+            PendingPredicateObligation { obligation, stalled_on: StalledOn::Nothing },
+        );
     }
 
     fn collect_remaining_errors(&mut self, infcx: &InferCtxt<'tcx>) -> TraitErrors<E> {
+        let Some(predicates) = self.predicates.as_mut() else { return TraitErrors::NoErrors };
+        if predicates.len() == 0 {
+            return TraitErrors::NoErrors;
+        }
         TraitErrors::from_iter(
-            self.predicates
+            predicates
                 .to_errors(FulfillmentErrorCode::Ambiguity { overflow: None })
                 .into_iter()
                 .map(|err| E::from_solver_error(infcx, OldSolverError(err))),
@@ -192,8 +188,28 @@ where
     }
 
     fn try_evaluate_obligations(&mut self, infcx: &InferCtxt<'tcx>) -> TraitErrors<E> {
+        let Some(predicates) = self.predicates.as_mut() else { return TraitErrors::NoErrors };
+        if predicates.len() == 0 {
+            return TraitErrors::NoErrors;
+        }
         let selcx = SelectionContext::new(infcx);
-        self.select(selcx)
+        let span = debug_span!("select", obligation_forest_size = ?predicates.len());
+        let _enter = span.enter();
+
+        // Process pending obligations.
+        let outcome: Outcome<_, _> =
+            predicates.process_obligations(&mut FulfillProcessor { selcx });
+
+        // FIXME: if we kept the original cache key, we could mark projection
+        // obligations as complete for the projection cache here.
+
+        let errors = TraitErrors::from_iter(
+            outcome.errors.into_iter().map(|err| E::from_solver_error(infcx, OldSolverError(err))),
+        );
+
+        debug!("select({} predicates remaining, {} errors) done", predicates.len(), errors.len());
+
+        errors
     }
 
     fn drain_stalled_obligations_for_coroutines(
@@ -216,12 +232,13 @@ where
             return Default::default();
         }
 
+        let Some(predicates) = self.predicates.as_mut() else { return Default::default() };
         let mut processor = DrainProcessor {
             infcx,
             removed_predicates: PredicateObligations::new(),
             stalled_coroutines,
         };
-        let outcome: Outcome<_, _> = self.predicates.process_obligations(&mut processor);
+        let outcome: Outcome<_, _> = predicates.process_obligations(&mut processor);
         assert!(outcome.errors.is_empty());
         return processor.removed_predicates;
 
@@ -308,11 +325,12 @@ where
     }
 
     fn has_pending_obligations(&self) -> bool {
-        self.predicates.has_pending_obligations()
+        self.predicates.as_ref().is_some_and(|p| p.has_pending_obligations())
     }
 
     fn pending_obligations(&self) -> PredicateObligations<'tcx> {
-        self.predicates.map_pending_obligations(|o| o.obligation.clone())
+        let Some(predicates) = self.predicates.as_ref() else { return Default::default() };
+        predicates.map_pending_obligations(|o| o.obligation.clone())
     }
 }
 
@@ -333,7 +351,8 @@ impl<'a, 'tcx> ObligationProcessor for FulfillProcessor<'a, 'tcx> {
     ) -> Option<Self::Obligation> {
         let infcx = self.selcx.infcx;
         if !infcx.disable_trait_solver_fast_paths()
-            && sizedness_fast_path(infcx.tcx, child.predicate, child.param_env)
+            && (sizedness_fast_path(infcx.tcx, child.predicate, child.param_env)
+                || ignored_outlives(infcx, child.predicate))
         {
             // Processing an inference-bearing predicate would first resolve it.
             // Preserve that operation's error taint without constructing a resolved
