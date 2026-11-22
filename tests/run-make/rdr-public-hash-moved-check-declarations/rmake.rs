@@ -49,6 +49,7 @@ fn reader() {
 
 fn main() {
     check_derived_declarations();
+    check_traits_and_constructors();
     let moved = SOURCE.replace("private() {}", "private() {\n    let _ = 0;\n}");
     let first = hash(SOURCE, true, false);
     let disk = disk_hash();
@@ -88,6 +89,7 @@ fn main() {
     }
     for observable in [
         "#[track_caller] pub fn location() {}",
+        "#[doc(hidden)] pub struct Hidden;",
         "pub const LINE: u32 = line!();",
         "#[macro_export] macro_rules! number { () => { 5 } }",
         "#[doc = \"Add ink.\"] pub fn ink() {}",
@@ -167,4 +169,46 @@ fn check_derived_declarations() {
         assert_ne!(hint, hash(&format!("{moved}{producer}"), true, false));
         reader().run_fail().assert_stderr_contains("E0080");
     }
+}
+
+fn check_traits_and_constructors() {
+    let original = "fn private() {}\n\
+                    pub mod inner { pub trait Visitor: Send {}\n\
+                    #[derive(Clone, Copy, Debug, Eq, PartialEq)]\n\
+                    pub enum State { Stop, Continue }\n\
+                    pub enum Event { Value(u32) } }\n";
+    let moved = original.replace("private() {}", "private() {\n    let _ = 0;\n}");
+
+    rfs::write(
+        "reader.rs",
+        "struct Local;\n\
+         impl dep::inner::Visitor for Local {}\n\
+         const _: dep::inner::Event = dep::inner::Event::Value(0_u32);\n\
+         fn main() {}",
+    );
+    let reader = || {
+        let mut cmd = rustc();
+        cmd.input("reader.rs").emit("metadata").extern_("dep", "libdep.rmeta");
+        cmd
+    };
+    let first = hash(original, true, false);
+    let disk = disk_hash();
+    reader().run();
+    assert_eq!(first, hash(&moved, true, false));
+    assert_ne!(disk, disk_hash());
+    reader().run();
+
+    assert_ne!(first, hash(&moved.replace(": Send", ": Send + Clone"), true, false));
+    reader().run_fail().assert_stderr_contains("E0277");
+    assert_ne!(first, hash(&moved.replace("Value(u32)", "Value(u64)"), true, false));
+    reader().run_fail().assert_stderr_contains("E0308");
+    assert_ne!(hash(original, false, false), hash(&moved, false, false));
+    assert_ne!(hash(original, true, true), hash(&moved, true, true));
+
+    // Move only the alias within a user's merged doc attribute on a derived type.
+    let source = "#[derive(Clone, Copy)] #[doc(hidden)]\n\
+                  #[doc(alias = \"other\")]\n\n\
+                  pub struct Hidden;\n";
+    let moved = source.replace("\n\n", "\n").replace("#[doc(alias", "\n#[doc(alias");
+    assert_ne!(hash(source, true, false), hash(&moved, true, false));
 }
