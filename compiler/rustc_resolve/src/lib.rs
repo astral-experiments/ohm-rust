@@ -2756,6 +2756,9 @@ fn with_owner_tables<'ra, 'tcx, R: AsMut<Resolver<'ra, 'tcx>>, T>(
 ) -> T {
     debug_assert!(!this.as_mut().owners.contains_key(&owner));
     let resolver = this.as_mut();
+    // Both definition collection during expansion and late resolution of
+    // the expanded crate enter nested items here.
+    resolver.current_owner.has_nested_owners = true;
     let old_owner = mem::replace(&mut resolver.current_owner, tables);
     let ret = work(this);
     let resolver = this.as_mut();

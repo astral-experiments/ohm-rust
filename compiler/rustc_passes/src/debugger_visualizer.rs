@@ -1,9 +1,10 @@
 //! Detecting usage of the `#[debugger_visualizer]` attribute.
 
-use rustc_ast::{ItemKind, ast};
+use rustc_ast::{ItemKind, ast, visit};
 use rustc_attr_ir::{Attribute, AttributeKind, DebugVisualizer};
 use rustc_attr_parsing::AttributeParser;
 use rustc_middle::middle::debugger_visualizer::DebuggerVisualizerFile;
+use rustc_middle::middle::resolve::ResolverAstLowering;
 use rustc_middle::query::{LocalCrate, Providers};
 use rustc_middle::ty::TyCtxt;
 use rustc_session::Session;
@@ -11,7 +12,7 @@ use rustc_span::sym;
 
 use crate::diagnostics::DebugVisualizerUnreadable;
 
-impl DebuggerVisualizerCollector<'_> {
+impl DebuggerVisualizerCollector<'_, '_> {
     fn check_for_debugger_visualizer(&mut self, attrs: &[ast::Attribute]) {
         if let Some(Attribute::Parsed(AttributeKind::DebuggerVisualizer(visualizers))) =
             AttributeParser::parse_limited_sym(&self.sess, attrs, &[sym::debugger_visualizer])
@@ -46,18 +47,28 @@ impl DebuggerVisualizerCollector<'_> {
     }
 }
 
-struct DebuggerVisualizerCollector<'a> {
+struct DebuggerVisualizerCollector<'a, 'tcx> {
     sess: &'a Session,
+    resolver: &'a ResolverAstLowering<'tcx>,
     visualizers: Vec<DebuggerVisualizerFile>,
 }
 
-impl<'ast> rustc_ast::visit::Visitor<'ast> for DebuggerVisualizerCollector<'_> {
+impl<'ast> rustc_ast::visit::Visitor<'ast> for DebuggerVisualizerCollector<'_, '_> {
     fn visit_item(&mut self, item: &'ast rustc_ast::Item) -> Self::Result {
         if let ItemKind::Mod(..) = item.kind {
             self.check_for_debugger_visualizer(&item.attrs);
         }
-        rustc_ast::visit::walk_item(self, item);
+        if self.resolver.owners[&item.id].has_nested_owners {
+            visit::walk_item(self, item);
+        }
     }
+
+    fn visit_assoc_item(&mut self, item: &'ast ast::AssocItem, ctxt: visit::AssocCtxt) {
+        if self.resolver.owners[&item.id].has_nested_owners {
+            visit::walk_assoc_item(self, item, ctxt);
+        }
+    }
+
     fn visit_crate(&mut self, krate: &'ast ast::Crate) -> Self::Result {
         self.check_for_debugger_visualizer(&krate.attrs);
         rustc_ast::visit::walk_crate(self, krate);
@@ -66,9 +77,11 @@ impl<'ast> rustc_ast::visit::Visitor<'ast> for DebuggerVisualizerCollector<'_> {
 
 /// Traverses and collects the debugger visualizers for a specific crate.
 fn debugger_visualizers(tcx: TyCtxt<'_>, _: LocalCrate) -> Vec<DebuggerVisualizerFile> {
-    let krate = &tcx.resolver_for_lowering().1;
+    let (resolver, krate) = tcx.resolver_for_lowering();
+    let resolver = &*resolver.borrow();
 
-    let mut visitor = DebuggerVisualizerCollector { sess: tcx.sess, visualizers: Vec::new() };
+    let mut visitor =
+        DebuggerVisualizerCollector { sess: tcx.sess, resolver, visualizers: Vec::new() };
     rustc_ast::visit::Visitor::visit_crate(&mut visitor, &*krate.borrow());
 
     // We are collecting visualizers in AST-order, which is deterministic,
