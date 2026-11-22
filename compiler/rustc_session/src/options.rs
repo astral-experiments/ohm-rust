@@ -2776,6 +2776,8 @@ options! {
         "split large codegen units in incremental builds at opt-level 0 or 1 (default: yes)"),
     ohm_stable_cgu_merging: bool = (false, parse_bool, [TRACKED],
         "merge incremental codegen units into stable, name-based buckets"),
+    ohm_terminal_check_hash: bool = (false, parse_bool, [UNTRACKED],
+        "report a declaration-text hash for Cargo when all consumers are terminal checks"),
     on_broken_pipe: OnBrokenPipe = (OnBrokenPipe::Default, parse_on_broken_pipe, [TRACKED],
         "behavior of std::io::ErrorKind::BrokenPipe (SIGPIPE)"),
     osx_rpath_install_name: bool = (false, parse_bool, [TRACKED],
