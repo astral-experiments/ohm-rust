@@ -16,7 +16,7 @@ use rustc_ast::{AttrKind, AttrVec, Attribute, Item, ItemKind, ModKind, ModSpans}
 use rustc_data_structures::fx::FxIndexSet;
 use rustc_errors::Diag;
 use rustc_parse::lexer::StripTokens;
-use rustc_parse::{exp, load_source_file, new_parser_from_source_file, unwrap_or_emit_fatal};
+use rustc_parse::{exp, load_source_file, new_parser_from_module, unwrap_or_emit_fatal};
 use rustc_serialize::opaque::mem_encoder::MemEncoder;
 use rustc_serialize::opaque::{MAGIC_END_BYTES, MemDecoder};
 use rustc_serialize::{Decodable, Decoder, Encodable, Encoder};
@@ -77,10 +77,19 @@ pub(super) fn parse<'s>(
 ) -> Result<Module, Diag<'s>> {
     let file = load_source_file(&sess.psess, path, Some(span));
     let parse = || {
-        let mut parser = unwrap_or_emit_fatal(new_parser_from_source_file(
+        // Integer literals contain no keywords. Preserve them for custom
+        // pre-expansion lints, attributes and AST inspection. Incremental
+        // sessions may reuse the syntax under a different configuration.
+        let cfg = (keyword_lint_only
+            && outer_docs_only
+            && sess.opts.pretty.is_none()
+            && sess.opts.incremental.is_none())
+        .then_some(&sess.config);
+        let mut parser = unwrap_or_emit_fatal(new_parser_from_module(
             &sess.psess,
             file.clone(),
             StripTokens::ShebangAndFrontmatter,
+            cfg,
         ));
         parser.parse_mod(exp!(Eof))
     };

@@ -14,6 +14,7 @@ impl<'psess, 'src> Lexer<'psess, 'src> {
     pub(super) fn lex_token_trees(
         &mut self,
         is_delimited: bool,
+        mut module_cfg: Option<&rustc_session::config::Cfg>,
     ) -> Result<(Spacing, TokenStream), Diag<'psess>> {
         // Move past the opening delimiter.
         let open_spacing = self.bump_minimal();
@@ -24,6 +25,19 @@ impl<'psess, 'src> Lexer<'psess, 'src> {
                 // Invisible delimiters cannot occur here because `TokenTreesReader` parses
                 // code directly from strings, with no macro expansion involved.
                 debug_assert!(!matches!(delim, Delimiter::Invisible(_)));
+                if delim == Delimiter::Bracket
+                    && let Some(cfg) = module_cfg
+                {
+                    // An inner macro attribute on the module could observe every token.
+                    if let [.., TokenTree::Token(a, _), TokenTree::Token(b, _)] = buf.as_slice()
+                        && a.kind == token::Pound
+                        && b.kind == token::Bang
+                    {
+                        module_cfg = None;
+                    } else {
+                        self.omit_inactive_table(&buf, cfg);
+                    }
+                }
                 buf.push(match self.lex_token_tree_open_delim(delim) {
                     Ok(val) => val,
                     Err(errs) => return Err(errs),
@@ -63,7 +77,7 @@ impl<'psess, 'src> Lexer<'psess, 'src> {
         // Lex the token trees within the delimiters.
         // We stop at any delimiter so we can try to recover if the user
         // uses an incorrect delimiter.
-        let (open_spacing, tts) = self.lex_token_trees(/* is_delimited */ true)?;
+        let (open_spacing, tts) = self.lex_token_trees(/* is_delimited */ true, None)?;
 
         // Expand to cover the entire delimited token tree.
         let delim_span = DelimSpan::from_pair(pre_span, self.token.span);

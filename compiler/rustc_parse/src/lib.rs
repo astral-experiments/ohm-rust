@@ -233,8 +233,19 @@ pub fn new_parser_from_source_file(
     source_file: Arc<SourceFile>,
     strip_tokens: StripTokens,
 ) -> Result<Parser<'_>, Vec<Diag<'_>>> {
+    new_parser_from_module(psess, source_file, strip_tokens, None)
+}
+
+/// Passing a configuration allows omission of inert literal tables from
+/// disabled items. The caller must rule out observers of the original syntax.
+pub fn new_parser_from_module<'psess>(
+    psess: &'psess ParseSess,
+    source_file: Arc<SourceFile>,
+    strip_tokens: StripTokens,
+    module_cfg: Option<&rustc_session::config::Cfg>,
+) -> Result<Parser<'psess>, Vec<Diag<'psess>>> {
     let end_pos = source_file.end_position();
-    let stream = source_file_to_stream(psess, source_file, None, strip_tokens)?;
+    let stream = source_file_to_stream(psess, source_file, None, strip_tokens, module_cfg)?;
     let mut parser = Parser::new(psess, stream, None);
     if parser.token == token::Eof {
         parser.token.span = Span::new(end_pos, end_pos, parser.token.span.ctxt(), None);
@@ -256,7 +267,7 @@ pub fn source_str_to_stream(
     // in the current edition since that would be breaking.
     // See also <https://github.com/rust-lang/rust/issues/145520>.
     // Alternatively, stop stripping shebangs here, too, if T-lang and crater approve.
-    source_file_to_stream(psess, source_file, override_span, StripTokens::Shebang)
+    source_file_to_stream(psess, source_file, override_span, StripTokens::Shebang, None)
 }
 
 /// Given a source file, produces a sequence of token trees.
@@ -267,6 +278,7 @@ fn source_file_to_stream<'psess>(
     source_file: Arc<SourceFile>,
     override_span: Option<Span>,
     strip_tokens: StripTokens,
+    module_cfg: Option<&rustc_session::config::Cfg>,
 ) -> Result<TokenStream, Vec<Diag<'psess>>> {
     let src = source_file.src.as_ref().unwrap_or_else(|| {
         psess.dcx().bug(format!(
@@ -275,7 +287,14 @@ fn source_file_to_stream<'psess>(
         ));
     });
 
-    lexer::lex_token_trees(psess, src.as_str(), source_file.start_pos, override_span, strip_tokens)
+    lexer::lex_token_trees(
+        psess,
+        src.as_str(),
+        source_file.start_pos,
+        override_span,
+        strip_tokens,
+        module_cfg,
+    )
 }
 
 /// Runs the given subparser `f` on the tokens of the given `attr`'s item.
@@ -354,13 +373,14 @@ fn lex_token_trees_for_span(
     span: Span,
 ) -> Option<impl Iterator<Item = TokenTree>> {
     let src = psess.source_map().span_to_snippet(span).ok()?;
-    let stream = match lexer::lex_token_trees(psess, &src, span.lo(), None, StripTokens::Nothing) {
-        Ok(stream) => stream,
-        Err(errs) => {
-            errs.into_iter().for_each(|err| err.cancel());
-            return None;
-        }
-    };
+    let stream =
+        match lexer::lex_token_trees(psess, &src, span.lo(), None, StripTokens::Nothing, None) {
+            Ok(stream) => stream,
+            Err(errs) => {
+                errs.into_iter().for_each(|err| err.cancel());
+                return None;
+            }
+        };
     Some((0..).map_while(move |index| stream.get(index).cloned()))
 }
 
