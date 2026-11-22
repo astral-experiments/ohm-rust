@@ -99,7 +99,7 @@ fn invalid_stage_graphs() {
 fn main() {
     invalid_stage_graphs();
 
-    for damage in ["missing", "header", "short-header", "trailer"] {
+    for damage in ["missing", "header", "short-header", "trailer", "old-format"] {
         compile(damage, "link", "not-loaded", false);
         compile(damage, "link", "loaded", false);
         for path in caches(damage, "query-cache.bin") {
@@ -110,6 +110,8 @@ fn main() {
                 "missing" => continue,
                 "header" => bytes[0] ^= 1,
                 "short-header" => bytes.truncate(2),
+                // Reject the format that stored two indices for every retained query.
+                "old-format" => bytes[4..6].copy_from_slice(&61373u16.to_le_bytes()),
                 "trailer" => bytes.truncate(bytes.len() - 1),
                 _ => unreachable!(),
             }
