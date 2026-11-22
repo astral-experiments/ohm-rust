@@ -1560,6 +1560,8 @@ pub struct Resolver<'ra, 'tcx> {
     /// Generic args to suggest for required params (e.g. `<'_>`, `<_, _>`), if any.
     item_required_generic_args_suggestions: FxHashMap<LocalDefId, String> = default::fx_hash_map(),
     delegation_fn_sigs: LocalDefIdMap<DelegationFnSig> = Default::default(),
+    /// Items marked `rustc_std_internal_symbol`, in expanded AST order.
+    std_internal_symbols: Vec<(Symbol, Span)> = Vec::new(),
     delegation_infos: FxIndexMap<LocalDefId, DelegationInfo>,
     delegation_inherent_fn_map: FxIndexMap<LocalDefId, FxIndexMap<Ident, DelegationInherentFnKind>>,
 
@@ -2063,6 +2065,18 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
             delegation_inherent_fn_map: self.delegation_inherent_fn_map,
         };
         let ast_lowering = ResolverAstLowering {
+            metadata_nodes: self
+                .owners
+                .items()
+                .flat_map(|(_, owner)| {
+                    owner
+                        .node_id_to_def_id
+                        .items()
+                        .map(|(&id, _)| id)
+                        .chain(owner.trait_map.items().map(|(&id, _)| id))
+                })
+                .filter(|&id| id < self.next_node_id)
+                .into_dense_bit_set(self.next_node_id.as_usize()),
             partial_res_map: self.partial_res_map,
             next_node_id: self.next_node_id,
             owners: self.owners,
@@ -2152,9 +2166,9 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
             self.tcx
                 .sess
                 .time("resolve_report_errors", || self.report_errors(krate, use_injections));
-            self.tcx
-                .sess
-                .time("resolve_postprocess", || self.cstore_mut().postprocess(self.tcx, krate));
+            self.tcx.sess.time("resolve_postprocess", || {
+                self.cstore_mut().postprocess(self.tcx, krate, &self.std_internal_symbols)
+            });
         });
 
         // Don't mutate the cstore or stable crate id map from here on.
@@ -2770,6 +2784,7 @@ fn with_owner_tables<'ra, 'tcx, R: AsMut<Resolver<'ra, 'tcx>>, T>(
 ) -> T {
     debug_assert!(!this.as_mut().owners.contains_key(&owner));
     let resolver = this.as_mut();
+    resolver.current_owner.may_have_nested_items = true;
     let old_owner = mem::replace(&mut resolver.current_owner, tables);
     let ret = work(this);
     let resolver = this.as_mut();

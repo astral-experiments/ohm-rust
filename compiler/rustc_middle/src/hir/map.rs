@@ -1473,7 +1473,7 @@ impl<'hir> Visitor<'hir> for ItemCollector<'hir> {
             if self.crate_collector {
                 intravisit::walk_mod(self, module);
             }
-        } else {
+        } else if self.tcx.hir_owner_nodes(item.owner_id).has_inner_defs {
             intravisit::walk_item(self, item)
         }
     }
@@ -1514,7 +1514,9 @@ impl<'hir> Visitor<'hir> for ItemCollector<'hir> {
 
         self.trait_items.push(item.trait_item_id());
 
-        intravisit::walk_trait_item(self, item)
+        if self.tcx.hir_owner_nodes(item.owner_id).has_inner_defs {
+            intravisit::walk_trait_item(self, item)
+        }
     }
 
     fn visit_impl_item(&mut self, item: &'hir ImplItem<'hir>) {
@@ -1524,6 +1526,8 @@ impl<'hir> Visitor<'hir> for ItemCollector<'hir> {
 
         self.impl_items.push(item.impl_item_id());
 
-        intravisit::walk_impl_item(self, item)
+        if self.tcx.hir_owner_nodes(item.owner_id).has_inner_defs {
+            intravisit::walk_impl_item(self, item)
+        }
     }
 }

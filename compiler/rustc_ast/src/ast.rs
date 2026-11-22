@@ -1406,6 +1406,19 @@ pub struct Expr {
 }
 
 impl Expr {
+    /// An unattributed literal or path with no nested declarations, types,
+    /// generic arguments, or expressions. Visitors that also handle identifiers,
+    /// spans, or node IDs may still need to descend.
+    #[inline]
+    pub fn is_plain_leaf(&self) -> bool {
+        self.attrs.is_empty()
+            && match &self.kind {
+                ExprKind::Lit(_) => true,
+                ExprKind::Path(None, path) => path.segments.iter().all(|seg| seg.args.is_none()),
+                _ => false,
+            }
+    }
+
     /// Check if this expression is potentially a trivial const arg, i.e., one that can _potentially_
     /// be represented without an anon const in the HIR.
     ///
