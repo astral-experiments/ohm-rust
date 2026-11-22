@@ -219,6 +219,7 @@ jobs:
           --set rust.lto=off test --stage 1
           tests/incremental/dropck-region-free-kinds.rs
           tests/ui/borrowck/borrowck-lend-flow-loop.rs
+          tests/ui/borrowck/many-borrows-on-one-local.rs
           tests/ui/borrowck/two-phase-cannot-nest-mut-self-calls.rs
           tests/ui/nll/maybe-initialized-drop.rs
           tests/ui/nll/match-guards-partially-borrow.rs
