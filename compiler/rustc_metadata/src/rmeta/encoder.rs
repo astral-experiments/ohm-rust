@@ -2408,25 +2408,33 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         Some(hasher.finish())
     }
 
-    /// `location` returns a span only for values containing a single diagnostic location.
-    fn encode_declaration_array<'h, T: Encodable<Self> + StableHash + 'tcx>(
+    /// Record a declaration location whose text replaces its coordinates in this row.
+    fn record_declaration_span(&mut self, span: Span) -> Option<Fingerprint> {
+        let text = self.declaration_text(span)?;
+        self.declaration_spans.insert(span);
+        Some(text)
+    }
+
+    /// `location` identifies a single diagnostic location in the encoded value.
+    fn encode_declaration_array<'h, T, U>(
         &mut self,
         def_id: DefId,
         values: impl IntoIterator<Item = &'tcx T>,
-        location: impl Fn(&T) -> Option<Span>,
+        location: impl Fn(&mut Self, &T) -> Option<Fingerprint>,
         hcx: &mut impl PublicApiHashState<'h>,
-    ) -> (LazyArray<T>, Fingerprint) {
+    ) -> (LazyArray<U>, Fingerprint)
+    where
+        T: Encodable<Self> + StableHash + 'tcx,
+        U: ParameterizedOverTcx<Value<'tcx> = T>,
+    {
         let mut hasher = StableHasher::new();
         let encoded = self.with_record_mode(RecordMode::From(def_id.into()), |this| {
             this.lazy_array_with(values, |this, value| {
-                if let Some(span) = location(value)
-                    && let Some(text) = this.declaration_text(span)
-                {
+                if let Some(text) = location(this, value) {
                     hcx.hcx_mut().while_hashing_spans(false, |cx| {
                         value.stable_hash(cx, &mut hasher);
                     });
                     text.hash(&mut hasher);
-                    this.declaration_spans.insert(span);
                 } else if hcx.enabled() {
                     value.stable_hash(hcx.hcx_mut(), &mut hasher);
                 }
@@ -2456,10 +2464,34 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         let (attrs, digest) = self.encode_declaration_array(
             id,
             attr_iter,
-            |attr| match attr {
+            |ecx, attr| match attr {
                 rustc_attr_ir::Attribute::Parsed(AttributeKind::DocComment {
                     span, kind, ..
-                }) if kind.is_sugared() => Some(*span),
+                }) if kind.is_sugared() => ecx.record_declaration_span(*span),
+                // The built-in Clone derive can emit a hidden TrivialClone impl. The
+                // synthesized attribute and its argument share a source location and
+                // context but need not have the same local span parent.
+                rustc_attr_ir::Attribute::Parsed(AttributeKind::Doc(doc))
+                    if ecx.hash_declaration_text && doc.first_span.from_expansion() =>
+                {
+                    use rustc_span::hygiene::{ExpnKind, MacroKind};
+
+                    // The derive copies no user-written doc attributes onto the impl.
+                    // `record_declaration_span` also requires a source-written built-in.
+                    let hidden = doc.hidden?;
+                    if !matches!(tcx.def_kind(id), DefKind::Impl { .. })
+                        || !matches!(
+                            doc.first_span.ctxt().outer_expn_data().kind,
+                            ExpnKind::Macro(MacroKind::Derive, sym::Clone)
+                        )
+                        || hidden.with_parent(None) != doc.first_span.with_parent(None)
+                    {
+                        return None;
+                    }
+                    let text = ecx.record_declaration_span(doc.first_span)?;
+                    ecx.declaration_spans.insert(hidden);
+                    Some(text)
+                }
                 _ => None,
             },
             hcx,
@@ -2672,11 +2704,8 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             if should_encode_generics(def_kind) {
                 let g = tcx.generics_of(def_id);
                 let location = g.late_bound_regions_span(tcx);
-                let text = location.and_then(|span| self.declaration_text(span));
+                let text = location.and_then(|span| self.record_declaration_span(span));
                 let wire = g.for_metadata(location);
-                if text.is_some() {
-                    self.declaration_spans.extend(location);
-                }
                 let lazy = self.with_record_mode(RecordMode::From(Node::DefId(def_id)), |ecx| {
                     ecx.lazy_encoded_as(&wire)
                 });
@@ -2702,9 +2731,8 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                     clauses.parent.stable_hash(hcx.hcx_mut(), &mut hasher);
                     for (clause, span) in clauses.clauses {
                         clause.stable_hash(hcx.hcx_mut(), &mut hasher);
-                        if let Some(text) = self.declaration_text(*span) {
+                        if let Some(text) = self.record_declaration_span(*span) {
                             text.hash(&mut hasher);
-                            self.declaration_spans.insert(*span);
                         } else {
                             span.stable_hash(hcx.hcx_mut(), &mut hasher);
                         }
@@ -2745,7 +2773,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 let (args, digest) = self.encode_declaration_array(
                     def_id,
                     tcx.fn_arg_idents(def_id),
-                    |arg| arg.map(|ident| ident.span),
+                    |ecx, arg| ecx.record_declaration_span((*arg)?.span),
                     hcx,
                 );
                 self.tables.fn_arg_idents.set_some_hashed(
@@ -2762,12 +2790,34 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 let default = self.tcx.object_lifetime_default(def_id);
                 record!(self.tables.object_lifetime_default[def_id] <- default, hcx);
             }
-            if let DefKind::Trait = def_kind {
+            if let DefKind::Trait | DefKind::TraitAlias = def_kind {
                 record!(self.tables.trait_def[def_id] <- self.tcx.trait_def(def_id), hcx);
-                record_defaulted_array!(self.tables.explicit_super_clauses_of[def_id] <-
-                    self.tcx.explicit_super_clauses_of(def_id).skip_binder(), hcx);
-                record_defaulted_array!(self.tables.explicit_implied_clauses_of[def_id] <-
-                    self.tcx.explicit_implied_clauses_of(def_id).skip_binder(), hcx);
+                let (bounds, digest) = self.encode_declaration_array(
+                    def_id,
+                    tcx.explicit_super_clauses_of(def_id).skip_binder(),
+                    |ecx, (_, span)| ecx.record_declaration_span(*span),
+                    hcx,
+                );
+                self.tables.explicit_super_clauses_of.set_hashed(
+                    def_id.index,
+                    bounds,
+                    (def_id, digest),
+                    hcx,
+                );
+                let (bounds, digest) = self.encode_declaration_array(
+                    def_id,
+                    tcx.explicit_implied_clauses_of(def_id).skip_binder(),
+                    |ecx, (_, span)| ecx.record_declaration_span(*span),
+                    hcx,
+                );
+                self.tables.explicit_implied_clauses_of.set_hashed(
+                    def_id.index,
+                    bounds,
+                    (def_id, digest),
+                    hcx,
+                );
+            }
+            if let DefKind::Trait = def_kind {
                 // Resolution enumerates every member when checking an impl, even
                 // when the trait itself was found through a privacy error.
                 let module_children = tcx.module_children_local(local_id).iter();
@@ -2778,13 +2828,6 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                     record_defaulted_array!(self.tables.explicit_implied_const_bounds[def_id]
                         <- self.tcx.explicit_implied_const_bounds(def_id).skip_binder(), hcx);
                 }
-            }
-            if let DefKind::TraitAlias = def_kind {
-                record!(self.tables.trait_def[def_id] <- self.tcx.trait_def(def_id), hcx);
-                record_defaulted_array!(self.tables.explicit_super_clauses_of[def_id] <-
-                    self.tcx.explicit_super_clauses_of(def_id).skip_binder(), hcx);
-                record_defaulted_array!(self.tables.explicit_implied_clauses_of[def_id] <-
-                    self.tcx.explicit_implied_clauses_of(def_id).skip_binder(), hcx);
             }
             if let DefKind::Trait | DefKind::Impl { .. } = def_kind {
                 let associated_item_def_ids = self.tcx.associated_item_def_ids(def_id);
@@ -3223,7 +3266,25 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                     record!(self.tables.trivial_const[def_id.to_def_id()] <- (val, ty), hcx);
                 } else {
                     is_trivial = false;
-                    record!(self.tables.mir_for_ctfe[def_id.to_def_id()] <- tcx.mir_for_ctfe(def_id), hcx);
+                    let body = tcx.mir_for_ctfe(def_id);
+                    // `build_adt_ctor` synthesizes one aggregate assignment followed by a
+                    // return. Both use the declaration span. The constructor makes no calls
+                    // that could observe its location during constant evaluation.
+                    if self.hash_declaration_text
+                        && matches!(tcx.def_kind(def_id), DefKind::Ctor(..))
+                        && let Some(text) = self.record_declaration_span(body.span)
+                    {
+                        let mut hasher = StableHasher::new();
+                        hcx.hcx_mut().while_hashing_spans(false, |cx| {
+                            body.stable_hash(cx, &mut hasher);
+                        });
+                        let digest: Fingerprint = hasher.finish();
+                        let id = def_id.to_def_id();
+                        record!(self.tables.mir_for_ctfe[id] <- body, hcx, (digest, text));
+                        self.declaration_spans.clear();
+                    } else {
+                        record!(self.tables.mir_for_ctfe[def_id.to_def_id()] <- body, hcx);
+                    }
                 }
 
                 // FIXME(generic_const_exprs): this feels wrong to have in `encode_mir`
