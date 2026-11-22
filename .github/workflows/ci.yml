@@ -219,6 +219,12 @@ jobs:
           tests/ui/const-generics/issues/issue-70180-2-stalled_on.rs
           tests/ui/coroutine/stalled-coroutine-obligations.rs
           tests/ui/inference/projection-cache-registers-obligations.rs
+          tests/incremental/implied-reference-bounds.rs
+          tests/ui/implied-bounds/bevy_world_query.rs
+          tests/ui/implied-bounds/normalization-placeholder-leak.rs
+          tests/incremental/generalize-aggregate.rs
+          tests/ui/const-generics/occurs-check/unify-n-nplusone.rs
+          tests/ui/coherence/generalize-associated-type-alias.rs
           tests/incremental/nominal-inherited-obligations.rs
           tests/incremental/cached-trait-selection.rs
           tests/incremental/arity-receiver-lookup.rs
