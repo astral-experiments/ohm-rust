@@ -223,3 +223,4 @@ impl<'tcx> ThirBuildCx<'tcx> {
 
 mod block;
 mod expr;
+mod string_table;
