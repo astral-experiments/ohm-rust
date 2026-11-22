@@ -823,6 +823,11 @@ extern "C" LLVMRustResult LLVMRustOptimize(
       TM->getOptLevel() == CodeGenOptLevel::None &&
       isMacroHelper(*TheModule)) {
     OptLevel = OptimizationLevel::O1;
+    // Request smaller functions without overriding the module's inlining
+    // threshold. That keeps Ohm's early pass for small Rust wrappers active.
+    for (Function &F : *TheModule)
+      if (!F.isDeclaration() && !F.hasFnAttribute(Attribute::OptimizeNone))
+        F.addFnAttr(Attribute::OptimizeForSize);
     TM->setOptLevel(CodeGenOptLevel::Less);
     TM->setFastISel(true);
   }

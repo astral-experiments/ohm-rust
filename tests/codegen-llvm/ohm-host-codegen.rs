@@ -1,7 +1,8 @@
 //@ only-x86_64-unknown-linux-gnu
-//@ revisions: marked unmarked no_import debuginfo custom
+//@ revisions: marked disabled unmarked no_import debuginfo custom
 //@ compile-flags: -Copt-level=0 -Ccodegen-units=1 -Clto=off -Cembed-bitcode=no
 //@[marked] compile-flags: -Zllvm-module-flag=ohm.proc-macro-helper:u32:1:max
+//@[disabled] compile-flags: -Zllvm-module-flag=ohm.proc-macro-helper:u32:0:max
 //@[no_import] compile-flags: -Zllvm-module-flag=ohm.proc-macro-helper:u32:1:max
 //@[debuginfo] compile-flags: -Zllvm-module-flag=ohm.proc-macro-helper:u32:1:max -Cdebuginfo=1
 //@[custom] compile-flags: -Zllvm-module-flag=ohm.proc-macro-helper:u32:1:max -Cno-prepopulate-passes
@@ -22,8 +23,10 @@ fn increment(x: u32) -> u32 {
 }
 
 // CHECK-LABEL: define {{.*}}@apply(
+// marked-SAME: #[[ATTR:[0-9]+]]
 // marked-NOT: call
 // marked: add i32
+// disabled: call {{.*}}increment
 // unmarked: call {{.*}}increment
 // no_import: call {{.*}}increment
 // debuginfo: call {{.*}}increment
@@ -33,3 +36,5 @@ fn increment(x: u32) -> u32 {
 pub fn apply(x: u32) -> u32 {
     increment(x)
 }
+
+// marked: attributes #[[ATTR]] = { {{.*}}optsize
