@@ -639,10 +639,23 @@ pub fn write_dep_info_with_relink_inputs(
         };
         let mut files: IndexMap<PathBuf, (u64, Option<SourceFileHash>)> = IndexMap::new();
         let mut conflicting_paths = Vec::new();
-        for file in
-            sess.source_map().files().iter().filter(|f| f.is_real_file() && !f.is_imported())
-        {
-            let path = input_path(file.name.prefer_local_unconditionally().to_string_lossy());
+        for file in sess.source_map().files().iter().filter(|f| f.is_real_file()) {
+            let path = if file.is_imported() {
+                // Source loaded for a diagnostic is authenticated against the producer's
+                // source hash. Keep its physical name and the producer's original checksum.
+                if !file.external_src.is_frozen()
+                    || file.external_src.read().get_source().is_none()
+                    || !CStore::from_tcx(tcx).has_public_api_hash(file.cnum)
+                {
+                    continue;
+                }
+                let Some(path) = sess.source_map().external_source_path(file) else {
+                    continue;
+                };
+                input_path(path.to_string_lossy())
+            } else {
+                input_path(file.name.prefer_local_unconditionally().to_string_lossy())
+            };
             let input = (u64::from(file.unnormalized_source_len), file.checksum_hash);
             if let Some(previous) = files.get(&path)
                 && previous.1.is_some()
