@@ -1166,19 +1166,18 @@ impl DepGraphData {
                 // dependencies green.
 
                 if self.current.encoder.retains_indices() {
-                    let result = self.try_mark_previous_green::<true>(
-                        tcx,
-                        prev_index,
-                        None,
-                        &mut Vec::new(),
-                    );
+                    let result = self.try_mark_previous_green::<true>(tcx, prev_index, None, None);
                     return result.map(|index| (prev_index, index));
                 }
                 // Reuse a per-worker buffer for the edges instead of allocating one per call.
                 // The recursion gives it back empty: each `EdgeFrame` pops its edges on drop.
                 let mut edge_buf = self.green_edge_buf.take();
-                let result =
-                    self.try_mark_previous_green::<false>(tcx, prev_index, None, &mut edge_buf);
+                let result = self.try_mark_previous_green::<false>(
+                    tcx,
+                    prev_index,
+                    None,
+                    Some(&mut edge_buf),
+                );
                 debug_assert!(edge_buf.is_empty());
                 self.green_edge_buf.set(edge_buf);
                 result.map(|dep_node_index| (prev_index, dep_node_index))
@@ -1194,20 +1193,19 @@ impl DepGraphData {
         prev_dep_node_index: SerializedDepNodeIndex,
         frame: Option<&MarkFrame<'_>>,
         // Amortized buffer to store edges in.
-        edge_buf: &mut Vec<DepNodeIndex>,
+        edge_buf: Option<&mut Vec<DepNodeIndex>>,
     ) -> Option<DepNodeIndex> {
-        let mut edges = EdgeFrame::new(edge_buf);
-        let frame = MarkFrame { index: prev_dep_node_index, parent: frame };
-
-        // We never try to mark eval_always nodes as green
         debug_assert!(!tcx.is_eval_always(self.previous.index_to_node(prev_dep_node_index).kind));
-
+        // When the old row keeps its indices, its edges are already in their
+        // final form. Only compacting sessions need an edge buffer or its guard.
+        let mut edges = if RETAIN_INDICES { None } else { Some(EdgeFrame::new(edge_buf.unwrap())) };
+        let frame = MarkFrame { index: prev_dep_node_index, parent: frame };
         for parent_dep_node_index in self.previous.edge_targets_from(prev_dep_node_index) {
             match self.colors.get(parent_dep_node_index) {
                 // This dependency has been marked as green before, we are still ok and can
                 // continue checking the remaining dependencies.
                 DepNodeColor::Green(parent_index) => {
-                    if !RETAIN_INDICES {
+                    if let Some(edges) = &mut edges {
                         edges.push(parent_index);
                     }
                     continue;
@@ -1231,10 +1229,10 @@ impl DepGraphData {
                     Some(&frame),
                     // Pass the edge buffer to the recursive call.
                     // It will use an `EdgeFrame` to give it back unchanged.
-                    edges.buf,
+                    edges.as_mut().map(|edges| &mut *edges.buf),
                 )
             {
-                if !RETAIN_INDICES {
+                if let Some(edges) = &mut edges {
                     edges.push(parent_index);
                 }
                 continue;
@@ -1252,7 +1250,7 @@ impl DepGraphData {
 
             match self.colors.get(parent_dep_node_index) {
                 DepNodeColor::Green(parent_index) => {
-                    if !RETAIN_INDICES {
+                    if let Some(edges) = &mut edges {
                         edges.push(parent_index);
                     }
                     continue;
@@ -1284,8 +1282,10 @@ impl DepGraphData {
         // adding all the appropriate edges imported from the previous graph.
         //
         // `no_hash` nodes may fail this promotion due to already being conservatively colored red.
-        let dep_node_index = self
-            .promote_node_and_deps_to_current::<RETAIN_INDICES>(prev_dep_node_index, edges.get())?;
+        let dep_node_index = self.promote_node_and_deps_to_current::<RETAIN_INDICES>(
+            prev_dep_node_index,
+            edges.as_ref().map_or(&[], |edges| edges.get()),
+        )?;
 
         // ... and finally storing a "Green" entry in the color map.
         // Multiple threads can all write the same color here.
