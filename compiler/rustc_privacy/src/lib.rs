@@ -107,6 +107,19 @@ impl<'tcx, V> DefIdVisitorSkeleton<'_, 'tcx, V>
 where
     V: DefIdVisitor<'tcx> + ?Sized,
 {
+    fn visit_fn_sig(&mut self, def_id: DefId) -> V::Result {
+        let tcx = self.def_id_visitor.tcx();
+        try_visit!(tcx.fn_sig(def_id).instantiate_identity().skip_norm_wip().visit_with(self));
+        // A static method can expose its impl's self type even if that type
+        // is absent from the arguments and signature.
+        if let Some(impl_id) = tcx.impl_of_assoc(def_id) {
+            try_visit!(
+                tcx.type_of(impl_id).instantiate_identity().skip_norm_wip().visit_with(self)
+            );
+        }
+        V::Result::output()
+    }
+
     fn visit_trait(&mut self, trait_ref: TraitRef<'tcx>) -> V::Result {
         let TraitRef { def_id, args, .. } = trait_ref;
         try_visit!(self.def_id_visitor.visit_def_id(
@@ -197,23 +210,7 @@ where
                 // `my_func` is public, so we need to visit signatures.
                 if let ty::FnDef(..) = ty_kind {
                     // FIXME: this should probably use `args` from `FnDef`
-                    try_visit!(
-                        tcx.fn_sig(def_id).instantiate_identity().skip_norm_wip().visit_with(self)
-                    );
-                }
-                // Inherent static methods don't have self type in args.
-                // Something like `fn() {my_method}` type of the method
-                // `impl Pub<Priv> { pub fn my_method() {} }` is considered a private type,
-                // so we need to visit the self type additionally.
-                if let Some(assoc_item) = tcx.opt_associated_item(def_id)
-                    && let Some(impl_def_id) = assoc_item.impl_container(tcx)
-                {
-                    try_visit!(
-                        tcx.type_of(impl_def_id)
-                            .instantiate_identity()
-                            .skip_norm_wip()
-                            .visit_with(self)
-                    );
+                    try_visit!(self.visit_fn_sig(def_id));
                 }
             }
             ty::Alias(
@@ -561,16 +558,17 @@ impl<'tcx> EmbargoVisitor<'tcx> {
 }
 
 impl<'tcx> EmbargoVisitor<'tcx> {
-    fn check_assoc_item(&mut self, item: &ty::AssocItem, item_ev: EffectiveVisibility) {
-        let def_id = item.def_id.expect_local();
+    fn check_trait_item(&mut self, def_id: LocalDefId, item_ev: EffectiveVisibility) {
         let tcx = self.tcx;
         let mut reach = self.reach(def_id, item_ev);
         reach.generics().clauses();
-        if assoc_has_type_of(tcx, item) {
-            reach.ty();
-        }
-        if item.is_type() && item.container == AssocContainer::Trait {
+        if tcx.def_kind(def_id) == DefKind::AssocTy {
+            if assoc_has_type_of(tcx, &tcx.associated_item(def_id)) {
+                reach.ty();
+            }
             reach.bounds();
+        } else {
+            reach.ty();
         }
     }
 
@@ -602,11 +600,13 @@ impl<'tcx> EmbargoVisitor<'tcx> {
                 if let Some(item_ev) = item_ev {
                     self.reach(def_id, item_ev).generics().clauses();
 
-                    for assoc_item in self.tcx.associated_items(def_id).in_definition_order() {
-                        let def_id = assoc_item.def_id.expect_local();
+                    // This list includes synthesized associated types, in definition order.
+                    // No name lookup table is needed to visit the interfaces.
+                    for &item in self.tcx.associated_item_def_ids(def_id) {
+                        let def_id = item.expect_local();
                         self.update(def_id, item_ev, Level::Reachable);
 
-                        self.check_assoc_item(assoc_item, item_ev);
+                        self.check_trait_item(def_id, item_ev);
                     }
                 }
             }
@@ -643,14 +643,15 @@ impl<'tcx> EmbargoVisitor<'tcx> {
                     }
                 }
 
-                for assoc_item in self.tcx.associated_items(def_id).in_definition_order() {
-                    let def_id = assoc_item.def_id.expect_local();
+                for &item in self.tcx.associated_item_def_ids(def_id) {
+                    let def_id = item.expect_local();
                     let max_vis =
                         if of_trait { None } else { Some(self.tcx.local_visibility(def_id)) };
                     self.update_eff_vis(def_id, item_ev, max_vis, Level::Direct);
 
                     if let Some(impl_item_ev) = self.get(def_id) {
-                        self.check_assoc_item(assoc_item, impl_item_ev);
+                        // Every impl item has a type, including synthesized associated types.
+                        self.reach(def_id, impl_item_ev).generics().clauses().ty();
                     }
                 }
             }
@@ -756,7 +757,15 @@ impl ReachEverythingInTheInterfaceVisitor<'_, '_> {
     }
 
     fn ty(&mut self) -> &mut Self {
-        self.visit(self.ev.tcx.type_of(self.item_def_id).instantiate_identity().skip_norm_wip());
+        let def_id = self.item_def_id;
+        if matches!(self.ev.tcx.def_kind(def_id), DefKind::Fn | DefKind::AssocFn) {
+            // We're visiting the item's own interface after propagating its visibility.
+            // Its type is a FnDef for this same item with identity arguments (only
+            // parameters). The signature and impl self type can reach other definitions.
+            self.skeleton().visit_fn_sig(def_id.to_def_id());
+        } else {
+            self.visit(self.ev.tcx.type_of(def_id).instantiate_identity().skip_norm_wip());
+        }
         self
     }
 

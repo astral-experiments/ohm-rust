@@ -233,8 +233,54 @@ pub fn new_parser_from_source_file(
     source_file: Arc<SourceFile>,
     strip_tokens: StripTokens,
 ) -> Result<Parser<'_>, Vec<Diag<'_>>> {
+    new_parser_from_module(psess, source_file, strip_tokens, None)
+}
+
+/// The module lexer can construct literal rows directly. Only the parser
+/// for this module may see the shortened stream. Restore the rows before
+/// expansion, or retry with ordinary tokens if the parsed shape differs.
+pub fn parse_module_from_source_file<'psess>(
+    psess: &'psess ParseSess,
+    file: Arc<SourceFile>,
+    cfg: Option<&rustc_session::config::Cfg>,
+) -> PResult<'psess, (ast::AttrVec, thin_vec::ThinVec<Box<ast::Item>>, ast::ModSpans)> {
+    if let Some(cfg) = cfg
+        && psess.dcx().has_errors().is_none()
+    {
+        let mut module = lexer::ModuleLexer { cfg, tables: Vec::new() };
+        let mut parser = unwrap_or_emit_fatal(new_parser_from_module(
+            psess,
+            file.clone(),
+            StripTokens::ShebangAndFrontmatter,
+            Some(&mut module),
+        ));
+        let mut parsed = parser.parse_mod(exp!(Eof))?;
+        if module.tables.is_empty() || module.restore_tables(&mut parsed.1) {
+            return Ok(parsed);
+        }
+        // Error recovery can discard items. Don't emit the same errors again
+        // or allow compilation to succeed with missing rows.
+        if psess.dcx().has_errors().is_some() {
+            return Ok(parsed);
+        }
+    }
+
+    let mut parser = unwrap_or_emit_fatal(new_parser_from_source_file(
+        psess,
+        file,
+        StripTokens::ShebangAndFrontmatter,
+    ));
+    parser.parse_mod(exp!(Eof))
+}
+
+fn new_parser_from_module<'psess>(
+    psess: &'psess ParseSess,
+    source_file: Arc<SourceFile>,
+    strip_tokens: StripTokens,
+    module_cfg: Option<&mut lexer::ModuleLexer<'_>>,
+) -> Result<Parser<'psess>, Vec<Diag<'psess>>> {
     let end_pos = source_file.end_position();
-    let stream = source_file_to_stream(psess, source_file, None, strip_tokens)?;
+    let stream = source_file_to_stream(psess, source_file, None, strip_tokens, module_cfg)?;
     let mut parser = Parser::new(psess, stream, None);
     if parser.token == token::Eof {
         parser.token.span = Span::new(end_pos, end_pos, parser.token.span.ctxt(), None);
@@ -256,7 +302,7 @@ pub fn source_str_to_stream(
     // in the current edition since that would be breaking.
     // See also <https://github.com/rust-lang/rust/issues/145520>.
     // Alternatively, stop stripping shebangs here, too, if T-lang and crater approve.
-    source_file_to_stream(psess, source_file, override_span, StripTokens::Shebang)
+    source_file_to_stream(psess, source_file, override_span, StripTokens::Shebang, None)
 }
 
 /// Given a source file, produces a sequence of token trees.
@@ -267,6 +313,7 @@ fn source_file_to_stream<'psess>(
     source_file: Arc<SourceFile>,
     override_span: Option<Span>,
     strip_tokens: StripTokens,
+    module_cfg: Option<&mut lexer::ModuleLexer<'_>>,
 ) -> Result<TokenStream, Vec<Diag<'psess>>> {
     let src = source_file.src.as_ref().unwrap_or_else(|| {
         psess.dcx().bug(format!(
@@ -275,7 +322,14 @@ fn source_file_to_stream<'psess>(
         ));
     });
 
-    lexer::lex_token_trees(psess, src.as_str(), source_file.start_pos, override_span, strip_tokens)
+    lexer::lex_token_trees(
+        psess,
+        src.as_str(),
+        source_file.start_pos,
+        override_span,
+        strip_tokens,
+        module_cfg,
+    )
 }
 
 /// Runs the given subparser `f` on the tokens of the given `attr`'s item.
@@ -354,13 +408,14 @@ fn lex_token_trees_for_span(
     span: Span,
 ) -> Option<impl Iterator<Item = TokenTree>> {
     let src = psess.source_map().span_to_snippet(span).ok()?;
-    let stream = match lexer::lex_token_trees(psess, &src, span.lo(), None, StripTokens::Nothing) {
-        Ok(stream) => stream,
-        Err(errs) => {
-            errs.into_iter().for_each(|err| err.cancel());
-            return None;
-        }
-    };
+    let stream =
+        match lexer::lex_token_trees(psess, &src, span.lo(), None, StripTokens::Nothing, None) {
+            Ok(stream) => stream,
+            Err(errs) => {
+                errs.into_iter().for_each(|err| err.cancel());
+                return None;
+            }
+        };
     Some((0..).map_while(move |index| stream.get(index).cloned()))
 }
 

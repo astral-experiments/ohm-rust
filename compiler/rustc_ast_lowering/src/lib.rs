@@ -247,7 +247,7 @@ impl<'a, 'hir> PerOwnerLoweringState<'a, 'hir> {
         let bodies = SortedMap::from_presorted_elements(bodies);
 
         let num_nodes = self.item_local_id_counter.as_usize();
-        let (nodes, parenting, lint_roots) =
+        let (nodes, parenting, lint_roots, has_nested_items) =
             index::index_hir(tcx, node, &bodies, num_nodes, &attrs);
         // Don't hash unless necessary, because it's expensive.
         let rustc_middle::hir::Hashes { bodies_hash, attrs_hash } =
@@ -262,8 +262,13 @@ impl<'a, 'hir> PerOwnerLoweringState<'a, 'hir> {
                 )
             })
         });
-        let nodes =
-            hir::OwnerNodes { opt_hash: bodies_hash, nodes, bodies, has_loop_control_attrs };
+        let nodes = hir::OwnerNodes {
+            opt_hash: bodies_hash,
+            nodes,
+            bodies,
+            has_loop_control_attrs,
+            has_nested_items,
+        };
         let attrs =
             hir::AttributeMap { map: attrs, lint_roots, opt_hash: attrs_hash, define_opaque };
 
@@ -688,7 +693,9 @@ fn index_ast<'tcx>(
         }
 
         fn flat_map_item(&mut self, mut item: Box<Item>) -> SmallVec<[Box<Item>; 1]> {
-            mut_visit::walk_item(self, &mut *item);
+            if self.owners[&item.id].has_nested_owners {
+                mut_visit::walk_item(self, &mut *item);
+            }
             let dummy = self.make_dummy(item.id, item.span, ItemKind::MacCall);
             let items = smallvec![dummy];
             self.insert(item.id, AstOwner::Item(item));
@@ -696,7 +703,9 @@ fn index_ast<'tcx>(
         }
 
         fn visit_assoc_item(&mut self, item: &mut AssocItem, ctxt: visit::AssocCtxt) {
-            mut_visit::walk_assoc_item(self, item, ctxt);
+            if self.owners[&item.id].has_nested_owners {
+                mut_visit::walk_assoc_item(self, item, ctxt);
+            }
             match ctxt {
                 visit::AssocCtxt::Trait => {
                     self.replace_with_dummy(item, AssocItemKind::MacCall, AstOwner::TraitItem)
@@ -708,7 +717,9 @@ fn index_ast<'tcx>(
         }
 
         fn visit_foreign_item(&mut self, item: &mut ForeignItem) {
-            mut_visit::walk_item(self, item);
+            if self.owners[&item.id].has_nested_owners {
+                mut_visit::walk_item(self, item);
+            }
             self.replace_with_dummy(item, ForeignItemKind::MacCall, AstOwner::ForeignItem);
         }
     }

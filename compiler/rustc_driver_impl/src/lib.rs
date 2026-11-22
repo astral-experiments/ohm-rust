@@ -46,7 +46,7 @@ use rustc_interface::util::{self, get_codegen_backend};
 use rustc_interface::{Linker, create_and_enter_global_ctxt, interface, passes};
 use rustc_lint::unerased_lint_store;
 use rustc_lint_defs::{Lint, LintId};
-use rustc_metadata::creader::MetadataLoader;
+use rustc_metadata::creader::{CStore, MetadataLoader};
 use rustc_metadata::locator;
 use rustc_middle::mir::RelinkInputs;
 use rustc_middle::ty::TyCtxt;
@@ -301,22 +301,25 @@ pub fn run_compiler(at_args: &[String], callbacks: &mut (dyn Callbacks + Send)) 
             }
 
             let output_paths = passes::prepare_outputs(tcx);
-            // Checked native outputs need the set of monomorphized items. Other modes
-            // can publish their dependencies as soon as expansion finishes.
+            // Analysis can load dependency sources to render diagnostics. A public hash
+            // need not cover the whole line. Native relinks also need monomorphization.
+            let dep_info = sess.opts.output_types.contains_key(&OutputType::DepInfo);
+            let dep_info_only = dep_info && sess.opts.output_types.len() == 1;
             let check_relink_inputs = sess.opts.unstable_opts.ohm_check_relink_inputs
-                && sess.opts.output_types.contains_key(&OutputType::DepInfo)
                 && sess.opts.output_types.should_codegen()
-                && !sess.opts.unstable_opts.no_codegen
-                && !sess.opts.unstable_opts.no_analysis;
-            if !check_relink_inputs {
+                && !sess.opts.unstable_opts.no_codegen;
+            let late_dep_info = dep_info
+                && !dep_info_only
+                && !sess.opts.unstable_opts.no_analysis
+                && (check_relink_inputs
+                    || CStore::from_tcx(tcx).has_public_api_hash_dependencies());
+            if !late_dep_info {
                 passes::write_dep_info_for_outputs(tcx, &output_paths, false);
             }
 
             passes::write_interface(tcx);
 
-            if sess.opts.output_types.contains_key(&OutputType::DepInfo)
-                && sess.opts.output_types.len() == 1
-            {
+            if dep_info_only {
                 return None;
             }
 
@@ -329,14 +332,18 @@ pub fn run_compiler(at_args: &[String], callbacks: &mut (dyn Callbacks + Send)) 
                 tcx.ensure_ok().analysis(());
                 callbacks.after_analysis(compiler, tcx)
             };
-            let after_analysis = if check_relink_inputs {
+            let after_analysis = if late_dep_info {
                 // If analysis or monomorphization aborts, assembler inputs may be unknown.
-                let mut inputs = RelinkInputs::Rebuild;
+                let mut inputs =
+                    if check_relink_inputs { RelinkInputs::Rebuild } else { RelinkInputs::Tracked };
                 let result = catch_fatal_errors(|| {
                     let after_analysis = analyze();
                     if after_analysis == Compilation::Stop {
                         inputs = RelinkInputs::Tracked;
-                    } else if tcx.dcx().has_errors().is_none() && codegen_backend.name() == "llvm" {
+                    } else if check_relink_inputs
+                        && tcx.dcx().has_errors().is_none()
+                        && codegen_backend.name() == "llvm"
+                    {
                         inputs = tcx.ohm_relink_inputs(());
                     }
                     after_analysis

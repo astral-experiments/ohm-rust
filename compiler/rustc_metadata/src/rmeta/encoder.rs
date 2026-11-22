@@ -1638,6 +1638,11 @@ struct AnalyzeAttrState {
     is_doc_hidden: bool,
 }
 
+enum DeclarationHash {
+    Text(Fingerprint),
+    DocContinuation,
+}
+
 /// Returns whether an attribute needs to be recorded in metadata, that is, if it's usable and
 /// useful in downstream crates. Local-only attributes are an obvious example, but some
 /// rustdoc-specific attributes can equally be of use while documenting the current crate only.
@@ -2420,7 +2425,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         &mut self,
         def_id: DefId,
         values: impl IntoIterator<Item = &'tcx T>,
-        location: impl Fn(&mut Self, &T) -> Option<Fingerprint>,
+        mut location: impl FnMut(&mut Self, &T) -> Option<DeclarationHash>,
         hcx: &mut impl PublicApiHashState<'h>,
     ) -> (LazyArray<U>, Fingerprint)
     where
@@ -2430,13 +2435,16 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         let mut hasher = StableHasher::new();
         let encoded = self.with_record_mode(RecordMode::From(def_id.into()), |this| {
             this.lazy_array_with(values, |this, value| {
-                if let Some(text) = location(this, value) {
-                    hcx.hcx_mut().while_hashing_spans(false, |cx| {
-                        value.stable_hash(cx, &mut hasher);
-                    });
-                    text.hash(&mut hasher);
-                } else if hcx.enabled() {
-                    value.stable_hash(hcx.hcx_mut(), &mut hasher);
+                match location(this, value) {
+                    Some(DeclarationHash::Text(text)) => {
+                        hcx.hcx_mut().while_hashing_spans(false, |cx| {
+                            value.stable_hash(cx, &mut hasher);
+                        });
+                        text.hash(&mut hasher);
+                    }
+                    Some(DeclarationHash::DocContinuation) => {}
+                    None if hcx.enabled() => value.stable_hash(hcx.hcx_mut(), &mut hasher),
+                    None => {}
                 }
                 value.encode(this);
                 this.declaration_spans.clear();
@@ -2461,38 +2469,58 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         let attr_iter = tcx.hir_attrs(hir_id).iter().filter(|attr| analyze_attr(*attr, &mut state));
 
         let id = def_id.to_def_id();
+        let mut previous_line_doc = false;
         let (attrs, digest) = self.encode_declaration_array(
             id,
             attr_iter,
-            |ecx, attr| match attr {
-                rustc_attr_ir::Attribute::Parsed(AttributeKind::DocComment {
-                    span, kind, ..
-                }) if kind.is_sugared() => ecx.record_declaration_span(*span),
-                // The built-in Clone derive can emit a hidden TrivialClone impl. The
-                // synthesized attribute and its argument share a source location and
-                // context but need not have the same local span parent.
-                rustc_attr_ir::Attribute::Parsed(AttributeKind::Doc(doc))
-                    if ecx.hash_declaration_text && doc.first_span.from_expansion() =>
-                {
-                    use rustc_span::hygiene::{ExpnKind, MacroKind};
-
-                    // The derive copies no user-written doc attributes onto the impl.
-                    // `record_declaration_span` also requires a source-written built-in.
-                    let hidden = doc.hidden?;
-                    if !matches!(tcx.def_kind(id), DefKind::Impl { .. })
-                        || !matches!(
-                            doc.first_span.ctxt().outer_expn_data().kind,
-                            ExpnKind::Macro(MacroKind::Derive, sym::Clone)
-                        )
-                        || hidden.with_parent(None) != doc.first_span.with_parent(None)
-                    {
-                        return None;
+            |ecx, attr| {
+                let continuation = std::mem::take(&mut previous_line_doc);
+                match attr {
+                    rustc_attr_ir::Attribute::Parsed(AttributeKind::DocComment {
+                        span,
+                        kind,
+                        style,
+                        ..
+                    }) if kind.is_sugared() => {
+                        let text = ecx.record_declaration_span(*span)?;
+                        // Only the terminal hint can treat a run of /// lines as one
+                        // comment. Keep its first line, and encode every line for readers.
+                        previous_line_doc = kind.comment_kind()
+                            == rustc_ast::token::CommentKind::Line
+                            && *style == rustc_ast::AttrStyle::Outer
+                            && span.ctxt().is_root();
+                        if continuation && previous_line_doc {
+                            Some(DeclarationHash::DocContinuation)
+                        } else {
+                            Some(DeclarationHash::Text(text))
+                        }
                     }
-                    let text = ecx.record_declaration_span(doc.first_span)?;
-                    ecx.declaration_spans.insert(hidden);
-                    Some(text)
+                    // The built-in Clone derive can emit a hidden TrivialClone impl. The
+                    // synthesized attribute and its argument share a source location and
+                    // context but need not have the same local span parent.
+                    rustc_attr_ir::Attribute::Parsed(AttributeKind::Doc(doc))
+                        if ecx.hash_declaration_text && doc.first_span.from_expansion() =>
+                    {
+                        use rustc_span::hygiene::{ExpnKind, MacroKind};
+
+                        // The derive copies no user-written doc attributes onto the impl.
+                        // `record_declaration_span` also requires a source-written built-in.
+                        let hidden = doc.hidden?;
+                        if !matches!(tcx.def_kind(id), DefKind::Impl { .. })
+                            || !matches!(
+                                doc.first_span.ctxt().outer_expn_data().kind,
+                                ExpnKind::Macro(MacroKind::Derive, sym::Clone)
+                            )
+                            || hidden.with_parent(None) != doc.first_span.with_parent(None)
+                        {
+                            return None;
+                        }
+                        let text = ecx.record_declaration_span(doc.first_span)?;
+                        ecx.declaration_spans.insert(hidden);
+                        Some(DeclarationHash::Text(text))
+                    }
+                    _ => None,
                 }
-                _ => None,
             },
             hcx,
         );
@@ -2773,7 +2801,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 let (args, digest) = self.encode_declaration_array(
                     def_id,
                     tcx.fn_arg_idents(def_id),
-                    |ecx, arg| ecx.record_declaration_span((*arg)?.span),
+                    |ecx, arg| ecx.record_declaration_span((*arg)?.span).map(DeclarationHash::Text),
                     hcx,
                 );
                 self.tables.fn_arg_idents.set_some_hashed(
@@ -2795,7 +2823,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 let (bounds, digest) = self.encode_declaration_array(
                     def_id,
                     tcx.explicit_super_clauses_of(def_id).skip_binder(),
-                    |ecx, (_, span)| ecx.record_declaration_span(*span),
+                    |ecx, (_, span)| ecx.record_declaration_span(*span).map(DeclarationHash::Text),
                     hcx,
                 );
                 self.tables.explicit_super_clauses_of.set_hashed(
@@ -2807,7 +2835,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 let (bounds, digest) = self.encode_declaration_array(
                     def_id,
                     tcx.explicit_implied_clauses_of(def_id).skip_binder(),
-                    |ecx, (_, span)| ecx.record_declaration_span(*span),
+                    |ecx, (_, span)| ecx.record_declaration_span(*span).map(DeclarationHash::Text),
                     hcx,
                 );
                 self.tables.explicit_implied_clauses_of.set_hashed(
@@ -4465,7 +4493,13 @@ fn encode_fresh_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>, 
                 let opts = &tcx.sess.opts.unstable_opts;
                 if !opts.public_api_hash || is_proc_macro {
                     encode_crate_root::<DefIndexDefIdEncoder>(tcx, path, hcx, &mut hashes);
-                } else if opts.metadata_crate_hash && opts.ohm_prefer_full_crate_hash {
+                } else if opts.metadata_crate_hash
+                    && (opts.ohm_prefer_full_crate_hash || tcx.is_capped_library_check())
+                {
+                    // Cargo checks registry libraries without incremental state and caps their
+                    // lints. A new package version also changes its identity, so distinguishing
+                    // individual item changes rarely recovers work. For editable crates with
+                    // these options the full hash may invalidate more consumers.
                     // Keep stable DefPathHash references and dependency public SVHs. The byte
                     // digest covers the encoded metadata, including those SVHs. Readers use it
                     // for all items when the reachability hashes are absent. Either representation
@@ -4500,6 +4534,27 @@ fn encode_fresh_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>, 
     }
 }
 
+/// A metadata-only rlib has no native code whose identity depends on private HIR.
+/// The metadata digest already includes everything exported, including MIR for const eval.
+/// Retain private source and environment edits in the SVH without hashing every HIR owner.
+fn hash_check_inputs(tcx: TyCtxt<'_>) -> Fingerprint {
+    tcx.with_stable_hashing_context(|mut hcx| {
+        // File registration and environment reads can occur in different orders.
+        let mut hash = Fingerprint::ZERO;
+        for file in tcx.sess.source_map().files().iter().filter(|f| !f.is_imported()) {
+            let mut hasher = StableHasher::new();
+            (0u8, file.stable_id, file.src_hash).stable_hash(&mut hcx, &mut hasher);
+            hash = hash.combine_commutative(hasher.finish());
+        }
+        for input in tcx.sess.env_depinfo.borrow().iter() {
+            let mut hasher = StableHasher::new();
+            (1u8, *input).stable_hash(&mut hcx, &mut hasher);
+            hash = hash.combine_commutative(hasher.finish());
+        }
+        hash
+    })
+}
+
 fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
     tcx: TyCtxt<'tcx>,
     path: &Path,
@@ -4517,10 +4572,12 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
     if metadata_crate_hash {
         // Fold in inputs that are not part of the encoded metadata bytes, reduced to a single
         // fingerprint via the stable hasher and then mixed into the byte digest.
-        let hir_body_hash = if M::PUBLIC_API_FORMAT && tcx.dep_graph.is_fully_enabled() {
+        let body_hash = if M::PUBLIC_API_FORMAT && tcx.dep_graph.is_fully_enabled() {
             // Record this dependency last. The prefix proof needs the encoder's other inputs
             // checked before a private HIR edit stops normal green marking.
             tcx.dep_graph.with_ignore(|| tcx.ohm_metadata_input_hashes(()).0)
+        } else if tcx.is_capped_library_check() {
+            hash_check_inputs(tcx)
         } else {
             compute_hir_hash(tcx)
         };
@@ -4528,8 +4585,8 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
             let mut hasher = StableHasher::new();
             // Add dep_tracking_hash to ensure the SVH changes when any tracked flag changes.
             tcx.sess.opts.dep_tracking_hash(true).stable_hash(&mut hcx, &mut hasher);
-            // Add HIR hash for untracked elements, e.g. DefKind::GlobalAsm.
-            hir_body_hash.stable_hash(&mut hcx, &mut hasher);
+            // Cover bodies and other inputs absent from the metadata bytes.
+            body_hash.stable_hash(&mut hcx, &mut hasher);
             hasher.finish()
         });
         metadata_hasher.lock().unwrap().write(&supplement.to_le_bytes());

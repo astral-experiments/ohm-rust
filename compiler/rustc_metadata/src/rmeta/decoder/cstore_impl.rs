@@ -798,6 +798,11 @@ pub(in crate::rmeta) fn provide(providers: &mut Providers) {
 }
 
 impl CStore {
+    /// Whether a consumer of this crate can be reused after a private source edit.
+    pub fn has_public_api_hash(&self, cnum: CrateNum) -> bool {
+        self.get_crate_data(cnum).root.public_api_hash_opt_enabled
+    }
+
     /// Whether any imported crate admits downstream reuse by its public hash.
     pub fn has_public_api_hash_dependencies(&self) -> bool {
         self.iter_crate_data().any(|(_, data)| data.root.public_api_hash_opt_enabled)

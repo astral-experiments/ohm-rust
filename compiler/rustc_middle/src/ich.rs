@@ -52,8 +52,12 @@ impl<'a> StableHashState<'a, false> {
 
     /// Use the containing definition as the implicit parent while hashing its HIR.
     pub(crate) fn begin_hir_owner(&mut self, owner: LocalDefId, hasher: &mut StableHasher) {
-        owner.stable_hash(self, hasher);
-        self.hir_owner = Some((owner, self.def_span(owner).data_untracked()));
+        owner.to_def_id().stable_hash(self, hasher);
+        let bounds = self.def_span(owner).data_untracked();
+        if self.stable_hash_controls().hash_spans {
+            bounds.ctxt.stable_hash(self, hasher);
+        }
+        self.hir_owner = Some((owner, bounds));
     }
 }
 
@@ -117,15 +121,18 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
         HASH_SPANS_AS_PARENTLESS && !self.incremental_ignore_spans
     }
 
+    #[inline]
+    fn implicit_hir_owner(&self) -> Option<u32> {
+        self.hir_owner.map(|(owner, _)| owner.local_def_index.as_u32())
+    }
+
     /// Hashes a span in a stable way. We can't directly hash the span's `BytePos` fields (that
     /// would be similar to hashing pointers, since those are just offsets into the `SourceMap`).
     /// Instead, we hash the (file name, line, column) triple, which stays the same even if the
     /// containing `SourceFile` has moved within the `SourceMap`.
     ///
-    /// Also note that we are hashing byte offsets for the column, not unicode codepoint offsets.
-    /// For the purpose of the hash that's sufficient. Also, hashing filenames is expensive so we
-    /// avoid doing it twice when the span starts and ends in the same file, which is almost always
-    /// the case.
+    /// We hash byte columns and, for public metadata, the difference between byte and
+    /// character columns. We hash the filename once when both endpoints share it.
     ///
     /// IMPORTANT: changes to this method should be reflected in implementations of `SpanEncoder`.
     #[inline]
@@ -139,26 +146,34 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
         const TAG_VALID_SPAN: u8 = 0;
         const TAG_INVALID_SPAN: u8 = 1;
         const TAG_RELATIVE_SPAN: u8 = 2;
+        const TAG_MULTIBYTE_COLUMNS: u8 = 3;
 
         if HASH_SPANS_AS_PARENTLESS {
             span.parent = None
         } else if let Some((owner, bounds)) = self.hir_owner {
-            // The owner identity was hashed once at the start of this HIR body.
-            // For an ordinary token in that owner, only the two offsets vary.
+            // The owner and its syntax context were hashed once at the start of this HIR body.
+            // Most tokens fit in two 16-bit offsets. Since hi >= lo, the
+            // impossible ranges 1..0, 2..0 and 3..0 provide distinct escapes.
             if span.parent == Some(owner)
-                && span.ctxt.is_root()
                 && !span.is_dummy()
                 && span.lo <= span.hi
                 && bounds.contains(span)
             {
                 let lo = span.lo.0 - bounds.lo.0;
                 let hi = span.hi.0 - bounds.lo.0;
-                Hash::hash(&((u64::from(hi) << 32) | u64::from(lo)), hasher);
+                if span.ctxt != bounds.ctxt {
+                    Hash::hash(&2u32, hasher);
+                    span.ctxt.stable_hash(self, hasher);
+                }
+                if hi <= u32::from(u16::MAX) {
+                    Hash::hash(&((hi << 16) | lo), hasher);
+                } else {
+                    Hash::hash(&3u32, hasher);
+                    Hash::hash(&((u64::from(hi) << 32) | u64::from(lo)), hasher);
+                }
                 return;
             }
-            // lo = 1, hi = 0 cannot represent an ordered range. Escape to
-            // the full encoding, preserving non-root contexts and other parents.
-            Hash::hash(&1u64, hasher);
+            Hash::hash(&1u32, hasher);
         }
         span.ctxt.stable_hash(self, hasher);
         span.parent.stable_hash(self, hasher);
@@ -202,6 +217,27 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
             let hi = span.hi.0.wrapping_sub(parent.lo.0);
             Hash::hash(&(((hi as u64) << 32) | lo as u64), hasher);
             return;
+        }
+
+        // Metadata consumers can observe character columns through Location::caller.
+        // Replacing ASCII with a multibyte character can leave both byte columns intact.
+        if HASH_SPANS_AS_PARENTLESS && !file.multibyte_chars.is_empty() {
+            let extra_bytes = |pos, col: rustc_span::BytePos| {
+                let end = file.relative_position(pos).0;
+                let start = end - col.0;
+                let first = file.multibyte_chars.partition_point(|ch| ch.pos.0 < start);
+                file.multibyte_chars[first..]
+                    .iter()
+                    .take_while(|ch| ch.pos.0 < end)
+                    .map(|ch| u32::from(ch.bytes - 1))
+                    .sum::<u32>()
+            };
+            let lo = extra_bytes(span.lo, col_lo);
+            let hi = extra_bytes(span.hi, col_hi);
+            if lo != 0 || hi != 0 {
+                Hash::hash(&TAG_MULTIBYTE_COLUMNS, hasher);
+                Hash::hash(&((u64::from(hi) << 32) | u64::from(lo)), hasher);
+            }
         }
 
         Hash::hash(&TAG_VALID_SPAN, hasher);

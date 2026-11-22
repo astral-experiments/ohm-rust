@@ -44,6 +44,9 @@ impl StableHash for NodeId {
 
 rustc_data_structures::define_id_collections!(NodeMap, NodeSet, NodeMapEntry, NodeId);
 
+/// A set of the consecutive node IDs assigned during expansion.
+pub type NodeBitSet = rustc_index::bit_set::GrowableBitSet<NodeId>;
+
 /// When parsing and at the beginning of doing expansions, we initially give all AST nodes
 /// this dummy AST [`NodeId`]. Then, during a later phase of expansion, we renumber them
 /// to have small, positive IDs.

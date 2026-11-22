@@ -1,0 +1,20 @@
+error: literal out of range for `u8`
+  --> $DIR/integer-literal-const-overflow.rs:5:27
+   |
+LL | pub const TOO_BIG: Byte = 256;
+   |                           ^^^
+   |
+   = note: the literal `256` does not fit into the type `u8` whose range is `0..=255`
+   = note: `#[deny(overflowing_literals)]` on by default
+
+error: literal out of range for `i8`
+  --> $DIR/integer-literal-const-overflow.rs:7:30
+   |
+LL | pub const TOO_POSITIVE: i8 = 128i8;
+   |                              ^^^^^
+   |
+   = note: the literal `128i8` does not fit into the type `i8` whose range is `-128..=127`
+   = help: consider using the type `u8` instead
+
+error: aborting due to 2 previous errors
+

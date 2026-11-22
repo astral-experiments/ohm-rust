@@ -39,6 +39,11 @@ pub trait StableHashCtxt {
         false
     }
 
+    /// The local definition index of the owner already included in a HIR hash.
+    fn implicit_hir_owner(&self) -> Option<u32> {
+        None
+    }
+
     /// The main event: stable hashing of a span.
     fn stable_hash_span(&mut self, span: RawSpan, hasher: &mut StableHasher);
 

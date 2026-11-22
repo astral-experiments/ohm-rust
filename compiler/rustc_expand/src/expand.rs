@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::{iter, mem, slice};
 
 use rustc_ast::mut_visit::*;
+use rustc_ast::node_id::NodeBitSet;
 use rustc_ast::tokenstream::TokenStream;
 use rustc_ast::visit::{AssocCtxt, Visitor, VisitorResult, try_visit, walk_list};
 use rustc_ast::{
@@ -465,8 +466,9 @@ impl<'a, 'b> MacroExpander<'a, 'b> {
         let orig_force_mode = self.cx.force_mode;
 
         // Collect all macro invocations and replace them with placeholders.
+        let mut complete_items = NodeBitSet::new_empty();
         let (mut fragment_with_placeholders, mut invocations) =
-            self.collect_invocations(input_fragment, &[]);
+            self.collect_invocations(input_fragment, &[], &mut complete_items);
 
         // Optimization: if we resolve all imports now,
         // we'll be able to immediately resolve most of imported macros.
@@ -561,19 +563,26 @@ impl<'a, 'b> MacroExpander<'a, 'b> {
                         })
                         .unwrap_or_default();
 
-                    let (expanded_fragment, collected_invocations) =
-                        self.collect_invocations(fragment, &derive_placeholders);
-                    // We choose to expand any derive invocations associated with this macro
-                    // invocation *before* any macro invocations collected from the output
-                    // fragment.
-                    derive_invocations.extend(collected_invocations);
+                    let (expanded_fragment, collected_invocations) = self.collect_invocations(
+                        fragment,
+                        &derive_placeholders,
+                        &mut complete_items,
+                    );
+                    let has_placeholders =
+                        !derive_invocations.is_empty() || !collected_invocations.is_empty();
 
                     progress = true;
                     if expanded_fragments.len() < depth {
                         expanded_fragments.push(Vec::new());
                     }
-                    expanded_fragments[depth - 1].push((expn_id, expanded_fragment));
+                    expanded_fragments[depth - 1].push((
+                        expn_id,
+                        has_placeholders,
+                        expanded_fragment,
+                    ));
                     expanded_fragments_len += 1;
+                    // Push derives last so they are expanded before invocations from the output.
+                    invocations.extend(collected_invocations.into_iter().rev());
                     invocations.extend(derive_invocations.into_iter().rev());
                 }
                 ExpandResult::Retry(invoc) => {
@@ -594,9 +603,18 @@ impl<'a, 'b> MacroExpander<'a, 'b> {
         self.cx.force_mode = orig_force_mode;
 
         // Finally incorporate all the expanded macros into the input AST fragment.
-        let mut placeholder_expander = PlaceholderExpander::with_capacity(expanded_fragments_len);
+        if expanded_fragments_len == 0 {
+            return fragment_with_placeholders;
+        }
+        let mut placeholder_expander =
+            PlaceholderExpander::with_capacity(expanded_fragments_len, complete_items);
         while let Some(expanded_fragments) = expanded_fragments.pop() {
-            for (expn_id, expanded_fragment) in expanded_fragments.into_iter().rev() {
+            for (expn_id, has_placeholders, mut expanded_fragment) in
+                expanded_fragments.into_iter().rev()
+            {
+                if has_placeholders {
+                    expanded_fragment.mut_visit_with(&mut placeholder_expander);
+                }
                 placeholder_expander
                     .add(NodeId::placeholder_from_expn_id(expn_id), expanded_fragment);
             }
@@ -619,6 +637,7 @@ impl<'a, 'b> MacroExpander<'a, 'b> {
         &mut self,
         mut fragment: AstFragment,
         extra_placeholders: &[NodeId],
+        complete_items: &mut NodeBitSet,
     ) -> (AstFragment, Vec<(Invocation, Option<Arc<SyntaxExtension>>)>) {
         // Resolve `$crate`s in the fragment for pretty-printing.
         self.cx.resolver.resolve_dollar_crates();
@@ -632,6 +651,7 @@ impl<'a, 'b> MacroExpander<'a, 'b> {
                 // specially in `fully_expand_fragment`
                 cx: self.cx,
                 invocations: Vec::new(),
+                complete_items,
                 monotonic: self.monotonic,
             };
             fragment.mut_visit_with(&mut collector);
@@ -2116,10 +2136,32 @@ impl DummyAstNode for AstNodeWrapper<ast::Expr, MethodReceiverTag> {
 struct InvocationCollector<'a, 'b> {
     cx: &'a mut ExtCtxt<'b>,
     invocations: Vec<(Invocation, Option<Arc<SyntaxExtension>>)>,
+    complete_items: &'a mut NodeBitSet,
     monotonic: bool,
 }
 
 impl<'a, 'b> InvocationCollector<'a, 'b> {
+    /// Only monotonic expansion assigns unique node IDs. Record items whose
+    /// walk produced no placeholders, including any in nested owners.
+    fn walk_flat_map_node<Node: InvocationCollectorNode>(&mut self, node: Node) -> Node::OutputTy {
+        let id = node.node_id();
+        let before = self.invocations.len();
+        let result = node.walk_flat_map(self);
+        if matches!(
+            Node::KIND,
+            AstFragmentKind::Items
+                | AstFragmentKind::TraitItems
+                | AstFragmentKind::ImplItems
+                | AstFragmentKind::TraitImplItems
+                | AstFragmentKind::ForeignItems
+        ) && self.monotonic
+            && before == self.invocations.len()
+        {
+            self.complete_items.insert(id);
+        }
+        result
+    }
+
     fn cfg(&self) -> StripUnconfigured<'_> {
         StripUnconfigured {
             sess: self.cx.sess,
@@ -2425,12 +2467,12 @@ impl<'a, 'b> InvocationCollector<'a, 'b> {
                     );
                     Node::flatten_outputs(single_delegations.map(|item| {
                         let mut item = Node::from_item(item);
-                        assign_id!(self, item.node_id_mut(), || item.walk_flat_map(self))
+                        assign_id!(self, item.node_id_mut(), || self.walk_flat_map_node(item))
                     }))
                 }
                 None => {
                     match Node::wrap_flat_map_node_walk_flat_map(node, self, |mut node, this| {
-                        assign_id!(this, node.node_id_mut(), || node.walk_flat_map(this))
+                        assign_id!(this, node.node_id_mut(), || this.walk_flat_map_node(node))
                     }) {
                         Ok(output) => output,
                         Err(returned_node) => {

@@ -174,12 +174,12 @@ struct ParentScope<'ra> {
     derives: &'ra [ast::Path],
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-struct TraitsInScopeKey<'ra> {
-    module: Module<'ra>,
-    current_trait: Option<Module<'ra>>,
-    ctxt: Macros20NormalizedSyntaxContext,
-    assoc_item: Option<(Symbol, Namespace)>,
+#[derive(Clone, Copy)]
+struct ModuleTraits<'ra> {
+    declarations: &'ra [(Symbol, Decl<'ra>, Option<Module<'ra>>, bool /* lint ambiguous */)],
+    /// Sorted pairs of value names and declaration indices. The second key
+    /// preserves resolution order for methods shared by several traits.
+    values: Option<&'ra [(Symbol, u32)]>,
 }
 
 impl<'ra> ParentScope<'ra> {
@@ -710,10 +710,8 @@ struct ModuleData<'ra> {
     glob_importers: CmRefCell<Vec<Import<'ra>>>,
     globs: CmRefCell<Vec<Import<'ra>>>,
 
-    /// Used to memoize the traits in this module for faster searches through all traits in scope.
-    traits: CmRefCell<
-        Option<Box<[(Symbol, Decl<'ra>, Option<Module<'ra>>, bool /* lint ambiguous */)]>>,
-    >,
+    /// Trait declarations and their associated values during late resolution.
+    traits: CmRefCell<Option<ModuleTraits<'ra>>>,
 
     /// Span of the module itself. Used for error reporting.
     span: Span,
@@ -841,8 +839,9 @@ impl<'ra> Module<'ra> {
         }
     }
 
-    /// This modifies `self` in place. The traits will be stored in `self.traits`.
-    fn ensure_traits<'tcx>(self, resolver: &Resolver<'ra, 'tcx>) {
+    /// Gather the module's traits once imports are fixed. Avoid loading trait
+    /// contents for rustdoc's unfiltered requests.
+    fn traits<'tcx>(self, resolver: &Resolver<'ra, 'tcx>, index_values: bool) -> ModuleTraits<'ra> {
         let mut traits = self.traits.borrow_mut_checked(resolver);
         if traits.is_none() {
             let mut collected_traits = Vec::new();
@@ -874,8 +873,31 @@ impl<'ra> Module<'ra> {
                     decl = ambig_decl;
                 }
             });
-            *traits = Some(collected_traits.into_boxed_slice());
+            let declarations = resolver.arenas.dropless.alloc_from_iter(collected_traits);
+            *traits = Some(ModuleTraits { declarations, values: None });
         }
+        let traits = traits.as_mut().unwrap();
+        // Trait aliases lack an associated item list and must match every
+        // name. Use the ordinary scan for modules containing them.
+        if index_values
+            && traits.values.is_none()
+            && traits.declarations.iter().all(|(_, _, module, _)| module.is_some())
+        {
+            let mut values = Vec::new();
+            for (idx, &(_, _, module, _)) in traits.declarations.iter().enumerate() {
+                let idx = u32::try_from(idx).unwrap();
+                for key in resolver.resolutions(module.unwrap()).keys() {
+                    if key.ns == ValueNS {
+                        values.push((key.ident.name, idx));
+                    }
+                }
+            }
+            values.sort_unstable();
+            // Several syntax contexts can yield the same unhygienic name.
+            values.dedup();
+            traits.values = Some(resolver.arenas.dropless.alloc_from_iter(values));
+        }
+        *traits
     }
 
     // `self` resolves to the first module ancestor that `is_normal`.
@@ -1439,7 +1461,6 @@ pub struct Resolver<'ra, 'tcx> {
     visibilities_for_hashing: Vec<(LocalDefId, Visibility)> = Vec::new(),
     used_imports: FxHashSet<NodeId> = default::fx_hash_set(),
     maybe_unused_trait_imports: FxIndexSet<LocalDefId>,
-    traits_in_scope_cache: FxHashMap<TraitsInScopeKey<'ra>, &'tcx [TraitCandidate<'tcx>]>,
 
     /// Privacy errors are delayed until the end in order to deduplicate them.
     privacy_errors: Vec<PrivacyError<'ra>> = Vec::new(),
@@ -1874,7 +1895,6 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
 
             glob_map: Default::default(),
             maybe_unused_trait_imports: Default::default(),
-            traits_in_scope_cache: Default::default(),
 
             arenas,
             dummy_decl: arenas.new_pub_def_decl(Res::Err, DUMMY_SP, LocalExpnId::ROOT),
@@ -2152,18 +2172,7 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
         assoc_item: Option<(Symbol, Namespace)>,
     ) -> &'tcx [TraitCandidate<'tcx>] {
         let ctxt = Macros20NormalizedSyntaxContext::new(sp.ctxt());
-        let key = TraitsInScopeKey {
-            module: parent_scope.module.nearest_item_scope(),
-            current_trait,
-            ctxt,
-            assoc_item,
-        };
-        // Imports are fixed during late resolution. Repeated lookups also repeat
-        // only idempotent insertions into the trait-import and glob-use sets.
-        if let Some(&traits) = self.traits_in_scope_cache.get(&key) {
-            return traits;
-        }
-        let mut found_traits = Vec::new();
+        let mut found_traits = SmallVec::new();
 
         if let Some(module) = current_trait {
             if self.trait_may_have_item(Some(module), assoc_item) {
@@ -2200,29 +2209,34 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
             ControlFlow::<()>::Continue(())
         });
 
-        let found_traits = self.tcx.hir_arena.alloc_slice(&found_traits);
-        if self.traits_in_scope_cache.len() == 16384 {
-            self.traits_in_scope_cache.clear();
-        }
-        self.traits_in_scope_cache.insert(key, found_traits);
-        found_traits
+        self.tcx.hir_arena.alloc_slice(&found_traits)
     }
 
     fn traits_in_module(
         &mut self,
         module: Module<'ra>,
         assoc_item: Option<(Symbol, Namespace)>,
-        found_traits: &mut Vec<TraitCandidate<'tcx>>,
+        found_traits: &mut SmallVec<[TraitCandidate<'tcx>; 1]>,
     ) {
-        module.ensure_traits(self);
-        let traits = module.traits.borrow(self);
-        for &(trait_name, trait_binding, trait_module, lint_ambiguous) in
-            traits.as_ref().unwrap().iter()
+        let traits = module.traits(self, matches!(assoc_item, Some((_, ValueNS))));
+        let mut record = |this: &mut Self, idx: usize| {
+            let (trait_name, trait_binding, _, lint_ambiguous) = traits.declarations[idx];
+            let def_id = trait_binding.res().def_id();
+            let import_ids = this.find_transitive_imports(&trait_binding.kind, trait_name);
+            found_traits.push(TraitCandidate { def_id, import_ids, lint_ambiguous });
+        };
+        if let Some((name, ValueNS)) = assoc_item
+            && let Some(values) = traits.values
         {
-            if self.trait_may_have_item(trait_module, assoc_item) {
-                let def_id = trait_binding.res().def_id();
-                let import_ids = self.find_transitive_imports(&trait_binding.kind, trait_name);
-                found_traits.push(TraitCandidate { def_id, import_ids, lint_ambiguous });
+            let start = values.partition_point(|&(symbol, _)| symbol < name);
+            for &(_, idx) in values[start..].iter().take_while(|&&(symbol, _)| symbol == name) {
+                record(self, idx as usize);
+            }
+        } else {
+            for (idx, &(_, _, trait_module, _)) in traits.declarations.iter().enumerate() {
+                if self.trait_may_have_item(trait_module, assoc_item) {
+                    record(self, idx);
+                }
             }
         }
     }
@@ -2756,6 +2770,9 @@ fn with_owner_tables<'ra, 'tcx, R: AsMut<Resolver<'ra, 'tcx>>, T>(
 ) -> T {
     debug_assert!(!this.as_mut().owners.contains_key(&owner));
     let resolver = this.as_mut();
+    // Both definition collection during expansion and late resolution of
+    // the expanded crate enter nested items here.
+    resolver.current_owner.has_nested_owners = true;
     let old_owner = mem::replace(&mut resolver.current_owner, tables);
     let ret = work(this);
     let resolver = this.as_mut();

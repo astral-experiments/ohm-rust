@@ -1502,6 +1502,13 @@ impl<'tcx> DeadVisitor<'tcx> {
 }
 
 fn check_mod_deathness(tcx: TyCtxt<'_>, module: LocalModId) {
+    // This pass can fulfill an expectation even when the diagnostic itself is capped.
+    if tcx.can_skip_capped_lints(&[DEAD_CODE, DEAD_CODE_PUB_IN_BINARY])
+        && tcx.lint_expectations(()).is_empty()
+    {
+        return;
+    }
+
     let Ok(DeadCodeLivenessSummary { pre_deferred_seeding, final_result }) =
         tcx.live_symbols_and_ignored_derived_traits(()).as_ref()
     else {

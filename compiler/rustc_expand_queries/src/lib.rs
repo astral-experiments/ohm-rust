@@ -55,6 +55,6 @@ fn syntax_cache(id: rustc_span::StableSourceFileId, op: rustc_expand::module::Mo
 }
 
 fn ohm_module_syntax(tcx: TyCtxt<'_>, id: rustc_span::StableSourceFileId) -> &[u8] {
-    let _ = tcx.metadata_source_file_hash(id);
+    let _ = tcx.source_file_hash(id);
     SYNTAX_BYTES.take().map_or(&[], |bytes| tcx.arena.alloc_slice(&bytes))
 }

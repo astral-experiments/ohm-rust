@@ -529,6 +529,29 @@ impl<'a> Cursor<'a> {
         }
     }
 
+    /// Skips the ASCII part of a whitespace token if it cannot start frontmatter.
+    /// Returns the number of bytes skipped.
+    #[inline]
+    pub fn skip_ascii_whitespace(&mut self) -> u32 {
+        if matches!(self.frontmatter_allowed, FrontmatterAllowed::Yes) {
+            return 0;
+        }
+        let bytes = self.as_str().as_bytes();
+        let mut len = 0;
+        while matches!(bytes.get(len), Some(b' ' | b'\t'..=b'\r')) {
+            len += 1;
+        }
+        if len != 0 {
+            #[cfg(debug_assertions)]
+            {
+                self.prev = char::from(bytes[len - 1]);
+            }
+            self.bump_bytes(len);
+            self.reset_pos_within_token();
+        }
+        len as u32
+    }
+
     /// Parses a token from the input string.
     pub fn advance_token(&mut self) -> Token {
         let Some(first_char) = self.bump() else {

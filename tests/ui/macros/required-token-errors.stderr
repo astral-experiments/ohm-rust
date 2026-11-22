@@ -1,0 +1,32 @@
+error: local ambiguity when calling macro `ambiguous`: multiple parsing options: built-in NTs tt ('a') or tt ('b').
+  --> $DIR/required-token-errors.rs:19:17
+   |
+LL |     ambiguous!((x) second);
+   |                 ^
+
+error: expected expression, found `)`
+  --> $DIR/required-token-errors.rs:20:21
+   |
+LL |     (($e:expr) first) => {};
+   |       ------- while parsing argument for this `expr` macro fragment
+...
+LL |     expression!((1 +) second);
+   |                     ^ expected expression
+
+error: no rules expected `wrong`
+  --> $DIR/required-token-errors.rs:21:24
+   |
+LL | macro_rules! missing {
+   | -------------------- when calling this macro
+...
+LL |     missing!(tag (x y) wrong);
+   |                        ^^^^^ no rules expected this token in macro call
+   |
+note: while trying to match `first`
+  --> $DIR/required-token-errors.rs:14:26
+   |
+LL |     ($tag:tt ($($x:tt)*) first) => {};
+   |                          ^^^^^
+
+error: aborting due to 3 previous errors
+

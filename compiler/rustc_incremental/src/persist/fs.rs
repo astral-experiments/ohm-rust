@@ -284,7 +284,7 @@ pub(crate) fn prepare_session_directory(
 pub(super) fn check_root_hint(sess: &Session) -> Option<[u8; 16]> {
     let root = rustc_span::FileName::Real(sess.local_crate_source_file()?);
     let file = sess.source_map().get_source_file(&root)?;
-    file.src_hash.hash_bytes().first_chunk().copied()
+    file.input_hash().hash_bytes().first_chunk().copied()
 }
 
 /// Finalized session candidates, newest first by the timestamp prefix.

@@ -687,16 +687,20 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                 }
 
                 if !self.tcx().features().unsized_fn_params() {
-                    let trait_ref = ty::TraitRef::new(
-                        tcx,
-                        tcx.require_lang_item(LangItem::Sized, self.last_span),
-                        [place_ty],
-                    );
-                    self.prove_trait_ref(
-                        trait_ref,
-                        location.to_locations(),
-                        ConstraintCategory::SizedBound,
-                    );
+                    let sized = tcx.require_lang_item(LangItem::Sized, self.last_span);
+                    // Avoid interning arguments and a predicate for an assignment
+                    // whose Sized proof would immediately return no constraints.
+                    if self.infcx.disable_trait_solver_fast_paths()
+                        || !place_ty.has_trivial_sizedness(tcx, ty::SizedTraitKind::Sized)
+                        || !self.infcx.region_state_is_empty()
+                    {
+                        let trait_ref = ty::TraitRef::new(tcx, sized, [place_ty]);
+                        self.prove_trait_ref(
+                            trait_ref,
+                            location.to_locations(),
+                            ConstraintCategory::SizedBound,
+                        );
+                    }
                 }
             }
             StatementKind::AscribeUserType((place, projection), variance) => {
@@ -818,11 +822,8 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                 // don't have to check it twice.
                 //
                 // See #91068 for an example.
-                self.prove_clauses(
-                    unnormalized_sig
-                        .inputs_and_output
-                        .iter()
-                        .map(|ty| ty::ClauseKind::WellFormed(ty.into())),
+                self.prove_wf(
+                    unnormalized_sig.inputs_and_output.iter().map(Into::into),
                     term_location.to_locations(),
                     ConstraintCategory::Boring,
                 );
@@ -840,10 +841,8 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                 // with built-in `Fn` implementations, since the impl may not be
                 // well-formed itself.
                 if sig != unnormalized_sig {
-                    self.prove_clauses(
-                        sig.inputs_and_output
-                            .iter()
-                            .map(|ty| ty::ClauseKind::WellFormed(ty.into())),
+                    self.prove_wf(
+                        sig.inputs_and_output.iter().map(Into::into),
                         term_location.to_locations(),
                         ConstraintCategory::Boring,
                     );
@@ -1842,11 +1841,7 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                 self.prove_declared_clauses(def_id, args, locations);
 
                 assert_eq!(tcx.trait_impl_of_assoc(def_id), None);
-                self.prove_clauses(
-                    args.terms().map(|t| ty::ClauseKind::WellFormed(t.into())),
-                    locations,
-                    ConstraintCategory::Boring,
-                );
+                self.prove_wf(args.terms(), locations, ConstraintCategory::Boring);
             }
         }
     }
@@ -1854,8 +1849,8 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
     fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
         self.super_place(place, context, location);
         let tcx = self.tcx();
-        let place_ty = place.ty(self.body, tcx);
         if let PlaceContext::NonMutatingUse(NonMutatingUseContext::Copy) = context {
+            let place_ty = place.ty(self.body, tcx);
             let trait_ref = ty::TraitRef::new(
                 tcx,
                 tcx.require_lang_item(LangItem::Copy, self.last_span),
@@ -1885,7 +1880,6 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
         location: Location,
     ) {
         let tcx = self.tcx();
-        let base_ty = place.ty(self.body(), tcx);
         match elem {
             // All these projections don't add any constraints, so there's nothing to
             // do here. We check their invariants in the MIR validator after all.
@@ -1896,6 +1890,7 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
             | ProjectionElem::Subslice { .. }
             | ProjectionElem::Downcast(..) => {}
             ProjectionElem::Field(field, fty) => {
+                let base_ty = place.ty(self.body(), tcx);
                 let fty = self.normalize(ty::Unnormalized::new_wip(fty), location);
                 let ty = PlaceTy::field_ty(tcx, base_ty.ty, base_ty.variant_index, field);
                 let ty = self.normalize(ty, location);
@@ -1912,6 +1907,7 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                 }
             }
             ProjectionElem::OpaqueCast(ty) => {
+                let base_ty = place.ty(self.body(), tcx);
                 let ty = self.normalize(ty::Unnormalized::new_wip(ty), location);
                 self.relate_types(
                     ty,
@@ -1923,6 +1919,7 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                 .unwrap();
             }
             ProjectionElem::UnwrapUnsafeBinder(ty) => {
+                let base_ty = place.ty(self.body(), tcx);
                 let ty::UnsafeBinder(binder_ty) = *base_ty.ty.kind() else {
                     unreachable!();
                 };
@@ -2184,6 +2181,12 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
 
     fn ensure_place_sized(&mut self, ty: Ty<'tcx>, span: Span) {
         let tcx = self.tcx();
+
+        // Trivial sizedness is independent of regions. Avoid erasing
+        // and re-interning the types of these MIR locals.
+        if ty.has_trivial_sizedness(tcx, ty::SizedTraitKind::Sized) {
+            return;
+        }
 
         // Erase the regions from `ty` to get a global type. The
         // `Sized` bound in no way depends on precise regions, so this

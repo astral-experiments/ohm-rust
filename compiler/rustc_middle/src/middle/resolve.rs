@@ -283,6 +283,9 @@ pub struct PerOwnerResolverData<'tcx> {
     pub node_id_to_def_id: NodeMap<LocalDefId> = Default::default(),
     /// Whether lifetime elision was successful.
     pub lifetime_elision_allowed: bool = false,
+    /// Whether the AST indexer needs to descend into this owner to extract
+    /// nested items. Includes associated, foreign and block-local items.
+    pub has_nested_owners: bool = false,
     /// Resolutions for labels. Maps from NodeId of the break/continue expression to the NodeId of
     /// their corresponding blocks or loops.
     pub label_res_map: NodeMap<NodeId> = Default::default(),
