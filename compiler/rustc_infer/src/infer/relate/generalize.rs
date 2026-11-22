@@ -12,6 +12,18 @@ use crate::infer::type_variable::TypeVariableValue;
 use crate::infer::unify_key::ConstVariableValue;
 use crate::infer::{InferCtxt, RegionVariableOrigin, relate};
 
+/// Terms without inference variables, placeholders, aliases, or regions
+/// survive generalization unchanged in every universe and variance. In
+/// particular the occurs check cannot find the target variable in them.
+const NEEDS_GENERALIZATION: ty::TypeFlags = ty::TypeFlags::HAS_INFER
+    .union(ty::TypeFlags::HAS_PLACEHOLDER)
+    .union(ty::TypeFlags::HAS_ALIAS)
+    .union(ty::TypeFlags::HAS_REGIONS)
+    .union(ty::TypeFlags::HAS_BOUND_VARS)
+    .union(ty::TypeFlags::HAS_TY_FRESH)
+    .union(ty::TypeFlags::HAS_CT_FRESH)
+    .union(ty::TypeFlags::HAS_ERROR);
+
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 enum TermVid {
     Ty(ty::TyVid),
@@ -138,8 +150,12 @@ impl<'tcx> InferCtxt<'tcx> {
         //
         // We then relate `generalized_term <: source_term`, adding constraints like `'x: '?2` and
         // `?1 <: ?3`.
-        let Generalization { value_may_be_infer: generalized_term } =
-            self.generalize(relation.span(), target_vid, instantiation_variance, source_term)?;
+        let generalized_term = if source_term.has_type_flags(NEEDS_GENERALIZATION) {
+            self.generalize(relation.span(), target_vid, instantiation_variance, source_term)?
+                .value_may_be_infer
+        } else {
+            source_term
+        };
 
         // Constrain `b_vid` to the generalized type `generalized_term`.
         self.union_var_term(target_vid, generalized_term);
@@ -483,6 +499,10 @@ impl<'tcx> TypeRelation<TyCtxt<'tcx>> for Generalizer<'_, 'tcx> {
     #[instrument(level = "debug", skip(self, t2), ret)]
     fn tys(&mut self, t: Ty<'tcx>, t2: Ty<'tcx>) -> RelateResult<'tcx, Ty<'tcx>> {
         assert_eq!(t, t2); // we are misusing TypeRelation here; both LHS and RHS ought to be ==
+
+        if !t.has_type_flags(NEEDS_GENERALIZATION) {
+            return Ok(t);
+        }
 
         if let Some(&result) = self.cache.get(&(t, self.ambient_variance, self.in_alias)) {
             return Ok(result);
