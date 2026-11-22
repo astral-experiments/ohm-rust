@@ -4,12 +4,11 @@ use std::sync::Arc;
 use std::{iter, mem};
 
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
-use rustc_data_structures::hash_table::HashTable;
 use rustc_data_structures::sync::{DynSend, DynSync};
 use rustc_middle::queries::TaggedQueryKey;
 use rustc_middle::query::{
-    ActiveKeyStatus, QueryCache, QueryCycle, QueryJob, QueryJobId, QueryKey, QueryLatch,
-    QueryStackFrame, QueryVTable, QueryWaiter,
+    ActiveJobs, ActiveKeyStatus, QueryCache, QueryCycle, QueryJob, QueryJobId, QueryKey,
+    QueryLatch, QueryStackFrame, QueryVTable, QueryWaiter,
 };
 use rustc_middle::ty::TyCtxt;
 use rustc_span::{DUMMY_SP, Span};
@@ -95,7 +94,7 @@ fn collect_active_query_jobs_inner<'tcx, C>(
     C: QueryCache<Key: QueryKey + DynSend + DynSync>,
     QueryVTable<'tcx, C>: DynSync,
 {
-    let mut collect_shard_jobs = |shard: &HashTable<(C::Key, ActiveKeyStatus<'tcx>)>| {
+    let mut collect_shard_jobs = |shard: &ActiveJobs<'tcx, C::Key>| {
         for (key, status) in shard.iter() {
             if let ActiveKeyStatus::Started(job) = status {
                 // It's fine to call `create_tagged_key` with the shard locked,
