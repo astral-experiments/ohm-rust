@@ -24,6 +24,10 @@ impl<'a, 'tcx> Diagnostic<'a> for UnusedImport<'tcx> {
 }
 
 pub(super) fn check_unused_traits(tcx: TyCtxt<'_>, (): ()) {
+    if tcx.can_skip_capped_lints(&[UNUSED_IMPORTS]) {
+        return;
+    }
+
     let mut used_trait_imports = UnordSet::<LocalDefId>::default();
 
     // FIXME: Use `tcx.hir_par_body_owners()` when we implement creating `DefId`s

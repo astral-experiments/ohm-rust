@@ -17,6 +17,9 @@ pub(super) struct CheckCallRecursion;
 
 impl<'tcx> MirLint<'tcx> for CheckCallRecursion {
     fn run_lint(&self, tcx: TyCtxt<'tcx>, body: &Body<'tcx>) {
+        if tcx.can_skip_capped_lints(&[UNCONDITIONAL_RECURSION]) {
+            return;
+        }
         let def_id = body.source.def_id().expect_local();
 
         if let DefKind::Fn | DefKind::AssocFn = tcx.def_kind(def_id) {
