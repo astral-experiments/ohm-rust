@@ -950,7 +950,7 @@ impl<'ast, 'ra, 'tcx> Visitor<'ast> for LateResolutionVisitor<'_, 'ast, 'ra, 'tc
 
                 // Check whether we should interpret this as a bare trait object.
                 if qself.is_none()
-                    && let Some(partial_res) = self.r.partial_res_map.get(&ty.id)
+                    && let Some(partial_res) = self.r.partial_res_map.get(ty.id)
                     && let Some(Res::Def(DefKind::Trait | DefKind::TraitAlias, _)) =
                         partial_res.full_res()
                 {
@@ -2697,7 +2697,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
                 match ty.kind {
                     TyKind::ImplicitSelf => true,
                     TyKind::Path(None, _) => {
-                        let path_res = self.r.partial_res_map[&ty.id].full_res();
+                        let path_res = self.r.partial_res_map.get(ty.id).unwrap().full_res();
                         if let Some(Res::SelfTyParam { .. } | Res::SelfTyAlias { .. }) = path_res {
                             return true;
                         }
@@ -2728,7 +2728,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
             .current_self_type
             .and_then(|ty| {
                 if let TyKind::Path(None, _) = ty.kind {
-                    self.r.partial_res_map.get(&ty.id)
+                    self.r.partial_res_map.get(ty.id)
                 } else {
                     None
                 }
@@ -3792,7 +3792,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
     /// Not all paths will be properly resolved this way (i.e., type aliases).
     /// FIXME(fn_delegation): remove it when resolution through `ProbeContext` will be ready
     fn fill_delegation_inherent_fn_map(&mut self, self_type_id: NodeId, ident: &Ident) {
-        let res = self.r.partial_res_map.get(&self_type_id);
+        let res = self.r.partial_res_map.get(self_type_id);
 
         let Some(self_type_def_id) = res.and_then(|res| {
             res.full_res().and_then(|r| r.opt_def_id()).and_then(|id| id.as_local())
@@ -3989,7 +3989,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
         let resolution = self
             .r
             .partial_res_map
-            .get(&resolution_node_id)
+            .get(resolution_node_id)
             .map(|r| match r.full_res().and_then(|r| r.opt_def_id()) {
                 None => {
                     // If we are inside trait impl delegation is either resolved or not.
@@ -4001,7 +4001,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
                     // this will later be used to decide if we should apply type-relative resolution
                     // routine during call path resolution in AST -> HIR lowering.
                     if is_in_trait_impl {
-                        let path_res = self.r.partial_res_map[&delegation.id];
+                        let path_res = self.r.partial_res_map.get(delegation.id).unwrap();
 
                         if path_res.full_res().and_then(|r| r.opt_def_id()).is_none() {
                             return DelegationResolution::PartialCall(def_id);
@@ -4129,7 +4129,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
 
     fn is_base_res_local(&self, nid: NodeId) -> bool {
         matches!(
-            self.r.partial_res_map.get(&nid).map(|res| res.expect_full_res()),
+            self.r.partial_res_map.get(nid).map(|res| res.expect_full_res()),
             Some(Res::Local(..))
         )
     }
@@ -4413,7 +4413,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
         match rest {
             ast::PatFieldsRest::Rest(_) | ast::PatFieldsRest::Recovered(_) => {
                 // Record that the pattern doesn't introduce all the bindings it could.
-                if let Some(partial_res) = self.r.partial_res_map.get(&pat.id)
+                if let Some(partial_res) = self.r.partial_res_map.get(pat.id)
                     && let Some(res) = partial_res.full_res()
                     && let Some(def_id) = res.opt_def_id()
                 {
@@ -4626,7 +4626,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
             && let Some(res) = self.local_in_transparent_ribs(one.ident)
         {
             let res = PartialRes::new(res);
-            if !self.r.partial_res_map.contains_key(&one.id) {
+            if !self.r.partial_res_map.contains_key(one.id) {
                 assert_ne!(one.id, DUMMY_NODE_ID);
                 self.r.record_partial_res(one.id, res);
             }
@@ -5678,7 +5678,7 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
             // If the final path segment is beyond `end_pos` all the segments to check will
             // use the type namespace
             let ns = if i + 1 == path.len() { ns } else { TypeNS };
-            let res = self.r.partial_res_map.get(&seg.id?)?.full_res()?;
+            let res = self.r.partial_res_map.get(seg.id?)?.full_res()?;
             let binding = self.resolve_ident_in_lexical_scope(seg.ident, ns, None, None)?;
             (res == binding.res()).then_some((seg, binding))
         });

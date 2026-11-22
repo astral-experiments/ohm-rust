@@ -461,6 +461,25 @@ impl<'hir> LoweringContext<'_, 'hir> {
                 let guar = self.dcx().emit_err(UnderscoreExprLhsAssign { span: e.span });
                 hir::ExprKind::Err(guar)
             }
+            // Bare locals use the same span and resolution for the expression,
+            // path and segment. Delegation may override the resolver's answer.
+            ExprKind::Path(None, path)
+                if let [segment] = &path.segments[..]
+                    && segment.args.is_none()
+                    && path.span == e.span
+                    && segment.ident.span == e.span
+                    && self.partial_res_overrides.is_empty()
+                    && let Some(binding) =
+                        self.resolver.partial_res_map.shared_local(e.id, segment.id)
+                    && self.curr_owner.owner.get_lifetime_res(segment.id).is_none() =>
+            {
+                let res = self.lower_res(Res::Local(binding));
+                let ident = Ident::new(segment.ident.name, span);
+                let segment = hir::PathSegment::new(ident, self.lower_node_id(segment.id), res);
+                let segments = self.arena.alloc_from_iter([segment]);
+                let path = self.arena.alloc(hir::Path { span, res, segments });
+                hir::ExprKind::Path(hir::QPath::Resolved(None, path))
+            }
             ExprKind::Path(qself, path) => {
                 let qpath = self.lower_qpath(
                     e.id,

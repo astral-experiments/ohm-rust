@@ -66,7 +66,7 @@ pub(crate) fn resolve_type_relative_delegations(
                     _ => unreachable!("we are processing only delegations"),
                 };
 
-                let res = r.partial_res_map.get(&delegation.id);
+                let res = r.partial_res_map.get(delegation.id);
                 let res = res.and_then(|res| res.base_res().opt_def_id());
                 let ident = delegation.path.segments.last().map(|s| s.ident);
 
