@@ -351,6 +351,7 @@ jobs:
             tests/run-make/incremental-missing-query-cache
             tests/run-make/ohm-retained-mono-values
             tests/run-make/ohm-written-impl-paths
+            tests/run-make/capped-mir-lints
             tests/run-make/incremental-lint-owners
             tests/run-make/incremental-lint-visibilities
             tests/run-make/split-debuginfo-incremental
