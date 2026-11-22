@@ -343,6 +343,7 @@ jobs:
             tests/run-make/incremental-module-syntax
             tests/run-make/incremental-large-byte-literal
             tests/run-make/static-integer-array-literals
+            tests/run-make/literal-array-slices
             tests/run-make/incremental-string-table
             tests/run-make/incremental-check-body-attrs
             tests/run-make/incremental-recomputed-query-spans
