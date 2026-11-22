@@ -171,14 +171,22 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
         }
     }
 
-    pub(super) fn prove_clauses(
+    /// Prove WF at the call site, avoiding a predicate and type op when
+    /// the term is already known to be well-formed and leaves no constraints.
+    pub(super) fn prove_wf(
         &mut self,
-        clauses: impl IntoIterator<Item: Upcast<TyCtxt<'tcx>, ty::Clause<'tcx>> + std::fmt::Debug>,
+        terms: impl IntoIterator<Item = ty::Term<'tcx>>,
         locations: Locations,
         category: ConstraintCategory<'tcx>,
     ) {
-        for clause in clauses {
-            self.prove_clause(clause, locations, category);
+        for term in terms {
+            if !self.infcx.disable_trait_solver_fast_paths()
+                && term.is_trivially_wf(self.tcx())
+                && self.infcx.region_state_is_empty()
+            {
+                continue;
+            }
+            self.prove_clause(ty::ClauseKind::WellFormed(term), locations, category);
         }
     }
 

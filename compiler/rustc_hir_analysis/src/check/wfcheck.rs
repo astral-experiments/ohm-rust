@@ -126,6 +126,16 @@ impl<'tcx> WfCheckingCtxt<'_, 'tcx> {
         loc: Option<WellFormedLoc>,
         term: ty::Term<'tcx>,
     ) {
+        // As in body type checking, avoid interning and queueing a predicate
+        // that fulfillment would immediately discharge.
+        if !self.ocx.infcx.disable_trait_solver_fast_paths()
+            && self.ocx.infcx.obligation_inspector.get().is_none()
+            && !term.has_non_region_infer()
+            && !term.has_escaping_bound_vars()
+            && term.is_trivially_wf(self.tcx())
+        {
+            return;
+        }
         let cause = traits::ObligationCause::new(
             span,
             self.body_def_id,
