@@ -151,7 +151,12 @@ impl<'a, 'b> ParserAnyMacro<'a, 'b> {
 
 pub(crate) enum MacroRule {
     /// A function-style rule, for use with `m!()`
-    Func { lhs: Vec<MatcherLoc>, lhs_span: Span, rhs: mbe::TokenTree },
+    Func {
+        lhs: Vec<MatcherLoc>,
+        lhs_span: Span,
+        required: Option<RequiredToken>,
+        rhs: mbe::TokenTree,
+    },
     /// An attr rule, for use with `#[m]`
     Attr {
         unsafe_rule: bool,
@@ -163,6 +168,69 @@ pub(crate) enum MacroRule {
     },
     /// A derive rule, for use with `#[m]`
     Derive { body: Vec<MatcherLoc>, body_span: Span, rhs: mbe::TokenTree },
+}
+
+/// A literal at a fixed offset in the input token trees. Checking it first avoids
+/// repeatedly capturing the same prefix in arms that differ only in a later token.
+pub(crate) struct RequiredToken {
+    index: usize,
+    token: Token,
+}
+
+impl RequiredToken {
+    fn new(pattern: &[mbe::TokenTree]) -> Option<Self> {
+        // Crossing a fragment parser or a branching repetition could hide a syntax
+        // error or local ambiguity, even in an arm that cannot ultimately match.
+        // A trailing `$($t:tt)*` inside a group is unambiguous: a tt cannot start
+        // with the closing delimiter.
+        fn fixed_tree(tree: &mbe::TokenTree) -> bool {
+            match tree {
+                mbe::TokenTree::Token(token) => !matches!(token.kind, DocComment(..)),
+                mbe::TokenTree::MetaVarDecl { kind: NonterminalKind::TT, .. } => true,
+                mbe::TokenTree::Delimited(_, _, group) => {
+                    let mut inner = group.tts.as_slice();
+                    if let [prefix @ .., mbe::TokenTree::Sequence(_, seq)] = inner
+                        && seq.separator.is_none()
+                        && matches!(
+                            seq.tts.as_slice(),
+                            [mbe::TokenTree::MetaVarDecl { kind: NonterminalKind::TT, .. }]
+                        )
+                    {
+                        inner = prefix;
+                    }
+                    inner.iter().all(fixed_tree)
+                }
+                _ => false,
+            }
+        }
+
+        pattern
+            .iter()
+            .take_while(|tt| fixed_tree(tt))
+            .enumerate()
+            .filter_map(|(index, tt)| {
+                if let mbe::TokenTree::Token(token) = tt {
+                    Some(Self { index, token: *token })
+                } else {
+                    None
+                }
+            })
+            .last()
+    }
+
+    fn rejects(&self, arg: &TokenStream) -> bool {
+        if let Some(tokenstream::TokenTree::Token(token, _)) = arg.get(self.index)
+            && mbe::macro_parser::token_name_eq(&self.token, token)
+        {
+            return false;
+        }
+        // The parser desugars doc comments and may flatten invisible groups. In
+        // those cases a raw token tree offset may no longer name the same token.
+        arg.iter().take(self.index + 1).all(|tt| match tt {
+            tokenstream::TokenTree::Token(token, _) => !matches!(token.kind, DocComment(..)),
+            tokenstream::TokenTree::Delimited(_, _, delim, _) => !delim.skip(),
+        })
+    }
 }
 
 /// A selection of a matcher in a [`MacroRule`].
@@ -367,6 +435,9 @@ fn trace_macros_note(cx_expansions: &mut FxIndexMap<Span, Vec<String>>, sp: Span
 }
 
 pub(super) trait Tracker<'matcher> {
+    /// Whether even unsuccessful arms must be visited for diagnostics.
+    const TRACK_FAILURES: bool = true;
+
     /// Provide context on the arm that's about to be matched.
     fn prepare(&mut self, which_matcher: WhichMatcher, matcher: &'matcher [MatcherLoc]);
 
@@ -410,6 +481,8 @@ pub(super) trait Tracker<'matcher> {
 pub(super) struct NoopTracker;
 
 impl<'matcher> Tracker<'matcher> for NoopTracker {
+    const TRACK_FAILURES: bool = false;
+
     fn prepare(&mut self, _which_matcher: WhichMatcher, _matcher: &'matcher [MatcherLoc]) {}
 
     fn before_match_loc(&mut self, _parser: &TtParser, _matcher: &'matcher MatcherLoc) {}
@@ -638,8 +711,12 @@ pub(super) fn try_match_macro<'matcher, T: Tracker<'matcher>>(
     // Try each arm's matchers.
     let mut tt_parser = TtParser::new();
     for (i, rule) in rules.iter().enumerate() {
-        let MacroRule::Func { lhs, .. } = rule else { continue };
+        let MacroRule::Func { lhs, required, .. } = rule else { continue };
         let _tracing_span = trace_span!("Matching arm", %i);
+
+        if !T::TRACK_FAILURES && required.as_ref().is_some_and(|token| token.rejects(arg)) {
+            continue;
+        }
 
         // Take a snapshot of the state of pre-expansion gating at this point.
         // This is used so that if a matcher is not `Success(..)`ful,
@@ -905,7 +982,8 @@ pub fn compile_declarative_macro(
         } else if is_derive {
             rules.push(MacroRule::Derive { body: lhs, body_span: lhs_span, rhs });
         } else {
-            rules.push(MacroRule::Func { lhs, lhs_span, rhs });
+            let required = RequiredToken::new(&delimited.tts);
+            rules.push(MacroRule::Func { lhs, lhs_span, required, rhs });
         }
         if p.token == token::Eof {
             break;

@@ -1,4 +1,5 @@
 use rustc_ast::mut_visit::*;
+use rustc_ast::node_id::NodeBitSet;
 use rustc_ast::token::Delimiter;
 use rustc_ast::visit::AssocCtxt;
 use rustc_ast::{self as ast};
@@ -206,18 +207,19 @@ pub(crate) fn placeholder(
 }
 
 pub(crate) struct PlaceholderExpander {
+    complete_items: NodeBitSet,
     expanded_fragments: FxHashMap<ast::NodeId, AstFragment>,
 }
 
 impl PlaceholderExpander {
-    pub(crate) fn with_capacity(capacity: usize) -> Self {
+    pub(crate) fn with_capacity(capacity: usize, complete_items: NodeBitSet) -> Self {
         PlaceholderExpander {
+            complete_items,
             expanded_fragments: FxHashMap::with_capacity_and_hasher(capacity, Default::default()),
         }
     }
 
-    pub(crate) fn add(&mut self, id: ast::NodeId, mut fragment: AstFragment) {
-        fragment.mut_visit_with(self);
+    pub(crate) fn add(&mut self, id: ast::NodeId, fragment: AstFragment) {
         self.expanded_fragments.insert(id, fragment);
     }
 
@@ -299,7 +301,10 @@ impl MutVisitor for PlaceholderExpander {
 
     fn flat_map_item(&mut self, item: Box<ast::Item>) -> SmallVec<[Box<ast::Item>; 1]> {
         match item.kind {
+            // Placeholder IDs come from the expansion ID space and can coincide with real
+            // node IDs. Always consume the placeholder before consulting the item set.
             ast::ItemKind::MacCall(_) => self.remove(item.id).make_items(),
+            _ if self.complete_items.contains(item.id) => smallvec![item],
             _ => walk_flat_map_item(self, item),
         }
     }
@@ -318,6 +323,7 @@ impl MutVisitor for PlaceholderExpander {
                     AssocCtxt::Impl { of_trait: true } => it.make_trait_impl_items(),
                 }
             }
+            _ if self.complete_items.contains(item.id) => smallvec![item],
             _ => walk_flat_map_assoc_item(self, item, ctxt),
         }
     }
@@ -328,11 +334,15 @@ impl MutVisitor for PlaceholderExpander {
     ) -> SmallVec<[Box<ast::ForeignItem>; 1]> {
         match item.kind {
             ast::ForeignItemKind::MacCall(_) => self.remove(item.id).make_foreign_items(),
+            _ if self.complete_items.contains(item.id) => smallvec![item],
             _ => walk_flat_map_foreign_item(self, item),
         }
     }
 
     fn visit_expr(&mut self, expr: &mut ast::Expr) {
+        if expr.is_plain_leaf() {
+            return;
+        }
         match expr.kind {
             ast::ExprKind::MacCall(_) => *expr = *self.remove(expr.id).make_expr(),
             _ => walk_expr(self, expr),
@@ -340,6 +350,9 @@ impl MutVisitor for PlaceholderExpander {
     }
 
     fn visit_method_receiver_expr(&mut self, expr: &mut ast::Expr) {
+        if expr.is_plain_leaf() {
+            return;
+        }
         match expr.kind {
             ast::ExprKind::MacCall(_) => *expr = *self.remove(expr.id).make_method_receiver_expr(),
             _ => walk_expr(self, expr),
@@ -347,6 +360,9 @@ impl MutVisitor for PlaceholderExpander {
     }
 
     fn filter_map_expr(&mut self, expr: Box<ast::Expr>) -> Option<Box<ast::Expr>> {
+        if expr.is_plain_leaf() {
+            return Some(expr);
+        }
         match expr.kind {
             ast::ExprKind::MacCall(_) => self.remove(expr.id).make_opt_expr(),
             _ => walk_filter_map_expr(self, expr),

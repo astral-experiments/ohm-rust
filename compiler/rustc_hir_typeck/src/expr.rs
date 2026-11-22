@@ -55,6 +55,18 @@ use crate::{
     TupleArgumentsFlag, cast, fatally_break_rust, type_error_struct,
 };
 
+/// Includes each tuple field so lints and later passes can look up its type by HIR ID.
+pub(crate) fn literal_table_nodes<'tcx>(
+    rows: &'tcx [hir::Expr<'tcx>],
+    element: Ty<'tcx>,
+) -> impl Iterator<Item = (&'tcx hir::Expr<'tcx>, Ty<'tcx>)> + Clone {
+    let types = element.opt_tuple_fields().unwrap_or_default();
+    rows.iter().flat_map(move |row| {
+        let fields = if let ExprKind::Tup(fields) = row.kind { fields } else { &[] };
+        std::iter::once((row, element)).chain(fields.iter().zip(types.as_slice().iter().copied()))
+    })
+}
+
 impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
     pub(crate) fn precedence(&self, expr: &hir::Expr<'_>) -> ExprPrecedence {
         let has_attr = |id: HirId| -> bool {
@@ -1668,15 +1680,15 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         }
     }
 
-    /// Whether every element of this initializer has the same known primitive type.
+    /// Whether all rows are literal scalars or tuples of literal scalars with known types.
     /// Keep the ordinary coercion of the enclosing array and its borrow.
-    pub(crate) fn is_scalar_literal_table(
+    pub(crate) fn is_literal_table(
         &self,
         expr: &hir::Expr<'tcx>,
         fields: &[hir::Expr<'tcx>],
         element: Ty<'tcx>,
     ) -> bool {
-        if fields.len() < 1024
+        if fields.len() < 16
             || self.infcx.obligation_inspector.get().is_some()
             || self.tainted_by_errors().is_some()
         {
@@ -1689,7 +1701,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         }
         if !matches!(
             element.kind(),
-            ty::Char | ty::Uint(ty::UintTy::U8 | ty::UintTy::U16 | ty::UintTy::U32)
+            ty::Tuple(_) | ty::Char | ty::Uint(ty::UintTy::U8 | ty::UintTy::U16 | ty::UintTy::U32)
         ) {
             return false;
         }
@@ -1702,11 +1714,24 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             return false;
         }
         let attrs = self.tcx.hir_attr_map(expr.hir_id.owner);
-        fields.iter().all(|field| {
-            field.hir_id.owner == expr.hir_id.owner
-                && attrs.get(field.hir_id.local_id).is_empty()
-                && matches!(field.kind, ExprKind::Lit(lit) if element.table_literal_bits(&lit.node).is_some())
-        })
+        let plain = |field: &hir::Expr<'tcx>| {
+            field.hir_id.owner == expr.hir_id.owner && attrs.get(field.hir_id.local_id).is_empty()
+        };
+        let literal = |field: &hir::Expr<'tcx>, ty: Ty<'tcx>| {
+            plain(field)
+                && matches!(field.kind, ExprKind::Lit(lit) if ty.table_literal_bits(&lit.node).is_some())
+        };
+        if let ty::Tuple(types) = element.kind() {
+            !types.is_empty()
+                && fields.iter().all(|row| {
+                    let ExprKind::Tup(items) = row.kind else { return false };
+                    plain(row)
+                        && items.len() == types.len()
+                        && items.iter().zip(types.iter()).all(|(item, ty)| literal(item, ty))
+                })
+        } else {
+            fields.iter().all(|field| literal(field, element))
+        }
     }
 
     fn check_expr_array(
@@ -1728,8 +1753,12 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         })
                 })
                 .unwrap_or_else(|| self.next_ty_var(expr.span));
-            let (checked, known) = if self.is_scalar_literal_table(expr, args, coerce_to) {
-                self.typeck_results.borrow_mut().node_types_mut().reserve(args.len());
+            let (checked, known) = if self.is_literal_table(expr, args, coerce_to) {
+                let nodes_per_row = 1 + coerce_to.opt_tuple_fields().map_or(0, |tys| tys.len());
+                self.typeck_results
+                    .borrow_mut()
+                    .node_types_mut()
+                    .reserve(args.len() * nodes_per_row);
                 args.split_at(1)
             } else {
                 (args, &[][..])
@@ -1746,8 +1775,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 let cause = self.misc(e.span);
                 coerce.coerce(self, &cause, e, e_ty);
             }
-            for e in known {
-                self.write_ty(e.hir_id, coerce_to);
+            for (e, ty) in literal_table_nodes(known, coerce_to) {
+                self.write_ty(e.hir_id, ty);
             }
             coerce.complete(self)
         } else {

@@ -2272,6 +2272,15 @@ impl StableSourceFileId {
 impl SourceFile {
     const MAX_FILE_SIZE: u32 = u32::MAX - 1;
 
+    /// Identity of the original bytes for queries shared between checks and builds.
+    /// Codegen can require a different source hash in metadata and debug info.
+    pub fn input_hash(&self) -> SourceFileHash {
+        match self.checksum_hash {
+            Some(hash) if hash.kind == SourceFileHashAlgorithm::Blake3 => hash,
+            _ => self.src_hash,
+        }
+    }
+
     pub fn new(
         name: FileName,
         mut src: String,

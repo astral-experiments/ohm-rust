@@ -263,6 +263,48 @@ impl<'hir> LoweringContext<'_, 'hir> {
         bound_modifier_allowed_features: Option<Arc<[Symbol]>>,
     ) -> hir::PathSegment<'hir> {
         debug!("path_span: {:?}, lower_path_segment(segment: {:?})", path_span, segment);
+        // Elided lifetimes can introduce arguments even without explicit syntax.
+        let (args, infer_args) = if segment.args.is_none()
+            && self.curr_owner.owner.get_lifetime_res(segment.id).is_none()
+        {
+            (None, param_mode == ParamMode::Optional)
+        } else {
+            self.lower_path_segment_args(
+                path_span,
+                segment,
+                param_mode,
+                generic_args_mode,
+                itctx,
+                bound_modifier_allowed_features,
+            )
+        };
+
+        let res = self.expect_full_res(segment.id);
+        let hir_id = self.lower_node_id(segment.id);
+        debug!(
+            "lower_path_segment: ident={:?} original-id={:?} new-id={:?}",
+            segment.ident, segment.id, hir_id,
+        );
+
+        hir::PathSegment {
+            ident: self.lower_ident(segment.ident),
+            hir_id,
+            res: self.lower_res(res),
+            infer_args,
+            args,
+            delegation_child_segment: false,
+        }
+    }
+
+    fn lower_path_segment_args(
+        &mut self,
+        path_span: Span,
+        segment: &PathSegment,
+        param_mode: ParamMode,
+        generic_args_mode: GenericArgsMode,
+        itctx: ImplTraitContext,
+        bound_modifier_allowed_features: Option<Arc<[Symbol]>>,
+    ) -> (Option<&'hir hir::GenericArgs<'hir>>, bool) {
         let (mut generic_args, infer_args) = if let Some(generic_args) = segment.args.as_deref() {
             match generic_args {
                 GenericArgs::AngleBracketed(data) => {
@@ -398,25 +440,12 @@ impl<'hir> LoweringContext<'_, 'hir> {
             );
         }
 
-        let res = self.expect_full_res(segment.id);
-        let hir_id = self.lower_node_id(segment.id);
-        debug!(
-            "lower_path_segment: ident={:?} original-id={:?} new-id={:?}",
-            segment.ident, segment.id, hir_id,
-        );
-
-        hir::PathSegment {
-            ident: self.lower_ident(segment.ident),
-            hir_id,
-            res: self.lower_res(res),
-            infer_args,
-            args: if generic_args.is_empty() && generic_args.span.is_empty() {
-                None
-            } else {
-                Some(generic_args.into_generic_args(self))
-            },
-            delegation_child_segment: false,
-        }
+        let args = if generic_args.is_empty() && generic_args.span.is_empty() {
+            None
+        } else {
+            Some(generic_args.into_generic_args(self))
+        };
+        (args, infer_args)
     }
 
     fn maybe_insert_elided_lifetimes_in_path(

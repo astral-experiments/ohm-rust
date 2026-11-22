@@ -254,11 +254,29 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
                 }
 
                 let def_id = feed.def_id();
+                let mut last_method = None;
                 this.with_parent(def_id, |this| {
                     this.with_impl_trait(ImplTraitContext::Existential, |this| {
                         this.brg_visit_item(i, feed)
-                    })
+                    });
+                    if matches!(def_kind, DefKind::Impl { of_trait: false }) {
+                        last_method = this.invocation_parent.preceding_source_item;
+                    }
                 });
+                // The last written method can move with a derive following
+                // the impl even if earlier method bodies grow.
+                if let Some(method) = last_method
+                    && this.parent_scope.expansion == LocalExpnId::ROOT
+                    && !i.span.is_dummy()
+                    && i.span.ctxt().is_root()
+                    && this.r.tcx.def_kind(this.invocation_parent.parent_def) == DefKind::Mod
+                    && this
+                        .invocation_parent
+                        .preceding_source_item
+                        .is_none_or(|previous| this.r.tcx.def_kind(previous) == DefKind::AssocFn)
+                {
+                    this.invocation_parent.preceding_source_item = Some(method);
+                }
                 if def_kind.is_adt()
                     && this.r.tcx.sess.opts.incremental.is_some()
                     && this.parent_scope.expansion == LocalExpnId::ROOT
@@ -490,6 +508,9 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
 
     #[instrument(level = "debug", skip(self))]
     fn visit_expr(&mut self, expr: &'a Expr) {
+        if expr.is_plain_leaf() {
+            return;
+        }
         debug!(?self.invocation_parent);
 
         match &expr.kind {

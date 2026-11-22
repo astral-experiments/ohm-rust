@@ -261,20 +261,19 @@ struct MatcherPos {
 rustc_data_structures::static_assert_size!(MatcherPos, 16);
 
 impl MatcherPos {
-    /// Adds `m` as a named match for the `metavar_idx`-th metavar. There are only two call sites,
-    /// and both are hot enough to be always worth inlining.
+    /// Locate the vector to append captures to in the current repetition.
     #[inline(always)]
-    fn push_match(&mut self, metavar_idx: usize, seq_depth: usize, m: NamedMatch) {
+    fn captures(&mut self, metavar_idx: usize, seq_depth: usize) -> &mut Vec<NamedMatch> {
         let matches = Rc::make_mut(&mut self.matches);
         match seq_depth {
             0 => {
-                // We are not within a sequence. Just append `m`.
+                // We are not within a sequence. Append at the top level.
                 assert_eq!(metavar_idx, matches.len());
-                matches.push(m);
+                matches
             }
             _ => {
                 // We are within a sequence. Find the final `MatchedSeq` at the appropriate depth
-                // and append `m` to its vector.
+                // and return its vector.
                 let mut curr = &mut matches[metavar_idx];
                 for _ in 0..seq_depth - 1 {
                     match curr {
@@ -283,7 +282,7 @@ impl MatcherPos {
                     }
                 }
                 match curr {
-                    MatchedSeq(seq) => seq.push(m),
+                    MatchedSeq(seq) => seq,
                     _ => unreachable!(),
                 }
             }
@@ -393,7 +392,7 @@ impl NamedMatch {
 }
 
 /// Performs a token equality check, ignoring syntax context (that is, an unhygienic comparison)
-fn token_name_eq(t1: &Token, t2: &Token) -> bool {
+pub(super) fn token_name_eq(t1: &Token, t2: &Token) -> bool {
     if let (Some((ident1, is_raw1)), Some((ident2, is_raw2))) = (t1.ident(), t2.ident()) {
         ident1.name == ident2.name && is_raw1 == is_raw2
     } else if let (Some((ident1, is_raw1)), Some((ident2, is_raw2))) =
@@ -539,7 +538,7 @@ impl TtParser {
             } => {
                 // Install an empty vec for each metavar within the sequence.
                 for metavar_idx in next_metavar..next_metavar + num_metavar_decls {
-                    mp.push_match(metavar_idx, seq_depth, MatchedSeq(vec![]));
+                    mp.captures(metavar_idx, seq_depth).push(MatchedSeq(vec![]));
                 }
 
                 if matches!(op, KleeneOp::ZeroOrMore | KleeneOp::ZeroOrOne) {
@@ -610,13 +609,39 @@ impl TtParser {
                     return result;
                 }
 
+                // The ambiguity check committed to this position. If the whole
+                // repetition is `$t:tt` and ends at a delimiter or EOF, its
+                // two possible next positions accept disjoint inputs. Capture
+                // the run directly in the sequence at the current depth.
+                if !T::TRACK_FAILURES
+                    && matches!(kind, NonterminalKind::TT)
+                    && let [MatcherLoc::SequenceKleeneOpNoSep { op, idx_first }, end, ..] =
+                        &matcher[mp.idx + 1..]
+                    && *op != KleeneOp::ZeroOrOne
+                    && *idx_first == mp.idx
+                    && match end {
+                        MatcherLoc::Eof => true,
+                        MatcherLoc::Token { token } => token.kind.close_delim().is_some(),
+                        _ => false,
+                    }
+                {
+                    let seq = mp.captures(next_metavar, seq_depth);
+                    let parser = parser.to_mut();
+                    while !parser.token.kind.is_close_delim_or_eof() {
+                        seq.push(MatchedSingle(ParseNtResult::Tt(parser.parse_token_tree())));
+                    }
+                    mp.idx += 2;
+                    self.cur_mps.push(mp);
+                    return None;
+                }
+
                 // We use the span of the metavariable declaration to determine any
                 // edition-specific matching behavior for non-terminals.
                 let nt = match parser.to_mut().parse_nonterminal(kind) {
                     Err(err) => return Some(self.nt_parsing_error(matcher_loc, err)),
                     Ok(nt) => nt,
                 };
-                mp.push_match(next_metavar, seq_depth, MatchedSingle(nt));
+                mp.captures(next_metavar, seq_depth).push(MatchedSingle(nt));
 
                 mp.idx += 1;
                 self.cur_mps.push(mp);

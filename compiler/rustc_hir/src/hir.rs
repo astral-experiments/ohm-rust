@@ -1336,6 +1336,8 @@ pub struct OwnerNodes<'tcx> {
     pub bodies: SortedMap<ItemLocalId, &'tcx Body<'tcx>>,
     /// Whether any node in this owner has a parsed `#[loop_match]` or `#[const_continue]`.
     pub has_loop_control_attrs: bool,
+    /// Whether the item collector can encounter other items, nested bodies, or opaque types.
+    pub has_inner_defs: bool,
 }
 
 impl<'tcx> OwnerNodes<'tcx> {
@@ -1356,6 +1358,7 @@ impl<'tcx> OwnerNodes<'tcx> {
             ),
             bodies: SortedMap::new(),
             has_loop_control_attrs: false,
+            has_inner_defs: false,
         }
     }
 }
@@ -3320,10 +3323,9 @@ pub enum AmbigArg {}
 ///
 /// For an explanation of the `Unambig` generic parameter see the dev-guide:
 /// <https://rustc-dev-guide.rust-lang.org/ambig-unambig-ty-and-consts.html>
-#[derive(Debug, Clone, Copy, StableHash)]
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct Ty<'hir, Unambig = ()> {
-    #[stable_hash(ignore)]
     pub hir_id: HirId,
     pub span: Span,
     pub kind: TyKind<'hir, Unambig>,

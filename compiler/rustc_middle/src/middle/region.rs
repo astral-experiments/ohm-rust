@@ -12,6 +12,7 @@ use rustc_data_structures::fx::FxIndexMap;
 use rustc_data_structures::unord::UnordMap;
 use rustc_hir as hir;
 use rustc_hir::{HirId, ItemLocalMap, Node};
+use rustc_index::IndexVec;
 use rustc_macros::{StableHash, TyDecodable, TyEncodable};
 use rustc_span::{DUMMY_SP, Span, span_bug};
 use tracing::debug;
@@ -218,7 +219,10 @@ pub struct ScopeTree {
     /// conditional expression or repeating block. (Note that the
     /// enclosing scope ID for the block associated with a closure is
     /// the closure itself.)
-    pub parent_map: FxIndexMap<Scope, Scope>,
+    node_parents: IndexVec<hir::ItemLocalId, Option<Scope>>,
+
+    /// Parent links for other scope kinds and for bodies that share an owner.
+    parent_map: FxIndexMap<Scope, Scope>,
 
     /// Maps from a variable or binding ID to the block in which that
     /// variable is declared.
@@ -249,11 +253,29 @@ pub struct TempLifetime {
 }
 
 impl ScopeTree {
+    /// Node scopes have distinct local IDs within an owner. A nested body
+    /// like an array length may use only a few of its owner's IDs, so keep
+    /// that case sparse.
+    pub fn new(tcx: TyCtxt<'_>, owner: HirId) -> Self {
+        let node_parents = if owner.is_owner() {
+            IndexVec::from_elem_n(None, tcx.hir_owner_nodes(owner.owner).nodes.len())
+        } else {
+            IndexVec::new()
+        };
+        Self { node_parents, ..Self::default() }
+    }
+
     pub fn record_scope_parent(&mut self, child: Scope, parent: Option<Scope>) {
         debug!("{:?}.parent = {:?}", child, parent);
 
         if let Some(p) = parent {
-            let prev = self.parent_map.insert(child, p);
+            let prev = if child.data == ScopeData::Node
+                && let Some(parent) = self.node_parents.get_mut(child.local_id)
+            {
+                parent.replace(p)
+            } else {
+                self.parent_map.insert(child, p)
+            };
             assert!(prev.is_none());
         }
     }
@@ -275,7 +297,12 @@ impl ScopeTree {
 
     /// Returns the narrowest scope that encloses `id`, if any.
     pub fn opt_encl_scope(&self, id: Scope) -> Option<Scope> {
-        self.parent_map.get(&id).cloned()
+        if id.data == ScopeData::Node
+            && let Some(parent) = self.node_parents.get(id.local_id)
+        {
+            return *parent;
+        }
+        self.parent_map.get(&id).copied()
     }
 
     /// Returns the lifetime of the local variable `var_id`, if any.
@@ -312,7 +339,7 @@ impl ScopeTree {
         let mut id = inner;
         let mut backwards_incompatible = None;
 
-        while let Some(&p) = self.parent_map.get(&id) {
+        while let Some(p) = self.opt_encl_scope(id) {
             match p.data {
                 ScopeData::Destruction => {
                     debug!("temporary_scope({inner:?}) = {id:?} [enclosing]");

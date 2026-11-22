@@ -277,6 +277,13 @@ impl<'ast, 'tcx> visit::Visitor<'ast> for LanguageItemCollector<'ast, 'tcx> {
             i.opt_generics(),
         );
 
+        // Variants may have language items even when they aren't HIR owners.
+        if !matches!(i.kind, ast::ItemKind::Enum(..))
+            && !self.resolver.owners[&i.id].may_have_nested_items
+        {
+            return;
+        }
+
         let parent_item = self.parent_item.replace(i);
         visit::walk_item(self, i);
         self.parent_item = parent_item;
@@ -308,7 +315,9 @@ impl<'ast, 'tcx> visit::Visitor<'ast> for LanguageItemCollector<'ast, 'tcx> {
 
         self.check_for_lang(target, self.resolver.owners[&i.id].def_id, &i.attrs, i.span, generics);
 
-        visit::walk_assoc_item(self, i, ctxt);
+        if self.resolver.owners[&i.id].may_have_nested_items {
+            visit::walk_assoc_item(self, i, ctxt);
+        }
     }
 }
 

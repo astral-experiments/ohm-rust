@@ -121,6 +121,15 @@ fn typeck_with_inspect<'tcx>(
     let body = tcx.hir_body(body_id);
     let param_env = tcx.param_env(def_id);
 
+    if inspector.is_none()
+        && let Some((_, ty)) = tcx.integer_literal_const(def_id)
+    {
+        let results = tcx.arena.alloc(ty::TypeckResults::new(id.owner));
+        results.node_types_mut().insert(id, ty);
+        results.node_types_mut().insert(body.value.hir_id, ty);
+        return results;
+    }
+
     // For a small unsuffixed integer literal in a `usize` constant, typeck
     // records only the owner and expression types: there are no inference
     // variables, adjustments, or obligations to resolve.

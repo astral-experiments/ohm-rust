@@ -915,6 +915,18 @@ impl DepGraphData {
             let computed_fingerprint = value_fingerprint;
             let value_fingerprint = value_fingerprint.unwrap_or(Fingerprint::ZERO);
 
+            // Re-executing a query can change its dependencies even if its
+            // result stays green. Input rows typically have at most one edge:
+            // when that list is identical too, the entire row can stay put.
+            if is_green
+                && self.current.encoder.retains_indices()
+                && self.previous.has_same_short_edges(prev_index, edges)
+            {
+                return self
+                    .promote_node_and_deps_to_current::<true>(prev_index, &[])
+                    .unwrap_or_else(|| panic!("dep node {prev_index:?} is unexpectedly red"));
+            }
+
             let dep_node_index = self.current.encoder.send_and_color(
                 prev_index,
                 &self.colors,
@@ -1231,77 +1243,36 @@ impl DepGraphData {
         // final form. Only compacting sessions need an edge buffer or its guard.
         let mut edges = if RETAIN_INDICES { None } else { Some(EdgeFrame::new(edge_buf.unwrap())) };
         let frame = MarkFrame { index: prev_dep_node_index, parent: frame };
-        for parent_dep_node_index in self.previous.edge_targets_from(prev_dep_node_index) {
-            match self.colors.get(parent_dep_node_index) {
-                // This dependency has been marked as green before, we are still ok and can
-                // continue checking the remaining dependencies.
-                DepNodeColor::Green(parent_index) => {
-                    if let Some(edges) = &mut edges {
-                        edges.push(parent_index);
+        self.previous.try_for_each_edge(
+            prev_dep_node_index,
+            #[inline(always)]
+            |parent_dep_node_index| {
+                let parent_index = match self.colors.get(parent_dep_node_index) {
+                    DepNodeColor::Green(index) => index,
+                    DepNodeColor::Red => return None,
+                    DepNodeColor::Unknown => {
+                        let parent_dep_node = self.previous.index_to_node(parent_dep_node_index);
+                        if !tcx.is_eval_always(parent_dep_node.kind)
+                            && let Some(index) = self.try_mark_previous_green::<RETAIN_INDICES>(
+                                tcx,
+                                parent_dep_node_index,
+                                Some(&frame),
+                                // The recursive call's `EdgeFrame` restores the buffer.
+                                edges.as_mut().map(|edges| &mut *edges.buf),
+                            )
+                        {
+                            index
+                        } else {
+                            self.try_force_green(tcx, parent_dep_node_index, &frame)?
+                        }
                     }
-                    continue;
-                }
-
-                // This dependency's result is different to the previous compilation session. We
-                // cannot mark this dep_node as green, so stop checking.
-                DepNodeColor::Red => return None,
-
-                // We still need to determine this dependency's colour.
-                DepNodeColor::Unknown => {}
-            }
-
-            let parent_dep_node = self.previous.index_to_node(parent_dep_node_index);
-
-            // If this dependency isn't eval_always, try to mark it green recursively.
-            if !tcx.is_eval_always(parent_dep_node.kind)
-                && let Some(parent_index) = self.try_mark_previous_green::<RETAIN_INDICES>(
-                    tcx,
-                    parent_dep_node_index,
-                    Some(&frame),
-                    // Pass the edge buffer to the recursive call.
-                    // It will use an `EdgeFrame` to give it back unchanged.
-                    edges.as_mut().map(|edges| &mut *edges.buf),
-                )
-            {
+                };
                 if let Some(edges) = &mut edges {
                     edges.push(parent_index);
                 }
-                continue;
-            }
-
-            // We failed to mark it green, so we try to force the query.
-            if !tcx.try_force_from_dep_node(
-                *parent_dep_node,
-                parent_dep_node_index,
-                Some(prev_dep_node_index),
-                &frame,
-            ) {
-                return None;
-            }
-
-            match self.colors.get(parent_dep_node_index) {
-                DepNodeColor::Green(parent_index) => {
-                    if let Some(edges) = &mut edges {
-                        edges.push(parent_index);
-                    }
-                    continue;
-                }
-                DepNodeColor::Red => return None,
-                DepNodeColor::Unknown => {}
-            }
-
-            if tcx.dcx().has_errors_or_delayed_bugs().is_none() {
-                panic!("try_mark_previous_green() - forcing failed to set a color");
-            }
-
-            // If the query we just forced has resulted in some kind of compilation error, we
-            // cannot rely on the dep-node color having been properly updated. This means that the
-            // query system has reached an invalid state. We let the compiler continue (by
-            // returning `None`) so it can emit error messages and wind down, but rely on the fact
-            // that this invalid state will not be persisted to the incremental compilation cache
-            // because of compilation errors being present.
-            return None;
-        }
+                Some(())
+            },
+        )?;
 
         // If we got here without hitting a `return` that means that all
         // dependencies of this DepNode could be marked as green. Therefore we
@@ -1322,6 +1293,37 @@ impl DepGraphData {
         // Multiple threads can all write the same color here.
 
         Some(dep_node_index)
+    }
+
+    /// Force an uncolored dependency when recursive validation cannot turn it green.
+    /// Keep the query dispatch out of the edge loops and their recursive stack frames.
+    #[inline(never)]
+    fn try_force_green(
+        &self,
+        tcx: TyCtxt<'_>,
+        index: SerializedDepNodeIndex,
+        frame: &MarkFrame<'_>,
+    ) -> Option<DepNodeIndex> {
+        if !tcx.try_force_from_dep_node(
+            *self.previous.index_to_node(index),
+            index,
+            Some(frame.index),
+            frame,
+        ) {
+            return None;
+        }
+        match self.colors.get(index) {
+            DepNodeColor::Green(index) => Some(index),
+            DepNodeColor::Red => None,
+            DepNodeColor::Unknown => {
+                if tcx.dcx().has_errors_or_delayed_bugs().is_none() {
+                    panic!("try_mark_previous_green() - forcing failed to set a color");
+                }
+                // A compilation error may leave a forced dependency uncolored.
+                // Let the compiler emit its diagnostics. It will discard this graph.
+                None
+            }
+        }
     }
 }
 

@@ -34,13 +34,19 @@ fn caller_locations() {
     let defs = "#[track_caller] fn site() -> (u32, u32) {\n\
         let loc = std::panic::Location::caller(); (loc.line(), loc.column())\n\
         }\nmacro_rules! expanded { () => { site() } }\n";
-    for (lines, columns) in [(0, 0), (3, 0), (3, 256), (0, 0)] {
+    // Also move the calls by exactly 2^16 bytes without changing either the
+    // length of the lines or the span of the function. A truncated offset
+    // would make the two locations look identical.
+    for (lines, columns, trailing) in
+        [(0, 0, 0), (3, 0, 0), (3, 256, 0), (3, 256, 1 << 16), (3, 256 + (1 << 16), 0), (0, 0, 0)]
+    {
         let before = "\n".repeat(lines);
         let inside = " ".repeat(columns);
+        let after = " ".repeat(trailing);
         let source = format!(
             "{defs}{before}fn main() {{\n\
-             {inside}let a = site();\n\
-             {inside}let b = expanded!();\n\
+             {inside}let a = site();{after}\n\
+             {inside}let b = expanded!();{after}\n\
              println!(\"{{a:?}} {{b:?}}\");\n}}\n"
         );
         rfs::write("main.rs", source);

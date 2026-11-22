@@ -133,6 +133,17 @@ fn skippable_lints(tcx: TyCtxt<'_>, (): ()) -> UnordSet<LintId> {
         .map(|lint| LintId::of(*lint))
         .collect();
 
+    // Local attributes cannot raise a lint above the cap. The root already
+    // accounts for forced warnings, and the filter above retains always-run
+    // and future-incompatible lints. Check for expectations before skipping
+    // local levels, since a suppressed lint can still fulfill an expectation.
+    if tcx.sess.opts.lint_cap == Some(Level::Allow)
+        && !tcx.sess.opts.unstable_opts.future_incompat_test
+        && tcx.lint_expectations(()).is_empty()
+    {
+        return skippable.into();
+    }
+
     for owner in tcx.hir_crate_items(()).owners() {
         let map = tcx.shallow_lint_levels_on(owner);
 

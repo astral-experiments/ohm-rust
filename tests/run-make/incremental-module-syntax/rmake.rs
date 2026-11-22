@@ -46,6 +46,29 @@ mod tests {
         .run_fail()
         .assert_stderr_contains("cannot find function `unresolved`");
 
+    // Cargo requests a byte checksum in both stages. A native build may
+    // use a different hash in debuginfo, but the parsed module is unchanged.
+    let stage = |dir: &str| {
+        let mut cmd = check(dir);
+        cmd.arg("-Zchecksum-hash-algorithm=blake3");
+        cmd
+    };
+    stage("stages").run();
+    let checked = rfs::read("liblib.rmeta");
+    stage("stages").emit("link").run().assert_stderr_contains("reused parsed module");
+    let built = rfs::read("liblib.rmeta");
+    stage("build-fresh").emit("link").run();
+    assert!(built == rfs::read("liblib.rmeta"));
+    stage("stages").run().assert_stderr_contains("reused parsed module");
+    assert!(checked == rfs::read("liblib.rmeta"));
+
+    // Even a change erased by newline normalization changes the input bytes.
+    rfs::write("cached.rs", source.replace('\n', "\r\n"));
+    stage("stages").run().assert_stderr_not_contains("reused parsed module");
+    let checked = rfs::read("liblib.rmeta");
+    stage("stages-fresh").run();
+    assert!(checked == rfs::read("liblib.rmeta"));
+
     // Editing inactive code still has to pass the parser.
     rfs::write("cached.rs", source.replace("unresolved();", "let = 0;"));
     check("warm").run_fail().assert_stderr_contains("expected pattern");
