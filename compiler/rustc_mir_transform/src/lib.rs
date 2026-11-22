@@ -363,6 +363,11 @@ fn mir_keys(tcx: TyCtxt<'_>, (): ()) -> FxIndexSet<LocalDefId> {
 }
 
 fn mir_const_qualif(tcx: TyCtxt<'_>, def: LocalDefId) -> ConstQualifs {
+    // A primitive integer literal cannot have interior mutability or require a drop.
+    if tcx.integer_literal_const(def).is_some() {
+        return ConstQualifs::default();
+    }
+
     // N.B., this `borrow()` is guaranteed to be valid (i.e., the value
     // cannot yet be stolen), because `mir_promoted()`, which steals
     // from `mir_built()`, forces this query to execute before

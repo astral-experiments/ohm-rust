@@ -1058,6 +1058,11 @@ pub(crate) fn check_unsafety(tcx: TyCtxt<'_>, def: LocalDefId) {
         return;
     }
 
+    // A free integer literal has no unsafe operation and needs neither THIR nor MIR.
+    if tcx.integer_literal_const(def).is_some() {
+        return;
+    }
+
     // A direct literal cannot contain unsafe operations or unused unsafe blocks.
     // Keep building MIR here, as the regular checker does after building THIR.
     if !tcx.sess.opts.unstable_opts.no_steal_thir
