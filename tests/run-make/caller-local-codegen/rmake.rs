@@ -7,6 +7,7 @@ fn compile(incremental: Option<&str>, caller_local: bool, opt_level: &str) -> St
     let mut command = rustc();
     command
         .input("main.rs")
+        .edition("2021")
         .opt_level(opt_level)
         .codegen_units(32)
         .arg("-Zhuman-readable-cgu-names")
@@ -51,15 +52,19 @@ fn assert_fallback_placement(output: &str, fragments: &[&str]) {
 fn main() {
     rustc().input("upstream.rs").arg("-Zshare-generics=yes").arg("-Zpublic-api-hash").run();
 
+    let coroutine_glue = "drop_glue::<{async fn body of tasks::pending()}>";
+
     let ordinary = compile(Some("ordinary"), false, "0");
     assert_placement(&ordinary, "upstream::apply::<", "upstream.", ".volatile[");
     assert_placement(&ordinary, "upstream::invoke::<", "upstream.", ".volatile[");
     assert_placement(&ordinary, "upstream::identity::<u64>", "upstream.", ".volatile[");
     assert_fallback_placement(&ordinary, &["<upstream::Wrapper<", ">::drop"]);
+    assert_fallback_placement(&ordinary, &[coroutine_glue]);
     assert_fallback_placement(&ordinary, &["drop_glue::<upstream::Wrapper<"]);
     run("main").assert_stdout_contains("dropped:false:true:7:11");
 
     let caller_local = compile(Some("caller-local"), true, "0");
+    assert_placement(&caller_local, coroutine_glue, "main.", "-tasks.volatile[");
     for function in ["upstream::apply::<", "upstream::invoke::<"] {
         assert_placement(&caller_local, function, "main.", "-first.volatile[");
         assert_placement(&caller_local, function, "main.", "-second.volatile[");
