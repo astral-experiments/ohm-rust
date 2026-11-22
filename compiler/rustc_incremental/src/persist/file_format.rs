@@ -34,7 +34,8 @@ const FILE_MAGIC: &[u8] = b"RSIC";
 // Check graphs carry a sibling compatibility key and use logical local IDs.
 // Local record types can refer to the current session's field definitions.
 // Retained query results use a bitmap for aliases whose graph index has not changed.
-const HEADER_FORMAT_VERSION: u16 = 61374;
+// Parsed module snapshots follow the retained generations.
+const HEADER_FORMAT_VERSION: u16 = 61375;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);

@@ -36,6 +36,10 @@ fn encode_query_values_inner<'tcx, C, V>(
     let _timer = tcx.prof.generic_activity_with_arg("encode_query_results_for", query.name);
 
     assert!(all_inactive(&query.state));
+    // OnDiskCache serializes parsed modules after the retained generations.
+    if query.dep_kind == rustc_middle::dep_graph::DepKind::ohm_module_syntax {
+        return;
+    }
     query.cache.for_each(&mut |key, value, dep_node| {
         if query.will_cache_on_disk_for_key(*key) {
             encoder.encode_query_value::<V>(dep_node, &erase::restore_val::<V>(*value));
@@ -132,13 +136,11 @@ pub(crate) fn promote_from_disk_inner<'tcx, C: QueryCache>(
 
     // Leave unused values serialized. If a later compilation needs the value,
     // its ordinary loading path still decodes and verifies the fingerprint.
-    if tcx
-        .query_system
-        .on_disk_cache
-        .as_ref()
-        .unwrap()
-        .try_forward_query_value(prev_index, dep_node_index)
-    {
+    if tcx.query_system.on_disk_cache.as_ref().unwrap().try_forward_query_value(
+        dep_node.kind,
+        prev_index,
+        dep_node_index,
+    ) {
         return;
     }
 
