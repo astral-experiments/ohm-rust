@@ -1221,6 +1221,7 @@ impl<'a, T: Idx> Iterator for MixedBitIter<'a, T> {
 ///
 /// `T` is an index type, typically a newtyped `usize` wrapper, but it can also
 /// just be `usize`.
+#[cfg_attr(feature = "nightly", derive(Decodable_NoContext, Encodable_NoContext))]
 #[derive(Debug, PartialEq)]
 pub struct GrowableBitSet<T: Idx> {
     words: Vec<Word>,
@@ -1295,6 +1296,15 @@ impl<T: Idx> GrowableBitSet<T> {
     #[inline]
     pub fn iter(&self) -> BitIter<'_, T> {
         BitIter::new(&self.words)
+    }
+
+    /// Returns the elements in both sets. Words beyond the shorter set are all empty.
+    #[inline]
+    pub fn intersection(&self, other: &Self) -> Self {
+        let words = self.words.iter().zip(&other.words).map(|(a, b)| a & b);
+        // Equality compares the words, so leave out any trailing empty words.
+        let len = words.clone().rposition(|word| word != 0).map_or(0, |i| i + 1);
+        Self { words: words.take(len).collect(), marker: PhantomData }
     }
 
     /// Mutates `self = self | other`.

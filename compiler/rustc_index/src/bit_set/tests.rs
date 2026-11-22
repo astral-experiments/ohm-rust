@@ -575,6 +575,22 @@ fn grow() {
 }
 
 #[test]
+fn growable_intersection() {
+    let set = |indices: &[usize]| {
+        let mut set = GrowableBitSet::new_empty();
+        for &index in indices {
+            set.insert(index);
+        }
+        set
+    };
+    let a = set(&[7, 64, 130]);
+    let b = set(&[7, 64, 129, 200]);
+    assert_eq!(a.intersection(&b), set(&[7, 64]));
+    assert_eq!(b.intersection(&a), set(&[7, 64]));
+    assert_eq!(a.intersection(&set(&[129])), set(&[]));
+}
+
+#[test]
 fn growable_union() {
     // Create two input sets with partly-overlapping values, and different sizes.
     let mut twos = GrowableBitSet::<usize>::new_empty();
