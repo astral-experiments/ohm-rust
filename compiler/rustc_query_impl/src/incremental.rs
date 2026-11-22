@@ -45,6 +45,9 @@ fn encode_query_values_inner<'tcx, C, V>(
             encoder.encode_query_value::<V>(dep_node, &erase::restore_val::<V>(*value));
         }
     });
+    for (index, value) in std::mem::take(&mut *query.promoted_without_keys.lock()) {
+        encoder.encode_query_value::<V>(index, &erase::restore_val::<V>(value));
+    }
 }
 
 pub(crate) fn verify_query_key_hashes<'tcx>(tcx: TyCtxt<'tcx>) {
