@@ -708,15 +708,14 @@ static InlineAdvisor *createTestInlineAdvisor(Module &M,
   return new DefaultInlineAdvisor(M, FAM, Params, Context);
 }
 
-// A level-0 host library can run on every expansion. Limit the extra
-// code generation work to marked libraries that import the proc_macro API.
-static bool isMacroHelper(const Module &M) {
-  auto *Flag = mdconst::dyn_extract_or_null<ConstantInt>(
-      M.getModuleFlag("ohm.proc-macro-helper"));
-  if (!Flag || !Flag->getType()->isIntegerTy(32) || !Flag->isOne() ||
-      M.getNamedMetadata("llvm.dbg.cu"))
-    return false;
+static bool hasHostHelperFlag(const Module &M, StringRef Name) {
+  auto *Flag = mdconst::dyn_extract_or_null<ConstantInt>(M.getModuleFlag(Name));
+  return Flag && Flag->getType()->isIntegerTy(32) && Flag->isOne();
+}
 
+// An import of just a trait implementation, such as Display for TokenStream,
+// can come from formatting or diagnostics. Look for direct API use instead.
+static bool importsMacroAPI(const Module &M) {
   return llvm::any_of(M, [](const Function &F) {
     StringRef Name = F.getName();
     if (!F.isDeclaration() || F.use_empty() || !Name.starts_with("_R") ||
@@ -726,7 +725,7 @@ static bool isMacroHelper(const Module &M) {
     std::string Demangled = llvm::demangle(Name);
     StringRef Path(Demangled);
     Path.consume_front("<");
-    return Path.starts_with("proc_macro::");
+    return Path.starts_with("proc_macro::") && !Path.contains(" as ");
   });
 }
 
@@ -811,17 +810,24 @@ extern "C" LLVMRustResult LLVMRustOptimize(
         PGOOptions::ColdFuncOpt::Default, DebugInfoForProfiling);
   }
 
-  // The codegen unit owns this target machine through object emission.
-  // Optimize its IR and register allocation together, preserving the
-  // original level-0 MIR, debug assertions and overflow checks.
-  if (OptLevel == OptimizationLevel::O0 &&
+  // Both host optimizations preserve level-0 MIR, assertions and overflow checks.
+  bool CanOptimizeHelper =
+      OptLevel == OptimizationLevel::O0 &&
       OptStage == LLVMRustOptStage::PreLinkNoLTO && !ThinLTOBufferRef &&
       !IsLinkerPluginLTO && !NoPrepopulatePasses && !PGOOpt &&
-      !InstrumentCoverage && !EnzymePtr && !LLVMPluginsLen &&
-      !ExtraPassesLen && TM->getTargetTriple().getArch() == Triple::x86_64 &&
+      !InstrumentCoverage && !EnzymePtr && !PostEnzymePassesLen &&
+      !LLVMPluginsLen && !ExtraPassesLen &&
+      TM->getTargetTriple().getArch() == Triple::x86_64 &&
       TM->getTargetTriple().isOSLinux() &&
       TM->getOptLevel() == CodeGenOptLevel::None &&
-      isMacroHelper(*TheModule)) {
+      !TheModule->getNamedMetadata("llvm.dbg.cu");
+  bool BuildHelper = CanOptimizeHelper &&
+                     hasHostHelperFlag(*TheModule, "ohm.build-script-helper");
+  if (CanOptimizeHelper && !BuildHelper &&
+      hasHostHelperFlag(*TheModule, "ohm.proc-macro-helper") &&
+      importsMacroAPI(*TheModule)) {
+    // The CGU owns this target machine through object emission. Optimize
+    // both the IR and register allocation for repeated macro expansions.
     OptLevel = OptimizationLevel::O1;
     // Request smaller functions without overriding the module's inlining
     // threshold. That keeps Ohm's early pass for small Rust wrappers active.
@@ -1107,9 +1113,13 @@ extern "C" LLVMRustResult LLVMRustOptimize(
         C(MPM, OptLevel, ThinOrFullLTOPhase::None);
     }
 
-    if (ExtraPassesLen) {
-      if (auto Err = PB.parsePassPipeline(
-              MPM, StringRef(ExtraPasses, ExtraPassesLen))) {
+    // Build scripts run less often. Inline and simplify their helpers while
+    // keeping the fast level-0 machine code generator.
+    StringRef Passes = BuildHelper
+                           ? "cgscc(inline),function(sroa,instsimplify,simplifycfg)"
+                           : StringRef(ExtraPasses, ExtraPassesLen);
+    if (!Passes.empty()) {
+      if (auto Err = PB.parsePassPipeline(MPM, Passes)) {
         std::string ErrMsg = toString(std::move(Err));
         LLVMRustSetLastError(ErrMsg.c_str());
         return LLVMRustResult::Failure;
