@@ -15,7 +15,7 @@ use std::fmt::{self, Debug};
 use rustc_data_structures::stable_hash::{
     StableHash, StableHashCtxt, StableHasher, StableOrd, ToStableHashKey,
 };
-use rustc_macros::{Decodable, Encodable, StableHash};
+use rustc_macros::{Decodable, Encodable};
 use rustc_span::def_id::{CRATE_DEF_ID, DefId, DefIndex, DefPathHash, LocalDefId, LocalModId};
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Encodable, Decodable)]
@@ -93,11 +93,28 @@ impl ToStableHashKey for OwnerId {
 /// the `local_id` part of the `HirId` changing, which is a very useful property in
 /// incremental compilation where we have to persist things through changes to
 /// the code base.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Encodable, Decodable, StableHash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Encodable, Decodable)]
 #[rustc_pass_by_value]
 pub struct HirId {
     pub owner: OwnerId,
     pub local_id: ItemLocalId,
+}
+
+impl StableHash for HirId {
+    #[inline]
+    fn stable_hash<Hcx: StableHashCtxt>(&self, hcx: &mut Hcx, hasher: &mut StableHasher) {
+        if let Some(owner) = hcx.implicit_hir_owner() {
+            let local = self.local_id.as_u32();
+            if self.owner.def_id.local_def_index.as_u32() == owner && local != u32::MAX {
+                local.stable_hash(hcx, hasher);
+                return;
+            }
+            // An ID from another owner must include its full definition path.
+            u32::MAX.stable_hash(hcx, hasher);
+        }
+        self.owner.stable_hash(hcx, hasher);
+        self.local_id.stable_hash(hcx, hasher);
+    }
 }
 
 // To ensure correctness of incremental compilation,

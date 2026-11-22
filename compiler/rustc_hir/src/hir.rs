@@ -3320,10 +3320,9 @@ pub enum AmbigArg {}
 ///
 /// For an explanation of the `Unambig` generic parameter see the dev-guide:
 /// <https://rustc-dev-guide.rust-lang.org/ambig-unambig-ty-and-consts.html>
-#[derive(Debug, Clone, Copy, StableHash)]
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct Ty<'hir, Unambig = ()> {
-    #[stable_hash(ignore)]
     pub hir_id: HirId,
     pub span: Span,
     pub kind: TyKind<'hir, Unambig>,
