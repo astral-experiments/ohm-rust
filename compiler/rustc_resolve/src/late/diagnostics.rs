@@ -249,7 +249,7 @@ impl<'ast, 'ra, 'tcx> LateResolutionVisitor<'_, 'ast, 'ra, 'tcx> {
             let Some(trait_seg) = poly_trait_ref.trait_ref.path.segments.last() else {
                 return;
             };
-            let Some(partial_res) = this.r.partial_res_map.get(&trait_seg.id) else {
+            let Some(partial_res) = this.r.partial_res_map.get(trait_seg.id) else {
                 return;
             };
             let Some(trait_def_id) = partial_res.full_res().and_then(|res| res.opt_def_id()) else {
@@ -297,7 +297,7 @@ impl<'ast, 'ra, 'tcx> LateResolutionVisitor<'_, 'ast, 'ra, 'tcx> {
                 };
 
                 // Only suggest for bounds that are explicitly on an in-scope type parameter.
-                let Some(partial_res) = this.r.partial_res_map.get(&where_bound.bounded_ty.id)
+                let Some(partial_res) = this.r.partial_res_map.get(where_bound.bounded_ty.id)
                 else {
                     continue;
                 };
@@ -1318,7 +1318,7 @@ impl<'ast, 'ra, 'tcx> LateResolutionVisitor<'_, 'ast, 'ra, 'tcx> {
                 let Some(id) = seg.id else {
                     continue;
                 };
-                let Some(res) = self.r.partial_res_map.get(&id) else {
+                let Some(res) = self.r.partial_res_map.get(id) else {
                     continue;
                 };
                 if let Res::Def(DefKind::Mod, module) = res.expect_full_res()
@@ -2065,7 +2065,7 @@ impl<'ast, 'ra, 'tcx> LateResolutionVisitor<'_, 'ast, 'ra, 'tcx> {
         // Confirm that the target is an associated type.
         let ast::TyKind::Path(Some(qself), path) = &bounded_ty.kind else { return false };
         // use this to verify that ident is a type param.
-        let Some(partial_res) = self.r.partial_res_map.get(&bounded_ty.id) else { return false };
+        let Some(partial_res) = self.r.partial_res_map.get(bounded_ty.id) else { return false };
         if !matches!(partial_res.full_res(), Some(Res::Def(DefKind::AssocTy, _))) {
             return false;
         }
@@ -2073,7 +2073,7 @@ impl<'ast, 'ra, 'tcx> LateResolutionVisitor<'_, 'ast, 'ra, 'tcx> {
         let peeled_ty = qself.ty.peel_refs();
         let ast::TyKind::Path(None, type_param_path) = &peeled_ty.kind else { return false };
         // Confirm that the `SelfTy` is a type parameter.
-        let Some(partial_res) = self.r.partial_res_map.get(&peeled_ty.id) else {
+        let Some(partial_res) = self.r.partial_res_map.get(peeled_ty.id) else {
             return false;
         };
         if !matches!(partial_res.full_res(), Some(Res::Def(DefKind::TyParam, _))) {
@@ -2093,7 +2093,7 @@ impl<'ast, 'ra, 'tcx> LateResolutionVisitor<'_, 'ast, 'ra, 'tcx> {
             return false;
         }
         if ident.span == span {
-            let Some(partial_res) = self.r.partial_res_map.get(&id) else {
+            let Some(partial_res) = self.r.partial_res_map.get(*id) else {
                 return false;
             };
             if !matches!(partial_res.full_res(), Some(Res::Def(..))) {
@@ -2934,7 +2934,7 @@ impl<'ast, 'ra, 'tcx> LateResolutionVisitor<'_, 'ast, 'ra, 'tcx> {
         // Fields are generally expected in the same contexts as locals.
         if filter_fn(Res::Local(ast::DUMMY_NODE_ID)) {
             if let Some(node_id) = self.diag_metadata.current_self_type.and_then(extract_node_id)
-                && let Some(resolution) = self.r.partial_res_map.get(&node_id)
+                && let Some(resolution) = self.r.partial_res_map.get(node_id)
                 && let Some(Res::Def(DefKind::Struct | DefKind::Union, did)) = resolution.full_res()
                 && let Some(fields) = self.r.field_idents(did)
                 && let Some(field) = fields.iter().find(|id| ident.name == id.name)

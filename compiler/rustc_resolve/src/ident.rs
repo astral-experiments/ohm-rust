@@ -1899,7 +1899,7 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
         ) {
             if finalize.is_some()
                 && let Some(id) = id
-                && !this.partial_res_map.contains_key(&id)
+                && !this.partial_res_map.contains_key(id)
             {
                 assert!(id != ast::DUMMY_NODE_ID, "Trying to resolve dummy id");
                 this.get_mut().record_partial_res(id, PartialRes::new(res));
