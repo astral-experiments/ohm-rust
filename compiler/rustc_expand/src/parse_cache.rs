@@ -45,6 +45,12 @@ const MIN_FILE_BYTES: u32 = 1024;
 // Both encoding and decoding recurse through boxed AST nodes and their children.
 const MAX_NESTING: usize = 256;
 
+// A short span uses one word. Keep two tag values for wide and dummy spans.
+const OFFSET_BITS: u32 = 24;
+const OFFSET_MASK: u32 = (1 << OFFSET_BITS) - 1;
+const WIDE_SPAN: u32 = u32::MAX - 1;
+const DUMMY_SPAN: u32 = u32::MAX;
+
 // Token streams of nested annotated items can overlap. Bound the amount
 // materialized by the source size, checking before each lazy stream.
 fn snapshot_limit(file: &SourceFile) -> usize {
@@ -305,6 +311,13 @@ impl SpanEncoder for ModuleEncoder<'_> {
         self.valid
     }
 
+    #[inline]
+    fn encode_node_id(&mut self, id: u32) {
+        // Expansion assigns IDs after parsing. Abandon this snapshot if
+        // restoring the dummy ID would change any node.
+        self.valid &= id == rustc_ast::DUMMY_NODE_ID.as_u32();
+    }
+
     fn encode_attr_id(&mut self, id: AttrId) {
         if self.attrs.contains(&id.as_u32()) {
             self.emit_u32(id.as_u32() - self.attrs.start);
@@ -320,11 +333,17 @@ impl SpanEncoder for ModuleEncoder<'_> {
             return;
         }
         if span.is_dummy() {
-            self.emit_raw_bytes(&u32::MAX.to_le_bytes());
+            self.emit_raw_bytes(&DUMMY_SPAN.to_le_bytes());
         } else if self.file.contains(span.lo) && self.file.contains(span.hi) {
             let start = (span.lo - self.file.start_pos).0;
-            self.emit_raw_bytes(&start.to_le_bytes());
-            self.emit_u32((span.hi - span.lo).0);
+            let len = (span.hi - span.lo).0;
+            if start <= OFFSET_MASK && len < 255 {
+                self.emit_raw_bytes(&((len << OFFSET_BITS) | start).to_le_bytes());
+            } else {
+                self.emit_raw_bytes(&WIDE_SPAN.to_le_bytes());
+                self.emit_u32(start);
+                self.emit_u32(len);
+            }
         } else {
             self.valid = false;
         }
@@ -368,13 +387,22 @@ impl BlobDecoder for ModuleDecoder<'_> {
 }
 impl SpanDecoder for ModuleDecoder<'_> {
     #[inline]
+    fn decode_node_id(&mut self) -> u32 {
+        rustc_ast::DUMMY_NODE_ID.as_u32()
+    }
+
+    #[inline]
     fn decode_span(&mut self) -> Span {
-        let off = u32::from_le_bytes(self.read_raw_bytes(4).try_into().unwrap());
-        if off == u32::MAX {
+        let word = u32::from_le_bytes(self.read_raw_bytes(4).try_into().unwrap());
+        let (start, len) = if word < WIDE_SPAN {
+            (word & OFFSET_MASK, word >> OFFSET_BITS)
+        } else if word == WIDE_SPAN {
+            (self.read_u32(), self.read_u32())
+        } else {
             return rustc_span::DUMMY_SP;
-        }
-        let lo = self.start + BytePos(off);
-        Span::new(lo, lo + BytePos(self.read_u32()), SyntaxContext::root(), None)
+        };
+        let lo = self.start + BytePos(start);
+        Span::new(lo, lo + BytePos(len), SyntaxContext::root(), None)
     }
     fn decode_attr_id(&mut self) -> AttrId {
         AttrId::from_u32(self.attr_base + self.read_u32())

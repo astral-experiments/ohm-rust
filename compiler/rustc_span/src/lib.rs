@@ -1430,6 +1430,12 @@ pub trait SpanEncoder: Encoder + Sized {
         panic!("attempted to encode LazyAttrTokenStream")
     }
 
+    /// Only unexpanded syntax can omit the AST node IDs.
+    #[inline]
+    fn encode_node_id(&mut self, id: u32) {
+        self.emit_u32(id);
+    }
+
     /// Most decoders assign a fresh ID to each occurrence.
     fn encode_attr_id(&mut self, _: AttrId) {}
     fn encode_span(&mut self, span: Span);
@@ -1604,6 +1610,11 @@ pub trait BlobDecoder: Decoder {
 /// The place where this distinction is relevant is in `rustc_metadata` where metadata is decoded using either the
 /// `MetadataDecodeContext` or the `BlobDecodeContext`.
 pub trait SpanDecoder: BlobDecoder {
+    #[inline]
+    fn decode_node_id(&mut self) -> u32 {
+        self.read_u32()
+    }
+
     fn decode_span(&mut self) -> Span;
     fn decode_expn_id(&mut self) -> ExpnId;
     fn decode_syntax_context(&mut self) -> SyntaxContext;
