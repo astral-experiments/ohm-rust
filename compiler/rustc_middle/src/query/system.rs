@@ -4,6 +4,7 @@ use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_data_structures::fx::{FxHashMap, FxIndexMap};
 use rustc_data_structures::sync::{AtomicU64, Lock, WorkerLocal};
 use rustc_errors::Diag;
+use rustc_index::bit_set::GrowableBitSet;
 use rustc_span::{Span, Symbol};
 
 use crate::dep_graph::{
@@ -40,6 +41,9 @@ pub struct QueryVTable<'tcx, C: QueryCache> {
     pub dep_kind: DepKind,
     pub state: QueryState<'tcx, C::Key>,
     pub cache: C,
+
+    /// Green values staged by dep-node index for query cache compaction.
+    pub promoted_without_keys: Lock<Vec<(DepNodeIndex, C::Value)>>,
 
     /// Function pointer that actually calls this query's provider.
     /// Also performs some associated secondary tasks; see the macro-defined
@@ -87,6 +91,33 @@ pub struct QueryVTable<'tcx, C: QueryCache> {
 }
 
 impl<'tcx, C: QueryCache> QueryVTable<'tcx, C> {
+    /// Decodes missing values before the encoder assigns source-file indices.
+    /// Only use this for queries that cache all keys on disk.
+    pub(crate) fn promote_without_keys(
+        &self,
+        tcx: TyCtxt<'tcx>,
+        indices: Vec<(SerializedDepNodeIndex, DepNodeIndex)>,
+    ) -> usize {
+        if indices.is_empty() {
+            return 0;
+        }
+        // A recomputed green value can carry fresh spans. Keep its live result.
+        let mut live = GrowableBitSet::with_capacity(0);
+        self.cache.for_each(&mut |_, _, index| {
+            live.insert(index);
+        });
+
+        let disk = tcx.query_system.on_disk_cache.as_ref().unwrap();
+        let mut values = self.promoted_without_keys.lock();
+        for (previous, current) in indices {
+            if !live.contains(current) {
+                let value = (self.try_load_from_disk_fn)(tcx, disk, previous).unwrap();
+                values.push((current, value));
+            }
+        }
+        values.len()
+    }
+
     pub fn will_cache_on_disk_for_key(&self, key: C::Key) -> bool {
         self.cache_on_disk_local && (!self.separate_provide_extern || key.as_local_key().is_some())
     }
