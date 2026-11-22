@@ -58,6 +58,58 @@ fn consume(expected: &str) {
     run("main").assert_stdout_contains(expected);
 }
 
+// Registry checks combine the shared-stages flag with a lint cap and no incremental
+// state. Keep per-item hashes for incremental checks and native builds.
+fn capped_dependency() {
+    let leaf = || {
+        let mut cmd = rustc();
+        cmd.input("leaf.rs").crate_type("rlib").arg("-Zpublic-api-hash").arg("-Zohm-shared-stages");
+        cmd
+    };
+    leaf().emit("metadata").run();
+    let (public, private) = hashes("libleaf.rmeta");
+    assert_ne!(public, private);
+
+    let check = || {
+        let mut cmd = leaf();
+        cmd.arg("--cap-lints=allow").emit("metadata");
+        cmd
+    };
+    check().run();
+    let (public, private) = hashes("libleaf.rmeta");
+    assert_eq!(public, private);
+
+    // A downstream check must revalidate a changed type even without per-item hashes.
+    rfs::write("consumer.rs", "pub fn f() -> leaf::Token { leaf::Token }");
+    let consumer = || {
+        let mut cmd = rustc();
+        cmd.input("consumer.rs")
+            .edition("2024")
+            .crate_type("rlib")
+            .emit("metadata")
+            .arg("-Zpublic-api-hash")
+            .arg("-Zohm-shared-stages")
+            .incremental("consumer-cache")
+            .extern_("leaf", "libleaf.rmeta");
+        cmd
+    };
+    consumer().run();
+    rfs::write("leaf.rs", "pub struct Token(pub u8);");
+    check().run();
+    let changed = hashes("libleaf.rmeta");
+    assert_eq!(changed.0, changed.1);
+    assert_ne!(changed.0, public);
+    consumer().run_fail().assert_stderr_contains("mismatched types");
+
+    check().incremental("leaf-cache").run();
+    let (public, private) = hashes("libleaf.rmeta");
+    assert_ne!(public, private);
+
+    leaf().arg("--cap-lints=allow").run();
+    let (public, private) = hashes("libleaf.rlib");
+    assert_ne!(public, private);
+}
+
 fn main() {
     rfs::write(
         "leaf.rs",
@@ -82,4 +134,6 @@ fn main() {
     let (public, private) = bridge("Third", false, true);
     assert_ne!(public, private);
     consume("29");
+
+    capped_dependency();
 }
