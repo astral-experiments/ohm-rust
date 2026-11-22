@@ -4494,12 +4494,7 @@ fn encode_fresh_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>, 
                 if !opts.public_api_hash || is_proc_macro {
                     encode_crate_root::<DefIndexDefIdEncoder>(tcx, path, hcx, &mut hashes);
                 } else if opts.metadata_crate_hash
-                    && (opts.ohm_prefer_full_crate_hash
-                        || (opts.ohm_shared_stages
-                            && !opts.ohm_terminal_check_hash
-                            && tcx.sess.opts.incremental.is_none()
-                            && !tcx.sess.opts.output_types.should_codegen()
-                            && tcx.sess.opts.lint_cap == Some(rustc_lint_defs::Level::Allow)))
+                    && (opts.ohm_prefer_full_crate_hash || tcx.is_capped_library_check())
                 {
                     // Cargo checks registry libraries without incremental state and caps their
                     // lints. A new package version also changes its identity, so distinguishing
@@ -4539,6 +4534,27 @@ fn encode_fresh_metadata(tcx: TyCtxt<'_>, path: &Path, ref_path: Option<&Path>, 
     }
 }
 
+/// A metadata-only rlib has no native code whose identity depends on private HIR.
+/// The metadata digest already includes everything exported, including MIR for const eval.
+/// Retain private source and environment edits in the SVH without hashing every HIR owner.
+fn hash_check_inputs(tcx: TyCtxt<'_>) -> Fingerprint {
+    tcx.with_stable_hashing_context(|mut hcx| {
+        // File registration and environment reads can occur in different orders.
+        let mut hash = Fingerprint::ZERO;
+        for file in tcx.sess.source_map().files().iter().filter(|f| !f.is_imported()) {
+            let mut hasher = StableHasher::new();
+            (0u8, file.stable_id, file.src_hash).stable_hash(&mut hcx, &mut hasher);
+            hash = hash.combine_commutative(hasher.finish());
+        }
+        for input in tcx.sess.env_depinfo.borrow().iter() {
+            let mut hasher = StableHasher::new();
+            (1u8, *input).stable_hash(&mut hcx, &mut hasher);
+            hash = hash.combine_commutative(hasher.finish());
+        }
+        hash
+    })
+}
+
 fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
     tcx: TyCtxt<'tcx>,
     path: &Path,
@@ -4556,10 +4572,12 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
     if metadata_crate_hash {
         // Fold in inputs that are not part of the encoded metadata bytes, reduced to a single
         // fingerprint via the stable hasher and then mixed into the byte digest.
-        let hir_body_hash = if M::PUBLIC_API_FORMAT && tcx.dep_graph.is_fully_enabled() {
+        let body_hash = if M::PUBLIC_API_FORMAT && tcx.dep_graph.is_fully_enabled() {
             // Record this dependency last. The prefix proof needs the encoder's other inputs
             // checked before a private HIR edit stops normal green marking.
             tcx.dep_graph.with_ignore(|| tcx.ohm_metadata_input_hashes(()).0)
+        } else if tcx.is_capped_library_check() {
+            hash_check_inputs(tcx)
         } else {
             compute_hir_hash(tcx)
         };
@@ -4567,8 +4585,8 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
             let mut hasher = StableHasher::new();
             // Add dep_tracking_hash to ensure the SVH changes when any tracked flag changes.
             tcx.sess.opts.dep_tracking_hash(true).stable_hash(&mut hcx, &mut hasher);
-            // Add HIR hash for untracked elements, e.g. DefKind::GlobalAsm.
-            hir_body_hash.stable_hash(&mut hcx, &mut hasher);
+            // Cover bodies and other inputs absent from the metadata bytes.
+            body_hash.stable_hash(&mut hcx, &mut hasher);
             hasher.finish()
         });
         metadata_hasher.lock().unwrap().write(&supplement.to_le_bytes());

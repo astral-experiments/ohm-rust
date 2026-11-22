@@ -79,6 +79,25 @@ fn capped_dependency() {
     let (public, private) = hashes("libleaf.rmeta");
     assert_eq!(public, private);
 
+    // Neither this private body nor its environment read is needed by the consumer.
+    // Both still contribute to the crate identity of a metadata-only library.
+    let original = rfs::read_to_string("leaf.rs");
+    rfs::write("leaf.rs", r#"fn f() -> &'static str { env!("MARKER") }"#);
+    check().env("MARKER", "one").run();
+    let first = hashes("libleaf.rmeta");
+    check().env("MARKER", "two").run();
+    assert_ne!(first, hashes("libleaf.rmeta"));
+    check().env("MARKER", "one").run();
+    assert_eq!(first, hashes("libleaf.rmeta"));
+    rfs::write("leaf.rs", "fn f() -> u8 { 1 }");
+    check().run();
+    let first = hashes("libleaf.rmeta");
+    rfs::write("leaf.rs", "fn f() -> u8 { 2 }");
+    check().run();
+    assert_ne!(first, hashes("libleaf.rmeta"));
+    rfs::write("leaf.rs", original);
+    check().run();
+
     // A downstream check must revalidate a changed type even without per-item hashes.
     rfs::write("consumer.rs", "pub fn f() -> leaf::Token { leaf::Token }");
     let consumer = || {
