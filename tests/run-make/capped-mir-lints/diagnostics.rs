@@ -28,3 +28,11 @@ pub fn update() {
     BYTES[0] = 1;
     println!("{:p}", &update);
 }
+
+#[deny(unused_results)]
+pub fn local_override() {
+    fn answer() -> u32 {
+        42
+    }
+    answer();
+}
