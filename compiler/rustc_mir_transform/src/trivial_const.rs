@@ -1,12 +1,11 @@
 use std::ops::Deref;
 
-use rustc_hir::def::DefKind;
 use rustc_hir::def_id::LocalDefId;
 use rustc_middle::mir::{
     Body, Const, ConstValue, Operand, Place, RETURN_PLACE, Rvalue, START_BLOCK, StatementKind,
     TerminatorKind, UnevaluatedConst,
 };
-use rustc_middle::ty::{AnonConstKind, Ty, TyCtxt, TypeVisitableExt};
+use rustc_middle::ty::{Ty, TyCtxt, TypeVisitableExt};
 
 /// If the given def is a trivial const, returns the value and type the const evaluates to.
 ///
@@ -52,10 +51,8 @@ where
     F: FnOnce() -> B,
     B: Deref<Target = Body<'tcx>>,
 {
-    match tcx.def_kind(def) {
-        DefKind::AssocConst | DefKind::Const => (),
-        DefKind::AnonConst if tcx.anon_const_kind(def) != AnonConstKind::NonTypeSystemInline => (),
-        _ => return None,
+    if !tcx.may_be_trivial_const(def) {
+        return None;
     }
 
     // If there are impossible clauses then MIR passes will replace the body with

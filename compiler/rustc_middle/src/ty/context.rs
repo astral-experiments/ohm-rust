@@ -3402,8 +3402,34 @@ impl<'tcx> TyCtxt<'tcx> {
         find_attr!(self, def_id, DoNotRecommend)
     }
 
+    /// Whether building an abstract const might need to borrow this definition's THIR.
+    pub fn may_have_abstract_const(self, def_id: LocalDefId) -> bool {
+        // FIXME(generic_const_exprs): We currently only do this for anonymous constants,
+        // meaning that we do not look into associated constants. I(@lcnr) am not yet sure whether
+        // we want to look into them or treat them as opaque projections.
+        //
+        // Right now we do neither of that and simply always fail to unify them.
+        self.features().generic_const_exprs() && self.def_kind(def_id) == DefKind::AnonConst
+    }
+
+    /// Whether finding a trivial const might need to borrow this definition's built MIR.
+    pub fn may_be_trivial_const(self, def_id: LocalDefId) -> bool {
+        match self.def_kind(def_id) {
+            DefKind::AssocConst | DefKind::Const => true,
+            DefKind::AnonConst => {
+                self.anon_const_kind(def_id) != ty::AnonConstKind::NonTypeSystemInline
+            }
+            _ => false,
+        }
+    }
+
     pub fn is_trivial_const(self, def_id: impl IntoQueryKey<DefId>) -> bool {
         let def_id = def_id.into_query_key();
+        if let Some(local_id) = def_id.as_local()
+            && !self.may_be_trivial_const(local_id)
+        {
+            return false;
+        }
         self.trivial_const(def_id).is_some()
     }
 
