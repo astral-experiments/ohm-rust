@@ -1407,6 +1407,12 @@ fn validate_generic_param_order(dcx: DiagCtxtHandle<'_>, generics: &[GenericPara
 }
 
 impl Visitor<'_> for AstValidator<'_> {
+    fn visit_expr(&mut self, expr: &Expr) {
+        if !expr.is_plain_leaf() {
+            visit::walk_expr(self, expr);
+        }
+    }
+
     fn visit_attribute(&mut self, attr: &Attribute) {
         validate_attr::check_attr(&self.sess.psess, attr);
     }

@@ -1,10 +1,9 @@
 //! Detecting usage of the `#[debugger_visualizer]` attribute.
 
-use rustc_ast::{ItemKind, ast, visit};
+use rustc_ast::{ItemKind, ast};
 use rustc_attr_ir::{Attribute, AttributeKind, DebugVisualizer};
 use rustc_attr_parsing::AttributeParser;
 use rustc_middle::middle::debugger_visualizer::DebuggerVisualizerFile;
-use rustc_middle::middle::resolve::ResolverAstLowering;
 use rustc_middle::query::{LocalCrate, Providers};
 use rustc_middle::ty::TyCtxt;
 use rustc_session::Session;
@@ -48,8 +47,8 @@ impl DebuggerVisualizerCollector<'_, '_> {
 }
 
 struct DebuggerVisualizerCollector<'a, 'tcx> {
+    resolver: &'a rustc_middle::middle::resolve::ResolverAstLowering<'tcx>,
     sess: &'a Session,
-    resolver: &'a ResolverAstLowering<'tcx>,
     visualizers: Vec<DebuggerVisualizerFile>,
 }
 
@@ -58,17 +57,16 @@ impl<'ast> rustc_ast::visit::Visitor<'ast> for DebuggerVisualizerCollector<'_, '
         if let ItemKind::Mod(..) = item.kind {
             self.check_for_debugger_visualizer(&item.attrs);
         }
-        if self.resolver.owners[&item.id].has_nested_owners {
-            visit::walk_item(self, item);
+        if self.resolver.owners[&item.id].may_have_nested_items {
+            rustc_ast::visit::walk_item(self, item);
         }
     }
 
-    fn visit_assoc_item(&mut self, item: &'ast ast::AssocItem, ctxt: visit::AssocCtxt) {
-        if self.resolver.owners[&item.id].has_nested_owners {
-            visit::walk_assoc_item(self, item, ctxt);
+    fn visit_assoc_item(&mut self, item: &'ast ast::AssocItem, ctxt: rustc_ast::visit::AssocCtxt) {
+        if self.resolver.owners[&item.id].may_have_nested_items {
+            rustc_ast::visit::walk_assoc_item(self, item, ctxt);
         }
     }
-
     fn visit_crate(&mut self, krate: &'ast ast::Crate) -> Self::Result {
         self.check_for_debugger_visualizer(&krate.attrs);
         rustc_ast::visit::walk_crate(self, krate);
@@ -81,7 +79,7 @@ fn debugger_visualizers(tcx: TyCtxt<'_>, _: LocalCrate) -> Vec<DebuggerVisualize
     let resolver = &*resolver.borrow();
 
     let mut visitor =
-        DebuggerVisualizerCollector { sess: tcx.sess, resolver, visualizers: Vec::new() };
+        DebuggerVisualizerCollector { resolver, sess: tcx.sess, visualizers: Vec::new() };
     rustc_ast::visit::Visitor::visit_crate(&mut visitor, &*krate.borrow());
 
     // We are collecting visualizers in AST-order, which is deterministic,

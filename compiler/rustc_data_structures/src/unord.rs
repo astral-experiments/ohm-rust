@@ -99,6 +99,19 @@ impl<T, I: Iterator<Item = T>> UnordItems<T, I> {
         self.0.sum()
     }
 
+    /// Collect a set of indices without exposing their iteration order.
+    #[inline]
+    pub fn into_dense_bit_set(self, domain_size: usize) -> rustc_index::bit_set::DenseBitSet<T>
+    where
+        T: rustc_index::Idx,
+    {
+        let mut set = rustc_index::bit_set::DenseBitSet::new_empty(domain_size);
+        for index in self.0 {
+            set.insert(index);
+        }
+        set
+    }
+
     #[inline]
     pub fn product<S>(self) -> S
     where

@@ -255,7 +255,9 @@ impl<'hir> LoweringContext<'_, 'hir> {
         }
 
         let expr_hir_id = self.lower_node_id(e.id);
-        self.lower_attrs(expr_hir_id, &e.attrs, e.span, Target::from_expr(e));
+        if !e.attrs.is_empty() {
+            self.lower_attrs(expr_hir_id, &e.attrs, e.span, Target::from_expr(e));
+        }
 
         let kind = match &e.kind {
             ExprKind::Array(exprs) => hir::ExprKind::Array(self.lower_exprs(exprs)),

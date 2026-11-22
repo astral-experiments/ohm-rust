@@ -280,12 +280,12 @@ pub struct ResolverGlobalCtxt {
 
 #[derive(Debug)]
 pub struct PerOwnerResolverData<'tcx> {
+    /// Set whenever resolution enters another owner from this one. This can
+    /// conservatively include visits unrelated to syntax nesting.
+    pub may_have_nested_items: bool = false,
     pub node_id_to_def_id: NodeMap<LocalDefId> = Default::default(),
     /// Whether lifetime elision was successful.
     pub lifetime_elision_allowed: bool = false,
-    /// Whether the AST indexer needs to descend into this owner to extract
-    /// nested items. Includes associated, foreign and block-local items.
-    pub has_nested_owners: bool = false,
     /// Resolutions for labels. Maps from NodeId of the break/continue expression to the NodeId of
     /// their corresponding blocks or loops.
     pub label_res_map: NodeMap<NodeId> = Default::default(),
@@ -341,6 +341,10 @@ pub struct ResolverAstLowering<'tcx> {
     pub partial_res_map: PartialResolutions,
 
     pub next_node_id: NodeId,
+
+    /// Node IDs below `next_node_id` with definition or trait metadata to
+    /// transfer during HIR ID assignment.
+    pub metadata_nodes: rustc_index::bit_set::DenseBitSet<NodeId>,
 
     pub owners: NodeMap<PerOwnerResolverData<'tcx>>,
 

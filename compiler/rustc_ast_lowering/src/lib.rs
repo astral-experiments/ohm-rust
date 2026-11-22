@@ -247,7 +247,7 @@ impl<'a, 'hir> PerOwnerLoweringState<'a, 'hir> {
         let bodies = SortedMap::from_presorted_elements(bodies);
 
         let num_nodes = self.item_local_id_counter.as_usize();
-        let (nodes, parenting, lint_roots, has_nested_items) =
+        let (nodes, parenting, lint_roots, has_inner_defs) =
             index::index_hir(tcx, node, &bodies, num_nodes, &attrs);
         // Don't hash unless necessary, because it's expensive.
         let rustc_middle::hir::Hashes { bodies_hash, attrs_hash } =
@@ -267,7 +267,7 @@ impl<'a, 'hir> PerOwnerLoweringState<'a, 'hir> {
             nodes,
             bodies,
             has_loop_control_attrs,
-            has_nested_items,
+            has_inner_defs,
         };
         let attrs =
             hir::AttributeMap { map: attrs, lint_roots, opt_hash: attrs_hash, define_opaque };
@@ -329,6 +329,9 @@ struct LoweringContext<'a, 'hir> {
     next_node_id: NodeId,
     /// Maps the `NodeId`s created during lowering to `LocalDefId`s.
     node_id_to_def_id: NodeMap<LocalDefId>,
+    /// A negative filter for definitions added after the resolver built its
+    /// metadata index. Collisions fall back to an ordinary lookup.
+    lowering_metadata: u64,
     /// Overlay over resolver's `partial_res_map` used by delegation.
     /// This only contains `PartialRes::new(Res::Local(self_param_id))`,
     /// so we only store `self_param_id`.
@@ -377,6 +380,7 @@ impl<'a, 'hir> LoweringContext<'a, 'hir> {
 
             next_node_id: resolver.next_node_id,
             node_id_to_def_id: NodeMap::default(),
+            lowering_metadata: 0,
             partial_res_overrides: NodeMap::default(),
 
             // Lowering state.
@@ -693,7 +697,7 @@ fn index_ast<'tcx>(
         }
 
         fn flat_map_item(&mut self, mut item: Box<Item>) -> SmallVec<[Box<Item>; 1]> {
-            if self.owners[&item.id].has_nested_owners {
+            if self.owners[&item.id].may_have_nested_items {
                 mut_visit::walk_item(self, &mut *item);
             }
             let dummy = self.make_dummy(item.id, item.span, ItemKind::MacCall);
@@ -703,7 +707,7 @@ fn index_ast<'tcx>(
         }
 
         fn visit_assoc_item(&mut self, item: &mut AssocItem, ctxt: visit::AssocCtxt) {
-            if self.owners[&item.id].has_nested_owners {
+            if self.owners[&item.id].may_have_nested_items {
                 mut_visit::walk_assoc_item(self, item, ctxt);
             }
             match ctxt {
@@ -717,7 +721,7 @@ fn index_ast<'tcx>(
         }
 
         fn visit_foreign_item(&mut self, item: &mut ForeignItem) {
-            if self.owners[&item.id].has_nested_owners {
+            if self.owners[&item.id].may_have_nested_items {
                 mut_visit::walk_item(self, item);
             }
             self.replace_with_dummy(item, ForeignItemKind::MacCall, AstOwner::ForeignItem);
@@ -833,6 +837,11 @@ enum GenericArgsMode {
 }
 
 impl<'hir> LoweringContext<'_, 'hir> {
+    #[inline]
+    fn metadata_bit(node: NodeId) -> u64 {
+        1u64.wrapping_shl(node.as_u32())
+    }
+
     fn create_def(
         &mut self,
         node_id: NodeId,
@@ -858,6 +867,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
 
         debug!("create_def: def_id_to_node_id[{:?}] <-> {:?}", def_id, node_id);
         self.node_id_to_def_id.insert(node_id, def_id);
+        self.lowering_metadata |= Self::metadata_bit(node_id);
 
         def_id
     }
@@ -912,6 +922,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
     /// `HirIdValidator` later on, which makes sure that all `NodeId`s got mapped
     /// properly. Calling the method twice with the same `NodeId` is also forbidden.
     #[instrument(level = "debug", skip(self), ret)]
+    #[inline]
     fn lower_node_id(&mut self, ast_node_id: NodeId) -> HirId {
         assert_ne!(ast_node_id, DUMMY_NODE_ID);
 
@@ -921,12 +932,13 @@ impl<'hir> LoweringContext<'_, 'hir> {
         self.curr_owner.item_local_id_counter.increment_by(1);
         let hir_id = HirId { owner, local_id };
 
-        if let Some(def_id) = self.opt_local_def_id(ast_node_id) {
-            self.curr_owner.children.insert(def_id, hir::MaybeOwner::NonOwner(hir_id));
-        }
-
-        if let Some(traits) = self.curr_owner.owner.trait_map.get(&ast_node_id) {
-            self.curr_owner.trait_map.insert(hir_id.local_id, *traits);
+        // Most nodes have neither a definition nor candidate traits to transfer.
+        // Always probe for synthetic IDs outside the resolver's indexed range.
+        if ast_node_id >= self.resolver.next_node_id
+            || self.resolver.metadata_nodes.contains(ast_node_id)
+            || self.lowering_metadata & Self::metadata_bit(ast_node_id) != 0
+        {
+            self.lower_node_metadata(ast_node_id, hir_id);
         }
 
         // Check whether the same `NodeId` is lowered more than once.
@@ -934,6 +946,17 @@ impl<'hir> LoweringContext<'_, 'hir> {
         self.curr_owner.relowering_checker.assert_node_is_not_relowered(ast_node_id, local_id);
 
         hir_id
+    }
+
+    #[inline(never)]
+    fn lower_node_metadata(&mut self, ast_node_id: NodeId, hir_id: HirId) {
+        if let Some(def_id) = self.opt_local_def_id(ast_node_id) {
+            self.curr_owner.children.insert(def_id, hir::MaybeOwner::NonOwner(hir_id));
+        }
+
+        if let Some(traits) = self.curr_owner.owner.trait_map.get(&ast_node_id) {
+            self.curr_owner.trait_map.insert(hir_id.local_id, *traits);
+        }
     }
 
     /// Generate a new `HirId` without a backing `NodeId`.

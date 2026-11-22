@@ -19,9 +19,9 @@ struct NodeCollector<'a, 'hir> {
     /// Outputs
     nodes: IndexVec<ItemLocalId, ParentedNode<'hir>>,
     parenting: LocalDefIdMap<ItemLocalId>,
+    has_inner_defs: bool,
     lint_roots: &'hir mut [u32],
     num_lint_roots: usize,
-    has_nested_items: bool,
 
     /// The parent of this node
     parent_node: ItemLocalId,
@@ -62,11 +62,9 @@ pub(super) fn index_hir<'hir>(
         nodes,
         bodies,
         parenting: Default::default(),
+        has_inner_defs: false,
         lint_roots,
         num_lint_roots,
-        // Closures, anon consts and inline consts each add a body distinct
-        // from the owner's own body. Record nested items and opaques below.
-        has_nested_items: bodies.len() > usize::from(Node::from(item).associated_body().is_some()),
     };
 
     match item {
@@ -90,12 +88,13 @@ pub(super) fn index_hir<'hir>(
         collector.nodes,
         collector.parenting,
         &collector.lint_roots[..collector.num_lint_roots],
-        collector.has_nested_items,
+        collector.has_inner_defs,
     )
 }
 
 impl<'a, 'hir> NodeCollector<'a, 'hir> {
     #[instrument(level = "debug", skip(self))]
+    #[inline]
     fn insert(&mut self, span: Span, hir_id: HirId, node: Node<'hir>) {
         debug_assert_eq!(self.owner, hir_id.owner);
         debug_assert_ne!(hir_id.local_id.as_u32(), 0);
@@ -161,7 +160,7 @@ impl<'a, 'hir> NodeCollector<'a, 'hir> {
     }
 
     fn insert_nested(&mut self, item: LocalDefId) {
-        self.has_nested_items = true;
+        self.has_inner_defs = true;
         if self.parent_node != ItemLocalId::ZERO {
             self.parenting.insert(item, self.parent_node);
         }
@@ -294,7 +293,7 @@ impl<'a, 'hir> Visitor<'hir> for NodeCollector<'a, 'hir> {
     }
 
     fn visit_opaque_ty(&mut self, opaq: &'hir OpaqueTy<'hir>) {
-        self.has_nested_items = true;
+        self.has_inner_defs = true;
         self.insert(opaq.span, opaq.hir_id, Node::OpaqueTy(opaq));
 
         self.with_parent(opaq.hir_id, |this| {
@@ -303,6 +302,7 @@ impl<'a, 'hir> Visitor<'hir> for NodeCollector<'a, 'hir> {
     }
 
     fn visit_anon_const(&mut self, constant: &'hir AnonConst) {
+        self.has_inner_defs = true;
         self.insert(constant.span, constant.hir_id, Node::AnonConst(constant));
 
         self.with_parent(constant.hir_id, |this| {
@@ -311,6 +311,7 @@ impl<'a, 'hir> Visitor<'hir> for NodeCollector<'a, 'hir> {
     }
 
     fn visit_inline_const(&mut self, constant: &'hir ConstBlock) {
+        self.has_inner_defs = true;
         self.insert(DUMMY_SP, constant.hir_id, Node::ConstBlock(constant));
 
         self.with_parent(constant.hir_id, |this| {
@@ -319,6 +320,9 @@ impl<'a, 'hir> Visitor<'hir> for NodeCollector<'a, 'hir> {
     }
 
     fn visit_expr(&mut self, expr: &'hir Expr<'hir>) {
+        if let ExprKind::Closure(..) = expr.kind {
+            self.has_inner_defs = true;
+        }
         self.insert(expr.span, expr.hir_id, Node::Expr(expr));
 
         self.with_parent(expr.hir_id, |this| {

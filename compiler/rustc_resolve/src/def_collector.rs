@@ -508,6 +508,9 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
 
     #[instrument(level = "debug", skip(self))]
     fn visit_expr(&mut self, expr: &'a Expr) {
+        if expr.is_plain_leaf() {
+            return;
+        }
         debug!(?self.invocation_parent);
 
         match &expr.kind {

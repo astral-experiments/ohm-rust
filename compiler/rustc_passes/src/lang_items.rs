@@ -268,15 +268,22 @@ fn get_lang_items(tcx: TyCtxt<'_>, (): ()) -> LanguageItems {
 impl<'ast, 'tcx> visit::Visitor<'ast> for LanguageItemCollector<'ast, 'tcx> {
     fn visit_item(&mut self, i: &'ast ast::Item) {
         let target = Target::from_ast_item(i);
-        let owner = &self.resolver.owners[&i.id];
-        let nested = owner.has_nested_owners;
 
-        self.check_for_lang(target, owner.def_id, &i.attrs, i.span, i.opt_generics());
+        self.check_for_lang(
+            target,
+            self.resolver.owners[&i.id].def_id,
+            &i.attrs,
+            i.span,
+            i.opt_generics(),
+        );
 
-        // Enum variants can be lang items without being AST owners.
-        if !nested && !matches!(i.kind, ast::ItemKind::Enum(..)) {
+        // Variants may have language items even when they aren't HIR owners.
+        if !matches!(i.kind, ast::ItemKind::Enum(..))
+            && !self.resolver.owners[&i.id].may_have_nested_items
+        {
             return;
         }
+
         let parent_item = self.parent_item.replace(i);
         visit::walk_item(self, i);
         self.parent_item = parent_item;
@@ -305,11 +312,10 @@ impl<'ast, 'tcx> visit::Visitor<'ast> for LanguageItemCollector<'ast, 'tcx> {
     fn visit_assoc_item(&mut self, i: &'ast ast::AssocItem, ctxt: visit::AssocCtxt) {
         let target = Target::from_assoc_item_kind(&i.kind, ctxt);
         let generics = i.opt_generics();
-        let owner = &self.resolver.owners[&i.id];
-        let nested = owner.has_nested_owners;
 
-        self.check_for_lang(target, owner.def_id, &i.attrs, i.span, generics);
-        if nested {
+        self.check_for_lang(target, self.resolver.owners[&i.id].def_id, &i.attrs, i.span, generics);
+
+        if self.resolver.owners[&i.id].may_have_nested_items {
             visit::walk_assoc_item(self, i, ctxt);
         }
     }

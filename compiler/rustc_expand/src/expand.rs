@@ -2485,6 +2485,17 @@ impl<'a, 'b> InvocationCollector<'a, 'b> {
         }
     }
 
+    /// Without attributes or a macro call, all expression contexts assign
+    /// node IDs and visit the children in the same order.
+    #[inline]
+    fn visit_unattributed_expr(&mut self, node: &mut ast::Expr) -> bool {
+        if !node.attrs.is_empty() || matches!(node.kind, ExprKind::MacCall(..)) {
+            return false;
+        }
+        assign_id!(self, &mut node.id, || walk_expr(self, node));
+        true
+    }
+
     fn visit_node<Node: InvocationCollectorNode<OutputTy: Into<Node>> + DummyAstNode>(
         &mut self,
         node: &mut Node,
@@ -2637,6 +2648,9 @@ impl<'a, 'b> MutVisitor for InvocationCollector<'a, 'b> {
     }
 
     fn visit_expr(&mut self, node: &mut ast::Expr) {
+        if self.visit_unattributed_expr(node) {
+            return;
+        }
         // FIXME: Feature gating is performed inconsistently between `Expr` and `OptExpr`.
         if let Some(attr) = node.attrs.first() {
             self.cfg().maybe_emit_expr_attr_err(attr);
@@ -2645,10 +2659,16 @@ impl<'a, 'b> MutVisitor for InvocationCollector<'a, 'b> {
     }
 
     fn visit_method_receiver_expr(&mut self, node: &mut ast::Expr) {
+        if self.visit_unattributed_expr(node) {
+            return;
+        }
         self.visit_node(AstNodeWrapper::from_mut(node, MethodReceiverTag))
     }
 
-    fn filter_map_expr(&mut self, node: Box<ast::Expr>) -> Option<Box<ast::Expr>> {
+    fn filter_map_expr(&mut self, mut node: Box<ast::Expr>) -> Option<Box<ast::Expr>> {
+        if self.visit_unattributed_expr(&mut node) {
+            return Some(node);
+        }
         self.flat_map_node(AstNodeWrapper::new(node, OptExprTag))
     }
 

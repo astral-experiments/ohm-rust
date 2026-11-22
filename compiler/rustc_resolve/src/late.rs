@@ -5311,7 +5311,9 @@ impl<'a, 'ast, 'ra, 'tcx> LateResolutionVisitor<'a, 'ast, 'ra, 'tcx> {
         match expr.kind {
             ExprKind::Path(ref qself, ref path) => {
                 self.smart_resolve_path(expr.id, qself, path, PathSource::Expr(parent));
-                visit::walk_expr(self, expr);
+                if !expr.is_plain_leaf() {
+                    visit::walk_expr(self, expr);
+                }
             }
 
             ExprKind::Struct(ref se) => {
@@ -5758,6 +5760,12 @@ fn required_generic_args_suggestion(generics: &ast::Generics) -> Option<String> 
 
 impl Visitor<'_> for ItemInfoCollector<'_, '_, '_> {
     fn visit_item(&mut self, item: &Item) {
+        if let Some(ident) = item.kind.ident()
+            && attr::contains_name(&item.attrs, sym::rustc_std_internal_symbol)
+        {
+            self.r.std_internal_symbols.push((ident.name, item.span));
+        }
+
         if let Some(generics) = item.opt_generics() {
             let def_id = self.r.owner_def_id(item.id);
             let count = generics
@@ -5806,7 +5814,9 @@ impl Visitor<'_> for ItemInfoCollector<'_, '_, '_> {
                 // but for delegation items we are never actually retrieving that count in practice.
             }
         }
-        visit::walk_item(self, item)
+        if self.r.owners[&item.id].may_have_nested_items {
+            visit::walk_item(self, item)
+        }
     }
 
     fn visit_assoc_item(&mut self, item: &AssocItem, ctxt: AssocCtxt) {
@@ -5820,7 +5830,9 @@ impl Visitor<'_> for ItemInfoCollector<'_, '_, '_> {
                 self.r.item_required_generic_args_suggestions.insert(def_id, suggestion);
             }
         }
-        visit::walk_assoc_item(self, item, ctxt);
+        if self.r.owners[&item.id].may_have_nested_items {
+            visit::walk_assoc_item(self, item, ctxt);
+        }
     }
 }
 

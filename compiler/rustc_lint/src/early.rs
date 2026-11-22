@@ -24,15 +24,34 @@ macro_rules! lint_callback { ($cx:expr, $f:ident, $($args:expr),*) => ({
     $cx.pass.$f(&$cx.context, $($args),*);
 }) }
 
+const BUFFERED_ID_WORDS: usize = 64;
+
+#[inline]
+fn buffered_id_bit(id: ast::NodeId) -> (usize, u64) {
+    (id.as_usize() / 64 % BUFFERED_ID_WORDS, 1u64.wrapping_shl(id.as_u32()))
+}
+
 /// Implements the AST traversal for early lint passes. `T` provides the
 /// `check_*` methods.
 struct EarlyContextAndPass<'ecx, T: EarlyLintPass> {
     context: EarlyContext<'ecx>,
     pass: T,
+    /// Lint callbacks receive a shared context. The buffer can only shrink
+    /// during the pass, so a negative membership test remains valid.
+    buffered_ids: [u64; BUFFERED_ID_WORDS],
 }
 
 impl<'ecx, T: EarlyLintPass> EarlyContextAndPass<'ecx, T> {
+    #[inline]
     fn check_id(&mut self, id: ast::NodeId) {
+        let (word, mask) = buffered_id_bit(id);
+        if self.buffered_ids[word] & mask != 0 {
+            self.emit_buffered_lints(id);
+        }
+    }
+
+    #[inline(never)]
+    fn emit_buffered_lints(&mut self, id: ast::NodeId) {
         for early_lint in self.context.buffered.take(id) {
             let BufferedEarlyLint { span, node_id: _, lint_id, diagnostic } = early_lint;
             self.context.opt_span_lint(
@@ -52,14 +71,17 @@ impl<'ecx, T: EarlyLintPass> EarlyContextAndPass<'ecx, T> {
     {
         let is_crate_node = id == ast::CRATE_NODE_ID;
         debug!(?id);
-        let push = self.context.builder.push(attrs, is_crate_node);
+        // Keep both pass callbacks, including for nodes with no attributes.
+        let push = (!attrs.is_empty()).then(|| self.context.builder.push(attrs, is_crate_node));
 
         debug!("early context: enter_attrs({:?})", attrs);
         lint_callback!(self, check_attributes, attrs);
         f(self);
         debug!("early context: exit_attrs({:?})", attrs);
         lint_callback!(self, check_attributes_post, attrs);
-        self.context.builder.pop(push);
+        if let Some(push) = push {
+            self.context.builder.pop(push);
+        }
     }
 }
 
@@ -381,7 +403,12 @@ fn run_pass<'a, 'ecx, T: EarlyLintPass>(
     context: EarlyContext<'ecx>,
     pass: T,
 ) -> EarlyContext<'ecx> {
-    let mut cx = EarlyContextAndPass { context, pass };
+    let mut buffered_ids = [0; BUFFERED_ID_WORDS];
+    for &id in context.buffered.map.keys() {
+        let (word, mask) = buffered_id_bit(id);
+        buffered_ids[word] |= mask;
+    }
+    let mut cx = EarlyContextAndPass { context, pass, buffered_ids };
     cx.with_lint_attrs(check_node.id(), check_node.attrs(), |cx| check_node.check(cx));
     cx.context
 }
