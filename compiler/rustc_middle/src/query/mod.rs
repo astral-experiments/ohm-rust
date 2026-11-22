@@ -5,8 +5,8 @@ pub use self::caches::{DefIdCache, DefaultCache, QueryCache, SingleCache, VecCac
 pub use self::calls::{TyCtxtAt, TyCtxtEnsureDone, TyCtxtEnsureOk, TyCtxtEnsureResult};
 pub use self::into_query_key::IntoQueryKey;
 pub use self::job::{
-    ActiveKeyStatus, QueryCycle, QueryJob, QueryJobId, QueryLatch, QueryStackFrame, QueryState,
-    QueryWaiter,
+    ActiveJobs, ActiveKeyStatus, QueryCycle, QueryJob, QueryJobId, QueryLatch, QueryStackFrame,
+    QueryState, QueryWaiter,
 };
 pub use self::keys::{LocalCrate, QueryKey};
 pub use self::system::{QueryMode, QuerySystem, QueryVTable};
