@@ -470,7 +470,9 @@ fn mir_promoted(
     }
 
     // the `trivial_const` query uses mir_built, so make sure it is run.
-    tcx.ensure_done().trivial_const(def);
+    if tcx.may_be_trivial_const(def) {
+        tcx.ensure_done().trivial_const(def);
+    }
 
     let built = tcx.mir_built(def);
     let mut body = built.body.steal();
