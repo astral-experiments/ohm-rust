@@ -266,6 +266,8 @@ jobs:
           --compiletest-rustc-args=-Zthreads=8
           --compiletest-rustc-args=-Zincremental-verify-ich
           tests/incremental/hygiene tests/incremental/derive_macro_expansion
+          tests/incremental/repeated-token-tree-tail.rs
+          tests/incremental/forward-metavariable-sequence.rs
           tests/incremental/promote-cached-query-value.rs
           tests/ui/macros/required-token.rs
           tests/ui/macros/required-token-errors.rs
