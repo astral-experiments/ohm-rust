@@ -30,6 +30,29 @@ fn edge_targets_stop_at_each_list_boundary() {
             graph.edge_targets_from(source).map(|index| index.as_u32()).collect::<Vec<_>>(),
             *expected
         );
+        let edges: Vec<_> = expected.iter().map(|&i| DepNodeIndex::from_u32(i)).collect();
+        assert_eq!(graph.has_same_short_edges(source, &edges), edges.len() <= 1);
+        assert_eq!(graph.has_same_short_edges(source, &[]), edges.is_empty());
+        assert!(!graph.has_same_short_edges(source, &[DepNodeIndex::from_u32(0)]));
+        let mut remaining = expected.iter();
+        assert_eq!(
+            graph.try_for_each_edge(source, |i| {
+                assert_eq!(remaining.next(), Some(&i.as_u32()));
+                Some(())
+            }),
+            Some(())
+        );
+        assert!(remaining.next().is_none());
+        if let Some(&first) = expected.first() {
+            let mut stop_at = Some(first);
+            assert_eq!(
+                graph.try_for_each_edge(source, |i| {
+                    assert_eq!(stop_at.take(), Some(i.as_u32()));
+                    None
+                }),
+                None
+            );
+        }
     }
 }
 
@@ -111,7 +134,8 @@ fn check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges() {
             .encode(&mut chunk, index);
             count += 1;
         }
-        seek.record_chunk(file.data.len(), &mut offsets, &mut roots);
+        let slots = offsets.last().unwrap().0.as_usize() + 1;
+        seek.record_chunk(file.data.len(), slots, &mut offsets, &mut roots);
         file.emit_raw_bytes(&chunk.data);
     }
     let start = file.data.len();
