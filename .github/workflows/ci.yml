@@ -267,6 +267,8 @@ jobs:
           --compiletest-rustc-args=-Zincremental-verify-ich
           tests/incremental/hygiene tests/incremental/derive_macro_expansion
           tests/incremental/promote-cached-query-value.rs
+          tests/ui/macros/required-token.rs
+          tests/ui/macros/required-token-errors.rs
           tests/incremental/forward-cached-query-value.rs
 
       - name: Run retained allocation and check-index tests
