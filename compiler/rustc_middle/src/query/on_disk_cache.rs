@@ -15,7 +15,7 @@ use rustc_hir::def_id::{
 };
 use rustc_hir::definitions::DefPathHash;
 use rustc_index::IndexVec;
-use rustc_index::bit_set::{DenseBitSet, GrowableBitSet};
+use rustc_index::bit_set::GrowableBitSet;
 use rustc_macros::{Decodable, Encodable};
 use rustc_serialize::opaque::{FileEncodeResult, FileEncoder, IntEncodedWithFixedSize, MemDecoder};
 use rustc_serialize::{Decodable, Decoder, Encodable, Encoder};
@@ -61,8 +61,10 @@ const SYMBOL_PREDEFINED: u8 = 2;
 /// Green values can remain in their original serialized form. Each retained
 /// generation is a prefix of the file with its own footer and decoding context;
 /// aliases map current dependency-node indices to indices in the previous generation.
-/// Keeping absolute byte positions preserves type and symbol shorthands. After
-/// `MAX_CACHE_GENERATIONS`, normal promotion re-encodes live values into a fresh file.
+/// Keeping absolute byte positions preserves type and symbol shorthands. If the
+/// most recent generation is small and kept the same indices, we can replace it
+/// instead of appending another. Otherwise, at `MAX_CACHE_GENERATIONS` normal
+/// promotion re-encodes live values into a fresh file.
 pub struct OnDiskCache {
     /// Type shorthands are offsets in one cache lineage, not process-global keys.
     cache_id: u32,
@@ -71,8 +73,13 @@ pub struct OnDiskCache {
     start_pos: usize,
     data_len: usize,
     generation_count: usize,
+    /// Reuse the previous generation and re-encode only this generation's values.
+    replace_overlay: bool,
     previous_cache: Option<Box<OnDiskCache>>,
-    forwarded_query_values: FxHashMap<SerializedDepNodeIndex, SerializedDepNodeIndex>,
+    /// Presence of either a saved value or an alias to the preceding generation.
+    saved_query_slots: GrowableBitSet<SerializedDepNodeIndex>,
+    /// Most retained rows keep their graph index. Only remapped rows need a second index.
+    remapped_queries: FxHashMap<SerializedDepNodeIndex, SerializedDepNodeIndex>,
     loaded_query_values: Lock<GrowableBitSet<SerializedDepNodeIndex>>,
     pending_query_values: Lock<Vec<(SerializedDepNodeIndex, SerializedDepNodeIndex)>>,
 
@@ -263,14 +270,39 @@ impl OnDiskCache {
         let alloc_decoding_state =
             Arc::new(AllocDecodingState::new(footer.interpret_alloc_index).with_aliases(aliases));
 
+        // Bound both the number of queries to promote and the bytes to re-encode.
+        // The footer can be large even for tiny changes because it lists each alias.
+        // Let normal compaction discard the prefix if few of its queries remain.
+        let small_overlay = previous_cache.as_ref().is_some_and(|prev| {
+            let saved = prev.saved_query_slots.count();
+            footer_pos - prev.data_len <= prev.data_len / 8
+                && footer.query_values_index.len() <= saved / 8
+                && footer.forwarded_query_values.len() >= saved / 2
+        });
+        let mut saved_query_slots = GrowableBitSet::with_capacity(
+            footer.forwarded_query_values.last().map_or(0, |(index, _)| index.as_usize() + 1),
+        );
+        let mut remapped_queries = FxHashMap::default();
+        for (index, previous) in footer.forwarded_query_values {
+            saved_query_slots.insert(index);
+            if index != previous {
+                remapped_queries.insert(index, previous);
+            }
+        }
+        for &(index, _) in &footer.query_values_index {
+            saved_query_slots.insert(index);
+        }
+
         Ok(Self {
             cache_id,
             serialized_data: RwLock::new(Some(data)),
             start_pos,
             data_len,
             generation_count,
+            replace_overlay: small_overlay && remapped_queries.is_empty(),
             previous_cache,
-            forwarded_query_values: footer.forwarded_query_values.into_iter().collect(),
+            saved_query_slots,
+            remapped_queries,
             loaded_query_values: Default::default(),
             pending_query_values: Default::default(),
             file_index_to_stable_id: footer.file_index_to_stable_id,
@@ -292,8 +324,10 @@ impl OnDiskCache {
             start_pos: 0,
             data_len: 0,
             generation_count: 0,
+            replace_overlay: false,
             previous_cache: None,
-            forwarded_query_values: Default::default(),
+            saved_query_slots: Default::default(),
+            remapped_queries: Default::default(),
             loaded_query_values: Default::default(),
             pending_query_values: Default::default(),
             file_index_to_stable_id: Default::default(),
@@ -323,10 +357,16 @@ impl OnDiskCache {
         previous_index: SerializedDepNodeIndex,
         current_index: DepNodeIndex,
     ) -> bool {
-        // Periodically use normal promotion to discard obsolete generations.
-        if self.generation_count >= MAX_CACHE_GENERATIONS
-            || !self.loadable_from_disk(previous_index)
-        {
+        if !self.loadable_from_disk(previous_index) {
+            return false;
+        }
+        if self.replace_overlay {
+            // All aliases point at the same slot in the previous generation. An
+            // explicitly encoded value shadows its alias and must be re-encoded.
+            if self.query_values_index.contains_key(&previous_index) {
+                return false;
+            }
+        } else if self.generation_count >= MAX_CACHE_GENERATIONS {
             return false;
         }
         let current_index = SerializedDepNodeIndex::from_curr_for_serialization(current_index);
@@ -342,7 +382,9 @@ impl OnDiskCache {
         }
         query_values.sort_unstable_by_key(|(index, _)| index.as_u32());
         let mut allocation_origins = FxHashMap::default();
-        let mut cache = Some(self);
+        let retained =
+            if self.replace_overlay { self.previous_cache.as_deref().unwrap() } else { self };
+        let mut cache = Some(retained);
         let mut depth = 1;
         while let Some(current) = cache {
             for (index, id) in current.alloc_decoding_state.decoded_alloc_ids() {
@@ -351,14 +393,14 @@ impl OnDiskCache {
             cache = current.previous_cache.as_deref();
             depth += 1;
         }
-        let data = self.serialized_data.read();
+        let data = retained.serialized_data.read();
         // The replacement is written separately, so the old mappings remain valid
         // until serialization finishes, including queries loaded while encoding.
         let data = Arc::clone(data.as_ref().unwrap());
         Some(QueryCachePromotion {
             data,
-            data_len: self.data_len,
-            start_pos: self.start_pos,
+            data_len: retained.data_len,
+            start_pos: retained.start_pos,
             query_values,
             allocation_origins,
         })
@@ -540,21 +582,15 @@ impl OnDiskCache {
     /// Returns true if there is a disk-cached query return value for the given node.
     #[inline]
     pub(crate) fn loadable_from_disk(&self, dep_node_index: SerializedDepNodeIndex) -> bool {
-        self.query_values_index.contains_key(&dep_node_index)
-            || self.forwarded_query_values.contains_key(&dep_node_index)
-        // with_decoder is infallible, so we can stop here
+        self.saved_query_slots.contains(dep_node_index)
     }
 
     /// Dependency nodes with saved query values, in previous-graph order.
-    pub(crate) fn cached_query_indices(&self, slots: usize) -> DenseBitSet<SerializedDepNodeIndex> {
-        let mut indices = DenseBitSet::new_empty(slots);
-        #[allow(rustc::potential_query_instability)]
-        for &index in self.query_values_index.keys().chain(self.forwarded_query_values.keys()) {
-            if index.as_usize() < slots {
-                indices.insert(index);
-            }
-        }
-        indices
+    pub(crate) fn cached_query_indices(
+        &self,
+        slots: usize,
+    ) -> impl Iterator<Item = SerializedDepNodeIndex> {
+        self.saved_query_slots.iter().take_while(move |index| index.as_usize() < slots)
     }
 
     /// Returns the disk-cached query return value for the given node, if there is one.
@@ -573,7 +609,10 @@ impl OnDiskCache {
                 self.loaded_query_values.lock().insert(dep_node_index);
                 return Some(value);
             }
-            index = *cache.forwarded_query_values.get(&index)?;
+            if !cache.loadable_from_disk(index) {
+                return None;
+            }
+            index = cache.remapped_queries.get(&index).copied().unwrap_or(index);
             cache = cache.previous_cache.as_deref()?;
         }
     }
