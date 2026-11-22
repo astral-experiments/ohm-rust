@@ -408,7 +408,15 @@ impl<'ra, 'tcx> ResolverExpand for Resolver<'ra, 'tcx> {
                     if file.contains(earlier.lo) && file.contains(data.hi) {
                         // An attribute on a method can move within its impl together with
                         // the preceding source method. Keep its absolute span and hygiene.
-                        let use_anchor = if self.tcx.def_kind(anchor) == DefKind::AssocFn {
+                        let use_anchor = if builtin_derive
+                            && parent_scope.expansion == LocalExpnId::ROOT
+                            && self.tcx.def_kind(invocation_parent.parent_def) == DefKind::Mod
+                            && self.tcx.def_kind(anchor) == DefKind::AssocFn
+                        {
+                            !file.is_imported()
+                                && self.tcx.local_parent(self.tcx.local_parent(anchor))
+                                    == invocation_parent.parent_def
+                        } else if self.tcx.def_kind(anchor) == DefKind::AssocFn {
                             !inner_attr
                                 && matches!(ext.kind, SyntaxExtensionKind::Attr(_))
                                 && parent_scope.expansion == LocalExpnId::ROOT
