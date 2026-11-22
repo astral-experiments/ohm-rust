@@ -1272,7 +1272,13 @@ pub fn rustc_cargo(
     // us a faster startup time. However GNU ld < 2.40 will error if we try to link a shared object
     // with direct references to protected symbols, so for now we only use protected symbols if
     // linking with LLD is enabled.
-    if builder.sess.config.bootstrap_override_lld.is_used() {
+    let native_bolt_lld = builder.sess.config.enable_bolt_settings
+        && build_compiler.stage == 1
+        && target == build_compiler.host
+        && target == "x86_64-unknown-linux-gnu"
+        && builder.sess.config.lld_enabled
+        && builder.sess.linker(target).is_none();
+    if builder.sess.config.bootstrap_override_lld.is_used() || native_bolt_lld {
         cargo.rustflag("-Zdefault-visibility=protected");
     }
 
