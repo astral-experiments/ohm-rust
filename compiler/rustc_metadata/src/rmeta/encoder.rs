@@ -1269,10 +1269,8 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             adapted.set_some_unhashed(on_disk_index, self.lazy(&adapted_source_file));
             if let Some(builder) = &mut self.metadata_prefix_manifest {
                 builder.dependency_hashes.record_source(self.tcx, source_file);
-                builder
-                    .manifest
-                    .source_files
-                    .push((source_file.stable_id, source_file_layout_fingerprint(source_file)));
+                let layout = source_file_layout_fingerprint(self.tcx, source_file);
+                builder.manifest.source_files.push((source_file.stable_id, layout));
             }
         }
 
@@ -2639,11 +2637,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         let mut hasher = StableHasher::new();
         file.stable_id.hash(&mut hasher);
         index.hash(&mut hasher);
-        if file.is_imported()
-            || self.tcx.sess.dwarf_version() >= 5
-            || self.tcx.sess.target.is_like_msvc
-            || self.tcx.sess.opts.unstable_opts.embed_source
-        {
+        if file.is_imported() || metadata_prefix::native_location_uses_checksum(self.tcx) {
             // Imported text may be absent. Native debug formats can also embed a whole-file checksum.
             file.src_hash.hash_bytes().hash(&mut hasher);
         }
@@ -4314,7 +4308,7 @@ fn try_reuse_metadata_prefix(
             .enumerate()
             .find(|(_, source_file)| source_file.stable_id == *source_file_id)?;
         if source_file.is_imported()
-            || source_file_layout_fingerprint(source_file) != *previous_layout
+            || source_file_layout_fingerprint(tcx, source_file) != *previous_layout
             || !required_source_files.insert(index)
         {
             return None;

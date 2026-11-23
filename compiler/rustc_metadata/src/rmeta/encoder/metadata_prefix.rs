@@ -172,8 +172,33 @@ pub(super) fn relocate_metadata_table<'tcx, I, T: FixedSizeEncoding>(
     LazyTable::from_position_and_encoded_size(position, table.width, table.len)
 }
 
-pub(super) fn source_file_layout_fingerprint(source_file: &SourceFile) -> Fingerprint {
+pub(super) fn native_location_uses_checksum(tcx: TyCtxt<'_>) -> bool {
+    tcx.sess.dwarf_version() >= 5
+        || tcx.sess.target.is_like_msvc
+        || tcx.sess.opts.unstable_opts.embed_source
+}
+
+pub(super) fn source_file_layout_fingerprint(
+    tcx: TyCtxt<'_>,
+    source_file: &SourceFile,
+) -> Fingerprint {
     let mut hasher = StableHasher::new();
+    // Local-only edits can refresh the source map without checking dependency hashes.
+    // Preserve the inputs to native location fingerprints in the retained item data.
+    if tcx.sess.opts.output_types.should_codegen() {
+        if native_location_uses_checksum(tcx) {
+            source_file.src_hash.hash(&mut hasher);
+        } else if let Some(src) = &source_file.src {
+            // Line starts below account for newlines. Byte offsets alone miss changes
+            // to display columns, e.g. replacing a space with a tab before a span.
+            for (offset, byte) in src.bytes().enumerate() {
+                if !matches!(byte, b' '..=b'~' | b'\n') {
+                    (offset, byte).hash(&mut hasher);
+                }
+            }
+            src.len().hash(&mut hasher);
+        }
+    }
     source_file.name.hash(&mut hasher);
     source_file.stable_id.hash(&mut hasher);
     source_file.normalized_source_len.hash(&mut hasher);
