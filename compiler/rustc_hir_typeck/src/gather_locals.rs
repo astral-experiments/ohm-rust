@@ -100,14 +100,15 @@ impl<'a, 'tcx> GatherLocalsVisitor<'a, 'tcx> {
             fcx,
             outermost_fn_param_pat: Some((param.ty_span, param.hir_id)),
         };
+        // Giving two bindings the same type can merge their Sized obligations and
+        // discard the second span. Keep distinct variables if the bound might fail.
         if let Some(known_ty) = known_ty
             && let PatKind::Binding(hir::BindingMode(hir::ByRef::No, _), var_id, _, None) =
                 param.pat.kind
             && var_id == param.pat.hir_id
+            && (fcx.tcx.features().unsized_fn_params()
+                || known_ty.has_trivial_sizedness(fcx.tcx, ty::SizedTraitKind::Sized))
         {
-            // check_fn checks the parameter type is Sized. This binding has
-            // that exact type, so it needs neither a fresh type variable nor a
-            // separate Sized obligation.
             visitor.assign(param.pat.span, param.pat.hir_id, Some(known_ty));
         } else {
             visitor.visit_pat(param.pat);
