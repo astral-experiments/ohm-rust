@@ -191,9 +191,19 @@ pub(super) fn source_file_layout_fingerprint(
         } else if let Some(src) = &source_file.src {
             // Line starts below account for newlines. Byte offsets alone miss changes
             // to display columns, e.g. replacing a space with a tab before a span.
-            for (offset, byte) in src.bytes().enumerate() {
-                if !matches!(byte, b' '..=b'~' | b'\n') {
-                    (offset, byte).hash(&mut hasher);
+            const BLOCK: usize = 32;
+            let ordinary = |byte| matches!(byte, b' '..=b'~' | b'\n');
+            for (i, bytes) in src.as_bytes().chunks(BLOCK).enumerate() {
+                // Counting over a fixed-size block lets LLVM vectorize the common case.
+                if let Some(block) = bytes.first_chunk::<BLOCK>()
+                    && block.iter().filter(|&&b| ordinary(b)).count() == BLOCK
+                {
+                    continue;
+                }
+                for (j, &byte) in bytes.iter().enumerate() {
+                    if !ordinary(byte) {
+                        (i * BLOCK + j, byte).hash(&mut hasher);
+                    }
                 }
             }
             src.len().hash(&mut hasher);
