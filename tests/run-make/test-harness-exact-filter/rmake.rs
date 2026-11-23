@@ -5,7 +5,12 @@ use run_make_support::{cmd, run, run_with_args, rustc};
 
 fn compile(filter: Option<&str>, output: &str) {
     let mut command = rustc();
-    command.arg("--test").input("tests.rs").output(output).incremental("shared-incremental");
+    command
+        .edition("2024")
+        .arg("--test")
+        .input("tests.rs")
+        .output(output)
+        .incremental("shared-incremental");
     if let Some(filter) = filter {
         command.arg(format!("-Ztest-harness-filter={filter}"));
     }
