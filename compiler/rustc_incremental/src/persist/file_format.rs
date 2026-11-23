@@ -40,7 +40,8 @@ const FILE_MAGIC: &[u8] = b"RSIC";
 // HIR fingerprints encode owner-local IDs and short source ranges.
 // Query cache spans following a source parent can be relative to its end.
 // Cached metadata work products must include implicit dependency roots.
-const HEADER_FORMAT_VERSION: u16 = 61380;
+// Cached public API hashes must mix fingerprints at branching components.
+const HEADER_FORMAT_VERSION: u16 = 61381;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);

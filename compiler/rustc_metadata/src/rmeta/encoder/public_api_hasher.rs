@@ -134,7 +134,7 @@
 
 use core::iter::Iterator;
 use std::fmt;
-use std::hash::BuildHasher;
+use std::hash::{BuildHasher, Hash};
 
 use rustc_crate_store::{ForeignModule, LinkagePreference, NativeLib};
 use rustc_data_structures::fingerprint::Fingerprint;
@@ -1183,8 +1183,8 @@ type SccIdx = u32;
 /// Instead we compute the fingerprints purely from the (DFS-order-independent)
 /// condensation topology:
 ///   * `base(scc)` = sum of its member nodes' fingerprints, each counted once;
-///   * `fingerprint(scc)` = `base(scc)` plus the fingerprint of every successor
-///     SCC.
+///   * Add each successor's fingerprint to `base(scc)`. If there is more
+///     than one successor, hash the sum before passing it to predecessors.
 ///
 /// [`Sccs::all_sccs`] yields the condensation in dependency order (successors
 /// before predecessors), so a single pass sees each successor's fingerprint
@@ -1205,9 +1205,20 @@ fn scc_fingerprints<'tcx>(
         fingerprints[scc] = fingerprints[scc].combine_commutative(fingerprint);
     }
     for scc in sccs.all_sccs() {
-        for &succ in sccs.successors(scc) {
-            fingerprints[scc] = fingerprints[scc].combine_commutative(fingerprints[succ]);
+        let successors = sccs.successors(scc);
+        let mut fingerprint = fingerprints[scc];
+        for &succ in successors {
+            fingerprint = fingerprint.combine_commutative(fingerprints[succ]);
         }
+        // With addition alone a descendant contributes once per path. After
+        // 128 successive doublings its contribution wraps to zero. Mixing
+        // at forks breaks that pattern without depending on successor order.
+        if successors.len() > 1 {
+            let mut hasher = StableHasher::new();
+            fingerprint.hash(&mut hasher);
+            fingerprint = hasher.finish();
+        }
+        fingerprints[scc] = fingerprint;
     }
     fingerprints
 }
