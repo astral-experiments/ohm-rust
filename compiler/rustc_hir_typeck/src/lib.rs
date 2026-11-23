@@ -35,6 +35,7 @@ mod op;
 mod opaque_types;
 mod pat;
 mod place_op;
+mod string_table;
 mod typeck_root_ctxt;
 mod upvar;
 mod writeback;

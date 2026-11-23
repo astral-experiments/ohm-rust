@@ -722,7 +722,10 @@ fn literal_slice<'tcx>(
         || thir[root].ty != ty
         || tcx.def_kind(def) != DefKind::Const
         || tcx.generics_of(def).count() != 0
-        || !tcx.hir_attrs(tcx.local_def_id_to_hir_id(def)).is_empty()
+        || tcx.hir_attrs(tcx.local_def_id_to_hir_id(def)).iter().any(|attr| {
+            attr.is_doc_comment().is_none()
+                && !matches!(attr.path().as_slice(), [tool, name] if *tool == rustc_span::sym::rustfmt && name.as_str() == "skip")
+        })
         || !tcx.hir_attrs(hir_id).is_empty()
         || !tcx.hir_attrs(array_id).is_empty()
         || tcx.sess.instrument_coverage()
