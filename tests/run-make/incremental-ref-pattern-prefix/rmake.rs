@@ -11,6 +11,10 @@ fn main() {
 #![allow(internal_features)]
 #[rustc_clean(cfg = "moved", loaded_from_disk = "typeck_root")]
 {padding}pub fn read(&value: &u32) -> u32 {{ value }}
+
+// Without another change, the module can be reused without loading `read`'s typeck results.
+#[cfg(moved)]
+pub fn unrelated() {{}}
 "#
         );
         rfs::write("read.rs", source);
