@@ -73,7 +73,7 @@ use rustc_middle::middle::resolve::{
 use rustc_middle::query::Providers;
 use rustc_middle::ty::{self, RegisteredTools, TyCtxt, TyCtxtFeed, Visibility};
 use rustc_span::def_id::{LocalModId, ModId};
-use rustc_span::hygiene::{ExpnId, LocalExpnId, MacroKind, SyntaxContext, Transparency};
+use rustc_span::hygiene::{ExpnId, LocalExpnId, MacroKind, SyntaxContext};
 use rustc_span::{DUMMY_SP, Ident, Span, Symbol, bug, kw, span_bug, sym};
 use rustc_structures::CrateType;
 use smallvec::{SmallVec, smallvec};
@@ -2427,67 +2427,11 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
 
     fn resolve_crate_root(&self, ident: Ident) -> Module<'ra> {
         debug!("resolve_crate_root({:?})", ident);
-        let mut ctxt = ident.span.ctxt();
-        let mark = if ident.name == kw::DollarCrate {
-            // When resolving `$crate` from a `macro_rules!` invoked in a `macro`,
-            // we don't want to pretend that the `macro_rules!` definition is in the `macro`
-            // as described in `SyntaxContext::apply_mark`, so we ignore prepended opaque marks.
-            // FIXME: This is only a guess and it doesn't work correctly for `macro_rules!`
-            // definitions actually produced by `macro` and `macro` definitions produced by
-            // `macro_rules!`, but at least such configurations are not stable yet.
-            ctxt = ctxt.normalize_to_macro_rules();
-            debug!(
-                "resolve_crate_root: marks={:?}",
-                ctxt.marks().into_iter().map(|(i, t)| (i.expn_data(), t)).collect::<Vec<_>>()
-            );
-            let mut iter = ctxt.marks().into_iter().rev().peekable();
-            let mut result = None;
-            // Find the last opaque mark from the end if it exists.
-            while let Some(&(mark, transparency)) = iter.peek() {
-                if transparency == Transparency::Opaque {
-                    result = Some(mark);
-                    iter.next();
-                } else {
-                    break;
-                }
-            }
-            debug!(
-                "resolve_crate_root: found opaque mark {:?} {:?}",
-                result,
-                result.map(|r| r.expn_data())
-            );
-            // Then find the last semi-opaque mark from the end if it exists.
-            for (mark, transparency) in iter {
-                if transparency == Transparency::SemiOpaque {
-                    result = Some(mark);
-                } else {
-                    break;
-                }
-            }
-            debug!(
-                "resolve_crate_root: found semi-opaque mark {:?} {:?}",
-                result,
-                result.map(|r| r.expn_data())
-            );
-            result
-        } else {
-            debug!("resolve_crate_root: not DollarCrate");
-            ctxt = ctxt.normalize_to_macros_2_0();
-            ctxt.adjust(ExpnId::root())
-        };
-        let module = match mark {
-            Some(def) => self.expn_def_scope(def),
-            None => {
-                debug!(
-                    "resolve_crate_root({:?}): found no mark (ident.span = {:?})",
-                    ident, ident.span
-                );
-                return self.graph_root.to_module();
-            }
-        };
-        let module = self.expect_module(
-            module.opt_def_id().map_or(LOCAL_CRATE, |def_id| def_id.krate).as_def_id(),
-        );
+        let krate = ident.span.ctxt().crate_for_path_root(ident.name);
+        if krate == LOCAL_CRATE {
+            return self.graph_root.to_module();
+        }
+        let module = self.expect_module(krate.as_def_id());
         debug!(
             "resolve_crate_root({:?}): got module {:?} ({:?}) (ident.span = {:?})",
             ident,

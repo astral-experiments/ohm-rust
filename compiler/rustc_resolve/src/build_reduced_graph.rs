@@ -184,7 +184,9 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
         if let Some(id) = def_id.as_local() {
             self.local_macro_def_scopes[&id].to_module()
         } else {
-            self.get_nearest_non_block_module(def_id)
+            // A macro definition is never a module. Start at its parent
+            // to avoid an unsuccessful lookup in the external module map.
+            self.get_nearest_non_block_module(self.tcx.parent(def_id))
         }
     }
 
