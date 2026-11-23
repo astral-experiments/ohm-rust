@@ -230,7 +230,72 @@ fn derived_receivers() {
     run("derived").assert_stdout_equals("67\n112\n");
 }
 
+// A blank line changes the printed locations of local closures. Their generic
+// instances should stay in the same shards. Specializations for a local marker
+// should share a shard even when they have different const arguments.
+fn specialized_bodies() {
+    const PER_MARKER: u64 = 8;
+    let mut source = String::from(concat!(
+        "#[inline(never)] fn apply<const N: u64, T, F: Fn(u64) -> u64>",
+        "(mut x: u64, f: F) -> u64 {\n",
+    ));
+    for i in 0..OPERATIONS {
+        writeln!(source, "x = x.wrapping_mul({MULTIPLIER}).wrapping_add({i});").unwrap();
+    }
+    source.push_str("f(x) }\n");
+    for i in 0..FUNCTIONS {
+        writeln!(source, "pub fn f{i}(x: u64) -> u64 {{ apply::<{i}, (), _>(x, |v| v ^ {i}) }}")
+            .unwrap();
+    }
+    let first = FUNCTIONS;
+    let last = first + FUNCTIONS;
+    for i in (first..last).step_by(PER_MARKER as usize) {
+        writeln!(source, "pub fn f{i}(mut x: u64) -> u64 {{ struct Marker;").unwrap();
+        for n in i..i + PER_MARKER {
+            writeln!(source, "x = apply::<{n}, Marker, _>(x, std::convert::identity);").unwrap();
+        }
+        source.push_str("x }\n");
+    }
+
+    let build = |cache: &str| {
+        let output = rustc()
+            .input("closures.rs")
+            .crate_type("rlib")
+            .opt_level("1")
+            .incremental(cache)
+            .arg("-Zohm-caller-local-cgus")
+            .arg("-Zhuman-readable-cgu-names")
+            .arg("-Zprint-mono-items")
+            .run()
+            .stdout_utf8();
+        let units: BTreeMap<_, _> = output
+            .lines()
+            .filter_map(|line| {
+                let item = line.strip_prefix("MONO_ITEM fn apply::<")?;
+                let (number, _) = item.split_once(',').unwrap();
+                let (_, unit) = item.split_once(" @@ ").unwrap();
+                Some((number.parse::<u64>().unwrap(), unit.to_owned()))
+            })
+            .collect();
+        assert_eq!(units.len(), last as usize);
+        assert!(units.values().all(|unit| unit.contains("-ohm-split-")));
+        assert!(units.values().collect::<BTreeSet<_>>().len() > 1);
+        units
+    };
+
+    rfs::write("closures.rs", &source);
+    let expected = build("incremental");
+    source.insert(0, '\n');
+    rfs::write("closures.rs", &source);
+    assert_eq!(build("incremental"), expected);
+    assert_eq!(build("clean"), expected);
+    for i in (first..last).step_by(PER_MARKER as usize) {
+        assert!((i..i + PER_MARKER).all(|n| expected[&n] == expected[&i]));
+    }
+}
+
 fn main() {
+    run_in_tmpdir(specialized_bodies);
     derived_receivers();
     rfs::write("fixture.rs", "fn main() {}\n");
     rustc()

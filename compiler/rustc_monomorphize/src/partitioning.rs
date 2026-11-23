@@ -403,10 +403,18 @@ fn split_large_codegen_units<'tcx>(
             .collect();
 
         for (&item, &data) in roots {
-            let hash = if place_by_user {
-                // Keep instances with the same owner together, including closures
-                // in the enclosing body. Hash its path once per partitioning pass.
-                let mut owner = caller_local_def_id(cx, item).unwrap_or_else(|| item.def_id());
+            let owner = if place_by_user {
+                Some(caller_local_def_id(cx, item).unwrap_or_else(|| item.def_id()))
+            } else if cx.tcx.sess.opts.unstable_opts.ohm_caller_local_cgus
+                && let MonoItem::Fn(instance) = item
+            {
+                local_type_owner(cx.tcx, instance)
+            } else {
+                None
+            };
+            let hash = if let Some(mut owner) = owner {
+                // Formatting a closure type includes its source location. Keep instances
+                // that use it together even if the enclosing body moves down a few lines.
                 while cx.tcx.def_kind(owner) == DefKind::Closure {
                     owner = cx.tcx.parent(owner);
                 }
@@ -1094,6 +1102,43 @@ fn mark_code_coverage_dead_code_cgu<'tcx>(codegen_units: &mut [CodegenUnit<'tcx>
     let dead_code_cgu = if let Some(cgu) = dead_code_cgu { cgu } else { &mut codegen_units[0] };
 
     dead_code_cgu.make_code_coverage_dead_code_cgu();
+}
+
+/// Find an argument whose instances should stay in one shard of this unit.
+/// A small body edit can otherwise move many specializations at once.
+fn local_type_owner<'tcx>(tcx: TyCtxt<'tcx>, instance: ty::Instance<'tcx>) -> Option<DefId> {
+    // Upstream functions with a local closure argument already follow it to its
+    // module. Preserve their layout within that module.
+    let upstream = matches!(instance.def, InstanceKind::Item(id) if !id.is_local());
+
+    instance.args.iter().flat_map(|arg| arg.walk()).find_map(|arg| {
+        let ty::GenericArgKind::Type(ty) = arg.kind() else { return None };
+        match *ty.kind() {
+            ty::Closure(id, _)
+            | ty::CoroutineClosure(id, _)
+            | ty::Coroutine(id, _)
+            | ty::CoroutineWitness(id, _)
+                if id.is_local() && !upstream =>
+            {
+                Some(id)
+            }
+            ty::Adt(def, _)
+                if def.did().is_local()
+                    && def.is_struct()
+                    && def.non_enum_variant().fields.is_empty() =>
+            {
+                let mut id = tcx.parent(def.did());
+                loop {
+                    match tcx.def_kind(id) {
+                        DefKind::Fn | DefKind::AssocFn => return Some(id),
+                        DefKind::Mod => return None,
+                        _ => id = tcx.parent(id),
+                    }
+                }
+            }
+            _ => None,
+        }
+    })
 }
 
 /// Find a locally defined callable, including one nested in a generic argument.
