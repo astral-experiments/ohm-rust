@@ -842,6 +842,17 @@ impl CStore {
         self.get_crate_data(def_id.krate).get_expn_that_defined(tcx, def_id.index)
     }
 
+    /// Stream the same bindings as the arena-allocated `module_children`
+    /// query. Only for name resolution, which runs every session.
+    pub fn module_children_untracked(
+        &self,
+        tcx: TyCtxt<'_>,
+        def_id: DefId,
+    ) -> impl Iterator<Item = ModChild> {
+        tcx.dep_graph.assert_eval_always();
+        self.get_crate_data(def_id.krate).get_module_children(tcx, def_id.index)
+    }
+
     /// Bindings omitted from the public API hash, for failed path lookups.
     pub fn private_module_children_untracked(
         &self,

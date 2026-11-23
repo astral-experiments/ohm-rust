@@ -21,7 +21,7 @@ use rustc_expand::base::{ResolverExpand, SyntaxExtension, SyntaxExtensionKind};
 use rustc_hir::def::{self, *};
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_index::bit_set::DenseBitSet;
-use rustc_metadata::creader::LoadedMacro;
+use rustc_metadata::creader::{CStore, LoadedMacro};
 use rustc_middle::middle::resolve::{ModChild, PartialRes, Reexport};
 use rustc_middle::ty::{TyCtxtFeed, Visibility};
 use rustc_span::def_id::{CRATE_MOD_ID, ModId};
@@ -337,25 +337,30 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
         &self,
         module: ExternModule<'ra>,
     ) -> ResolutionTable<'ra> {
-        let mut resolutions = FxIndexMap::default();
         let def_id = module.def_id();
-        let children = self.tcx.module_children(def_id);
-        for (i, child) in children.iter().enumerate() {
+        let cstore = self.cstore();
+        let children = cstore.module_children_untracked(self.tcx, def_id);
+        let mut resolutions =
+            FxIndexMap::with_capacity_and_hasher(children.size_hint().0, Default::default());
+        // The table owns the declarations and their reexport chains. Avoid
+        // also retaining the decoded children in the query arena.
+        let num_children = children.fold(0, |i, child| {
             self.build_reduced_graph_for_external_crate_res(
-                child,
+                &cstore,
+                &child,
                 module,
                 i,
                 None,
                 &mut resolutions,
-            )
-        }
-        for (i, child) in
-            self.cstore().ambig_module_children_untracked(self.tcx, def_id).enumerate()
-        {
+            );
+            i + 1
+        });
+        for (i, child) in cstore.ambig_module_children_untracked(self.tcx, def_id).enumerate() {
             self.build_reduced_graph_for_external_crate_res(
+                &cstore,
                 &child.main,
                 module,
-                children.len() + i,
+                num_children + i,
                 Some(&child.second),
                 &mut resolutions,
             )
@@ -373,10 +378,11 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
         let mut private = self.private_module_resolutions.borrow_mut();
         let table = private.entry(def_id).or_insert_with(|| {
             let mut resolutions = FxIndexMap::default();
-            for (i, child) in
-                self.cstore().private_module_children_untracked(self.tcx, def_id).enumerate()
+            let cstore = self.cstore();
+            for (i, child) in cstore.private_module_children_untracked(self.tcx, def_id).enumerate()
             {
                 self.build_reduced_graph_for_external_crate_res(
+                    &cstore,
                     &child,
                     module,
                     i,
@@ -392,28 +398,30 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
     /// Builds the reduced graph for a single item in an external crate.
     fn build_reduced_graph_for_external_crate_res(
         &self,
+        cstore: &CStore,
         child: &ModChild,
         parent: ExternModule<'ra>,
         child_index: usize,
         ambig_child: Option<&ModChild>,
         resolutions: &mut FxIndexMap<BindingKey, NameResolutionRef<'ra>>,
     ) {
-        let child_span = |this: &Self, reexport_chain: &[Reexport], res: def::Res<_>| {
-            this.def_span(
-                reexport_chain
-                    .first()
-                    .and_then(|reexport| reexport.id())
-                    .unwrap_or_else(|| res.def_id()),
-            )
+        let child_span = |reexport_chain: &[Reexport], res: def::Res<_>| {
+            let id = reexport_chain
+                .first()
+                .and_then(|reexport| reexport.id())
+                .unwrap_or_else(|| res.def_id());
+            // The iterator already holds a read guard. Reuse it for the
+            // definition span so a waiting writer cannot block another read.
+            cstore.def_span_untracked(self.tcx, id)
         };
         let ModChild { ident: orig_ident, res, vis, ref reexport_chain } = *child;
         let ident = IdentKey::new(orig_ident);
-        let span = child_span(self, reexport_chain, res);
+        let span = child_span(reexport_chain, res);
         let res = res.expect_non_local();
         let expansion = LocalExpnId::ROOT;
         let ambig = ambig_child.map(|ambig_child| {
             let ModChild { ident: _, res, vis, ref reexport_chain } = *ambig_child;
-            let span = child_span(self, reexport_chain, res);
+            let span = child_span(reexport_chain, res);
             let res = res.expect_non_local();
             // External ambiguities always report the `AMBIGUOUS_GLOB_IMPORTS` lint at the moment.
             (self.arenas.new_def_decl(res, vis, span, expansion, Some(parent.to_module())), true)
