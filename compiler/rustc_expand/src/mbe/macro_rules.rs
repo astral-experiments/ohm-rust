@@ -1193,6 +1193,19 @@ fn check_matcher(
     node_id: NodeId,
     matcher: &[mbe::TokenTree],
 ) -> Result<(), ErrorGuaranteed> {
+    // Matchers consisting entirely of literal tokens and unrestricted
+    // fragments need no follow sets, even inside delimiters or repetitions.
+    // The empty-repetition check runs independently in `check_lhs`.
+    fn unrestricted(tt: &mbe::TokenTree) -> bool {
+        match tt {
+            mbe::TokenTree::Delimited(.., d) => d.tts.iter().all(unrestricted),
+            mbe::TokenTree::Sequence(_, s) => s.tts.iter().all(unrestricted),
+            _ => token_can_be_followed_by_any(tt),
+        }
+    }
+    if matcher.iter().all(unrestricted) {
+        return Ok(());
+    }
     let first_sets = FirstSets::new(matcher);
     let empty_suffix = TokenSet::empty();
     check_matcher_core(sess, features, node_id, &first_sets, matcher, &empty_suffix)?;

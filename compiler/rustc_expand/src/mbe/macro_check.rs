@@ -206,7 +206,11 @@ pub(super) fn check_meta_variables(
         check_binders(psess, node_id, args, &Stack::Empty, &mut binders, &Stack::Empty, &mut guar);
     }
     check_binders(psess, node_id, lhs, &Stack::Empty, &mut binders, &Stack::Empty, &mut guar);
-    check_occurrences(psess, node_id, rhs, &Stack::Empty, &binders, &Stack::Empty, &mut guar);
+    // Occurrences can only emit META_VARIABLE_MISUSE, which is ignored for
+    // imported macros. Still check the binders for duplicate declarations.
+    if node_id != DUMMY_NODE_ID {
+        check_occurrences(psess, node_id, rhs, &Stack::Empty, &binders, &Stack::Empty, &mut guar);
+    }
     guar.map_or(Ok(()), Err)
 }
 
@@ -272,7 +276,8 @@ fn check_binders(
                         prev: prev_info.span,
                     }));
             } else {
-                binders.insert(name, BinderInfo { span, ops: ops.into() });
+                let ops = if node_id == DUMMY_NODE_ID { SmallVec::new() } else { ops.into() };
+                binders.insert(name, BinderInfo { span, ops });
             }
         }
         // `MetaVarExpr` can not appear in the LHS of a macro arm
