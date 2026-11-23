@@ -10,6 +10,9 @@ fn main() {
     };
     capped().arg("--force-warn=unused-crate-dependencies").run().assert_stderr_equals("");
 
+    // Checking whether a tuple field is zero-sized can reveal a hard layout error.
+    capped().arg("--cfg=layout_cycle").run_fail().assert_stderr_contains("E0391");
+
     // Dead-code analysis can fulfill a lint expectation without emitting a warning.
     capped()
         .arg("--cfg=expectations")

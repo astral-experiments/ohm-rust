@@ -12,7 +12,7 @@ use rustc_abi::FieldIdx;
 use rustc_attr_ir::find_attr;
 use rustc_data_structures::fx::{FxHashMap, FxHashSet, FxIndexSet};
 use rustc_errors::{ErrorGuaranteed, MultiSpan};
-use rustc_hir::def::{CtorOf, DefKind, Res};
+use rustc_hir::def::{CtorKind, CtorOf, DefKind, Res};
 use rustc_hir::def_id::{DefId, LocalDefId, LocalModId};
 use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::{self as hir, ForeignItemId, ItemId, Node, PatKind, QPath};
@@ -1502,9 +1502,18 @@ impl<'tcx> DeadVisitor<'tcx> {
 }
 
 fn check_mod_deathness(tcx: TyCtxt<'_>, module: LocalModId) {
-    // This pass can fulfill an expectation even when the diagnostic itself is capped.
+    let module_items = tcx.hir_module_items(module);
+
+    // Even with warnings capped, this pass can fulfill expectations. It can also
+    // diagnose a layout cycle when checking whether an unread tuple field is zero-sized.
     if tcx.can_skip_capped_lints(&[DEAD_CODE, DEAD_CODE_PUB_IN_BINARY])
         && tcx.lint_expectations(()).is_empty()
+        && !module_items.free_items().any(|item| {
+            matches!(tcx.def_kind(item.owner_id), DefKind::Struct | DefKind::Enum)
+                && tcx.adt_def(item.owner_id).variants().iter().any(|variant| {
+                    variant.ctor_kind() == Some(CtorKind::Fn) && !variant.fields.is_empty()
+                })
+        })
     {
         return;
     }
@@ -1514,8 +1523,6 @@ fn check_mod_deathness(tcx: TyCtxt<'_>, module: LocalModId) {
     else {
         return;
     };
-
-    let module_items = tcx.hir_module_items(module);
 
     if tcx.crate_types().contains(&CrateType::Executable) {
         let is_unused_pub = |def_id: LocalDefId| {
