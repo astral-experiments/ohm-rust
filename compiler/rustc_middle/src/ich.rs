@@ -10,6 +10,32 @@ use rustc_session::Session;
 use rustc_span::source_map::SourceMap;
 use rustc_span::{CachingSourceMapView, DUMMY_SP, Pos, Span};
 
+pub(crate) const TAG_RELATIVE_SPAN: u8 = 2;
+// Tag 3 is reserved for multibyte columns in metadata span hashes.
+pub(crate) const TAG_AFTER_PARENT_SPAN: u8 = 4;
+
+/// Choose the same anchor for hashing a span and storing it in the query cache.
+/// A source-written derive can be parented to the preceding method. Measuring
+/// the gap from its end keeps the expansion stable when the method body grows.
+/// The caller has already checked both start positions are in the same file.
+pub(crate) fn relative_span_base(
+    span: rustc_span::SpanData,
+    parent: rustc_span::SpanData,
+    file: &rustc_span::SourceFile,
+) -> (u8, rustc_span::BytePos) {
+    if parent.lo < parent.hi
+        && parent.hi < span.lo
+        && span.lo <= span.hi
+        && file.contains(span.hi)
+        && parent.ctxt.is_root()
+        && span.ctxt.is_root()
+    {
+        (TAG_AFTER_PARENT_SPAN, parent.hi)
+    } else {
+        (TAG_RELATIVE_SPAN, parent.lo)
+    }
+}
+
 // Very often, we are hashing something that does not need the `CachingSourceMapView`, so we
 // initialize it lazily.
 enum CachingSourceMap<'a> {
@@ -145,7 +171,6 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
         let mut span = span.data_untracked();
         const TAG_VALID_SPAN: u8 = 0;
         const TAG_INVALID_SPAN: u8 = 1;
-        const TAG_RELATIVE_SPAN: u8 = 2;
         const TAG_MULTIBYTE_COLUMNS: u8 = 3;
 
         if HASH_SPANS_AS_PARENTLESS {
@@ -212,9 +237,10 @@ impl<'a, const HASH_SPANS_AS_PARENTLESS: bool> StableHashCtxt
         {
             // This span is relative to another span in the same file,
             // only hash the relative position.
-            Hash::hash(&TAG_RELATIVE_SPAN, hasher);
-            let lo = span.lo.0.wrapping_sub(parent.lo.0);
-            let hi = span.hi.0.wrapping_sub(parent.lo.0);
+            let (tag, base) = relative_span_base(span, parent, file);
+            Hash::hash(&tag, hasher);
+            let lo = span.lo.0.wrapping_sub(base.0);
+            let hi = span.hi.0.wrapping_sub(base.0);
             Hash::hash(&(((hi as u64) << 32) | lo as u64), hasher);
             return;
         }

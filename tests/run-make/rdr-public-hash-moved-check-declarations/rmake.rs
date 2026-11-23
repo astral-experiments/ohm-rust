@@ -49,6 +49,7 @@ fn reader() {
 
 fn main() {
     check_derived_declarations();
+    check_derive_after_last_method();
     check_traits_and_constructors();
     check_comment_lines();
     let moved = SOURCE.replace("private() {}", "private() {\n    let _ = 0;\n}");
@@ -277,4 +278,41 @@ fn check_comment_lines() {
     }
     assert_ne!(hash(original, false, false), hash(&more, false, false));
     assert_ne!(hash(original, true, true), hash(&more, true, true));
+}
+
+// Without an earlier source ADT as an anchor, the derive on Ink is parented to
+// Writer's last method. Growing that method moves the derive by the same amount.
+fn check_derive_after_last_method() {
+    let source = "#[derive(Default)] struct Writer;\n\
+                  impl Writer {\n\
+                      fn write() {}\n\
+                  }\n\
+                  #[derive(Clone, Debug)]\n\
+                  pub enum Ink<T> { None, Color(T) }\n";
+    let moved = source.replace("write() {}", "write() {\n let _ = \"μ\";\n}");
+    let first = hash(source, true, false);
+    let disk = disk_hash();
+    assert_eq!(first, hash(&moved, true, false));
+    assert_ne!(disk, disk_hash());
+    let warm = rfs::read("libdep.rmeta");
+    rfs::write("reader.rs", "fn main() { dep::Ink::<u32>::Color(); }\n");
+    rustc()
+        .input("reader.rs")
+        .emit("metadata")
+        .extern_("dep", "libdep.rmeta")
+        .run_fail()
+        .assert_stderr_contains("dep.rs:8:25");
+    rfs::remove_dir_all("producer-cache");
+    assert_eq!(first, hash(&moved, true, false));
+    assert_eq!(warm, rfs::read("libdep.rmeta"));
+    assert_eq!(first, hash(source, true, false));
+
+    // A change to the gap still moves the derive relative to its anchor.
+    assert_ne!(first, hash(&source.replace("}\n#[derive", "}\n\n#[derive"), true, false));
+    assert_ne!(first, hash(&source.replace("Clone, Debug", "Debug"), true, false));
+    assert_ne!(hash(source, false, false), hash(&moved, false, false));
+    assert_ne!(hash(source, true, true), hash(&moved, true, true));
+    let at = "pub const LINE: u32 = line!();";
+    let before = hash(&format!("{source}{at}"), true, false);
+    assert_ne!(before, hash(&format!("{moved}{at}"), true, false));
 }

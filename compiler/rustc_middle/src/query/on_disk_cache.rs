@@ -31,6 +31,7 @@ use rustc_span::{
 };
 
 use crate::dep_graph::{DepKind, DepNodeIndex, QuerySideEffect, SerializedDepNodeIndex};
+use crate::ich::{TAG_AFTER_PARENT_SPAN, TAG_RELATIVE_SPAN, relative_span_base};
 use crate::mir::interpret::{AllocDecodingSession, AllocDecodingState};
 use crate::mir::{self, interpret};
 use crate::mono::{CodegenUnit, MonoItem};
@@ -47,7 +48,6 @@ static NEXT_CACHE_ID: AtomicU32 = AtomicU32::new(1);
 const TAG_FULL_SPAN: u8 = 0;
 // A partial span with no location information, encoded only with a `SyntaxContext`
 const TAG_PARTIAL_SPAN: u8 = 1;
-const TAG_RELATIVE_SPAN: u8 = 2;
 
 const TAG_SYNTAX_CONTEXT: u8 = 0;
 const TAG_EXPN_DATA: u8 = 1;
@@ -938,15 +938,13 @@ impl<'a, 'tcx> SpanDecoder for CacheDecoder<'a, 'tcx> {
 
         let (lo, hi) = match tag {
             TAG_PARTIAL_SPAN => (BytePos(0), BytePos(0)),
-            TAG_RELATIVE_SPAN => {
+            TAG_RELATIVE_SPAN | TAG_AFTER_PARENT_SPAN => {
                 let dlo = u32::decode(self);
                 let dto = u32::decode(self);
 
                 let enclosing = self.tcx.source_span_untracked(parent.unwrap()).data_untracked();
-                (
-                    BytePos(enclosing.lo.0.wrapping_add(dlo)),
-                    BytePos(enclosing.lo.0.wrapping_add(dto)),
-                )
+                let base = if tag == TAG_AFTER_PARENT_SPAN { enclosing.hi } else { enclosing.lo };
+                (BytePos(base.0.wrapping_add(dlo)), BytePos(base.0.wrapping_add(dto)))
             }
             TAG_FULL_SPAN => {
                 let file_lo_index = SourceFileIndex::decode(self);
@@ -1207,9 +1205,10 @@ impl<'tcx> SpanEncoder for CacheEncoder<'tcx> {
         if let Some(parent) = parent
             && file_lo.contains(parent.lo)
         {
-            TAG_RELATIVE_SPAN.encode(self);
-            (span_data.lo.0.wrapping_sub(parent.lo.0)).encode(self);
-            (span_data.hi.0.wrapping_sub(parent.lo.0)).encode(self);
+            let (tag, base) = relative_span_base(span_data, parent, &file_lo);
+            tag.encode(self);
+            (span_data.lo.0.wrapping_sub(base.0)).encode(self);
+            (span_data.hi.0.wrapping_sub(base.0)).encode(self);
             return;
         }
 
