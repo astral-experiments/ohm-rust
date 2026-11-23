@@ -461,6 +461,25 @@ impl<'tcx> ProjectedMaybeOwner<'tcx> {
     }
 }
 
+/// When an owner has already been lowered, its fingerprint covers the
+/// association between each child definition and its HIR node. Depend on
+/// that same owner directly instead of creating one more eval-always
+/// lower_to_hir query per closure, generic parameter, variant, or field.
+fn hir_owner(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ProjectedMaybeOwner<'_> {
+    use crate::query::QueryCache;
+    let cache = &tcx.query_system.query_vtables.lower_to_hir.cache;
+    if let Some(parent) = tcx.opt_local_parent(def_id)
+        && let Some((value, index)) = QueryCache::lookup(cache, &parent)
+        && let MaybeOwner::Owner(owner) = crate::query::erase::restore_val(value)
+        && let Some(&MaybeOwner::NonOwner(id)) = owner.children.get(&def_id)
+    {
+        tcx.prof.query_cache_hit(index.into());
+        tcx.dep_graph.read_index(index);
+        return ProjectedMaybeOwner::NonOwner(id);
+    }
+    ProjectedMaybeOwner::new(tcx.lower_to_hir(def_id))
+}
+
 pub fn provide(providers: &mut Providers) {
     providers.source_span_multibyte_chars = spans::source_span_multibyte_chars;
     providers.hir_crate_items = map::hir_crate_items;
@@ -469,7 +488,7 @@ pub fn provide(providers: &mut Providers) {
     providers.hir_module_items = map::hir_module_items;
     providers.hir_attr_map =
         |tcx, id| tcx.lower_to_hir(id).as_owner().map_or(AttributeMap::EMPTY, |o| &o.attrs);
-    providers.hir_owner = |tcx, def_id| ProjectedMaybeOwner::new(tcx.lower_to_hir(def_id));
+    providers.hir_owner = hir_owner;
     providers.hir_owner_parent_q = |tcx, owner_id| tcx.hir_owner_parent_impl(owner_id);
     providers.def_span = |tcx, def_id| tcx.hir_span(tcx.local_def_id_to_hir_id(def_id));
     providers.def_ident_span = |tcx, def_id| {

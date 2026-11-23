@@ -247,7 +247,7 @@ impl<'a, 'hir> PerOwnerLoweringState<'a, 'hir> {
         let bodies = SortedMap::from_presorted_elements(bodies);
 
         let num_nodes = self.item_local_id_counter.as_usize();
-        let (nodes, parenting, lint_roots, has_inner_defs) =
+        let (nodes, parenting, lint_roots, inner_defs) =
             index::index_hir(tcx, node, &bodies, num_nodes, &attrs);
         // Don't hash unless necessary, because it's expensive.
         let rustc_middle::hir::Hashes { bodies_hash, attrs_hash } =
@@ -267,7 +267,7 @@ impl<'a, 'hir> PerOwnerLoweringState<'a, 'hir> {
             nodes,
             bodies,
             has_loop_control_attrs,
-            has_inner_defs,
+            inner_defs,
         };
         let attrs =
             hir::AttributeMap { map: attrs, lint_roots, opt_hash: attrs_hash, define_opaque };

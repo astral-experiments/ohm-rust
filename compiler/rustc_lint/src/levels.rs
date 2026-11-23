@@ -145,7 +145,7 @@ fn skippable_lints(tcx: TyCtxt<'_>, (): ()) -> UnordSet<LintId> {
     }
 
     for owner in tcx.hir_crate_items(()).owners() {
-        let map = tcx.shallow_lint_levels_on(owner);
+        let map = tcx.owner_lint_levels(owner);
 
         // All lints that appear with a non-allow level must be run.
         for (_, specs) in map.specs.iter() {

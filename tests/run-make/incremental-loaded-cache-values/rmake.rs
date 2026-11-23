@@ -31,16 +31,18 @@ fn main() {
     let mut check_size = 0;
     let mut build_size = 0;
     for revision in 1..=7 {
-        // Keep the functions in one module so that editing its sibling makes
-        // late lints load the large function's type-checking results.
+        // Local functions share the enclosing lint traversal. Editing one makes
+        // late lints load the unchanged sibling's type-checking results.
         rfs::write(
             "main.rs",
             format!(
                 "#![feature(rustc_attrs)]\n\
                  #![allow(internal_features, unused_variables)]\n\
+                 fn main() {{\n\
                  {large}\n\
                  fn edited() -> u32 {{ {revision} }}\n\
-                 fn main() {{ println!(\"{{}}\", value(7) + edited()); }}\n",
+                 println!(\"{{}}\", value(7) + edited());\n\
+                 }}\n",
             ),
         );
         let mut command = rustc();

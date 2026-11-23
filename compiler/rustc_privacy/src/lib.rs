@@ -1057,6 +1057,10 @@ impl<'tcx> NamePrivacyVisitor<'tcx> {
 
 impl<'tcx> Visitor<'tcx> for NamePrivacyVisitor<'tcx> {
     fn visit_nested_body(&mut self, body_id: hir::BodyId) {
+        if let Some(id) = self.tcx.hir_module_check_fn(body_id) {
+            self.tcx.ensure_ok().check_fn_name_privacy(id);
+            return;
+        }
         let new_typeck_results = self.tcx.typeck_body(body_id);
         // Do not try reporting privacy violations if we failed to infer types.
         if new_typeck_results.tainted_by_errors.is_some() {
@@ -1740,8 +1744,30 @@ pub fn provide(providers: &mut Providers) {
         effective_visibility: |tcx, id| tcx.effective_visibilities(()).effective_vis(id),
         check_private_in_public,
         check_mod_privacy,
+        check_fn_name_privacy,
+        check_fn_type_privacy,
         ..*providers
     };
+}
+
+fn check_fn_name_privacy(tcx: TyCtxt<'_>, id: LocalDefId) {
+    let mod_id = tcx.parent_module_from_def_id(id);
+    let body = tcx.hir_body_owned_by(id);
+    let results = tcx.typeck_body(body.id());
+    if results.tainted_by_errors.is_none() {
+        NamePrivacyVisitor { tcx, mod_id, maybe_typeck_results: Some(results) }.visit_body(body);
+    }
+}
+
+fn check_fn_type_privacy(tcx: TyCtxt<'_>, id: LocalDefId) {
+    TypePrivacyVisitor {
+        tcx,
+        mod_id: tcx.parent_module_from_def_id(id),
+        maybe_typeck_results: None,
+        span: tcx.expect_hir_owner_node(id).span(),
+        accessible_tys: Default::default(),
+    }
+    .visit_nested_body(tcx.hir_body_owned_by(id).id());
 }
 
 fn check_mod_privacy(tcx: TyCtxt<'_>, mod_id: LocalModId) {
@@ -1764,8 +1790,12 @@ fn check_mod_privacy(tcx: TyCtxt<'_>, mod_id: LocalModId) {
     for def_id in module.definitions() {
         let _ = rustc_ty_walk::walk_types(tcx, def_id, &mut visitor);
 
-        if let Some(body_id) = tcx.hir_maybe_body_owned_by(def_id) {
-            visitor.visit_nested_body(body_id.id());
+        if let Some(body) = tcx.hir_maybe_body_owned_by(def_id) {
+            if let Some(id) = tcx.hir_module_check_fn(body.id()) {
+                tcx.ensure_ok().check_fn_type_privacy(id);
+            } else {
+                visitor.visit_nested_body(body.id());
+            }
         }
 
         if let DefKind::Impl { of_trait: true } = tcx.def_kind(def_id) {

@@ -309,6 +309,25 @@ impl<'tcx> TyCtxt<'tcx> {
         })
     }
 
+    /// Give large functions their own module-check queries. Stay within one lexical
+    /// scope: local items and closures are checked together with their enclosing item.
+    pub fn hir_module_check_fn(self, body: BodyId) -> Option<LocalDefId> {
+        if self.sess.opts.incremental.is_none() {
+            return None;
+        }
+        let owner = body.hir_id.owner;
+        let nodes = self.hir_owner_nodes(owner);
+        if nodes.nodes.len() < 128 || self.hir_body_owner_def_id(body) != owner.def_id {
+            return None;
+        }
+        let container = match self.def_kind(owner.def_id) {
+            DefKind::Fn => owner.def_id,
+            DefKind::AssocFn => self.local_parent(owner.def_id),
+            _ => return None,
+        };
+        (self.def_kind(self.local_parent(container)) == DefKind::Mod).then_some(owner.def_id)
+    }
+
     pub fn hir_body_param_idents(self, id: BodyId) -> impl Iterator<Item = Option<Ident>> {
         self.hir_body(id).params.iter().map(|param| match param.pat.kind {
             PatKind::Binding(_, _, ident, _) => Some(ident),
@@ -1435,6 +1454,24 @@ impl<'tcx> ItemCollector<'tcx> {
     fn new(tcx: TyCtxt<'tcx>, crate_collector: bool) -> ItemCollector<'tcx> {
         ItemCollector { crate_collector, tcx, .. }
     }
+
+    /// Reuse the intravisit order recorded while constructing the node index.
+    /// Visit nested items normally so submodules retain the collector's scope.
+    fn collect_inner_defs(&mut self, owner: OwnerId) -> bool {
+        let Some(defs) = self.tcx.hir_owner_nodes(owner).inner_defs else { return false };
+        for &def in defs {
+            match def {
+                InnerDef::Body(id) => {
+                    self.body_owners.push(id);
+                    self.nested_bodies.push(id);
+                }
+                InnerDef::AnonConst(id) => self.body_owners.push(id),
+                InnerDef::Opaque(id) => self.opaques.push(id),
+                InnerDef::Item(id) => self.visit_nested_item(id),
+            }
+        }
+        true
+    }
 }
 
 impl<'hir> Visitor<'hir> for ItemCollector<'hir> {
@@ -1473,7 +1510,7 @@ impl<'hir> Visitor<'hir> for ItemCollector<'hir> {
             if self.crate_collector {
                 intravisit::walk_mod(self, module);
             }
-        } else if self.tcx.hir_owner_nodes(item.owner_id).has_inner_defs {
+        } else if !self.collect_inner_defs(item.owner_id) {
             intravisit::walk_item(self, item)
         }
     }
@@ -1514,7 +1551,7 @@ impl<'hir> Visitor<'hir> for ItemCollector<'hir> {
 
         self.trait_items.push(item.trait_item_id());
 
-        if self.tcx.hir_owner_nodes(item.owner_id).has_inner_defs {
+        if !self.collect_inner_defs(item.owner_id) {
             intravisit::walk_trait_item(self, item)
         }
     }
@@ -1526,7 +1563,7 @@ impl<'hir> Visitor<'hir> for ItemCollector<'hir> {
 
         self.impl_items.push(item.impl_item_id());
 
-        if self.tcx.hir_owner_nodes(item.owner_id).has_inner_defs {
+        if !self.collect_inner_defs(item.owner_id) {
             intravisit::walk_impl_item(self, item)
         }
     }

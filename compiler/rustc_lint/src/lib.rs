@@ -157,11 +157,11 @@ pub fn provide(providers: &mut Providers) {
     levels::provide(providers);
     expect::provide(providers);
     foreign_modules::provide(providers);
-    *providers = Providers { lint_mod, ..*providers };
+    *providers = Providers { lint_mod, lint_fn: late::lint_fn, ..*providers };
 }
 
 fn lint_mod(tcx: TyCtxt<'_>, mod_id: LocalModId) {
-    late_lint_mod(tcx, mod_id, BuiltinCombinedLateLintModPass::new());
+    late::late_lint_mod_with(tcx, mod_id, BuiltinCombinedLateLintModPass::new(), true);
 }
 
 early_lint_methods!(
@@ -220,6 +220,9 @@ early_lint_methods!(
 late_lint_methods!(
     declare_combined_late_lint_pass,
     [
+        // Incremental checks can start a fresh pass at a top-level function or method.
+        // Keep mutable state local to that traversal or keyed by distinct HIR nodes.
+        // Passes that share state across functions must run outside this group.
         BuiltinCombinedLateLintModPass,
         [
             // tidy-alphabetical-start

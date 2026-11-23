@@ -44,6 +44,7 @@ struct LateContextAndPass<'tcx, T: LateLintPass<'tcx>> {
     /// Inlined from the session variables to avoid the indirection and cache pressure in the
     /// lint visitor.
     actually_rustdoc: bool,
+    split_functions: bool,
 }
 
 impl<'tcx, T: LateLintPass<'tcx>> LateContextAndPass<'tcx, T> {
@@ -194,6 +195,10 @@ impl<'tcx, T: LateLintPass<'tcx>> hir_visit::Visitor<'tcx> for LateContextAndPas
         span: Span,
         id: LocalDefId,
     ) {
+        if self.split_functions && self.context.tcx.hir_module_check_fn(body_id).is_some() {
+            self.context.tcx.ensure_ok().lint_fn(id);
+            return;
+        }
         // Wrap in typeck results here, not just in visit_nested_body,
         // in order for `check_fn` to be able to use them.
         let old_enclosing_body = self.context.enclosing_body.replace(body_id);
@@ -357,6 +362,43 @@ pub fn late_lint_mod<'tcx, T: LateLintPass<'tcx> + 'tcx>(
     mod_id: LocalModId,
     builtin_lints: T,
 ) {
+    late_lint_mod_with(tcx, mod_id, builtin_lints, false);
+}
+
+pub(crate) fn lint_fn(tcx: TyCtxt<'_>, id: LocalDefId) {
+    let node = tcx.hir_node_by_def_id(id);
+    let context = LateContext {
+        tcx,
+        enclosing_body: None,
+        typeck_results: None,
+        param_env: tcx.param_env(id),
+        effective_visibilities: LintEffectiveVisibilities::PerItem(tcx),
+        last_node_with_lint_attrs: tcx.local_def_id_to_hir_id(id),
+        generics: node.generics(),
+        only_module: true,
+    };
+    let mut cx = LateContextAndPass {
+        context,
+        pass: crate::BuiltinCombinedLateLintModPass::new(),
+        actually_rustdoc: false,
+        split_functions: false,
+    };
+    hir_visit::Visitor::visit_fn(
+        &mut cx,
+        node.fn_kind().unwrap(),
+        node.fn_decl().unwrap(),
+        node.body_id().unwrap(),
+        tcx.expect_hir_owner_node(id).span(),
+        id,
+    );
+}
+
+pub(crate) fn late_lint_mod_with<'tcx, T: LateLintPass<'tcx> + 'tcx>(
+    tcx: TyCtxt<'tcx>,
+    mod_id: LocalModId,
+    builtin_lints: T,
+    split_functions: bool,
+) {
     let context = LateContext {
         tcx,
         enclosing_body: None,
@@ -386,14 +428,20 @@ pub fn late_lint_mod<'tcx, T: LateLintPass<'tcx> + 'tcx>(
     let builtin_lints_must_run = is_lint_pass_required(skippable_lints, &builtin_lints.get_lints());
     if passes.is_empty() {
         if builtin_lints_must_run {
-            late_lint_mod_inner(tcx, mod_id, context, builtin_lints);
+            late_lint_mod_inner(
+                tcx,
+                mod_id,
+                context,
+                builtin_lints,
+                split_functions && !tcx.sess.opts.actually_rustdoc,
+            );
         }
     } else {
         if builtin_lints_must_run {
             passes.push(Box::new(builtin_lints) as Box<dyn LateLintPass<'tcx>>);
         }
         let pass = RuntimeCombinedLateLintPass { passes };
-        late_lint_mod_inner(tcx, mod_id, context, pass);
+        late_lint_mod_inner(tcx, mod_id, context, pass, false);
     }
 }
 
@@ -402,10 +450,12 @@ fn late_lint_mod_inner<'tcx, T: LateLintPass<'tcx>>(
     mod_id: LocalModId,
     context: LateContext<'tcx>,
     pass: T,
+    split_functions: bool,
 ) {
     let mut cx = LateContextAndPass::<'tcx, T> {
         context,
         pass,
+        split_functions,
         actually_rustdoc: tcx.sess.opts.actually_rustdoc,
     };
 
@@ -453,8 +503,12 @@ fn late_lint_crate<'tcx>(tcx: TyCtxt<'tcx>) {
     };
 
     let pass = RuntimeCombinedLateLintPass { passes };
-    let mut cx =
-        LateContextAndPass { context, pass, actually_rustdoc: tcx.sess.opts.actually_rustdoc };
+    let mut cx = LateContextAndPass {
+        context,
+        pass,
+        split_functions: false,
+        actually_rustdoc: tcx.sess.opts.actually_rustdoc,
+    };
 
     // Visit the whole crate.
     cx.with_lint_attrs(hir::CRATE_HIR_ID, |cx| {
