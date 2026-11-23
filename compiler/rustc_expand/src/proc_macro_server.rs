@@ -742,13 +742,15 @@ impl server::Server for Rustc<'_, '_> {
 
     fn span_file(&mut self, span: Self::Span) -> String {
         invalidate_cached_expansion();
-        self.psess()
-            .source_map()
-            .lookup_char_pos(span.lo())
-            .file
-            .name
-            .prefer_remapped_unconditionally()
-            .to_string()
+        let file = self.psess().source_map().lookup_char_pos(span.lo()).file;
+        if file.name.has_worktree_source_path() {
+            // Like `file!()`, record which checkout supplied the physical filename.
+            let key = sym::ohm_worktree_source_paths.as_str();
+            self.track_env_var(key, std::env::var(key).ok().as_deref());
+            file.name.prefer_local_unconditionally().to_string()
+        } else {
+            file.name.prefer_remapped_unconditionally().to_string()
+        }
     }
 
     fn span_local_file(&mut self, span: Self::Span) -> Option<String> {
