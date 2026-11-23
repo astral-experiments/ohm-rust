@@ -134,10 +134,13 @@ jobs:
           tests/ui/imports/ambiguous-import-visibility-globglob.rs
           tests/ui/privacy/pub-priv-dep/shared_direct_private.rs
 
-      - name: Run LLVM prelink function-merging regression
+      - name: Run LLVM prelink function-merging regressions
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
-          --set rust.lto=off test --stage 1 tests/codegen-llvm/merge-functions-prelink.rs
+          --set rust.lto=off test --stage 1
+          tests/codegen-llvm/merge-functions-prelink.rs
+          tests/assembly-llvm/amdgpu-kernel-descriptors.rs
+          tests/assembly-llvm/darwin-weak-definitions.rs
 
       - name: Run coroutine runtime layout regression tests
         run: >-
