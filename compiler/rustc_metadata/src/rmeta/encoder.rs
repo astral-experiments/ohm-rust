@@ -2465,6 +2465,50 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         (encoded, hasher.finish())
     }
 
+    /// A cfg trace keeps locations for both the attribute and its nested predicates.
+    /// For terminal checks, identify those predicates by their positions in the attribute.
+    fn record_cfg_trace(
+        &mut self,
+        entries: &[(rustc_attr_ir::CfgEntry, Span)],
+    ) -> Option<Fingerprint> {
+        use rustc_attr_ir::CfgEntry;
+
+        fn record(
+            entry: &CfgEntry,
+            attr: Span,
+            spans: &mut FxHashSet<Span>,
+            hash: &mut StableHasher,
+        ) -> Option<()> {
+            let span = entry.span();
+            if span.is_dummy() || !span.ctxt().is_root() || !attr.contains(span) {
+                return None;
+            }
+            (span.lo() - attr.lo()).0.hash(hash);
+            (span.hi() - attr.lo()).0.hash(hash);
+            spans.insert(span);
+            match entry {
+                CfgEntry::All(subs, _) | CfgEntry::Any(subs, _) => {
+                    for sub in subs {
+                        record(sub, attr, spans, hash)?;
+                    }
+                }
+                CfgEntry::Not(sub, _) => record(sub, attr, spans, hash)?,
+                CfgEntry::Bool(..) | CfgEntry::NameValue { .. } | CfgEntry::Version(..) => {}
+            }
+            Some(())
+        }
+
+        let mut hash = StableHasher::new();
+        for (entry, span) in entries {
+            if !span.ctxt().is_root() {
+                return None;
+            }
+            self.record_declaration_span(*span)?.hash(&mut hash);
+            record(entry, *span, &mut self.declaration_spans, &mut hash)?;
+        }
+        Some(hash.finish())
+    }
+
     fn encode_attrs<'h>(&mut self, def_id: LocalDefId, hcx: &mut impl PublicApiHashState<'h>) {
         let tcx = self.tcx;
         let mut state = AnalyzeAttrState {
@@ -2488,6 +2532,16 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             |ecx, attr| {
                 let continuation = std::mem::take(&mut previous_line_doc);
                 match attr {
+                    rustc_attr_ir::Attribute::Parsed(AttributeKind::CfgTrace(entries))
+                        if ecx.hash_declaration_text =>
+                    {
+                        let text = ecx.record_cfg_trace(entries);
+                        if text.is_none() {
+                            // Fall back to recording exact locations for the entire row.
+                            ecx.declaration_spans.clear();
+                        }
+                        text.map(DeclarationHash::Text)
+                    }
                     rustc_attr_ir::Attribute::Parsed(AttributeKind::DocComment {
                         span,
                         kind,
