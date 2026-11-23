@@ -300,6 +300,7 @@ jobs:
           --compiletest-rustc-args=-Zincremental-verify-ich
           tests/incremental/complete-expansion-items.rs
           tests/incremental/hygiene tests/incremental/derive_macro_expansion
+          tests/incremental/elided-signature-lifetimes.rs
           tests/incremental/nested-items-in-associated-item-macro.rs
           tests/incremental/repeated-token-tree-tail.rs
           tests/incremental/forward-metavariable-sequence.rs
