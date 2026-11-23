@@ -34,6 +34,7 @@ enum BadNode {
     Null,
     Duplicate,
     OutOfBounds,
+    ExcessCount,
 }
 
 fn invalidate_node(incremental: &str, graph: &str, damage: BadNode) {
@@ -50,6 +51,16 @@ fn invalidate_node(incremental: &str, graph: &str, damage: BadNode) {
                 index.copy_from_slice(&other.to_le_bytes());
             }
             BadNode::OutOfBounds => index.copy_from_slice(&0x3fff_ffffu32.to_le_bytes()),
+            BadNode::ExcessCount => {
+                // The footer stores the slot count, live node count and edge count.
+                let trailer = b"rust-end-file";
+                assert!(bytes.ends_with(trailer));
+                let footer = bytes.len() - trailer.len() - 24;
+                let slots = u64::from_le_bytes(bytes[footer..footer + 8].try_into().unwrap());
+                bytes[footer + 8..footer + 16].copy_from_slice(&(slots + 1).to_le_bytes());
+                // Reject the impossible counts before reading any rows.
+                drop(bytes.drain(first..footer));
+            }
         }
         rfs::remove_file(&path);
         rfs::write(path, bytes);
@@ -71,6 +82,7 @@ fn break_cache_footer(incremental: &str, filename: &str) {
 fn invalid_stage_graphs() {
     for (dir, damage_checkpoint, damage_ordinary) in [
         ("bad-checkpoint", Some(BadNode::OutOfBounds), false),
+        ("excess-checkpoint-nodes", Some(BadNode::ExcessCount), false),
         ("bad-ordinary-with-valid-checkpoint", None, true),
         ("bad-checkpoint-and-ordinary", Some(BadNode::Duplicate), true),
     ] {

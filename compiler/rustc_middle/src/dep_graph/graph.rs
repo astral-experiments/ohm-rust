@@ -1243,11 +1243,26 @@ impl DepGraphData {
         // final form. Only compacting sessions need an edge buffer or its guard.
         let mut edges = if RETAIN_INDICES { None } else { Some(EdgeFrame::new(edge_buf.unwrap())) };
         let frame = MarkFrame { index: prev_dep_node_index, parent: frame };
+        let colors = self.colors.values.as_slice();
         self.previous.try_for_each_edge(
             prev_dep_node_index,
             #[inline(always)]
             |parent_dep_node_index| {
-                let parent_index = match self.colors.get(parent_dep_node_index) {
+                // A retained edge already names its current index. Avoid decoding
+                // a green color into an index just to discard it.
+                let color = if RETAIN_INDICES {
+                    match colors[parent_dep_node_index].load(Ordering::Acquire) {
+                        value if value < COMPRESSED_RED => {
+                            debug_assert_eq!(value, parent_dep_node_index.as_u32());
+                            return Some(());
+                        }
+                        COMPRESSED_RED => return None,
+                        _ => DepNodeColor::Unknown,
+                    }
+                } else {
+                    self.colors.get(parent_dep_node_index)
+                };
+                let parent_index = match color {
                     DepNodeColor::Green(index) => index,
                     DepNodeColor::Red => return None,
                     DepNodeColor::Unknown => {
