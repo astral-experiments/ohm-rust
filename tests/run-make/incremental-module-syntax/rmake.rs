@@ -113,6 +113,44 @@ mod tests {
         .assert_stderr_contains("reused parsed module")
         .assert_stderr_contains("error[E0710]");
 
+    // The nested expression is too deep for a snapshot. With test disabled, only the
+    // declaration is needed. Switching to a test build must bring both bodies back.
+    let functions = format!(
+        r#"
+#[cfg(test)]
+fn helper() {{ missing_helper(); }}
+#[cfg(test)]
+#[test]
+fn example() {{ missing_test(); #[cfg(any())] let _ = 0{}; }}
+"#,
+        ".method()".repeat(512),
+    );
+    rfs::write("lib.rs", "pub mod cached;");
+    rfs::write("cached.rs", &functions);
+    check("functions").run();
+    check("functions").run().assert_stderr_contains("reused parsed module");
+    check("functions")
+        .arg("--test")
+        .run_fail()
+        .assert_stderr_contains("cannot find function `missing_helper`")
+        .assert_stderr_contains("cannot find function `missing_test`");
+    rfs::write("cached.rs", functions.replace("missing_test();", "let = 0;"));
+    check("functions").run_fail().assert_stderr_contains("expected pattern");
+
+    // Lint attributes still need a pre-expansion visit inside an inactive function.
+    let function = format!(
+        "// {}\n#[cfg(test)] #[test] fn f() {{ #[allow(custom::lint)] let _ = 0; }}",
+        "x".repeat(1024),
+    );
+    rfs::write("cached.rs", function);
+    rfs::write("lib.rs", "#![feature(register_tool)]\n#![register_tool(custom)]\npub mod cached;");
+    check("function-lint").run();
+    rfs::write("lib.rs", "#![feature(register_tool)]\npub mod cached;");
+    check("function-lint")
+        .run_fail()
+        .assert_stderr_contains("reused parsed module")
+        .assert_stderr_contains("error[E0710]");
+
     // The parser builds a long method chain iteratively. Recursive snapshot
     // decoding used to overflow the stack before cfg could remove the item.
     let chain = ".method()".repeat(1024);

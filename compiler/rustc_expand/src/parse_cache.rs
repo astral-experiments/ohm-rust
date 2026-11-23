@@ -172,8 +172,18 @@ impl<'a> Visitor<'a> for NeedsLintVisit {
     }
 }
 
-fn has_only_cfg_test(item: &Item) -> bool {
-    let [attr] = &item.attrs[..] else { return false };
+fn is_test_only(item: &Item) -> bool {
+    let attr = match &item.attrs[..] {
+        [cfg] => cfg,
+        [cfg, test]
+            if matches!(item.kind, ItemKind::Fn(_))
+                && test.has_name(sym::test)
+                && test.is_word() =>
+        {
+            cfg
+        }
+        _ => return false,
+    };
     attr.has_name(sym::cfg)
         && attr.meta_item_list().is_some_and(
             |args| matches!(&args[..], [name] if name.is_word() && name.has_name(sym::test)),
@@ -196,6 +206,10 @@ fn snapshot(
     let mut encoder =
         ModuleEncoder { data, symbols: FxIndexSet::default(), attrs, file, depth: 0, valid: true };
     effects.encode(&mut encoder);
+    enum OmittedBody {
+        Module(ThinVec<Box<Item>>),
+        Function(Box<rustc_ast::Block>),
+    }
     let mut omitted = Vec::new();
     let selected = inputs.keyword_lint_inert.then(|| {
         // An attribute on either side of `mod name;` could expose the
@@ -209,14 +223,20 @@ fn snapshot(
             needs_lint.visit_item(item);
             if needs_lint.0 {
                 indices.push(i as u32);
-            } else if elide_tests
-                && has_only_cfg_test(item)
-                && let ItemKind::Mod(_, _, ModKind::Loaded(ref mut items, ..)) = item.kind
-            {
-                // The parser already checked the entire file, including this
-                // body. Keep the declaration so cfg processing (including
-                // check-cfg) still runs in the new session.
-                omitted.push((i, std::mem::take(items), item.tokens.take()));
+            } else if elide_tests && is_test_only(item) {
+                // Keep the attributes and declaration for cfg processing, including
+                // check-cfg. The parser has already checked the omitted body.
+                let body = match &mut item.kind {
+                    ItemKind::Mod(_, _, ModKind::Loaded(items, ..)) => {
+                        OmittedBody::Module(std::mem::take(items))
+                    }
+                    ItemKind::Fn(function) => {
+                        let Some(body) = function.body.take() else { continue };
+                        OmittedBody::Function(body)
+                    }
+                    _ => continue,
+                };
+                omitted.push((i, body, item.tokens.take()));
             }
         }
         indices
@@ -224,12 +244,15 @@ fn snapshot(
     selected.encode(&mut encoder);
     module.encode(&mut encoder);
     // The regular expansion sees the original tree on a miss.
-    for (i, children, tokens) in omitted {
+    for (i, body, tokens) in omitted {
         let item = &mut module.1[i];
-        let ItemKind::Mod(_, _, ModKind::Loaded(ref mut items, ..)) = item.kind else {
-            unreachable!()
-        };
-        *items = children;
+        match (&mut item.kind, body) {
+            (ItemKind::Mod(_, _, ModKind::Loaded(items, ..)), OmittedBody::Module(children)) => {
+                *items = children;
+            }
+            (ItemKind::Fn(function), OmittedBody::Function(body)) => function.body = Some(body),
+            _ => unreachable!(),
+        }
         item.tokens = tokens;
     }
     if !encoder.valid {
