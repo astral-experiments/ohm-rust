@@ -266,12 +266,20 @@ impl<'f, 'tcx> Coerce<'f, 'tcx> {
             return self.coerce_from_inference_variable(a, b);
         }
 
-        // An unsizing attempt can create fresh inference variables. Only
-        // take a snapshot if the types pass the inference-free preconditions.
-        if self.may_coerce_unsized(a, b)
-            && let Ok(coercion) = self.commit_if_ok(|_| self.coerce_unsized(a, b))
-        {
-            return Ok(coercion);
+        // Consider coercing the subtype to a DST
+        //
+        // NOTE: this is wrapped in a `commit_if_ok` because it creates
+        // a "spurious" type variable, and we don't want to have that
+        // type variable in memory if the coercion fails.
+        let unsize = self.commit_if_ok(|_| self.coerce_unsized(a, b));
+        match unsize {
+            Ok(_) => {
+                debug!("coerce: unsize successful");
+                return unsize;
+            }
+            Err(error) => {
+                debug!(?error, "coerce: unsize failed");
+            }
         }
 
         // Examine the target type and consider type-specific coercions, such
@@ -538,10 +546,27 @@ impl<'f, 'tcx> Coerce<'f, 'tcx> {
         success(adjustments, coerced_a, obligations)
     }
 
-    /// Fast rejection for types that cannot participate in unsizing.
-    fn may_coerce_unsized(&self, source: Ty<'tcx>, target: Ty<'tcx>) -> bool {
-        if source.is_ty_var() || target.is_ty_var() {
-            return false;
+    /// Performs [unsized coercion] by emulating a fulfillment loop on a
+    /// `CoerceUnsized` goal until all `CoerceUnsized` and `Unsize` goals
+    /// are successfully selected.
+    ///
+    /// [unsized coercion](https://doc.rust-lang.org/reference/type-coercions.html#unsized-coercions)
+    #[instrument(skip(self), level = "debug")]
+    fn coerce_unsized(&self, source: Ty<'tcx>, target: Ty<'tcx>) -> CoerceResult<'tcx> {
+        debug!(?source, ?target);
+        debug_assert!(self.shallow_resolve(source) == source);
+        debug_assert!(self.shallow_resolve(target) == target);
+
+        // We don't apply any coercions incase either the source or target
+        // aren't sufficiently well known but tend to instead just equate
+        // them both.
+        if source.is_ty_var() {
+            debug!("coerce_unsized: source is a TyVar, bailing out");
+            return Err(TypeError::Mismatch);
+        }
+        if target.is_ty_var() {
+            debug!("coerce_unsized: target is a TyVar, bailing out");
+            return Err(TypeError::Mismatch);
         }
 
         // This is an optimization because coercion is one of the most common
@@ -578,7 +603,7 @@ impl<'f, 'tcx> Coerce<'f, 'tcx> {
             | ty::Coroutine(_, _)
             | ty::CoroutineWitness(_, _)
             | ty::Never
-            | ty::Tuple(_) => return false,
+            | ty::Tuple(_) => return Err(TypeError::Mismatch),
             _ => {}
         }
         // `&str: CoerceUnsized<&str>` does not hold but is encountered frequently
@@ -588,79 +613,8 @@ impl<'f, 'tcx> Coerce<'f, 'tcx> {
             && let ty::Ref(_, target_pointee, ty::Mutability::Not) = *target.kind()
             && target_pointee.is_str()
         {
-            return false;
+            return Err(TypeError::Mismatch);
         }
-
-        // A nominal CoerceUnsized impl must change one field of a struct.
-        // A pointer coercion in turn requires Unsize on the pointee, whose
-        // only concrete targets are slices, trait objects and generic structs.
-        // Preserve possible trait bounds on parameters, aliases and objects.
-        let impossible = match (*source.kind(), *target.kind()) {
-            (ty::Adt(a, _), ty::Adt(b, args)) => a != b || !b.is_struct() || args.is_empty(),
-            (ty::Adt(..), ty::Ref(..) | ty::RawPtr(..))
-            | (ty::Ref(..) | ty::RawPtr(..), ty::Adt(..)) => true,
-            (ty::Ref(_, a, _) | ty::RawPtr(a, _), ty::Ref(_, b, _) | ty::RawPtr(b, _))
-                if matches!(
-                    a.kind(),
-                    ty::Bool
-                        | ty::Char
-                        | ty::Int(_)
-                        | ty::Uint(_)
-                        | ty::Float(_)
-                        | ty::Str
-                        | ty::Array(..)
-                        | ty::Slice(_)
-                        | ty::Ref(..)
-                        | ty::RawPtr(..)
-                        | ty::Tuple(_)
-                        | ty::Adt(..)
-                ) =>
-            {
-                match *b.kind() {
-                    ty::Bool
-                    | ty::Char
-                    | ty::Int(_)
-                    | ty::Uint(_)
-                    | ty::Float(_)
-                    | ty::Str
-                    | ty::Array(..)
-                    | ty::Ref(..)
-                    | ty::RawPtr(..)
-                    | ty::Tuple(_) => true,
-                    ty::Slice(_) => !matches!(a.kind(), ty::Array(..)),
-                    ty::Adt(def, args) => {
-                        !def.is_struct() || args.is_empty() || a.ty_adt_def() != Some(def)
-                    }
-                    _ => false,
-                }
-            }
-            _ => false,
-        };
-        if impossible && !self.next_trait_solver() && !self.disable_trait_solver_fast_paths() {
-            // Even a structurally impossible coercion can be assumed by a
-            // where-clause. Leave those cases to selection.
-            let items = self.tcx.lang_items();
-            return self.fcx.param_env.caller_bounds().any(|clause| {
-                let ty::ClauseKind::Trait(pred) = clause.kind().skip_binder() else {
-                    return false;
-                };
-                Some(pred.def_id()) == items.coerce_unsized_trait()
-                    || Some(pred.def_id()) == items.unsize_trait()
-            });
-        }
-        true
-    }
-
-    /// Performs [unsized coercion] by emulating a fulfillment loop on a
-    /// `CoerceUnsized` goal until all `CoerceUnsized` and `Unsize` goals
-    /// are successfully selected.
-    ///
-    /// [unsized coercion](https://doc.rust-lang.org/reference/type-coercions.html#unsized-coercions)
-    #[instrument(skip(self), level = "debug")]
-    fn coerce_unsized(&self, source: Ty<'tcx>, target: Ty<'tcx>) -> CoerceResult<'tcx> {
-        debug!(?source, ?target);
-        debug_assert!(self.shallow_resolve(source) == source);
-        debug_assert!(self.shallow_resolve(target) == target);
 
         let traits =
             (self.tcx.lang_items().unsize_trait(), self.tcx.lang_items().coerce_unsized_trait());

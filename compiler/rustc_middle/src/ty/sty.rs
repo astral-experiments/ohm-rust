@@ -2088,16 +2088,6 @@ impl<'tcx> Ty<'tcx> {
     }
 
     pub fn is_trivially_wf(self, tcx: TyCtxt<'tcx>) -> bool {
-        self.is_trivially_wf_inner(tcx, &mut 16)
-    }
-
-    fn is_trivially_wf_inner(self, tcx: TyCtxt<'tcx>, budget: &mut usize) -> bool {
-        // Generic arguments and tuple fields can contain repeated subtrees.
-        // Let the ordinary WF visitor deduplicate larger terms.
-        if *budget == 0 {
-            return false;
-        }
-        *budget -= 1;
         match *self.kind() {
             ty::Bool
             | ty::Char
@@ -2111,67 +2101,14 @@ impl<'tcx> Ty<'tcx> {
             | ty::Bound(..) => true,
 
             ty::Slice(ty) => {
-                ty.is_trivially_wf_inner(tcx, budget)
-                    && ty.has_trivial_sizedness(tcx, SizedTraitKind::Sized)
+                ty.is_trivially_wf(tcx) && ty.has_trivial_sizedness(tcx, SizedTraitKind::Sized)
             }
-            ty::RawPtr(ty, _) => ty.is_trivially_wf_inner(tcx, budget),
+            ty::RawPtr(ty, _) => ty.is_trivially_wf(tcx),
 
-            ty::FnPtr(sig_tys, _) => sig_tys
-                .skip_binder()
-                .inputs_and_output
-                .iter()
-                .all(|ty| ty.is_trivially_wf_inner(tcx, budget)),
-            ty::Ref(_, ty, _) => ty.is_global() && ty.is_trivially_wf_inner(tcx, budget),
-
-            ty::Array(ty, len) => {
-                matches!(len.kind(), ty::ConstKind::Value(v) if v.ty == tcx.types.usize)
-                    && tcx.lang_items().sized_trait().is_some()
-                    && ty.is_trivially_wf_inner(tcx, budget)
-                    && ty.has_trivial_sizedness(tcx, SizedTraitKind::Sized)
+            ty::FnPtr(sig_tys, _) => {
+                sig_tys.skip_binder().inputs_and_output.iter().all(|ty| ty.is_trivially_wf(tcx))
             }
-            ty::Tuple(fields) => {
-                fields.len() <= *budget
-                    && (fields.len() < 2 || tcx.lang_items().sized_trait().is_some())
-                    && fields.iter().all(|ty| {
-                        !ty.is_scalable_vector()
-                            && ty.is_trivially_wf_inner(tcx, budget)
-                            && ty.has_trivial_sizedness(tcx, SizedTraitKind::Sized)
-                    })
-            }
-            ty::Adt(def, args) => {
-                if args.len() > *budget || self.has_non_region_infer() || self.has_aliases() {
-                    return false;
-                }
-                // WF for a nominal type checks its clauses, including inferred
-                // outlives bounds, and the types and constants in its arguments.
-                let clauses = tcx.clause_facts_of(def.did());
-                if clauses.parent.is_some() {
-                    return false;
-                }
-                for clause in clauses.own.as_slice() {
-                    let Some(ty::ClauseKind::Trait(trait_clause)) = clause.kind().no_bound_vars()
-                    else {
-                        return false;
-                    };
-                    if trait_clause.polarity != ty::ClausePolarity::Positive
-                        || !tcx.is_lang_item(trait_clause.def_id(), LangItem::Sized)
-                    {
-                        return false;
-                    }
-                    let ty::Param(param) = *trait_clause.self_ty().kind() else { return false };
-                    if !args
-                        .type_at(param.index as usize)
-                        .has_trivial_sizedness(tcx, SizedTraitKind::Sized)
-                    {
-                        return false;
-                    }
-                }
-                args.iter().all(|arg| match arg.kind() {
-                    ty::GenericArgKind::Type(ty) => ty.is_trivially_wf_inner(tcx, budget),
-                    ty::GenericArgKind::Lifetime(_) => true,
-                    ty::GenericArgKind::Const(_) => false,
-                })
-            }
+            ty::Ref(_, ty, _) => ty.is_global() && ty.is_trivially_wf(tcx),
 
             ty::Infer(infer) => match infer {
                 ty::TyVar(_) => false,
@@ -2179,7 +2116,10 @@ impl<'tcx> Ty<'tcx> {
                 ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_) => true,
             },
 
-            ty::Foreign(_)
+            ty::Adt(_, _)
+            | ty::Tuple(_)
+            | ty::Array(..)
+            | ty::Foreign(_)
             | ty::Pat(_, _)
             | ty::FnDef(..)
             | ty::UnsafeBinder(..)

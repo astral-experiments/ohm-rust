@@ -6,9 +6,7 @@ use rustc_infer::traits::query::OutlivesBound;
 use rustc_infer::traits::query::type_op::ImpliedOutlivesBounds;
 use rustc_middle::traits::ObligationCause;
 use rustc_middle::ty::outlives::{Component, push_outlives_components};
-use rustc_middle::ty::{
-    self, ParamEnvAnd, Ty, TyCtxt, TypeVisitable, TypeVisitableExt, TypeVisitor, Unnormalized,
-};
+use rustc_middle::ty::{self, ParamEnvAnd, Ty, TyCtxt, TypeVisitable, TypeVisitor, Unnormalized};
 use rustc_span::def_id::CRATE_DEF_ID;
 use rustc_span::{DUMMY_SP, Span, sym};
 use smallvec::{SmallVec, smallvec};
@@ -22,10 +20,17 @@ impl<'tcx> QueryTypeOp<'tcx> for ImpliedOutlivesBounds<'tcx> {
     type QueryResponse = Vec<OutlivesBound<'tcx>>;
 
     fn try_fast_path(
-        tcx: TyCtxt<'tcx>,
+        _tcx: TyCtxt<'tcx>,
         key: &ParamEnvAnd<'tcx, Self>,
     ) -> Option<Self::QueryResponse> {
-        implies_no_bounds(tcx, key.value.ty).then(Vec::new)
+        // Don't go into the query for things that can't possibly have lifetimes.
+        match key.value.ty.kind() {
+            ty::Tuple(elems) if elems.is_empty() => Some(vec![]),
+            ty::Never | ty::Str | ty::Bool | ty::Char | ty::Int(_) | ty::Uint(_) | ty::Float(_) => {
+                Some(vec![])
+            }
+            _ => None,
+        }
     }
 
     fn perform_query(
@@ -34,34 +39,6 @@ impl<'tcx> QueryTypeOp<'tcx> for ImpliedOutlivesBounds<'tcx> {
     ) -> Result<CanonicalQueryResponse<'tcx, Self::QueryResponse>, NoSolution> {
         tcx.implied_outlives_bounds((canonicalized, false))
     }
-}
-
-/// An alias-free, trivially WF type with no lifetime components
-/// contributes no region bounds. Taking one reference to it only adds
-/// an outlives predicate whose component list is empty.
-pub(super) fn implies_no_bounds<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> bool {
-    match ty.kind() {
-        ty::Param(_) => return true,
-        ty::Tuple(fields) if fields.is_empty() => return true,
-        _ => {}
-    }
-    if ty.has_escaping_bound_vars() {
-        return false;
-    }
-    let referent = if let ty::Ref(_, inner, _) = *ty.kind() { inner } else { ty };
-    // In particular, `&'a T` contributes `T: 'a` and must not take
-    // this path. Aliases can reveal lifetimes during normalization.
-    let flags = ty::TypeFlags::HAS_FREE_LOCAL_NAMES
-        | ty::TypeFlags::HAS_REGIONS
-        | ty::TypeFlags::HAS_ALIAS
-        | ty::TypeFlags::HAS_BOUND_VARS;
-    if referent.has_type_flags(flags) || !referent.is_trivially_wf(tcx) {
-        return false;
-    }
-    // Preserve the compatibility hack for Bevy's ParamSet.
-    !matches!(referent.kind(), ty::Adt(def, _)
-        if tcx.item_name(def.did()) == sym::ParamSet
-            && tcx.crate_name(def.did().krate) == sym::bevy_ecs)
 }
 
 pub fn compute_implied_outlives_bounds_inner<'tcx>(

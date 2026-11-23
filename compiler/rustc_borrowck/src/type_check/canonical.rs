@@ -4,7 +4,7 @@ use rustc_errors::ErrorGuaranteed;
 use rustc_infer::infer::canonical::Canonical;
 use rustc_infer::infer::outlives::env::RegionBoundPairs;
 use rustc_middle::mir::{Body, ConstraintCategory};
-use rustc_middle::ty::{self, Ty, TyCtxt, TypeFoldable, TypeVisitableExt, Unnormalized, Upcast};
+use rustc_middle::ty::{self, Ty, TyCtxt, TypeFoldable, Unnormalized, Upcast};
 use rustc_span::def_id::DefId;
 use rustc_span::{Span, bug};
 use rustc_trait_selection::traits::ObligationCause;
@@ -171,51 +171,14 @@ impl<'a, 'tcx> TypeChecker<'a, 'tcx> {
         }
     }
 
-    /// Prove WF at the call site, avoiding a predicate and type op when
-    /// the term is already known to be well-formed and leaves no constraints.
-    pub(super) fn prove_wf(
+    pub(super) fn prove_clauses(
         &mut self,
-        terms: impl IntoIterator<Item = ty::Term<'tcx>>,
+        clauses: impl IntoIterator<Item: Upcast<TyCtxt<'tcx>, ty::Clause<'tcx>> + std::fmt::Debug>,
         locations: Locations,
         category: ConstraintCategory<'tcx>,
     ) {
-        for term in terms {
-            if !self.infcx.disable_trait_solver_fast_paths() && self.infcx.region_state_is_empty() {
-                if term.is_trivially_wf(self.tcx()) {
-                    continue;
-                }
-                // WfReference checks the referent and adds `T: 'a`. If
-                // that is the only obligation, convert it directly. Use
-                // the same outlives machinery and location as a canonical
-                // query so that type tests and diagnostic causes survive.
-                if !self.infcx.next_trait_solver()
-                    && let Some(ty) = term.as_type()
-                    && let ty::Ref(region, referent, _) = *ty.kind()
-                    && !ty.has_aliases()
-                    && !ty.has_non_region_infer()
-                    && !ty.has_escaping_bound_vars()
-                    && !ty.has_placeholders()
-                    && referent.is_trivially_wf(self.tcx())
-                {
-                    constraint_conversion::ConstraintConversion::new(
-                        self.infcx,
-                        self.universal_regions,
-                        self.region_bound_pairs,
-                        self.known_type_outlives_obligations,
-                        locations,
-                        locations.span(self.body),
-                        category,
-                        self.constraints,
-                    )
-                    .convert(
-                        ty::OutlivesClause(referent.into(), region),
-                        ConstraintCategory::BoringNoLocation,
-                        &Default::default(),
-                    );
-                    continue;
-                }
-            }
-            self.prove_clause(ty::ClauseKind::WellFormed(term), locations, category);
+        for clause in clauses {
+            self.prove_clause(clause, locations, category);
         }
     }
 
