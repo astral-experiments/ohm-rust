@@ -9,5 +9,6 @@ const CONSTANT: &str = source();
 
 fn main() {
     struct Local;
+    assert_eq!(observe::filename!(), CONSTANT);
     println!("{CONSTANT}\n{}\n{}", source(), caller_lib::source::<Local>());
 }

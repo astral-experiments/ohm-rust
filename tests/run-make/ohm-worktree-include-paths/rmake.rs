@@ -1,6 +1,7 @@
 //@ ignore-cross-compile
+//@ needs-dynamic-linking
 
-use run_make_support::{cwd, rfs, run, rust_lib_name, rustc, rustdoc};
+use run_make_support::{cwd, dynamic_lib_name, rfs, run, rust_lib_name, rustc, rustdoc};
 
 fn main() {
     let checkout = cwd();
@@ -48,6 +49,7 @@ fn main() {
         });
     }
 
+    rustc().edition("2024").input("observe.rs").crate_type("proc-macro").run();
     for (library_name, caller_name, physical, physical_library) in [
         ("first", "first", true, true),
         ("second", "second", true, true),
@@ -85,6 +87,7 @@ fn main() {
         };
         compile(&library_root, "caller_lib.rs", physical_library).crate_type("rlib").run();
         compile(&caller_root, "caller.rs", physical)
+            .extern_("observe", checkout.join(dynamic_lib_name("observe")))
             .extern_("caller_lib", checkout.join(rust_lib_name("caller_lib")))
             .emit("link,dep-info")
             .run();
@@ -125,6 +128,7 @@ fn check_user_metadata_epoch() {
         cmd.edition("2024")
             .input("caller.rs")
             .emit("metadata")
+            .extern_("observe", dynamic_lib_name("observe"))
             .extern_("caller_lib", "libcaller_lib.rmeta");
         cmd
     };
