@@ -9,7 +9,7 @@ use rustc_attr_ir::{Attribute, AttributeKind};
 use rustc_attr_parsing::AttributeParser;
 use rustc_errors::{Applicability, Diag, Level};
 use rustc_expand::base::*;
-use rustc_span::{ErrorGuaranteed, Ident, RemapPathScopeComponents, Span, Symbol, sym};
+use rustc_span::{ErrorGuaranteed, Ident, Span, Symbol, sym};
 use thin_vec::{ThinVec, thin_vec};
 use tracing::debug;
 
@@ -467,7 +467,7 @@ fn get_location_info(cx: &ExtCtxt<'_>, fn_: &ast::Fn) -> (Symbol, usize, usize, 
         cx.sess.source_map().span_to_location_info(span);
 
     let file_name = match source_file {
-        Some(sf) => sf.name.display(RemapPathScopeComponents::MACRO).to_string(),
+        Some(sf) => crate::source_util::macro_filename(cx, &sf.name).to_string(),
         None => "no-location".to_string(),
     };
 

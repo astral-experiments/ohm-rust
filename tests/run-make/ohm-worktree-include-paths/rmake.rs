@@ -91,7 +91,20 @@ fn main() {
             .extern_("caller_lib", checkout.join(rust_lib_name("caller_lib")))
             .emit("link,dep-info")
             .run();
-        let caller = if physical { &caller_root } else { &remapped }.join("caller.rs");
+        let source = if physical { &caller_root } else { &remapped };
+        compile(&caller_root, "cases.rs", physical).arg("--test").emit("link,dep-info").run();
+        run_make_support::run_fail("cases").assert_stdout_contains(format!(
+            "test did not panic as expected at {}:3:4",
+            source.join("cases.rs").display()
+        ));
+        assert_eq!(
+            rfs::read_to_string("cases.d")
+                .lines()
+                .any(|line| line.starts_with("# env-dep:__CARGO_OHM_WORKTREE_SOURCE_PATHS=")),
+            physical
+        );
+
+        let caller = source.join("caller.rs");
         let library =
             if physical_library { &library_root } else { &remapped }.join("caller_lib.rs");
         run("caller").assert_stdout_equals(format!(

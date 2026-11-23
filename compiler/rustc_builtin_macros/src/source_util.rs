@@ -19,7 +19,9 @@ use rustc_parse::parser::{AllowConstBlockItems, ForceCollect};
 use rustc_parse::{new_parser_from_file, unwrap_or_emit_fatal, utf8_error};
 use rustc_session::parse::ParseSess;
 use rustc_span::source_map::SourceMap;
-use rustc_span::{ByteSymbol, Pos, Span, Symbol};
+use rustc_span::{
+    ByteSymbol, FileName, FileNameDisplay, Pos, RemapPathScopeComponents, Span, Symbol,
+};
 use smallvec::SmallVec;
 
 use crate::diagnostics;
@@ -67,21 +69,26 @@ pub(crate) fn expand_file(
     let topmost = cx.expansion_cause().unwrap_or(sp);
     let loc = cx.source_map().lookup_char_pos(topmost.lo());
 
-    use rustc_span::RemapPathScopeComponents;
-    let filename = if cx.expanding_worktree_input {
-        loc.file.name.prefer_local_unconditionally()
-    } else if loc.file.name.has_worktree_source_path() {
+    let filename = macro_filename(cx, &loc.file.name);
+    ExpandResult::Ready(MacEager::expr(
+        cx.expr_str(topmost, Symbol::intern(&filename.to_string_lossy())),
+    ))
+}
+
+/// Returns the filename embedded by `file!()` and test descriptors, tracking
+/// the checkout when an automatic worktree remap would hide the source path.
+pub(crate) fn macro_filename<'a>(cx: &ExtCtxt<'_>, name: &'a FileName) -> FileNameDisplay<'a> {
+    if cx.expanding_worktree_input {
+        name.prefer_local_unconditionally()
+    } else if name.has_worktree_source_path() {
         // Cargo rechecks this input when importing the artifact into another checkout.
         let key = rustc_span::sym::ohm_worktree_source_paths;
         let root = std::env::var(key.as_str()).ok().map(|value| Symbol::intern(&value));
         cx.sess.env_depinfo.borrow_mut().insert((key, root));
-        loc.file.name.prefer_local_unconditionally()
+        name.prefer_local_unconditionally()
     } else {
-        loc.file.name.display(RemapPathScopeComponents::MACRO)
-    };
-    ExpandResult::Ready(MacEager::expr(
-        cx.expr_str(topmost, Symbol::intern(&filename.to_string_lossy())),
-    ))
+        name.display(RemapPathScopeComponents::MACRO)
+    }
 }
 
 /// Expand `stringify!($input)`.
