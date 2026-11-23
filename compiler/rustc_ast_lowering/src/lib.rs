@@ -775,6 +775,12 @@ fn lower_to_hir(tcx: TyCtxt<'_>, def_id: LocalDefId) -> hir::MaybeOwner<'_> {
         f: impl FnOnce(&mut LoweringContext<'_, 'hir>) -> hir::OwnerNode<'hir>,
     ) -> hir::MaybeOwner<'hir> {
         let mut lctx = LoweringContext::new(tcx, resolver, owner);
+        // Bodies may be lowered before signatures. Give the owner's elided lifetimes
+        // their definition paths first so adding a reference to a closure parameter
+        // cannot renumber them and invalidate callers of an unchanged signature.
+        for &(ident, id, _) in lctx.curr_owner.owner.extra_lifetime_params(owner) {
+            lctx.create_def(id, Some(kw::UnderscoreLifetime), DefKind::LifetimeParam, ident.span);
+        }
         let item = f(&mut lctx);
         hir::MaybeOwner::Owner(lctx.curr_owner.into_owner_info(tcx, item))
     }
@@ -1151,15 +1157,15 @@ impl<'hir> LoweringContext<'_, 'hir> {
         kind: MissingLifetimeKind,
         source: hir::GenericParamSource,
     ) -> hir::GenericParam<'hir> {
-        // Late resolution delegates to us the creation of the `LocalDefId`.
-        let _def_id = self.create_def(
-            node_id,
-            Some(kw::UnderscoreLifetime),
-            DefKind::LifetimeParam,
-            ident.span,
-        );
-        debug!(?_def_id);
-
+        // Item parameters already have their definitions from `with_lctx`.
+        if let hir::GenericParamSource::Binder = source {
+            self.create_def(
+                node_id,
+                Some(kw::UnderscoreLifetime),
+                DefKind::LifetimeParam,
+                ident.span,
+            );
+        }
         let hir_id = self.lower_node_id(node_id);
         let def_id = self.local_def_id(node_id);
         hir::GenericParam {
