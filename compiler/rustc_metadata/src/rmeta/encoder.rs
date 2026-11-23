@@ -2607,14 +2607,11 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
     /// A foreign span stores a producer-local source table index and relative byte range. Either
     /// can move while the text inside the span stays the same.
     fn record_native_metadata_location(&mut self, span: Span) {
-        let Some(line_shapes) = &mut self.native_line_shapes else { return };
-        if span.is_dummy() {
+        if self.native_line_shapes.is_none() || span.is_dummy() {
             return;
         }
-        let sm = self.tcx.sess.source_map();
-        let file_index = sm.lookup_source_file_idx(span.lo());
-        let files = sm.files();
-        let file = &files[file_index];
+        self.update_source_file(span.lo());
+        let (ref file, file_index) = self.source_file_cache;
         if !file.contains(span.hi()) {
             return; // A partial span carries only its syntax context.
         }
@@ -2625,6 +2622,20 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         } else {
             self.required_source_files.as_ref().unwrap().get_index_of(&file_index).unwrap() as u32
         };
+        self.record_encoded_index(Node::NativeLocation(span.lo().0, span.hi().0, index));
+    }
+
+    /// Hash each distinct native location only after the graph drops unreachable nodes.
+    /// The lookup key omits syntax context and parent, just like the location fingerprint.
+    fn normalize_location(&mut self, node: Node<'tcx>) -> Node<'tcx> {
+        let Node::NativeLocation(lo, hi, index) = node else {
+            return node;
+        };
+        let lo = rustc_span::BytePos(lo);
+        let hi = rustc_span::BytePos(hi);
+        self.update_source_file(lo);
+        let file = &self.source_file_cache.0;
+        let line_shapes = self.native_line_shapes.as_mut().unwrap();
         let mut hasher = StableHasher::new();
         file.stable_id.hash(&mut hasher);
         index.hash(&mut hasher);
@@ -2636,7 +2647,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             // Imported text may be absent. Native debug formats can also embed a whole-file checksum.
             file.src_hash.hash_bytes().hash(&mut hasher);
         }
-        for pos in [span.lo(), span.hi()] {
+        for pos in [lo, hi] {
             let pos = file.relative_position(pos);
             pos.0.hash(&mut hasher);
             let line = file.lookup_line(pos);
@@ -2661,8 +2672,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 }
             }
         }
-        drop(files);
-        self.record_encoded_index(Node::MetadataLocation(hasher.finish()));
+        Node::MetadataLocation(hasher.finish())
     }
 
     fn encode_diagnostic_span(
@@ -4262,10 +4272,19 @@ fn try_reuse_metadata_prefix(
     } else {
         DepNode::construct(tcx, DepKind::crate_hash, &LOCAL_CRATE)
     };
+    let native = native_hash_mode(tcx);
     let dependencies = tcx.dep_graph.previous_dependencies_except_red(
         &metadata_dep_node,
         &changed_dep_node,
-        DepKind::metadata_source_file_hash,
+        |kind, suffix| {
+            kind == DepKind::metadata_source_file_hash
+                || (native
+                    && suffix
+                    && matches!(
+                        kind,
+                        DepKind::extern_def_public_hash | DepKind::public_global_hash
+                    ))
+        },
     )?;
     let permitted = if dependency_hash_refresh_allowed(tcx) {
         DependencyHashMode::refreshable(tcx)
@@ -4379,6 +4398,17 @@ fn try_reuse_metadata_prefix(
     {
         return None;
     }
+    let replay = if native {
+        let DependencyHashMode::Native(inputs) = &dependency_hashes else {
+            return None;
+        };
+        let PublicHashes::Items(items) = &previous_root.rdr_hashes else {
+            return None;
+        };
+        Some(public_api_hasher::replay_hashes(tcx, &inputs.recipe, items)?)
+    } else {
+        None
+    };
     let output_directory = path.parent()?;
     let temporary_file = tempfile::Builder::new()
         .prefix(".ohm-metadata-prefix-")
@@ -4412,7 +4442,9 @@ fn try_reuse_metadata_prefix(
             previous_root.denied_partial_mitigations =
                 ecx.encode_enabled_denied_partial_mitigations(&mut hcx).value;
         });
-        if let PublicHashes::Items(items) = &mut previous_root.rdr_hashes {
+        if let Some(hashes) = &replay {
+            previous_root.rdr_hashes = PublicHashes::Items(hashes.items.encode(ecx, hashes.global));
+        } else if let PublicHashes::Items(items) = &mut previous_root.rdr_hashes {
             let (local, expn) = table_ranges.unwrap();
             items.local = relocate_metadata_table(ecx, &metadata, items.local, local);
             items.expn = relocate_metadata_table(ecx, &metadata, items.expn, expn);
@@ -4425,7 +4457,7 @@ fn try_reuse_metadata_prefix(
         let public_hash = if is_terminal {
             *tcx.untracked().local_crate_hash.get().unwrap()
         } else {
-            public_hash
+            replay.as_ref().map_or(public_hash, |hashes| hashes.public)
         };
         (root.position.get(), unhashed.position.get(), public_hash)
     });
@@ -4443,6 +4475,14 @@ fn try_reuse_metadata_prefix(
                     tcx.dep_graph.read_index(dependency);
                 } else if tcx.sess.opts.unstable_opts.metadata_crate_hash {
                     let _ = tcx.ohm_metadata_input_hashes(());
+                    if let Some(hashes) = &replay {
+                        for &id in &hashes.externs {
+                            tcx.ensure_ok().extern_def_public_hash(id);
+                        }
+                        for &krate in tcx.crates(()) {
+                            tcx.ensure_ok().public_global_hash(krate);
+                        }
+                    }
                 } else {
                     let _ = tcx.crate_hash(LOCAL_CRATE);
                 }
@@ -4922,10 +4962,16 @@ fn dependency_hash_refresh_allowed(tcx: TyCtxt<'_>) -> bool {
         && !tcx.crate_types().contains(&CrateType::ProcMacro)
 }
 
+/// Native prefix reuse reads upstream public hashes after all inputs to the retained bytes.
+fn native_hash_mode(tcx: TyCtxt<'_>) -> bool {
+    tcx.sess.opts.output_types.should_codegen() && dependency_hash_refresh_allowed(tcx)
+}
+
 fn crate_deps(
     tcx: TyCtxt<'_>,
     refreshes_dependency_hashes: bool,
 ) -> impl Iterator<Item = (CrateNum, CrateDep, Fingerprint)> + '_ {
+    let native = native_hash_mode(tcx);
     tcx.crates(()).iter().map(move |&cnum| {
         let dep = CrateDep {
             name: tcx.crate_name(cnum),
@@ -4944,7 +4990,8 @@ fn crate_deps(
             kind: tcx.crate_dep_kind(cnum),
             is_private: tcx.is_private_dep(cnum),
         };
-        (cnum, dep, tcx.public_global_hash(cnum))
+        // Native hashes include the ordered globals in `combine_global`.
+        (cnum, dep, if native { Fingerprint::ZERO } else { tcx.public_global_hash(cnum) })
     })
 }
 

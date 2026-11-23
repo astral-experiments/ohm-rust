@@ -596,20 +596,50 @@ pub(super) fn crate_hashes<'tcx, 'h, const HASH: bool>(
 ) -> (Option<Svh>, PublicHashes) {
     assert!(!root.header.is_proc_macro_crate);
     let graph = std::mem::take(&mut ecx.spec_encoder_data.reachability_graph_builder)
-        .build_graph(hcx.hcx_mut());
+        .build_graph(hcx.hcx_mut(), |node| ecx.normalize_location(node));
     debug!("Hash graph {graph:?}");
-    let (hcx_mut, def_id_hashes) = hcx.hcx_with_def_id_hashes();
     let tcx = ecx.tcx;
-    let (public_hashes, implicit_roots) = build_public_hashes(&graph, hcx_mut, |node| {
-        def_id_hashes.get_node(node, tcx, &mut ecx.metadata_prefix_manifest)
-    });
-
+    // Keep dependency globals and implicit roots out of the saved local digest.
+    // Both can change even when the entire item prefix remains valid.
+    let native = super::native_hash_mode(tcx);
+    let local_global =
+        native.then(|| stable_hash(hcx.hcx_mut(), &(crate::rmeta::OHM_METADATA_EPOCH, root)));
+    let record = native
+        && ecx.metadata_prefix_manifest.as_ref().is_some_and(|builder| {
+            matches!(builder.dependency_hashes, super::DependencyHashMode::Native(_))
+        });
+    let mut recipe = Vec::new();
+    if record {
+        recipe.extend_from_slice(&local_global.unwrap().to_le_bytes());
+    }
+    let (hcx_mut, def_id_hashes) = hcx.hcx_with_def_id_hashes();
+    let (public_hashes, implicit_roots) =
+        build_public_hashes(&graph, hcx_mut, tcx, record.then_some(&mut recipe), |node| {
+            if record
+                && let Node::DefId(id) = node
+                && !id.is_local()
+            {
+                // Preserve the local contribution. Capture adds the external part
+                // after recording all edges needed to validate the stored bases.
+                return def_id_hashes.non_local.get(id).copied();
+            }
+            def_id_hashes.get_node(node, tcx, &mut ecx.metadata_prefix_manifest)
+        });
+    if record
+        && let Some(builder) = &mut ecx.metadata_prefix_manifest
+        && let super::DependencyHashMode::Native(inputs) = &mut builder.dependency_hashes
+    {
+        inputs.recipe = recipe;
+    }
     let mut hasher = StableHasher::default();
     // A dependency's namespace matters when reexported, but its implicit
     // roots (notably implementations of foreign traits) can affect a caller
     // even if the intervening crate never names those definitions.
-    let mut public_global_hash =
-        stable_hash(hcx.hcx_mut(), &(crate::rmeta::OHM_METADATA_EPOCH, root, implicit_roots));
+    let mut public_global_hash = if let Some(local) = local_global {
+        combine_global(tcx, local, implicit_roots)
+    } else {
+        stable_hash(hcx.hcx_mut(), &(crate::rmeta::OHM_METADATA_EPOCH, root, implicit_roots))
+    };
     if tcx.sess.opts.unstable_opts.incremental_ignore_spans {
         // Per-item hashes omit spans in this mode. Invalidate readers on local source edits.
         let mut files: Vec<_> = tcx
@@ -877,7 +907,11 @@ impl<'tcx> ReachabilityGraphBuilder<'tcx> {
         self.retained.insert(index);
     }
 
-    fn build_graph(mut self, hcx: &mut StableHashState<'_, true>) -> ReachabilityGraph<'tcx> {
+    fn build_graph(
+        mut self,
+        hcx: &mut StableHashState<'_, true>,
+        mut normalize: impl FnMut(Node<'tcx>) -> Node<'tcx>,
+    ) -> ReachabilityGraph<'tcx> {
         // ExpnId::root() contains CRATE_DEF_ID as its macro_def_id, but that isn't used for
         // anything.
         // FIXME add newtype that ensures it really isn't used
@@ -921,6 +955,7 @@ impl<'tcx> ReachabilityGraphBuilder<'tcx> {
         for (original, node) in self.nodes.into_iter().enumerate() {
             if reachable[original] {
                 node_indices[original] = nodes.len();
+                let node = normalize(node);
                 nodes.push((node, stable_hash(hcx, &node)));
             }
         }
@@ -993,7 +1028,9 @@ impl ReachabilityGraphHashes {
             Node::Span(_) => unimplemented!(),
             Node::Ty(_) => unimplemented!(),
             Node::Predicate(_) => unimplemented!(),
-            Node::AllocId(_) | Node::MetadataLocation(_) => unimplemented!(),
+            Node::AllocId(_) | Node::MetadataLocation(_) | Node::NativeLocation(..) => {
+                unimplemented!()
+            }
         };
         *current_hash = current_hash.combine_commutative(hash);
     }
@@ -1029,7 +1066,7 @@ impl ReachabilityGraphHashes {
                 MetadataPrefixManifestBuilder::hash_reachable_span(tcx, *span, prefix)
             }
             Node::Ty(_) => None,
-            Node::Predicate(_) | Node::MetadataLocation(_) => None,
+            Node::Predicate(_) | Node::MetadataLocation(_) | Node::NativeLocation(..) => None,
             Node::AllocId(id) => Some(tcx.with_stable_hashing_context(|mut hcx| {
                 stable_hash(&mut hcx, &tcx.global_alloc(*id))
             })),
@@ -1048,6 +1085,8 @@ pub(crate) enum Node<'tcx> {
     Predicate(PredicateKind<'tcx>),
     AllocId(AllocId),
     MetadataLocation(Fingerprint),
+    // Temporary (lo, hi, producer file index). Converted before stable hashing.
+    NativeLocation(u32, u32, u32),
 }
 
 impl From<AllocId> for Node<'_> {
@@ -1192,6 +1231,8 @@ type SccIdx = u32;
 fn scc_fingerprints<'tcx>(
     graph: &ReachabilityGraph<'tcx>,
     sccs: &Sccs<NodeIdx, SccIdx>,
+    tcx: TyCtxt<'tcx>,
+    recipe: Option<&mut Vec<u8>>,
     mut payload_hash: impl FnMut(&Node<'tcx>) -> Option<Fingerprint>,
 ) -> IndexVec<SccIdx, Fingerprint> {
     let mut fingerprints: IndexVec<SccIdx, Fingerprint> =
@@ -1204,21 +1245,16 @@ fn scc_fingerprints<'tcx>(
         };
         fingerprints[scc] = fingerprints[scc].combine_commutative(fingerprint);
     }
+    if let Some(recipe) = recipe {
+        capture_hashes(tcx, recipe, graph, sccs, &mut fingerprints);
+    }
     for scc in sccs.all_sccs() {
         let successors = sccs.successors(scc);
         let mut fingerprint = fingerprints[scc];
         for &succ in successors {
             fingerprint = fingerprint.combine_commutative(fingerprints[succ]);
         }
-        // With addition alone a descendant contributes once per path. After
-        // 128 successive doublings its contribution wraps to zero. Mixing
-        // at forks breaks that pattern without depending on successor order.
-        if successors.len() > 1 {
-            let mut hasher = StableHasher::new();
-            fingerprint.hash(&mut hasher);
-            fingerprint = hasher.finish();
-        }
-        fingerprints[scc] = fingerprint;
+        fingerprints[scc] = finish_scc(fingerprint, successors.len() > 1);
     }
     fingerprints
 }
@@ -1228,10 +1264,12 @@ fn scc_fingerprints<'tcx>(
 fn build_public_hashes<'tcx>(
     graph: &ReachabilityGraph<'tcx>,
     hcx: &mut StableHashState<'_, true>,
+    tcx: TyCtxt<'tcx>,
+    recipe: Option<&mut Vec<u8>>,
     payload_hash: impl FnMut(&Node<'tcx>) -> Option<Fingerprint>,
 ) -> (Hashed<ItemPublicHashesBuilder>, Fingerprint) {
     let sccs = Sccs::<_, SccIdx>::new(graph);
-    let scc_fingerprints = scc_fingerprints(graph, &sccs, payload_hash);
+    let scc_fingerprints = scc_fingerprints(graph, &sccs, tcx, recipe, payload_hash);
 
     let mut public_hashes = ItemPublicHashesBuilder::default();
     let mut hasher = StableHasher::new();
@@ -1253,17 +1291,13 @@ fn build_public_hashes<'tcx>(
             Node::Ty(_) => (),
             Node::Predicate(_) => (),
             Node::Span(_) => (),
-            Node::AllocId(_) | Node::MetadataLocation(_) => (),
+            Node::AllocId(_) | Node::MetadataLocation(_) | Node::NativeLocation(..) => (),
         }
     }
     let mut implicit = StableHasher::new();
-    for &node_index in &graph.roots {
-        let fingerprint = scc_fingerprints[sccs.scc(node_index)];
-        fingerprint.stable_hash(hcx, &mut hasher);
-        if graph.nodes[node_index].0 != Node::from(CRATE_DEF_ID) {
-            graph.nodes[node_index].1.stable_hash(hcx, &mut implicit);
-            fingerprint.stable_hash(hcx, &mut implicit);
-        }
+    for &index in &graph.roots {
+        let hash = scc_fingerprints[sccs.scc(index)];
+        hash_root(hcx, &mut hasher, &mut implicit, hash, implicit_identity(graph, index));
     }
     let roots_hash = hasher.finish::<Fingerprint>();
     debug!("build_public_hashes: roots fingerprint hash = {roots_hash:?}");
@@ -1277,7 +1311,7 @@ pub(crate) struct ItemPublicHashesBuilder {
 }
 
 impl ItemPublicHashesBuilder {
-    fn encode<'a, 'tcx, M: MetadataEncoder<'tcx>>(
+    pub(super) fn encode<'a, 'tcx, M: MetadataEncoder<'tcx>>(
         &self,
         ecx: &mut EncodeContext<'a, 'tcx, M>,
         public_global_hash: Fingerprint,
@@ -1314,4 +1348,215 @@ impl PublicHashes {
             Self::None | Self::TerminalCheck(_) => None,
         }
     }
+}
+
+fn implicit_identity(graph: &ReachabilityGraph<'_>, index: NodeIdx) -> Option<Fingerprint> {
+    let (node, identity) = graph.nodes[index];
+    (node != Node::from(CRATE_DEF_ID)).then_some(identity)
+}
+
+fn hash_root(
+    hcx: &mut impl StableHashCtxt,
+    roots: &mut StableHasher,
+    implicit: &mut StableHasher,
+    hash: Fingerprint,
+    identity: Option<Fingerprint>,
+) {
+    hash.stable_hash(hcx, roots);
+    if let Some(identity) = identity {
+        identity.stable_hash(hcx, implicit);
+        hash.stable_hash(hcx, implicit);
+    }
+}
+
+fn combine_global(tcx: TyCtxt<'_>, local: Fingerprint, implicit: Fingerprint) -> Fingerprint {
+    let mut hasher = StableHasher::new();
+    local.hash(&mut hasher);
+    implicit.hash(&mut hasher);
+    for &krate in tcx.crates(()) {
+        tcx.public_global_hash(krate).hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+fn finish_scc(mut fingerprint: Fingerprint, branch: bool) -> Fingerprint {
+    // With addition alone a descendant contributes once per path. After
+    // 128 successive doublings its contribution wraps to zero. Mixing
+    // at forks breaks that pattern without depending on successor order.
+    if branch {
+        let mut hasher = StableHasher::new();
+        fingerprint.hash(&mut hasher);
+        fingerprint = hasher.finish();
+    }
+    fingerprint
+}
+
+/// Save the condensation graph and its bases before adding external definition
+/// hashes. Payload hashes for expansions, types and spans are still tracked as
+/// ordinary dependencies of the prefix. Only external *definition* hashes
+/// and dependency globals may vary when re-evaluating this graph.
+fn capture_hashes(
+    tcx: TyCtxt<'_>,
+    recipe: &mut Vec<u8>,
+    graph: &ReachabilityGraph<'_>,
+    sccs: &Sccs<NodeIdx, SccIdx>,
+    bases: &mut IndexVec<SccIdx, Fingerprint>,
+) {
+    fn push(bytes: &mut Vec<u8>, idx: u32) {
+        bytes.extend_from_slice(&idx.to_le_bytes());
+    }
+    let mut external = Vec::new();
+    let mut saved = Vec::new();
+    for (index, &(node, _)) in graph.nodes.iter().enumerate() {
+        let scc = sccs.scc(index);
+        match node {
+            Node::DefId(id) if !id.is_local() => external.push((id, scc)),
+            Node::DefId(id) => saved.push((0_u8, id.index.as_u32(), scc)),
+            Node::ExpnId(id) if id.as_local().is_some() => {
+                saved.push((1, id.expect_local().as_raw().as_u32(), scc));
+            }
+            _ => (),
+        }
+    }
+    push(recipe, sccs.num_sccs().try_into().unwrap());
+    for base in bases.iter() {
+        recipe.extend_from_slice(&base.to_le_bytes());
+    }
+    push(recipe, external.len().try_into().unwrap());
+    for &(id, scc) in &external {
+        recipe.extend_from_slice(&tcx.def_path_hash(id).0.to_le_bytes());
+        push(recipe, scc);
+    }
+    for scc in sccs.all_sccs() {
+        let successors = sccs.successors(scc);
+        push(recipe, successors.len().try_into().unwrap());
+        for &succ in successors {
+            push(recipe, succ);
+        }
+    }
+    push(recipe, saved.len().try_into().unwrap());
+    for (kind, index, scc) in saved {
+        recipe.push(kind);
+        push(recipe, index);
+        push(recipe, scc);
+    }
+    for &root in &graph.roots {
+        push(recipe, sccs.scc(root));
+        let identity = implicit_identity(graph, root);
+        recipe.push(u8::from(identity.is_some()));
+        if let Some(identity) = identity {
+            recipe.extend_from_slice(&identity.to_le_bytes());
+        }
+    }
+    // Green marking stops on this input. Move the unhashed root's filename
+    // queries before it, so every later external hash read can be refreshed.
+    for &krate in tcx.crates(()) {
+        tcx.ensure_ok().extra_filename(krate);
+    }
+    let _ = tcx.ohm_metadata_input_hashes(());
+    for (id, scc) in external {
+        bases[scc] = bases[scc].combine_commutative(tcx.extern_def_public_hash(id));
+    }
+}
+
+pub(super) struct ReplayedHashes {
+    pub(super) items: ItemPublicHashesBuilder,
+    pub(super) global: Fingerprint,
+    pub(super) public: Svh,
+    pub(super) externs: Vec<DefId>,
+}
+
+/// Recompute the per-item and global hashes using the same dependency order,
+/// branch mixing and ordered roots as a full encode. A missing input or an
+/// invalid component index makes the caller fall back to fresh metadata.
+pub(super) fn replay_hashes(
+    tcx: TyCtxt<'_>,
+    mut recipe: &[u8],
+    items: &ItemPublicHashes,
+) -> Option<ReplayedHashes> {
+    fn read(bytes: &mut &[u8]) -> Option<usize> {
+        let (value, tail) = bytes.split_first_chunk()?;
+        *bytes = tail;
+        Some(u32::from_le_bytes(*value) as usize)
+    }
+    fn fingerprint(bytes: &mut &[u8]) -> Option<Fingerprint> {
+        let (value, tail) = bytes.split_first_chunk()?;
+        *bytes = tail;
+        Some(Fingerprint::from_le_bytes(*value))
+    }
+    let local_global = fingerprint(&mut recipe)?;
+    let count = read(&mut recipe)?;
+    if count > recipe.len() / 16 {
+        return None;
+    }
+    let mut fingerprints = Vec::with_capacity(count);
+    for _ in 0..count {
+        fingerprints.push(fingerprint(&mut recipe)?);
+    }
+    let mut externs = Vec::new();
+    for _ in 0..read(&mut recipe)? {
+        let key = rustc_span::def_id::DefPathHash(fingerprint(&mut recipe)?);
+        let id = tcx.def_path_hash_to_def_id(key)?;
+        if id.is_local() {
+            return None;
+        }
+        // The item can still exist after becoming private. The regular
+        // external query expects a public entry and would ICE if absent.
+        {
+            let store = crate::creader::CStore::from_tcx(tcx);
+            let data = store.get_crate_data(id.krate);
+            if let Some(items) = data.root.rdr_hashes.as_ref() {
+                items.local.get(data, id.index)?;
+            }
+        }
+        let base = fingerprints.get_mut(read(&mut recipe)?)?;
+        *base = base.combine_commutative(tcx.extern_def_public_hash(id));
+        externs.push(id);
+    }
+    for index in 0..count {
+        let mut base = fingerprints[index];
+        let arity = read(&mut recipe)?;
+        for _ in 0..arity {
+            let successor = read(&mut recipe)?;
+            if successor >= index {
+                return None;
+            }
+            base = base.combine_commutative(fingerprints[successor]);
+        }
+        fingerprints[index] = finish_scc(base, arity > 1);
+    }
+    let mut hashes = ItemPublicHashesBuilder::default();
+    for _ in 0..read(&mut recipe)? {
+        let kind = *recipe.split_off_first()?;
+        let index = read(&mut recipe)?;
+        let value = *fingerprints.get(read(&mut recipe)?)?;
+        match kind {
+            0 if index < items.local.len => {
+                hashes.local.set_some_unhashed(DefIndex::new(index), value)
+            }
+            1 if index < items.expn.len => {
+                hashes.expn.set_some_unhashed(ExpnIndex::new(index), value)
+            }
+            _ => return None,
+        }
+    }
+    let (public_global_hash, public_hash) = tcx.with_stable_hashing_context(|mut hcx| {
+        let mut roots = StableHasher::new();
+        let mut implicit = StableHasher::new();
+        while !recipe.is_empty() {
+            let hash = *fingerprints.get(read(&mut recipe)?)?;
+            let identity = match recipe.split_off_first()? {
+                0 => None,
+                1 => Some(fingerprint(&mut recipe)?),
+                _ => return None,
+            };
+            hash_root(&mut hcx, &mut roots, &mut implicit, hash, identity);
+        }
+        let public_global_hash = combine_global(tcx, local_global, implicit.finish());
+        let mut h = StableHasher::new();
+        public_global_hash.stable_hash(&mut hcx, &mut h);
+        roots.finish::<Fingerprint>().stable_hash(&mut hcx, &mut h);
+        Some((public_global_hash, Svh::new(h.finish())))
+    })?;
+    Some(ReplayedHashes { items: hashes, global: public_global_hash, public: public_hash, externs })
 }

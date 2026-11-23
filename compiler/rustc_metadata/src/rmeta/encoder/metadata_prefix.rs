@@ -30,6 +30,7 @@ use crate::rmeta::table::FixedSizeEncoding;
 pub(super) struct NativePrefixInputs {
     crate_identity: Fingerprint,
     sources: FxIndexMap<StableSourceFileId, Fingerprint>,
+    pub(super) recipe: Vec<u8>,
 }
 
 impl NativePrefixInputs {
@@ -78,6 +79,7 @@ impl DependencyHashMode {
             Self::Native(NativePrefixInputs {
                 crate_identity: NativePrefixInputs::crate_identity(tcx),
                 sources: FxIndexMap::default(),
+                recipe: Vec::new(),
             })
         } else {
             Self::Check
@@ -88,7 +90,7 @@ impl DependencyHashMode {
         match self {
             Self::Tracked => b"ohm-metadata-prefix-v3\0",
             Self::Check => b"ohm-metadata-prefix-v4\0",
-            Self::Native(_) => b"ohm-metadata-prefix-v5\0",
+            Self::Native(_) => b"ohm-metadata-prefix-v6\0",
         }
     }
 
@@ -487,6 +489,8 @@ impl MetadataPrefixManifest {
             skip(&mut bytes, 16)?;
             let count = usize::try_from(read_unsigned(&mut bytes, usize::BITS)?).ok()?;
             skip(&mut bytes, count.checked_mul(32)?)?;
+            let len = usize::try_from(read_unsigned(&mut bytes, usize::BITS)?).ok()?;
+            skip(&mut bytes, len)?;
         }
         read_unsigned(&mut bytes, u64::BITS)?;
         read_unsigned(&mut bytes, usize::BITS)?;
