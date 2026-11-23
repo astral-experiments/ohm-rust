@@ -600,19 +600,16 @@ pub(super) fn crate_hashes<'tcx, 'h, const HASH: bool>(
     debug!("Hash graph {graph:?}");
     let (hcx_mut, def_id_hashes) = hcx.hcx_with_def_id_hashes();
     let tcx = ecx.tcx;
-    let public_hashes = build_public_hashes(&graph, hcx_mut, |node| {
+    let (public_hashes, implicit_roots) = build_public_hashes(&graph, hcx_mut, |node| {
         def_id_hashes.get_node(node, tcx, &mut ecx.metadata_prefix_manifest)
     });
 
     let mut hasher = StableHasher::default();
-    // A legacy intermediate can retain positional expansion IDs into a public dependency.
-    // Prevent it from accepting a new-format producer under the old equivalence relation.
-    // Prior visibility tables also recorded the full restricted module as a dependency.
-    const VISIBILITY_REACHABILITY_VERSION: u8 = 1;
-    let mut public_global_hash = stable_hash(
-        hcx.hcx_mut(),
-        &(crate::rmeta::OHM_METADATA_EPOCH, VISIBILITY_REACHABILITY_VERSION, root),
-    );
+    // A dependency's namespace matters when reexported, but its implicit
+    // roots (notably implementations of foreign traits) can affect a caller
+    // even if the intervening crate never names those definitions.
+    let mut public_global_hash =
+        stable_hash(hcx.hcx_mut(), &(crate::rmeta::OHM_METADATA_EPOCH, root, implicit_roots));
     if tcx.sess.opts.unstable_opts.incremental_ignore_spans {
         // Per-item hashes omit spans in this mode. Invalidate readers on local source edits.
         let mut files: Vec<_> = tcx
@@ -1221,7 +1218,7 @@ fn build_public_hashes<'tcx>(
     graph: &ReachabilityGraph<'tcx>,
     hcx: &mut StableHashState<'_, true>,
     payload_hash: impl FnMut(&Node<'tcx>) -> Option<Fingerprint>,
-) -> Hashed<ItemPublicHashesBuilder> {
+) -> (Hashed<ItemPublicHashesBuilder>, Fingerprint) {
     let sccs = Sccs::<_, SccIdx>::new(graph);
     let scc_fingerprints = scc_fingerprints(graph, &sccs, payload_hash);
 
@@ -1248,13 +1245,18 @@ fn build_public_hashes<'tcx>(
             Node::AllocId(_) | Node::MetadataLocation(_) => (),
         }
     }
+    let mut implicit = StableHasher::new();
     for &node_index in &graph.roots {
         let fingerprint = scc_fingerprints[sccs.scc(node_index)];
         fingerprint.stable_hash(hcx, &mut hasher);
+        if graph.nodes[node_index].0 != Node::from(CRATE_DEF_ID) {
+            graph.nodes[node_index].1.stable_hash(hcx, &mut implicit);
+            fingerprint.stable_hash(hcx, &mut implicit);
+        }
     }
     let roots_hash = hasher.finish::<Fingerprint>();
     debug!("build_public_hashes: roots fingerprint hash = {roots_hash:?}");
-    Hashed { value: public_hashes, hash: Some(roots_hash) }
+    (Hashed { value: public_hashes, hash: Some(roots_hash) }, implicit.finish())
 }
 
 #[derive(Default)]

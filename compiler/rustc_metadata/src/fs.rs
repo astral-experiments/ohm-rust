@@ -158,6 +158,7 @@ pub fn encode_and_write_metadata(tcx: TyCtxt<'_>) -> Result<EncodedMetadata, Err
                 path,
                 tcx.sess.cfg_version,
                 tcx.sess.opts.unstable_opts.ohm_terminal_check_hash,
+                tcx.sess.opts.unstable_opts.ohm_transitive_check_hash,
             )
         });
         tcx.dcx().emit_metadata_artifact_notification(
@@ -177,6 +178,7 @@ fn recover_public_api_hash(
     path: &Path,
     cfg_version: &'static str,
     terminal_check: bool,
+    transitive_check: bool,
 ) -> Option<String> {
     let file = fs::File::open(path).ok()?;
     // SAFETY: `path` names the completed metadata file owned by this compiler invocation. We only
@@ -190,6 +192,11 @@ fn recover_public_api_hash(
     metadata.check_compatibility(cfg_version, || false).ok()?;
     if terminal_check && let Some(hash) = metadata.terminal_check_hash() {
         return Some(hash.to_hex());
+    }
+    // A green work product can predate a change of these untracked hints.
+    // Only report a terminal key when Cargo can use it across metadata changes.
+    if transitive_check {
+        return None;
     }
     Some(metadata.get_crate_hashes().public_hash.to_hex())
 }
