@@ -132,6 +132,44 @@ fn main() {
         .env("LITERAL_INPUT", remapped.join("main.rs.text"))
         .run();
     assert!(rfs::read_to_string("doc/main/fn.main.html").contains("<p>checkout</p>"));
+
+    check_rustdoc_paths();
+}
+
+/// Check both the diagnostic a user would follow and the key in the coverage report.
+fn check_rustdoc_paths() {
+    let checkout = cwd();
+    let remapped = checkout.join("remapped");
+    rfs::write("items.rs", "/// See [Missing].\npub struct Item;\n");
+    for automatic in [true, false] {
+        let document = || {
+            let mut cmd = rustdoc();
+            cmd.input(checkout.join("items.rs"));
+            if automatic {
+                cmd.arg(format!("-Zremap-cwd-prefix={}", remapped.display()))
+                    .env("__CARGO_OHM_WORKTREE_INPUT_PATHS", "1")
+                    .env("__CARGO_OHM_WORKTREE_SOURCE_PATHS", &checkout);
+            } else {
+                cmd.arg("--remap-path-prefix")
+                    .arg(format!("{}={}", checkout.display(), remapped.display()))
+                    .env_remove("__CARGO_OHM_WORKTREE_INPUT_PATHS")
+                    .env_remove("__CARGO_OHM_WORKTREE_SOURCE_PATHS");
+            }
+            cmd
+        };
+        let source = if automatic { &checkout } else { &remapped }.join("items.rs");
+        document().run().assert_stderr_contains(format!("{}:1:", source.display()));
+        let coverage = document()
+            .arg("--show-coverage")
+            .arg("-Zunstable-options")
+            .output_format("json")
+            .out_dir("-")
+            .run()
+            .stdout_utf8();
+        let coverage: run_make_support::serde_json::Value =
+            run_make_support::serde_json::from_str(&coverage).unwrap();
+        assert!(coverage.get(source.to_str().unwrap()).is_some(), "{coverage}");
+    }
 }
 
 fn check_user_metadata_epoch() {

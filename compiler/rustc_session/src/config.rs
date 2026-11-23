@@ -1564,12 +1564,22 @@ impl Options {
     }
 
     pub fn file_path_mapping(&self) -> FilePathMapping {
+        let (_, local_sources) = self.ohm_worktree_path_options();
+        // Cargo omits --remap-path-scope for rustdoc because it requires -Zunstable-options.
+        // Keep the automatic prefix out of diagnostics and documentation coverage. Cargo
+        // clears the local-sources marker when the user supplies a prefix or scope.
+        let scope = if self.actually_rustdoc && local_sources {
+            self.remap_path_scope
+                & (RemapPathScopeComponents::MACRO | RemapPathScopeComponents::DEBUGINFO)
+        } else {
+            self.remap_path_scope
+        };
         file_path_mapping(
             self.remap_path_prefix.clone(),
             self.unstable_opts.remap_cwd_prefix.as_deref(),
-            self.remap_path_scope,
+            scope,
         )
-        .with_worktree_source_paths(self.ohm_worktree_path_options().1)
+        .with_worktree_source_paths(local_sources)
     }
 
     /// Returns `true` if there will be an output file generated.
