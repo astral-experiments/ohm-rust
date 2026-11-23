@@ -952,11 +952,19 @@ extern "C" LLVMRustResult LLVMRustOptimize(
     // Merge canonicalized bodies before global cleanup and CGSCC optimization.
     // Instrumented and plugin-defined pipelines retain their existing ordering.
     PB.registerPipelineEarlySimplificationEPCallback(
-        [](ModulePassManager &MPM, OptimizationLevel Level,
-           ThinOrFullLTOPhase Phase) {
-          if (Level != OptimizationLevel::O0 &&
-              Phase == ThinOrFullLTOPhase::ThinLTOPreLink)
-            MPM.addPass(MergeFunctionsPass());
+        [TheModule, IsMachO = TargetTriple.isOSBinFormatMachO()](
+            ModulePassManager &MPM, OptimizationLevel Level,
+            ThinOrFullLTOPhase Phase) {
+          if (Level == OptimizationLevel::O0 ||
+              Phase != ThinOrFullLTOPhase::ThinLTOPreLink)
+            return;
+          // Mach-O emits weak aliases as local symbols. Merging a weak
+          // definition here can hide it from consumers of the rlib.
+          if (IsMachO && llvm::any_of(*TheModule, [](const Function &F) {
+                return F.hasWeakLinkage() || F.hasLinkOnceLinkage();
+              }))
+            return;
+          MPM.addPass(MergeFunctionsPass());
         });
   }
 
