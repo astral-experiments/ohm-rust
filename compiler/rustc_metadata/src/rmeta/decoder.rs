@@ -1588,32 +1588,22 @@ impl CrateMetadata {
     ///
     /// May panic if the provided `id` does not refer to a module.
     fn get_module_children(&self, tcx: TyCtxt<'_>, id: DefIndex) -> impl Iterator<Item = ModChild> {
-        gen move {
-            if let Some(data) = &self.root.proc_macro_data {
-                // If we are loading as a proc macro, we want to return
-                // the view of this crate as a proc macro crate.
-                if id == CRATE_DEF_INDEX {
-                    for (child_index, _) in data.macros.decode((self, tcx)) {
-                        yield self.get_mod_child(tcx, child_index);
-                    }
-                }
-            } else {
-                // Iterate over all children.
-                let non_reexports = self.root.tables.module_children_non_reexports.get(self, id);
-                let non_reexports =
-                    non_reexports.expect("provided `DefIndex` must refer to a module-like item");
-                for child_index in non_reexports.decode((self, tcx)) {
-                    yield self.get_mod_child(tcx, child_index);
-                }
-
-                let reexports = self.root.tables.module_children_reexports.get(self, id);
-                if !reexports.is_default() {
-                    for reexport in reexports.decode((self, tcx)) {
-                        yield reexport;
-                    }
-                }
-            }
-        }
+        let (items, reexports, macros) = if let Some(data) = &self.root.proc_macro_data {
+            // A proc-macro crate exposes only its macros in the root module.
+            let macros = if id == CRATE_DEF_INDEX { data.macros } else { LazyArray::default() };
+            (LazyArray::default(), LazyArray::default(), macros)
+        } else {
+            let items = self.root.tables.module_children_non_reexports.get(self, id);
+            let items = items.expect("provided `DefIndex` must refer to a module-like item");
+            let reexports = self.root.tables.module_children_reexports.get(self, id);
+            (items, reexports, LazyArray::default())
+        };
+        let data = (self, tcx);
+        items
+            .decode(data)
+            .chain(macros.decode(data).map(|(index, _)| index))
+            .map(move |index| self.get_mod_child(tcx, index))
+            .chain(reexports.decode(data))
     }
 
     fn get_ambig_module_children(
