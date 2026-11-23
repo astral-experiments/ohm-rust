@@ -67,7 +67,10 @@ fn parse(
     edition: Edition,
 ) -> Vec<TokenTree> {
     // Will contain the final collection of `self::TokenTree`
-    let mut result = Vec::new();
+    // Metavariables and repetitions consume multiple input trees. Reserve
+    // the known minimum for long matchers, and at most the input length for
+    // short groups, which commonly contain just one token.
+    let mut result = Vec::with_capacity(input.len().div_ceil(4).max(input.len().min(4)));
 
     // For each token tree in `input`, parse the token into a `self::TokenTree`, consuming
     // additional trees if need be.
@@ -191,6 +194,15 @@ pub(super) fn parse_one_tt(
     features: &Features,
     edition: Edition,
 ) -> TokenTree {
+    // Well-formed rules have one outer delimiter. It cannot consume a
+    // sibling, so there is no need to wrap it in another stream.
+    if let tokenstream::TokenTree::Delimited(span, spacing, delim, tts) = input {
+        return TokenTree::Delimited(
+            span,
+            spacing,
+            Delimited { delim, tts: parse(&tts, part, sess, node_id, features, edition) },
+        );
+    }
     parse(&tokenstream::TokenStream::new(vec![input]), part, sess, node_id, features, edition)
         .pop()
         .unwrap()

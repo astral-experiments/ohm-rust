@@ -229,7 +229,8 @@ pub(super) fn compute_locs(matcher: &[TokenTree]) -> Vec<MatcherLoc> {
         }
     }
 
-    let mut locs = vec![];
+    // Flattening keeps at least one location per top-level tree, plus EOF.
+    let mut locs = Vec::with_capacity(matcher.len() + 1);
     let mut next_metavar = 0;
     inner(matcher, &mut locs, &mut next_metavar, /* seq_depth */ 0);
 
