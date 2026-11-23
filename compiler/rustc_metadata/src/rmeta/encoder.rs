@@ -682,14 +682,15 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> SpanEncoder for EncodeContext<'a, 'tcx,
     }
 
     fn encode_span(&mut self, span: Span) {
-        if !self.hash_declaration_text || !self.declaration_spans.contains(&span) {
-            self.record_encoded_index(span);
-        }
+        let record = !self.hash_declaration_text || !self.declaration_spans.contains(&span);
         match self.span_shorthands.entry(span) {
             Entry::Occupied(o) => {
                 // If an offset is smaller than the absolute position, we encode with the offset.
                 // This saves space since smaller numbers encode in less bits.
                 let last_location = *o.get();
+                if record {
+                    self.record_encoded_index(span);
+                }
                 // This cannot underflow. Metadata is written with increasing position(), so any
                 // previously saved offset must be smaller than the current position.
                 let offset = self.opaque.position() - last_location;
@@ -712,8 +713,14 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> SpanEncoder for EncodeContext<'a, 'tcx,
             Entry::Vacant(v) => {
                 let position = self.opaque.position();
                 v.insert(position);
-                // Data is encoded with a SpanTag prefix (see below).
-                self.with_record_mode(RecordMode::From(span.into()), |this| {
+                // Even if this reference is suppressed, later shorthands can reach
+                // the same span and depend on its context and native location.
+                let mode = if record {
+                    RecordMode::Nested(span.into())
+                } else {
+                    RecordMode::From(span.into())
+                };
+                self.with_record_mode(mode, |this| {
                     span.data().encode(this);
                     this.record_native_metadata_location(span);
                 });
@@ -785,12 +792,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> Encodable<EncodeContext<'a, 'tcx, M>> f
         // The Span infrastructure should make sure that this invariant holds:
         debug_assert!(self.lo <= self.hi);
 
-        if !s.source_file_cache.0.contains(self.lo) {
-            let source_map = s.tcx.sess.source_map();
-            let source_file_index = source_map.lookup_source_file_idx(self.lo);
-            s.source_file_cache =
-                (Arc::clone(&source_map.files()[source_file_index]), source_file_index);
-        }
+        s.update_source_file(self.lo);
         let (ref source_file, source_file_index) = s.source_file_cache;
         debug_assert!(source_file.contains(self.lo));
 
@@ -906,8 +908,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> TyEncoder<'tcx> for EncodeContext<'a, '
     }
 
     fn type_encode_begin(&mut self, ty: Ty<'tcx>) {
-        self.spec_encoder_data.record_encoded_index(Node::Ty(ty));
-        self.spec_encoder_data.push_record_mode(RecordMode::From(Node::Ty(ty)));
+        self.spec_encoder_data.push_record_mode(RecordMode::Nested(Node::Ty(ty)));
     }
 
     fn type_encode_end(&mut self) {
@@ -923,8 +924,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> TyEncoder<'tcx> for EncodeContext<'a, '
     }
 
     fn predicate_encode_begin(&mut self, pred: PredicateKind<'tcx>) {
-        self.spec_encoder_data.record_encoded_index(Node::Predicate(pred));
-        self.spec_encoder_data.push_record_mode(RecordMode::From(Node::Predicate(pred)));
+        self.spec_encoder_data.push_record_mode(RecordMode::Nested(Node::Predicate(pred)));
     }
 
     fn predicate_encode_end(&mut self) {
@@ -1023,6 +1023,16 @@ macro_rules! record_defaulted_array {
 }
 
 impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
+    /// Select the source file for both location encoding and declaration hashing.
+    #[inline]
+    fn update_source_file(&mut self, pos: rustc_span::BytePos) {
+        if !self.source_file_cache.0.contains(pos) {
+            let source_map = self.tcx.sess.source_map();
+            let index = source_map.lookup_source_file_idx(pos);
+            self.source_file_cache = (Arc::clone(&source_map.files()[index]), index);
+        }
+    }
+
     #[inline]
     pub(super) fn write_with<const N: usize>(
         &mut self,
@@ -2392,23 +2402,25 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         if !self.hash_declaration_text || span.is_dummy() {
             return None;
         }
-        let file = self.tcx.sess.source_map().lookup_source_file(span.lo());
-        if !file.contains(span.hi()) {
+        let data = span.data();
+        self.update_source_file(data.lo);
+        let file = &self.source_file_cache.0;
+        if !file.contains(data.hi) {
             return None;
         }
-        let text = file.src.as_ref()?;
-        let lo = file.relative_position(span.lo()).0 as usize;
-        let hi = file.relative_position(span.hi()).0 as usize;
+        let lo = file.relative_position(data.lo).0;
+        let hi = file.relative_position(data.hi).0;
+        let text = file.src.as_ref()?.get(lo as usize..hi as usize)?;
         let mut hasher = StableHasher::new();
         file.stable_id.hash(&mut hasher);
-        text.get(lo..hi)?.hash(&mut hasher);
-        if span.from_expansion() {
-            self.derive_context_hash(span.ctxt())?.hash(&mut hasher);
+        text.hash(&mut hasher);
+        if !data.ctxt.is_root() {
+            self.derive_context_hash(data.ctxt)?.hash(&mut hasher);
         }
-        if let Some(builder) = &mut self.metadata_prefix_manifest
-            && !builder.capture_protected_span(self.tcx, span)
-        {
-            self.metadata_prefix_manifest = None;
+        if let Some(builder) = &mut self.metadata_prefix_manifest {
+            builder.protect_source_range(file.stable_id, lo, hi, || {
+                Some(metadata_fingerprint(text.as_bytes()))
+            });
         }
         Some(hasher.finish())
     }
@@ -4328,7 +4340,7 @@ fn try_reuse_metadata_prefix(
         ecx.metadata_prefix_manifest = Some(MetadataPrefixManifestBuilder {
             manifest,
             dependency_hashes,
-            protected_span_keys: FxIndexSet::default(),
+            protected_span_keys: FxHashSet::default(),
             definition_span_hasher: StableHasher::new(),
         });
 
