@@ -39,7 +39,8 @@ const FILE_MAGIC: &[u8] = b"RSIC";
 // Trait selection projects impls for integral operands.
 // HIR fingerprints encode owner-local IDs and short source ranges.
 // Query cache spans following a source parent can be relative to its end.
-const HEADER_FORMAT_VERSION: u16 = 61379;
+// Cached metadata work products must include implicit dependency roots.
+const HEADER_FORMAT_VERSION: u16 = 61380;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);

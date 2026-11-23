@@ -2778,6 +2778,8 @@ options! {
         "merge incremental codegen units into stable, name-based buckets"),
     ohm_terminal_check_hash: bool = (false, parse_bool, [UNTRACKED],
         "report a declaration-text hash for Cargo when all consumers are terminal checks"),
+    ohm_transitive_check_hash: bool = (false, parse_bool, [UNTRACKED],
+        "require a terminal check hash covering implicit roots of transitive dependencies"),
     on_broken_pipe: OnBrokenPipe = (OnBrokenPipe::Default, parse_on_broken_pipe, [TRACKED],
         "behavior of std::io::ErrorKind::BrokenPipe (SIGPIPE)"),
     osx_rpath_install_name: bool = (false, parse_bool, [TRACKED],

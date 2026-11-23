@@ -3487,6 +3487,11 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         let (_, macro_def, _) = tcx.hir_expect_item(def_id).expect_macro();
         self.tables.is_macro_rules.set_local_hashed(def_id, macro_def.macro_rules, hcx);
         record!(self.tables.macro_definition[def_id.to_def_id()] <- &*macro_def.body, hcx);
+        // A reexported macro can resolve `$crate::path` in a downstream crate.
+        // Its tokens alone do not record the definitions that path can name.
+        self.with_record_mode(RecordMode::From(def_id.into()), |ecx| {
+            ecx.record_encoded_index(CRATE_DEF_ID);
+        });
     }
 
     fn encode_native_libraries<'h>(

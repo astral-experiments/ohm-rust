@@ -1500,7 +1500,7 @@ pub enum VariantDiscr {
     Relative(u32),
 }
 
-#[derive(Debug, StableHash, TyEncodable, TyDecodable)]
+#[derive(Debug, StableHash, TyDecodable)]
 pub struct FieldDef {
     pub did: DefId,
     pub name: Symbol,
@@ -1508,6 +1508,21 @@ pub struct FieldDef {
     pub mut_restriction: RestrictionKind,
     pub safety: hir::Safety,
     pub value: Option<DefId>,
+}
+
+impl<'tcx, E: TyEncoder<'tcx>> Encodable<E> for FieldDef {
+    fn encode(&self, e: &mut E) {
+        let Self { did, name, vis, mut_restriction, safety, value } = self;
+        did.encode(e);
+        name.encode(e);
+        // Like the visibility table, an ADT field needs the restricting module's
+        // identity. Encoding a regular DefId would make the type's public hash
+        // depend on every other item exported from that module.
+        vis.map_id(VisibilityDefId::from).encode(e);
+        mut_restriction.encode(e);
+        safety.encode(e);
+        value.encode(e);
+    }
 }
 
 impl PartialEq for FieldDef {

@@ -63,8 +63,9 @@ mod parameterized;
 mod table;
 
 /// Older SDK source maps predate physical caller paths and use the same scope byte.
-const COMPATIBLE_SYSROOT_EPOCHS: [u32; 2] = [3, 4];
-const OHM_METADATA_EPOCH: u32 = 5;
+const COMPATIBLE_SYSROOT_EPOCHS: [u32; 3] = [3, 4, 5];
+// Epoch 6 includes implicit roots in dependency global hashes.
+const OHM_METADATA_EPOCH: u32 = 6;
 
 pub(crate) fn rustc_version(cfg_version: &'static str) -> String {
     format!("rustc {cfg_version} (Ohm metadata {OHM_METADATA_EPOCH})")
