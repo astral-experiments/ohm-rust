@@ -259,7 +259,7 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
                     this.with_impl_trait(ImplTraitContext::Existential, |this| {
                         this.brg_visit_item(i, feed)
                     });
-                    if matches!(def_kind, DefKind::Impl { of_trait: false }) {
+                    if matches!(def_kind, DefKind::Impl { .. }) {
                         last_method = this.invocation_parent.preceding_source_item;
                     }
                 });
@@ -464,12 +464,14 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
 
         self.with_owner(i.id, Some(ident.name), def_kind, i.span, None, |this, feed| {
             let def_id = feed.def_id();
+            let inherent = matches!(ctxt, visit::AssocCtxt::Impl { of_trait: false });
             let previous = this.invocation_parent.preceding_source_item;
             this.with_parent(def_id, |this| {
                 // An attribute on an impl can stamp a generated method with
                 // the impl's location, even when calls inside the method
                 // retain source locations following the previous method.
                 if previous.is_some()
+                    && inherent
                     && this.parent_scope.expansion != LocalExpnId::ROOT
                     && def_kind == DefKind::AssocFn
                     && !i.span.is_dummy()
@@ -480,13 +482,16 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
                 this.brg_visit_assoc_item(i, ctxt, ident, ns, feed)
             });
 
-            this.invocation_parent.preceding_source_item =
-                (matches!(ctxt, visit::AssocCtxt::Impl { of_trait: false })
-                    && matches!(&i.kind, AssocItemKind::Fn(f) if f.body.is_some())
-                    && this.r.tcx.sess.opts.incremental.is_some()
-                    && !i.span.is_dummy()
-                    && i.span.ctxt().is_root())
-                .then_some(def_id);
+            // A written trait method can anchor a following derive. Keep the
+            // generated-method fallback above specific to inherent impls.
+            let written_trait_impl = matches!(ctxt, visit::AssocCtxt::Impl { of_trait: true })
+                && this.parent_scope.expansion == LocalExpnId::ROOT;
+            this.invocation_parent.preceding_source_item = ((inherent || written_trait_impl)
+                && matches!(&i.kind, AssocItemKind::Fn(f) if f.body.is_some())
+                && this.r.tcx.sess.opts.incremental.is_some()
+                && !i.span.is_dummy()
+                && i.span.ctxt().is_root())
+            .then_some(def_id);
         })
     }
 
