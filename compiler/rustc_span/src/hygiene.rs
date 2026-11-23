@@ -371,6 +371,8 @@ pub(crate) struct HygieneData {
     local_expn_data: IndexVec<LocalExpnId, Option<ExpnData>>,
     local_expn_hashes: IndexVec<LocalExpnId, ExpnHash>,
     incremental_hashes: IndexVec<LocalExpnId, ExpnHash>,
+    /// Exported expansion identities, keyed by expansion and whether we use incremental keys.
+    metadata_hashes: FxHashMap<(LocalExpnId, bool), ExpnHash>,
     /// Data and hash information from external crates. We may eventually want to remove these
     /// maps, and fetch the information directly from the other crate's metadata like DefIds do.
     foreign_expn_data: FxHashMap<ExpnId, ExpnData>,
@@ -402,6 +404,7 @@ impl HygieneData {
         HygieneData {
             local_expn_data: IndexVec::from_elem_n(Some(root_data), 1),
             incremental_hashes: IndexVec::new(),
+            metadata_hashes: FxHashMap::default(),
             local_expn_hashes: IndexVec::from_elem_n(ExpnHash(Fingerprint::ZERO), 1),
             foreign_expn_data: FxHashMap::default(),
             foreign_expn_hashes: FxHashMap::default(),
@@ -1195,16 +1198,20 @@ impl ExpnData {
     }
 
     fn uses_metadata_coordinates(&self) -> bool {
-        // A derive expands once for the attribute and once for each trait it names.
-        matches!(
-            self.kind,
-            ExpnKind::Desugaring(DesugaringKind::Await)
-                | ExpnKind::Macro(MacroKind::Attr, sym::derive)
-                | ExpnKind::Macro(MacroKind::Derive, _)
-        )
+        match self.kind {
+            ExpnKind::Desugaring(DesugaringKind::Await) | ExpnKind::Macro(MacroKind::Derive, _) => {
+                true
+            }
+            // A derive helper has no macro definition of its own, but its local
+            // expansion hash can still contain the derive's owner-relative offset.
+            ExpnKind::Macro(MacroKind::Attr, name) => {
+                name == sym::derive || self.macro_def_id.is_none()
+            }
+            _ => false,
+        }
     }
 
-    /// The local identity of a source-written derive or `.await` includes the byte distance
+    /// The local identity of a derive, helper attribute or `.await` can include the byte distance
     /// from its enclosing definition. Metadata stores its span without that parent. Use
     /// the encoded coordinates when assigning its exported identity, keeping the
     /// owner as a discriminator for expansions at identical source locations.
@@ -1746,7 +1753,10 @@ impl HygieneData {
             && let Some(data) = &self.local_expn_data[local]
             && data.uses_metadata_coordinates()
         {
-            (hash, Some(local))
+            match self.metadata_hashes.get(&(local, incremental)) {
+                Some(&exported) => (exported, None),
+                None => (hash, Some(local)),
+            }
         } else {
             (hash, None)
         }
@@ -1760,7 +1770,14 @@ fn hash_expansion(
     hcx: &mut impl StableHashCtxt,
 ) -> Fingerprint {
     match site {
-        Some(site) => site.expn_data().metadata_hash(hash, hcx).0,
+        Some(site) => {
+            // Each helper can name the previous attribute as its parent. Cache the
+            // result so hashing a chain doesn't repeatedly walk all its ancestors.
+            let exported = site.expn_data().metadata_hash(hash, hcx);
+            let incremental = hcx.stable_hash_controls().incremental_keys;
+            HygieneData::with(|data| data.metadata_hashes.insert((site, incremental), exported));
+            exported.0
+        }
         None => hash.0,
     }
 }
