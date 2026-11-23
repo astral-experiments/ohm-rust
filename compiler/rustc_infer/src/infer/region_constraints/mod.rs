@@ -14,7 +14,7 @@ use tracing::{debug, instrument};
 
 use self::CombineMapType::*;
 use self::UndoLog::*;
-use super::{InferCtxt, RegionVariableOrigin, Rollback, SubregionOrigin};
+use super::{RegionVariableOrigin, Rollback, SubregionOrigin};
 use crate::infer::snapshot::undo_log::{InferCtxtUndoLogs, Snapshot};
 use crate::infer::unify_key::{RegionVariableValue, RegionVidKey};
 
@@ -361,32 +361,6 @@ impl<'tcx> RegionConstraintStorage<'tcx> {
         undo_log: &'a mut InferCtxtUndoLogs<'tcx>,
     ) -> RegionConstraintCollector<'a, 'tcx> {
         RegionConstraintCollector { storage: self, undo_log }
-    }
-}
-
-impl<'tcx> InferCtxt<'tcx> {
-    /// Whether scraping the region state after an inference-free NLL type
-    /// operation would have nothing to return or reset.
-    #[inline]
-    pub fn region_state_is_empty(&self) -> bool {
-        let inner = self.inner.borrow();
-        let RegionConstraintStorage {
-            var_infos: _,
-            data,
-            lubs,
-            glbs,
-            unification_table: _,
-            any_unifications,
-        } = inner.region_constraint_storage.as_ref().expect("region constraints already solved");
-        // Variables live across operations. Relationships between them,
-        // including unifications, are specific to a location.
-        !UndoLogs::<UndoLog<'_>>::in_snapshot(&inner.undo_log)
-            && inner.region_obligations.is_empty()
-            && inner.region_assumptions.is_empty()
-            && data.is_empty()
-            && lubs.is_empty()
-            && glbs.is_empty()
-            && !*any_unifications
     }
 }
 

@@ -3,13 +3,15 @@
 use run_make_support::{rfs, run, rustc};
 
 fn table(rows: usize, last: &str) {
-    let prefix = r#"(&["key"], &["value"]), "#.repeat(rows - 1);
+    let prefix = r#"(&["key"], &["value"]), "#.repeat(rows - 2);
     let ranges = "(1, 'a', &['A', 'λ']), ".repeat(rows - 1);
     rfs::write(
         "table.rs",
         format!(
             r#"
-pub const TABLE: &[(&[&str], &[&str])] = &[{prefix}(&[], &["", {last}])];
+/// Exercise borrowing a documented table after checking repeated row shapes.
+#[rustfmt::skip]
+pub const TABLE: &[(&[&str], &[&str])] = &[{prefix}(&[], &["a", "b"]), (&[], &["", {last}])];
 pub const MIXED: &[(u8, char, &[char])] = &[{ranges}(255, '🦀', &[])];
 "#
         ),
@@ -33,6 +35,18 @@ fn main() {
     let thir =
         rustc().input("table.rs").crate_type("lib").arg("-Zunpretty=thir-tree").run().stdout_utf8();
     assert_eq!(thir.matches("LiteralArray(").count(), 2);
+
+    let mir = rustc().input("table.rs").crate_type("lib").arg("-Zunpretty=mir").run().stdout_utf8();
+    assert!(mir.contains("const TABLE: &[(&[&str], &[&str])] = const Slice"));
+
+    // Even a repeated row can contain a non-string literal or a coercion error.
+    table(64, "42u8");
+    rustc()
+        .input("table.rs")
+        .crate_type("rlib")
+        .incremental("producer")
+        .run_fail()
+        .assert_stderr_contains("E0308");
 
     // A non-literal in the last row must still go through ordinary const evaluation.
     table(64, r#"panic!("invalid row")"#);

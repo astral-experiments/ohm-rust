@@ -46,6 +46,9 @@ use crate::{CoroutineTypes, Diverges, EnclosingBreakables, TypeckRootCtxt};
 pub(crate) struct FnCtxt<'a, 'tcx> {
     pub(super) body_def_id: LocalDefId,
 
+    /// Rows checked together in the current constant initializer, for writeback.
+    pub(super) string_rows: Cell<Option<Box<crate::string_table::StringRows<'tcx>>>>,
+
     /// The parameter environment used for proving trait obligations
     /// in this function. This can change when we descend into
     /// closures (as they bring new things into scope), hence it is
@@ -140,6 +143,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
     ) -> FnCtxt<'a, 'tcx> {
         FnCtxt {
             body_def_id,
+            string_rows: Cell::new(None),
             param_env,
             ret_coercion: None,
             ret_coercion_span: Cell::new(None),

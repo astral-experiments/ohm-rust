@@ -7,10 +7,9 @@
 //! New and re-executed nodes are serialized on demand. When we keep the
 //! previous indices, validation marks rows to copy when the session ends.
 //!
-//! The previous graph holds the packed rows and two arrays indexed by node
-//! number. One stores node kinds and keys for validation and reverse lookup.
-//! The other locates each node's value fingerprint and edges in its row, and
-//! links nodes that share a bucket in the reverse index.
+//! The previous graph holds the packed rows and an array indexed by node number.
+//! Each entry contains the node kind and key, locates the value fingerprint and
+//! edges, and links nodes that share a bucket in the reverse index.
 //!
 //! The encoding of the dep-graph is generally designed around the fact that fixed-size
 //! reads of encoded data are generally faster than variable-sized reads. Ergo we adopt
@@ -104,10 +103,7 @@ const DEP_NODE_WIDTH_BITS: usize = DEP_NODE_SIZE / 2;
 /// marked by `DepKind::Null`.
 #[derive(Default)]
 pub struct SerializedDepGraph {
-    /// The set of all DepNodes in the graph
-    nodes: IndexVec<SerializedDepNodeIndex, DepNode>,
-    /// Locations of headers and edges inside the serialized rows. A missing row
-    /// corresponds to a null slot in `nodes`.
+    /// Nodes and the locations of their serialized edges, including null slots.
     row_index: IndexVec<SerializedDepNodeIndex, RowIndex>,
     /// The contiguous rows, followed by padding for edge reads. The ordinary
     /// graph footer supplies this padding. Empty graphs have no backing file.
@@ -126,7 +122,6 @@ pub struct SerializedDepGraph {
 impl std::fmt::Debug for SerializedDepGraph {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SerializedDepGraph")
-            .field("nodes", &self.nodes)
             .field("row_index", &self.row_index)
             .field("buckets", &self.buckets)
             .field("live_node_count", &self.live_node_count)
@@ -146,33 +141,43 @@ fn reverse_bucket(node: &DepNode, size: usize) -> usize {
     (hash ^ node.kind.as_usize().wrapping_mul(0x9e3779b9)) & (size - 1)
 }
 
-/// Index the rows by kind and key in one pass. Looking up a node compares the
-/// full key, and inserting indices in ascending order puts the last side effect
-/// with a given key first in its chain.
-fn build_reverse_index(
-    nodes: &IndexSlice<SerializedDepNodeIndex, DepNode>,
+/// Link the row just read into its reverse bucket.
+#[inline]
+fn link_row(
     rows: &mut IndexSlice<SerializedDepNodeIndex, RowIndex>,
-    count: usize,
-) -> Vec<Option<SerializedDepNodeIndex>> {
-    let mut heads: Vec<Option<SerializedDepNodeIndex>> = vec![None; count.next_power_of_two()];
-    for (index, node) in nodes.iter_enumerated() {
-        if node.kind == DepKind::Null {
-            continue;
-        }
-        let bucket = reverse_bucket(node, heads.len());
-        let mut next = heads[bucket];
-        // Side effects deliberately share their key. Keep only the latest
-        // duplicate at the head of a chain.
-        if node.kind == DepKind::SideEffect
-            && let Some(last) = next
-            && nodes[last] == *node
-        {
-            next = rows[last].next;
-        }
-        rows[index].next = next;
-        heads[bucket] = Some(index);
+    heads: &mut [Option<SerializedDepNodeIndex>],
+    index: SerializedDepNodeIndex,
+) {
+    let row = &mut rows[index];
+    let bucket = reverse_bucket(&row.node, heads.len());
+    let head = &mut heads[bucket];
+    row.next = head.replace(index);
+    if row.node.kind == DepKind::SideEffect {
+        deduplicate_side_effect(rows, head, index);
     }
-    heads
+}
+
+/// Side effects may share a key. File order differs from slot order, so
+/// preserve the highest index and unlink the other occurrence.
+#[cold]
+#[inline(never)]
+fn deduplicate_side_effect(
+    rows: &mut IndexSlice<SerializedDepNodeIndex, RowIndex>,
+    head: &mut Option<SerializedDepNodeIndex>,
+    index: SerializedDepNodeIndex,
+) {
+    let mut current = index;
+    while let Some(next) = rows[current].next {
+        if rows[next].node == rows[index].node {
+            if next.index() > index.index() {
+                *head = rows[index].next;
+            } else {
+                rows[current].next = rows[next].next;
+            }
+            return;
+        }
+        current = next;
+    }
 }
 
 impl SerializedDepGraph {
@@ -228,13 +233,25 @@ impl SerializedDepGraph {
             Some(())
         }
 
-        let row = self.row_index[source];
-        let bytes = &self.row_bytes()[row.edges_start..row.end()];
+        let row = &self.row_index[source];
+        let bytes = &self.row_bytes()[row.edges_start..];
+        let count = row.num_edges as usize;
         match row.width {
-            1 => walk::<1>(bytes, visit),
-            2 => walk::<2>(bytes, visit),
-            3 => walk::<3>(bytes, visit),
-            4 => walk::<4>(bytes, visit),
+            1 => walk::<1>(&bytes[..count], visit),
+            2 => walk::<2>(&bytes[..count * 2], visit),
+            3 => {
+                // A row has at least DEP_NODE_PAD trailing bytes, enough for
+                // an unaligned four-byte read of the last three-byte edge.
+                let mut visit = visit;
+                let mut bytes = &bytes[..count * 3 + 1];
+                while let Some(raw) = bytes.first_chunk() {
+                    let index = u32::from_le_bytes(*raw) & 0x00ff_ffff;
+                    visit(SerializedDepNodeIndex::from_u32(index))?;
+                    bytes = &bytes[3..];
+                }
+                Some(())
+            }
+            4 => walk::<4>(&bytes[..count * 4], visit),
             _ => unreachable!(),
         }
     }
@@ -254,7 +271,7 @@ impl SerializedDepGraph {
 
     #[inline]
     pub fn index_to_node(&self, dep_node_index: SerializedDepNodeIndex) -> &DepNode {
-        &self.nodes[dep_node_index]
+        &self.row_index[dep_node_index].node
     }
 
     #[inline]
@@ -265,7 +282,7 @@ impl SerializedDepGraph {
         let mut next = self.buckets[reverse_bucket(dep_node, self.buckets.len())];
         let mut found = None;
         while let Some(i) = next {
-            if self.nodes[i] == *dep_node {
+            if self.row_index[i].node == *dep_node {
                 if dep_node.kind == DepKind::SideEffect {
                     return Some(i);
                 }
@@ -300,7 +317,7 @@ impl SerializedDepGraph {
     /// The number of dep-node indices, counting those that hold no node.
     #[inline]
     pub fn index_space_len(&self) -> usize {
-        self.nodes.len()
+        self.row_index.len()
     }
 
     #[inline]
@@ -316,8 +333,9 @@ impl SerializedDepGraph {
 
 /// Location of one serialized row. The length stored before the edges can
 /// spill out of the fixed header into a varint.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 struct RowIndex {
+    node: DepNode,
     edges_start: usize,
     num_edges: u32,
     header_len: u8,
@@ -326,6 +344,21 @@ struct RowIndex {
 }
 
 impl RowIndex {
+    fn empty() -> Self {
+        Self {
+            node: DepNode {
+                kind: DepKind::Null,
+                key_fingerprint: PackedFingerprint::from(Fingerprint::ZERO),
+            },
+            edges_start: 0,
+            num_edges: 0,
+            header_len: 0,
+            width: 0,
+            // Empty slots are never linked. Index zero permits zero-filling this array.
+            next: Some(SerializedDepNodeIndex::from_u32(0)),
+        }
+    }
+
     fn end(self) -> usize {
         self.edges_start + self.num_edges as usize * usize::from(self.width)
     }
@@ -355,47 +388,46 @@ impl SerializedDepGraph {
                 let edge_count = IntEncodedWithFixedSize::decode(d).0 as usize;
                 (node_max, node_count, edge_count)
             });
+        if node_count > node_max {
+            return None;
+        }
         debug!("position: {:?}", d.position());
 
         debug!(?node_count, ?edge_count);
 
-        let mut nodes = IndexVec::from_elem_n(
-            DepNode {
-                kind: DepKind::Null,
-                key_fingerprint: PackedFingerprint::from(Fingerprint::ZERO),
-            },
-            node_max,
-        );
-        let mut row_index = IndexVec::from_elem_n(RowIndex::default(), node_max);
+        let mut row_index =
+            IndexVec::<SerializedDepNodeIndex, _>::from_elem_n(RowIndex::empty(), node_max);
+        let timer = profiler.generic_activity("incr_comp_load_dep_graph_rows");
+        let mut buckets = vec![None; node_count.checked_next_power_of_two()?];
         for _ in 0..node_count {
             let row_start = d.position();
             // Decode the header for this edge; the header packs together as many of the fixed-size
             // fields as possible to limit the number of times we update decoder state.
             let node_header = SerializedNodeHeader { bytes: d.read_array() };
 
-            let index = node_header.index();
-
-            let node = nodes.get_mut(index)?;
-            let decoded = node_header.node();
-            if decoded.kind == DepKind::Null || node.kind != DepKind::Null {
+            let Unpacked { index, kind, key_fingerprint, len, bytes_per_index, .. } =
+                node_header.unpack();
+            let row = row_index.get_mut(index)?;
+            if kind == DepKind::Null || row.node.kind != DepKind::Null {
                 return None;
             }
-            *node = decoded;
+            row.node = DepNode { kind, key_fingerprint };
 
             // If the length of this node's edge list is small, the length is stored in the header.
             // If it is not, we fall back to another decoder call.
-            let num_edges = node_header.len().unwrap_or_else(|| d.read_u32());
-
-            let width = node_header.bytes_per_index();
-            row_index[index] = RowIndex {
-                edges_start: d.position() - start,
-                num_edges,
-                header_len: (d.position() - row_start).try_into().unwrap(),
-                width: width as u8,
-                next: None,
+            let (num_edges, header_len) = match len {
+                Some(len) => (len, size_of::<SerializedNodeHeader>() as u8),
+                None => (d.read_u32(), (d.position() - row_start).try_into().unwrap()),
             };
-            let _ = d.read_raw_bytes(width * num_edges as usize);
+
+            row.edges_start = d.position() - start;
+            row.num_edges = num_edges;
+            row.header_len = header_len;
+            row.width = bytes_per_index as u8;
+            let _ = d.read_raw_bytes(bytes_per_index * num_edges as usize);
+            link_row(&mut row_index, &mut buckets, index);
         }
+        drop(timer);
         let padded_end = d.position() + DEP_NODE_PAD;
         let mut total = 0;
         for _ in 0..DepKind::NUM_VARIANTS {
@@ -403,17 +435,12 @@ impl SerializedDepGraph {
         }
         debug_assert_eq!(total, node_count);
         let session_count = d.read_u64();
-        let buckets = {
-            let _timer = profiler.generic_activity("incr_comp_load_dep_graph_reverse_index");
-            build_reverse_index(&nodes, &mut row_index, node_count)
-        };
         // On Windows finish reading the old file before replacing it.
         #[cfg(windows)]
         let rows = slice_owned(bytes[start..padded_end].to_vec(), |data| &data[..]);
         #[cfg(not(windows))]
         let rows = slice_owned(bytes, |data| &data[start..padded_end]);
         Some(Arc::new(Self {
-            nodes,
             row_index,
             rows: Some(rows),
             buckets,
@@ -675,7 +702,10 @@ impl EncoderState {
             // (installed before reservation) or candidates for reclamation.
             if index.as_usize() >= self.retained_rows.len()
                 || index.as_u32() <= DepNodeIndex::FOREVER_RED_NODE.as_u32()
-                || self.previous.nodes[SerializedDepNodeIndex::from_u32(index.as_u32())].kind
+                || self
+                    .previous
+                    .index_to_node(SerializedDepNodeIndex::from_u32(index.as_u32()))
+                    .kind
                     == DepKind::Null
             {
                 return index;
@@ -830,7 +860,7 @@ impl EncoderState {
 
         let mut encoder = self.file.lock().take().unwrap();
 
-        let mut kind_stats: Vec<u32> = iter::repeat_n(0, DepKind::NUM_VARIANTS).collect();
+        let mut kind_stats = [0; DepKind::NUM_VARIANTS];
 
         let mut node_max = 0;
         let mut node_count = 0;
@@ -889,38 +919,47 @@ impl EncoderState {
     fn copy_retained_rows(
         &self,
         encoder: &mut FileEncoder<'_>,
-        kinds: &mut [u32],
+        kinds: &mut [u32; DepKind::NUM_VARIANTS],
     ) -> (usize, usize) {
-        let mut seek = self.seek_index.as_ref().map(|s| s.lock());
-        if let Some(seek) = &mut seek {
-            seek.reserve_slots(self.retained_rows.len());
-        }
         let bytes = self.previous.row_bytes();
-        let (mut offset, mut run_start) = (0, 0);
+        let mut run = 0..0;
+        let mut run_offset = encoder.position();
         let (mut nodes, mut edges) = (0, 0);
-        for _ in 0..self.previous.live_node_count {
-            let start = offset;
-            let header = self.previous.header_at(start);
-            let index = header.index();
-            let row = self.previous.row_index[index];
-            offset = row.end();
-            if !self.retained_rows[index].load(Ordering::Relaxed) {
-                if run_start != start {
-                    encoder.emit_raw_bytes(&bytes[run_start..start]);
-                }
-                run_start = offset;
-                continue;
+        // Visit the decoded rows and their colors in slot order. Parallel writes
+        // and reused slots can put adjacent indices in different parts of the file.
+        // Only join rows whose byte ranges are contiguous.
+        let mut append = |row: &RowIndex| {
+            let start = row.edges_start - usize::from(row.header_len);
+            if start != run.end {
+                encoder.emit_raw_bytes(&bytes[run.clone()]);
+                run.start = start;
+                run_offset = encoder.position();
             }
-            let node = header.node();
+            run.end = row.end();
             nodes += 1;
             edges += row.num_edges as usize;
-            kinds[node.kind.as_usize()] += 1;
-            if let Some(seek) = &mut seek {
-                let position = encoder.position() + (start - run_start);
-                seek.record_node(node, DepNodeIndex::from_u32(index.as_u32()), position);
+            kinds[row.node.kind.as_usize()] += 1;
+            run_offset + (start - run.start)
+        };
+
+        let rows = self.previous.row_index.iter_enumerated().zip(self.retained_rows.iter());
+        if let Some(seek) = &self.seek_index {
+            seek.lock().record_retained(rows.map(|((index, row), retained)| {
+                if retained.load(Ordering::Relaxed) {
+                    let offset = append(row);
+                    Some((DepNodeIndex::from_u32(index.as_u32()), &row.node, offset))
+                } else {
+                    None
+                }
+            }));
+        } else {
+            for ((_, row), retained) in rows {
+                if retained.load(Ordering::Relaxed) {
+                    append(row);
+                }
             }
         }
-        encoder.emit_raw_bytes(&bytes[run_start..offset]);
+        encoder.emit_raw_bytes(&bytes[run]);
         (nodes, edges)
     }
 

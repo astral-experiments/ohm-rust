@@ -279,6 +279,18 @@ impl<'cx, 'tcx> Visitor<'tcx> for WritebackCx<'cx, 'tcx> {
         }
 
         self.visit_node_id(e.span, e.hir_id);
+        // Only the outer array of the initializer can have a row plan.
+        if let hir::ExprKind::Array(fields) = e.kind
+            && fields.len() >= 64
+            && let Some(rows) = self.fcx.string_rows.take()
+        {
+            debug_assert_eq!(rows.examples[0].hir_id, fields[0].hir_id);
+            for &row in &rows.examples {
+                self.visit_expr(row);
+            }
+            rows.copy_types(&mut self.typeck_results);
+            return;
+        }
         if let hir::ExprKind::Array(fields) = e.kind
             && fields.len() >= 16
             && let ty::Array(element, _) = *self.typeck_results.node_type(e.hir_id).kind()

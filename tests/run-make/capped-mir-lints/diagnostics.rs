@@ -29,6 +29,9 @@ pub fn update() {
     println!("{:p}", &update);
 }
 
+#[cfg(layout_cycle)]
+pub struct Cycle(<&'static Cycle as std::ops::Deref>::Target);
+
 #[deny(unused_results)]
 pub fn local_override() {
     fn answer() -> u32 {

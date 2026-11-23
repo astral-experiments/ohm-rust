@@ -528,20 +528,9 @@ impl<O: ForestObligation> ObligationForest<O> {
                 break;
             }
 
-            // A node's original parent was registered first. If these are
-            // the only edges, the suffix is a forest and cannot have cycles.
-            // When every node has succeeded there is also no pending state
-            // to propagate. Edges to a stalled node reset `stalled_len`.
-            if self.nodes[self.stalled_len..].iter().all(|node| {
-                matches!(node.state.get(), NodeState::Success | NodeState::Waiting)
-                    && node.dependents.len() == usize::from(node.has_parent)
-            }) {
-                self.complete_suffix(self.stalled_len, |obl| outcome.record_completed(obl));
-            } else {
-                self.mark_successes();
-                self.process_cycles(processor, &mut outcome);
-                self.compress(|obl| outcome.record_completed(obl));
-            }
+            self.mark_successes();
+            self.process_cycles(processor, &mut outcome);
+            self.compress(|obl| outcome.record_completed(obl));
         }
 
         outcome
@@ -677,27 +666,6 @@ impl<O: ForestObligation> ObligationForest<O> {
         }
     }
 
-    /// Commit a successful suffix without reindexing the surviving nodes.
-    fn complete_suffix(&mut self, first: usize, mut outcome_cb: impl FnMut(&O)) {
-        let mut stale_keys = false;
-        for (offset, node) in self.nodes[first..].iter().enumerate() {
-            let key = node.obligation.as_cache_key();
-            if first != 0 {
-                stale_keys |= self.active_cache.remove(&key) != Some(first + offset);
-            }
-            self.done_cache.insert(key);
-            outcome_cb(&node.obligation);
-        }
-        self.nodes.truncate(first);
-        if first == 0 {
-            self.active_cache.clear();
-        } else if stale_keys {
-            // Processing can change a node's key. Drop any original keys
-            // that still refer to a removed node.
-            self.active_cache.retain(|_, index| *index < first);
-        }
-    }
-
     /// Compresses the vector, removing all popped nodes. This adjusts the
     /// indices and hence invalidates any outstanding indices. `process_cycles`
     /// must be run beforehand to remove any cycles on `Success` nodes.
@@ -715,7 +683,23 @@ impl<O: ForestObligation> ObligationForest<O> {
         };
         let first = self.stalled_len + first;
         if self.nodes[first..].iter().all(|node| node.state.get() == NodeState::Done) {
-            self.complete_suffix(first, outcome_cb);
+            let mut stale_keys = false;
+            for (offset, node) in self.nodes[first..].iter().enumerate() {
+                let key = node.obligation.as_cache_key();
+                if first != 0 {
+                    stale_keys |= self.active_cache.remove(&key) != Some(first + offset);
+                }
+                self.done_cache.insert(key);
+                outcome_cb(&node.obligation);
+            }
+            self.nodes.truncate(first);
+            if first == 0 {
+                self.active_cache.clear();
+            } else if stale_keys {
+                // Processing can change a node's key. Drop any original keys
+                // that still refer to a removed node.
+                self.active_cache.retain(|_, index| *index < first);
+            }
             return;
         }
 

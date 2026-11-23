@@ -49,12 +49,6 @@ fn implied_outlives_bounds<'a, 'tcx>(
     // an example.
     assert!(!ty.has_non_region_infer());
 
-    if !infcx.disable_trait_solver_fast_paths()
-        && super::implied_outlives_bounds::implies_no_bounds(infcx.tcx, ty)
-    {
-        return vec![];
-    }
-
     // A fieldless struct with only concrete `usize` const arguments and no
     // other bounds cannot imply any lifetime relationships. In particular,
     // there is nothing to normalize or relate to the caller's environment.

@@ -122,7 +122,7 @@ impl<'a, 'tcx> ConstraintConversion<'a, 'tcx> {
         (self.category, self.span, self.from_closure) = backup;
     }
 
-    pub(super) fn convert(
+    fn convert(
         &mut self,
         clause: ty::ArgOutlivesClause<'tcx>,
         constraint_category: ConstraintCategory<'tcx>,

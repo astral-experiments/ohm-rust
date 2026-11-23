@@ -9,8 +9,9 @@ fn edge_targets_stop_at_each_list_boundary() {
     let mut graph = SerializedDepGraph::default();
     let mut bytes = Vec::new();
     let values = [0x0403_0201u32, 0x0807_0605];
-    for (width, count) in [(1, 0), (1, 2), (2, 1), (3, 1), (4, 1), (1, 1), (1, 0)] {
+    for (width, count) in [(1, 0), (1, 2), (2, 1), (3, 1), (4, 1), (1, 1), (1, 0), (3, 0), (3, 2)] {
         graph.row_index.push(RowIndex {
+            node: node(DepKind::Null, 0, 0),
             edges_start: bytes.len(),
             width: width as u8,
             header_len: 0,
@@ -21,10 +22,20 @@ fn edge_targets_stop_at_each_list_boundary() {
             bytes.extend_from_slice(&value.to_le_bytes()[..width]);
         }
     }
-    bytes.extend_from_slice(&[0; DEP_NODE_PAD]);
+    bytes.extend_from_slice(&[0xff; DEP_NODE_PAD]);
     graph.rows = Some(slice_owned(bytes, |data| &data[..]));
 
-    let expected: &[&[u32]] = &[&[], &[1, 5], &[0x0201], &[0x03_0201], &[0x0403_0201], &[1], &[]];
+    let expected: &[&[u32]] = &[
+        &[],
+        &[1, 5],
+        &[0x0201],
+        &[0x03_0201],
+        &[0x0403_0201],
+        &[1],
+        &[],
+        &[],
+        &[0x03_0201, 0x07_0605],
+    ];
     for (source, expected) in graph.row_index.indices().zip(expected) {
         assert_eq!(
             graph.edge_targets_from(source).map(|index| index.as_u32()).collect::<Vec<_>>(),
@@ -57,11 +68,17 @@ fn edge_targets_stop_at_each_list_boundary() {
 }
 
 fn graph(nodes: Vec<DepNode>) -> SerializedDepGraph {
-    let nodes = IndexVec::from_raw(nodes);
-    let mut row_index = IndexVec::from_elem_n(RowIndex::default(), nodes.len());
     let live_node_count = nodes.iter().filter(|node| node.kind != DepKind::Null).count();
-    let buckets = build_reverse_index(&nodes, &mut row_index, live_node_count);
-    SerializedDepGraph { nodes, row_index, buckets, live_node_count, ..Default::default() }
+    let mut row_index: IndexVec<SerializedDepNodeIndex, RowIndex> =
+        nodes.into_iter().map(|node| RowIndex { node, ..RowIndex::empty() }).collect();
+    let mut buckets = vec![None; live_node_count.next_power_of_two()];
+    // Chunks can arrive out of order even when the graph is dense.
+    for index in row_index.indices().rev() {
+        if row_index[index].node.kind != DepKind::Null {
+            link_row(&mut row_index, &mut buckets, index);
+        }
+    }
+    SerializedDepGraph { row_index, buckets, live_node_count, ..Default::default() }
 }
 
 #[test]
@@ -89,8 +106,15 @@ fn reverse_index_checks_full_fingerprints_and_kind_with_sparse_indices() {
 fn reverse_index_side_effect_duplicates_use_the_last_index() {
     let duplicate = node(DepKind::SideEffect, 1, 2);
     let collision = node(DepKind::SideEffect, 2, 1);
-    let graph = graph(vec![duplicate, collision, node(DepKind::Null, 0, 0), duplicate]);
+    let mut graph = graph(vec![duplicate, collision, node(DepKind::Null, 0, 0), duplicate]);
     assert_eq!(graph.node_to_index_opt(&duplicate), Some(SerializedDepNodeIndex::from_u32(3)));
+    assert_eq!(graph.node_to_index_opt(&collision), Some(SerializedDepNodeIndex::from_u32(1)));
+    // File order was 3, 1, 0. Slot 0 left slot 3 behind the collision.
+    // Slot 4 must now replace it without dropping the collision.
+    let higher = graph.row_index.push(RowIndex { node: duplicate, ..RowIndex::empty() });
+    graph.live_node_count += 1;
+    link_row(&mut graph.row_index, &mut graph.buckets, higher);
+    assert_eq!(graph.node_to_index_opt(&duplicate), Some(higher));
     assert_eq!(graph.node_to_index_opt(&collision), Some(SerializedDepNodeIndex::from_u32(1)));
 }
 
@@ -138,10 +162,21 @@ fn check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges() {
         seek.record_chunk(file.data.len(), slots, &mut offsets, &mut roots);
         file.emit_raw_bytes(&chunk.data);
     }
+    // An old root can keep its slot while its bytes move past the
+    // newly written rows. Slots already written by workers must survive.
+    let retained = node(DepKind::typeck_root, 5, 7);
+    let retained_index = DepNodeIndex::from_u32(173);
+    let offset = file.data.len();
+    NodeInfo { node: retained, value_fingerprint: Fingerprint::ZERO, edges: &dependencies }
+        .encode(&mut file, retained_index);
+    count += 1;
+    seek.record_retained((0..400usize).map(|slot| {
+        (slot == retained_index.as_usize()).then_some((retained_index, &retained, offset))
+    }));
     let start = file.data.len();
     let node_max = 512;
     seek.encode(&mut file, start, node_max);
-    for value in [u64::from(node_max), count, dependencies.len() as u64] {
+    for value in [u64::from(node_max), count, 2 * dependencies.len() as u64] {
         file.emit_raw_bytes(&value.to_le_bytes());
     }
     file.emit_raw_bytes(rustc_serialize::opaque::MAGIC_END_BYTES);
@@ -157,6 +192,9 @@ fn check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges() {
         dependencies.iter().map(|index| index.as_u32()).collect::<Vec<_>>()
     );
     assert_eq!(graph.node_to_index_opt(&borrowed).unwrap().as_u32(), 500);
+    let moved = graph.node_to_index_opt(&retained).unwrap();
+    assert_eq!(moved.as_u32(), retained_index.as_u32());
+    assert_eq!(graph.node(moved).unwrap().edges().count(), dependencies.len());
     assert!(graph.node_to_index_opt(&node(DepKind::typeck_root, 2, 1)).is_none());
     assert!(graph.node(SerializedDepNodeIndex::from_u32(99)).is_none());
     assert!(graph.node(SerializedDepNodeIndex::from_u32(501)).is_none());

@@ -248,4 +248,28 @@ fn main() {
             .unwrap()
             .any(|file| { file.unwrap().path().extension().is_some_and(|ext| ext == "bc") })
     );
+
+    // The build needs the checked body even after another check retains the
+    // body's graph rows. Keep -Zquery-dep-graph off so those rows move to
+    // new file offsets without changing their indices.
+    let source = |value, other| {
+        rfs::write(
+            "api.rs",
+            format!(
+                "pub fn changed(x: u32) -> u32 {{ x.wrapping_add({value}) }}\n\
+                 pub const OTHER: u32 = {other};"
+            ),
+        );
+    };
+    source(0, 0);
+    stage("metadata,link").run();
+    source(1, 0);
+    stage("metadata").run();
+    source(1, 1);
+    stage("metadata").arg("-Zassert-incr-state=loaded").run();
+    let log = stage("metadata,link")
+        .env("RUSTC_LOG", "rustc_middle::dep_graph::graph::check=info")
+        .run()
+        .stderr_utf8();
+    assert!(log.contains("ohm_latest_check_reuse, kind=mir_borrowck"), "{log}");
 }
