@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use run_make_support::{
-    build_root, cmd, has_extension, has_prefix, path, python_command, recursive_find_files, rfs,
+    cmd, env_var_os, has_extension, has_prefix, path, python_command, recursive_find_files, rfs,
     rustc_path, shallow_find_files,
 };
 
@@ -44,7 +44,7 @@ pub fn retarget() {
 
     // Run Cargo from the bootstrap toolchain against the compiler under test.
     let build = || {
-        cmd(build_root().join("stage0/bin/cargo"))
+        cmd(env_var_os("BOOTSTRAP_TEST_CARGO_BIN"))
             .args(["-Zchecksum-freshness", "build", "--manifest-path", "git-app/Cargo.toml"])
             .env("RUSTC", rustc_path())
             .env("RUSTC_BOOTSTRAP", "1")
@@ -52,6 +52,9 @@ pub fn retarget() {
             .env("CARGO_HOME", path("cargo-home"))
             .env("CARGO_TARGET_DIR", path("cargo-target"))
             .env_remove("CARGO_BUILD_BUILD_DIR")
+            .env_remove("CARGO_BUILD_TARGET")
+            // Cargo needs to check out the local file:// dependency into the empty Cargo home.
+            .env_remove("CARGO_NET_OFFLINE")
             .run();
     };
     build();
