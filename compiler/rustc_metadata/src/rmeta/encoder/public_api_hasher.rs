@@ -133,14 +133,15 @@
 //! a metadata query key.
 
 use core::iter::Iterator;
-use std::cell::RefCell;
 use std::fmt;
+use std::hash::BuildHasher;
 
 use rustc_crate_store::{ForeignModule, LinkagePreference, NativeLib};
 use rustc_data_structures::fingerprint::Fingerprint;
-use rustc_data_structures::fx::{FxHashSet, FxIndexSet};
+use rustc_data_structures::fx::{FxBuildHasher, FxHashSet};
 use rustc_data_structures::graph::scc::Sccs;
 use rustc_data_structures::graph::{DirectedGraph, Successors};
+use rustc_data_structures::hash_table::{Entry, HashTable};
 use rustc_data_structures::sso::SsoHashSet;
 use rustc_data_structures::stable_hash::{StableHash, StableHashCtxt, StableHasher};
 use rustc_data_structures::svh::Svh;
@@ -165,6 +166,7 @@ use rustc_span::{ExpnId, LocalExpnId, Span, Symbol, SyntaxContext};
 use rustc_target::spec::PanicStrategy;
 use tracing::debug;
 
+use super::metadata_prefix::MetadataPrefixManifestBuilder;
 use super::{CrateDep, CrateHeader, CrateRoot, TargetTuple};
 use crate::rmeta::encoder::{DefPathHashDefIdEncoder, MetadataEncoder};
 use crate::rmeta::{
@@ -597,18 +599,10 @@ pub(super) fn crate_hashes<'tcx, 'h, const HASH: bool>(
         .build_graph(hcx.hcx_mut());
     debug!("Hash graph {graph:?}");
     let (hcx_mut, def_id_hashes) = hcx.hcx_with_def_id_hashes();
-    let public_hashes = build_public_hashes(&graph, def_id_hashes, ecx.tcx, hcx_mut);
-
-    // Reachable span text bypasses query tracking, so preserve its exact value
-    // when reusing the encoded item prefix in a later session.
     let tcx = ecx.tcx;
-    if let Some(manifest) = &mut ecx.metadata_prefix_manifest
-        && graph.nodes.iter().any(
-            |(node, _)| matches!(node, Node::Span(span) if !manifest.capture_protected_span(tcx, *span)),
-        )
-    {
-        ecx.metadata_prefix_manifest = None;
-    }
+    let public_hashes = build_public_hashes(&graph, hcx_mut, |node| {
+        def_id_hashes.get_node(node, tcx, &mut ecx.metadata_prefix_manifest)
+    });
 
     let mut hasher = StableHasher::default();
     // A legacy intermediate can retain positional expansion IDs into a public dependency.
@@ -732,6 +726,8 @@ impl HashableCrateRoot {
 pub(crate) enum RecordMode<'tcx> {
     /// Records nested nodes as outgoing edges from this node.
     From(Node<'tcx>),
+    /// Records the node in the enclosing mode and uses it as the nested edge source.
+    Nested(Node<'tcx>),
     /// Suppresses nodes that are deliberately excluded from the public API graph.
     None,
 }
@@ -794,7 +790,11 @@ impl<'tcx> ReachabilityGraph<'tcx> {
 pub(super) struct ReachabilityGraphBuilder<'tcx> {
     // `None` suppresses recording; an empty stack records roots.
     record_mode: Vec<Option<NodeIdx>>,
-    nodes: FxIndexSet<Node<'tcx>>,
+    // Keep the common ordering and keys in one place. Most table rows revisit a local
+    // definition, whose dense index lets us bypass the hash table entirely.
+    nodes: Vec<Node<'tcx>>,
+    local_indices: IndexVec<LocalDefId, NodeIdx>,
+    other_indices: HashTable<NodeIdx>,
     edges: IndexVec<NodeIdx, SsoHashSet<NodeIdx>>,
     roots: FxHashSet<NodeIdx>,
     retained: FxHashSet<NodeIdx>,
@@ -805,6 +805,8 @@ impl Default for ReachabilityGraphBuilder<'_> {
         let mut builder = Self {
             record_mode: Default::default(),
             nodes: Default::default(),
+            local_indices: Default::default(),
+            other_indices: HashTable::new(),
             edges: Default::default(),
             roots: Default::default(),
             retained: Default::default(),
@@ -829,6 +831,11 @@ impl<'tcx> ReachabilityGraphBuilder<'tcx> {
     pub(super) fn push_record_mode(&mut self, mode: RecordMode<'tcx>) {
         let from = match mode {
             RecordMode::From(node) => Some(self.node_index(node)),
+            RecordMode::Nested(node) => {
+                let index = self.node_index(node);
+                self.record_index(index);
+                Some(index)
+            }
             RecordMode::None => None,
         };
         self.record_mode.push(from);
@@ -840,11 +847,30 @@ impl<'tcx> ReachabilityGraphBuilder<'tcx> {
 
     /// Interns a semantic node so edges can store compact indices instead of full node values.
     fn node_index(&mut self, node: Node<'tcx>) -> NodeIdx {
-        let (index, inserted) = self.nodes.insert_full(node);
-        if inserted {
-            let edge_index = self.edges.push(SsoHashSet::default());
-            debug_assert_eq!(index, edge_index);
+        let index = self.nodes.len();
+        if let Node::DefId(id) = node
+            && let Some(local) = id.as_local()
+        {
+            let slot = self.local_indices.ensure_contains_elem(local, || NodeIdx::MAX);
+            if *slot != NodeIdx::MAX {
+                return *slot;
+            }
+            *slot = index;
+        } else {
+            match self.other_indices.entry(
+                FxBuildHasher.hash_one(node),
+                |&i| self.nodes[i] == node,
+                |&i| FxBuildHasher.hash_one(self.nodes[i]),
+            ) {
+                Entry::Occupied(entry) => return *entry.get(),
+                Entry::Vacant(entry) => {
+                    entry.insert(index);
+                }
+            }
         }
+        self.nodes.push(node);
+        let edge_index = self.edges.push(SsoHashSet::default());
+        debug_assert_eq!(index, edge_index);
         index
     }
 
@@ -858,8 +884,13 @@ impl<'tcx> ReachabilityGraphBuilder<'tcx> {
         // ExpnId::root() contains CRATE_DEF_ID as its macro_def_id, but that isn't used for
         // anything.
         // FIXME add newtype that ensures it really isn't used
-        let root_expansion = self.nodes.get_index_of(&Node::from(LocalExpnId::ROOT)).unwrap();
-        let crate_root = self.nodes.get_index_of(&Node::from(CRATE_DEF_ID)).unwrap();
+        let root = Node::from(LocalExpnId::ROOT);
+        let &root_expansion = self
+            .other_indices
+            .find(FxBuildHasher.hash_one(root), |&i| self.nodes[i] == root)
+            .unwrap();
+        let crate_root = self.local_indices[CRATE_DEF_ID];
+        drop((self.local_indices, self.other_indices));
         self.edges[root_expansion].remove(&crate_root);
 
         // Node identity hashing can trigger compiler queries, so discard
@@ -867,13 +898,17 @@ impl<'tcx> ReachabilityGraphBuilder<'tcx> {
         // Traversal order does not affect membership in the reachable set.
         // Only the roots later feed an ordered hash.
         #[allow(rustc::potential_query_instability)]
-        let reachable = {
+        let (reachable, node_count, edge_count) = {
             let mut reachable = IndexVec::from_elem_n(false, self.nodes.len());
+            let mut node_count = 0;
+            let mut edge_count = 0;
             let mut worklist: Vec<_> = self.roots.union(&self.retained).copied().collect();
             for &root in &worklist {
                 reachable[root] = true;
             }
             while let Some(node) = worklist.pop() {
+                node_count += 1;
+                edge_count += self.edges[node].len();
                 worklist.extend(
                     self.edges[node]
                         .iter()
@@ -881,11 +916,11 @@ impl<'tcx> ReachabilityGraphBuilder<'tcx> {
                         .filter(|&edge| !std::mem::replace(&mut reachable[edge], true)),
                 );
             }
-            reachable
+            (reachable, node_count, edge_count)
         };
 
         let mut node_indices = IndexVec::from_elem_n(usize::MAX, self.nodes.len());
-        let mut nodes = Vec::new();
+        let mut nodes = Vec::with_capacity(node_count);
         for (original, node) in self.nodes.into_iter().enumerate() {
             if reachable[original] {
                 node_indices[original] = nodes.len();
@@ -900,30 +935,35 @@ impl<'tcx> ReachabilityGraphBuilder<'tcx> {
         let mut roots: Vec<_> = self.roots.into_iter().map(|node| node_indices[node]).collect();
         roots.sort_unstable_by_key(|&index| (nodes[index].1, index));
 
-        let mut edges = Vec::new();
+        let mut edges = Vec::with_capacity(edge_count);
         let mut edge_starts = Vec::with_capacity(nodes.len() + 1);
-        for (original, targets) in self.edges.into_iter_enumerated() {
+        for (original, targets) in self.edges.iter_enumerated() {
             if reachable[original] {
                 edge_starts.push(edges.len());
                 #[allow(rustc::potential_query_instability)]
-                edges.extend(targets.into_iter().map(|node| node_indices[node]));
+                edges.extend(targets.iter().map(|&node| node_indices[node]));
             }
         }
         edge_starts.push(edges.len());
         ReachabilityGraph { nodes, edge_starts, edges, roots }
     }
 
-    /// Adds an edge from the active [`RecordMode::From`] node, suppresses the node under
-    /// [`RecordMode::None`], or records it as a graph root when no mode is active.
+    /// Record a reference unless suppressed by the enclosing mode.
     pub(super) fn record(&mut self, to: Node<'tcx>) {
+        if !matches!(self.record_mode.last(), Some(None)) {
+            let index = self.node_index(to);
+            self.record_index(index);
+        }
+    }
+
+    #[inline]
+    fn record_index(&mut self, to: NodeIdx) {
         match self.record_mode.last().copied() {
             Some(Some(from)) => {
-                let to = self.node_index(to);
                 self.edges[from].insert(to);
             }
             Some(None) => (),
             None => {
-                let to = self.node_index(to);
                 self.roots.insert(to);
             }
         }
@@ -933,7 +973,9 @@ impl<'tcx> ReachabilityGraphBuilder<'tcx> {
 /// Accumulates the hashes of encoded payloads associated with each semantic graph node.
 #[derive(Default)]
 pub(crate) struct ReachabilityGraphHashes {
-    local: UnordMap<LocalDefId, Fingerprint>,
+    // Every encoded definition has a def_kind row. Unused slots contribute
+    // zero, the identity for combine_commutative.
+    local: IndexVec<LocalDefId, Fingerprint>,
     non_local: UnordMap<DefId, Fingerprint>,
     expn: UnordMap<LocalExpnId, Fingerprint>,
     syntax: UnordMap<SyntaxContext, Fingerprint>,
@@ -944,7 +986,7 @@ impl ReachabilityGraphHashes {
         let current_hash = match node {
             Node::DefId(id) => {
                 if let Some(local) = id.as_local() {
-                    self.local.entry(local).or_insert(Fingerprint::ZERO)
+                    self.local.ensure_contains_elem(local, || Fingerprint::ZERO)
                 } else {
                     self.non_local.entry(*id).or_insert(Fingerprint::ZERO)
                 }
@@ -959,11 +1001,16 @@ impl ReachabilityGraphHashes {
         *current_hash = current_hash.combine_commutative(hash);
     }
 
-    fn get_node(&self, node: &Node<'_>, tcx: TyCtxt<'_>) -> Option<Fingerprint> {
+    fn get_node(
+        &self,
+        node: &Node<'_>,
+        tcx: TyCtxt<'_>,
+        prefix: &mut Option<MetadataPrefixManifestBuilder>,
+    ) -> Option<Fingerprint> {
         match node {
             Node::DefId(id) => {
                 if let Some(local) = id.as_local() {
-                    self.local.get(&local).copied()
+                    self.local.get(local).copied()
                 } else {
                     let extern_hash = tcx.extern_def_public_hash(*id);
                     Some(if let Some(local_hash) = self.non_local.get(id) {
@@ -981,16 +1028,9 @@ impl ReachabilityGraphHashes {
                 }
             }
             Node::SyntaxContext(id) => self.syntax.get(id).copied(),
-            Node::Span(span) => tcx.with_stable_hashing_context(|hcx| {
-                let hcx = RefCell::new(hcx);
-                tcx.sess
-                    .source_map()
-                    .span_to_source(*span, |source, start, end| {
-                        // Proc-macro subspans can split a UTF-8 character.
-                        Ok(stable_hash(&mut hcx.borrow_mut(), &source.as_bytes()[start..end]))
-                    })
-                    .ok()
-            }),
+            Node::Span(span) => {
+                MetadataPrefixManifestBuilder::hash_reachable_span(tcx, *span, prefix)
+            }
             Node::Ty(_) => None,
             Node::Predicate(_) | Node::MetadataLocation(_) => None,
             Node::AllocId(id) => Some(tcx.with_stable_hashing_context(|mut hcx| {
@@ -1131,21 +1171,6 @@ impl Successors for ReachabilityGraph<'_> {
 type NodeIdx = usize;
 type SccIdx = u32;
 
-/// The fingerprint of a single node: its identity hash combined with the hash
-/// of the data encoded for it (if any).
-fn node_fingerprint(
-    graph: &ReachabilityGraph<'_>,
-    hashes: &ReachabilityGraphHashes,
-    tcx: TyCtxt<'_>,
-    node_index: NodeIdx,
-) -> Fingerprint {
-    let (node_key, base_hash) = &graph.nodes[node_index];
-    match hashes.get_node(node_key, tcx) {
-        Some(encoded_data_hash) => base_hash.combine_commutative(encoded_data_hash),
-        None => *base_hash,
-    }
-}
-
 /// Aggregate the per-node fingerprints into one fingerprint per SCC that
 /// captures everything the SCC (transitively) reaches.
 ///
@@ -1167,18 +1192,20 @@ fn node_fingerprint(
 /// [`Sccs::all_sccs`] yields the condensation in dependency order (successors
 /// before predecessors), so a single pass sees each successor's fingerprint
 /// already finished.
-fn scc_fingerprints(
-    graph: &ReachabilityGraph<'_>,
-    hashes: &ReachabilityGraphHashes,
-    tcx: TyCtxt<'_>,
+fn scc_fingerprints<'tcx>(
+    graph: &ReachabilityGraph<'tcx>,
     sccs: &Sccs<NodeIdx, SccIdx>,
+    mut payload_hash: impl FnMut(&Node<'tcx>) -> Option<Fingerprint>,
 ) -> IndexVec<SccIdx, Fingerprint> {
     let mut fingerprints: IndexVec<SccIdx, Fingerprint> =
         IndexVec::from_elem_n(Fingerprint::ZERO, sccs.num_sccs());
-    for node_index in 0..graph.nodes.len() {
+    for (node_index, (node, identity)) in graph.nodes.iter().enumerate() {
         let scc = sccs.scc(node_index);
-        fingerprints[scc] =
-            fingerprints[scc].combine_commutative(node_fingerprint(graph, hashes, tcx, node_index));
+        let fingerprint = match payload_hash(node) {
+            Some(hash) => identity.combine_commutative(hash),
+            None => *identity,
+        };
+        fingerprints[scc] = fingerprints[scc].combine_commutative(fingerprint);
     }
     for scc in sccs.all_sccs() {
         for &succ in sccs.successors(scc) {
@@ -1192,12 +1219,11 @@ fn scc_fingerprints(
 /// expansions, together with the combined hash of the graph roots.
 fn build_public_hashes<'tcx>(
     graph: &ReachabilityGraph<'tcx>,
-    hashes: &ReachabilityGraphHashes,
-    tcx: TyCtxt<'tcx>,
     hcx: &mut StableHashState<'_, true>,
+    payload_hash: impl FnMut(&Node<'tcx>) -> Option<Fingerprint>,
 ) -> Hashed<ItemPublicHashesBuilder> {
     let sccs = Sccs::<_, SccIdx>::new(graph);
-    let scc_fingerprints = scc_fingerprints(graph, hashes, tcx, &sccs);
+    let scc_fingerprints = scc_fingerprints(graph, &sccs, payload_hash);
 
     let mut public_hashes = ItemPublicHashesBuilder::default();
     let mut hasher = StableHasher::new();

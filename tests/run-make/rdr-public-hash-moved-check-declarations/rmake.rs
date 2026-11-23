@@ -102,6 +102,27 @@ fn main() {
         );
     }
     assert_ne!(hash(SOURCE, true, true), hash(&moved, true, true));
+    check_span_text();
+}
+
+fn check_span_text() {
+    // The tokens, line numbers, and byte offsets stay the same. A bound contributes
+    // declaration text to the terminal hint, while const MIR also exposes span text.
+    for source in [
+        "pub fn pair<T: AsRef</*α*/ str>>(_: &T, _: &T) {}",
+        "pub const fn twice(x: u8) -> u8 { x + /*α*/ x }",
+    ] {
+        let changed = source.replace('α', "β");
+        for terminal in [false, true] {
+            let original = hash(source, terminal, false);
+            let warm = hash(&changed, terminal, false);
+            assert_ne!(original, warm);
+            let metadata = rfs::read("libdep.rmeta");
+            rfs::remove_dir_all("producer-cache");
+            assert_eq!(warm, hash(&changed, terminal, false));
+            assert_eq!(metadata, rfs::read("libdep.rmeta"));
+        }
+    }
 }
 
 fn check_derived_declarations() {

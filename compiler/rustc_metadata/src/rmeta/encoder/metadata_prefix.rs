@@ -10,7 +10,7 @@ use std::path::Path;
 use rustc_ast::token::{Delimiter, TokenKind};
 use rustc_ast::tokenstream::TokenTree;
 use rustc_data_structures::fingerprint::Fingerprint;
-use rustc_data_structures::fx::{FxIndexMap, FxIndexSet};
+use rustc_data_structures::fx::{FxHashSet, FxIndexMap};
 use rustc_data_structures::memmap::Mmap;
 use rustc_data_structures::stable_hash::{StableHash, StableHasher};
 use rustc_hir::def_id::{DefId, LOCAL_CRATE, LocalDefId};
@@ -137,7 +137,7 @@ pub(super) struct MetadataPrefixManifest {
 pub(super) struct MetadataPrefixManifestBuilder {
     pub(super) dependency_hashes: DependencyHashMode,
     pub(super) manifest: MetadataPrefixManifest,
-    pub(super) protected_span_keys: FxIndexSet<(StableSourceFileId, u32, u32)>,
+    pub(super) protected_span_keys: FxHashSet<(StableSourceFileId, u32, u32)>,
     pub(super) definition_span_hasher: StableHasher,
 }
 
@@ -194,6 +194,27 @@ pub(super) fn source_file_layout_fingerprint(source_file: &SourceFile) -> Finger
 }
 
 impl MetadataProtectedSpan {
+    fn from_span(tcx: TyCtxt<'_>, span: Span) -> Option<Self> {
+        let data = span.data();
+        let source_file = tcx.sess.source_map().lookup_source_file(data.lo);
+        let start = data.lo.0.checked_sub(source_file.start_pos.0)?;
+        let end = data.hi.0.checked_sub(source_file.start_pos.0)?;
+        // Use bytes because proc-macro subspans can split a UTF-8 character.
+        let fingerprint = if let Some(src) = &source_file.src {
+            src.as_bytes().get(start as usize..end as usize).map(metadata_fingerprint)
+        } else {
+            // Unavailable imported sources contribute no text to the public hash. Preserve
+            // that state too, since a source becoming available changes the public hash.
+            tcx.sess
+                .source_map()
+                .span_to_source(span, |source, start, end| {
+                    Ok(metadata_fingerprint(&source.as_bytes()[start..end]))
+                })
+                .ok()
+        };
+        Some(Self { source_file_id: source_file.stable_id, start, end, fingerprint })
+    }
+
     pub(super) fn unchanged(&self, tcx: TyCtxt<'_>) -> bool {
         let Some(source_file) = tcx.sess.source_map().source_file_by_stable_id(self.source_file_id)
         else {
@@ -248,8 +269,9 @@ pub(super) fn hash_definition_span(
         return;
     }
 
-    let source_file = tcx.sess.source_map().lookup_source_file(span.lo());
-    if !source_file.contains(span.hi()) {
+    let data = span.data();
+    let source_file = tcx.sess.source_map().lookup_source_file(data.lo);
+    if !source_file.contains(data.hi) {
         // Malformed cross-file spans are encoded as partial spans without a location.
         2_u8.hash(hasher);
         return;
@@ -257,8 +279,8 @@ pub(super) fn hash_definition_span(
 
     (if source_file.is_imported() { 3_u8 } else { 4_u8 }).hash(hasher);
     source_file.stable_id.hash(hasher);
-    (span.lo().0 - source_file.start_pos.0).hash(hasher);
-    (span.hi().0 - source_file.start_pos.0).hash(hasher);
+    (data.lo.0 - source_file.start_pos.0).hash(hasher);
+    (data.hi.0 - source_file.start_pos.0).hash(hasher);
 }
 
 /// Validates exact downstream-observable locations in a source-written macro body.
@@ -346,7 +368,7 @@ impl MetadataPrefixManifestBuilder {
                 definition_span_fingerprint: Fingerprint::ZERO,
             },
             dependency_hashes: DependencyHashMode::Tracked,
-            protected_span_keys: FxIndexSet::default(),
+            protected_span_keys: FxHashSet::default(),
             definition_span_hasher: StableHasher::new(),
         }
     }
@@ -382,32 +404,52 @@ impl MetadataPrefixManifestBuilder {
         if span.is_dummy() {
             return true;
         }
-        let source_file = tcx.sess.source_map().lookup_source_file(span.lo());
-        let Some(start) = span.lo().0.checked_sub(source_file.start_pos.0) else {
+        let Some(range) = MetadataProtectedSpan::from_span(tcx, span) else {
             return false;
         };
-        let Some(end) = span.hi().0.checked_sub(source_file.start_pos.0) else {
-            return false;
-        };
-        if !self.protected_span_keys.insert((source_file.stable_id, start, end)) {
-            return true;
-        }
-        // Unavailable imported sources contribute no text to the public hash. Preserve that
-        // state too, since a source becoming available changes the public hash.
-        let fingerprint = tcx
-            .sess
-            .source_map()
-            .span_to_source(span, |source, start, end| {
-                Ok(metadata_fingerprint(&source.as_bytes()[start..end]))
-            })
-            .ok();
-        self.manifest.protected_spans.push(MetadataProtectedSpan {
-            source_file_id: source_file.stable_id,
-            start,
-            end,
-            fingerprint,
+        self.protect_source_range(range.source_file_id, range.start, range.end, || {
+            range.fingerprint
         });
         true
+    }
+
+    /// Source text bypasses query tracking. Preserve the same bytes in the prefix guard
+    /// that contribute to the span's reachability-graph fingerprint.
+    pub(super) fn hash_reachable_span(
+        tcx: TyCtxt<'_>,
+        span: Span,
+        prefix: &mut Option<Self>,
+    ) -> Option<Fingerprint> {
+        let Some(range) = MetadataProtectedSpan::from_span(tcx, span) else {
+            *prefix = None;
+            return None;
+        };
+        if let Some(builder) = prefix
+            && !span.is_dummy()
+        {
+            builder.protect_source_range(range.source_file_id, range.start, range.end, || {
+                range.fingerprint
+            });
+        }
+        range.fingerprint
+    }
+
+    /// Remember the exact text of a range the first time it contributes to the public hash.
+    pub(super) fn protect_source_range(
+        &mut self,
+        source_file_id: StableSourceFileId,
+        start: u32,
+        end: u32,
+        fingerprint: impl FnOnce() -> Option<Fingerprint>,
+    ) {
+        if self.protected_span_keys.insert((source_file_id, start, end)) {
+            self.manifest.protected_spans.push(MetadataProtectedSpan {
+                source_file_id,
+                start,
+                end,
+                fingerprint: fingerprint(),
+            });
+        }
     }
 }
 
