@@ -3007,14 +3007,9 @@ rustc_queries! {
         cache_on_disk
     }
 
-    /// The collector's ordered edges with a partition-specific, order-independent fingerprint.
-    /// The original query owns the disk-cached value, so this wrapper is not cached separately.
-    query partition_items_of_instance(key: (ty::Instance<'tcx>, CollectionMode)) -> Result<(&'tcx [Spanned<MonoItem<'tcx>>], &'tcx [Spanned<MonoItem<'tcx>>]), NormalizationErrorInMono> {
-        desc { "collecting partition edges used by `{}`", key.0 }
-    }
-
-    query size_estimate(key: ty::Instance<'tcx>) -> usize {
-        desc { "estimating codegen size of `{}`", key }
+    /// The estimate counts statements in the definition's MIR before substitution.
+    query size_estimate(key: ty::InstanceKind<'tcx>) -> usize {
+        desc { "estimating codegen size of {}", tcx.def_path_str(key.def_id()) }
         cache_on_disk
     }
 

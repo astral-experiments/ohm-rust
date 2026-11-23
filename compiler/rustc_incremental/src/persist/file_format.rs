@@ -41,7 +41,8 @@ const FILE_MAGIC: &[u8] = b"RSIC";
 // Query cache spans following a source parent can be relative to its end.
 // Cached metadata work products must include implicit dependency roots.
 // Cached public API hashes must mix fingerprints at branching components.
-const HEADER_FORMAT_VERSION: u16 = 61381;
+// Mono edges share a query and size estimates are keyed by MIR definition.
+const HEADER_FORMAT_VERSION: u16 = 61382;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);

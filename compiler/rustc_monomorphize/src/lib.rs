@@ -87,11 +87,6 @@ fn prepare_incremental_monomorphization(tcx: TyCtxt<'_>) {
     }
 
     let mut refreshed_instances = FxHashSet::default();
-    let instance_items_dep_kind = if tcx.sess.opts.unstable_opts.ohm_incremental_mono_partitions {
-        DepKind::partition_items_of_instance
-    } else {
-        DepKind::items_of_instance
-    };
     while let Some((spanned_instance, mode)) = pending_instances.pop() {
         let instance = spanned_instance.node;
         if !instance_references_changed_body(instance, &changed_definitions)
@@ -101,7 +96,7 @@ fn prepare_incremental_monomorphization(tcx: TyCtxt<'_>) {
         }
 
         let key = (instance, mode);
-        let dep_node = DepNode::construct(tcx, instance_items_dep_kind, &key);
+        let dep_node = DepNode::construct(tcx, DepKind::items_of_instance, &key);
         if !tcx.dep_graph.contains_previous_node(&dep_node) {
             continue;
         }
@@ -130,22 +125,6 @@ fn prepare_incremental_monomorphization(tcx: TyCtxt<'_>) {
     }
 }
 
-/// Selects structural edge fingerprints without changing the collector's diagnostic order.
-fn items_of_instance_for_partitioning<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    instance: Instance<'tcx>,
-    mode: CollectionMode,
-) -> Result<
-    (&'tcx [Spanned<MonoItem<'tcx>>], &'tcx [Spanned<MonoItem<'tcx>>]),
-    NormalizationErrorInMono,
-> {
-    if tcx.sess.opts.unstable_opts.ohm_incremental_mono_partitions {
-        tcx.partition_items_of_instance((instance, mode))
-    } else {
-        tcx.items_of_instance((instance, mode))
-    }
-}
-
 /// Preserves the collector's instantiation-context note when an existing edge reports an error.
 fn force_incremental_monomorphization_items<'tcx>(
     tcx: TyCtxt<'tcx>,
@@ -157,7 +136,7 @@ fn force_incremental_monomorphization_items<'tcx>(
 > {
     let instance = spanned_instance.node;
     let error_count = tcx.dcx().err_count();
-    let items = items_of_instance_for_partitioning(tcx, instance, mode);
+    let items = tcx.items_of_instance((instance, mode));
     let mono_item = MonoItem::Fn(instance);
     if tcx.dcx().err_count() > error_count
         && mono_item.is_generic_fn()
@@ -178,9 +157,9 @@ fn refresh_incremental_monomorphization_attributes<'tcx>(
     tcx: TyCtxt<'tcx>,
     instance: Instance<'tcx>,
 ) -> bool {
-    let size_dep_node = DepNode::construct(tcx, DepKind::size_estimate, &instance);
+    let size_dep_node = DepNode::construct(tcx, DepKind::size_estimate, &instance.def);
     if tcx.dep_graph.contains_previous_node(&size_dep_node) {
-        let _ = tcx.size_estimate(instance);
+        let _ = tcx.size_estimate(instance.def);
         if !tcx.dep_graph.is_green(&size_dep_node) {
             return false;
         }

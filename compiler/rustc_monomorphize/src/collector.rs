@@ -220,7 +220,7 @@ use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use rustc_middle::mir::interpret::{AllocId, ErrorHandled, GlobalAlloc, Scalar};
 use rustc_middle::mir::visit::Visitor as MirVisitor;
 use rustc_middle::mir::{self, Body, Location, MentionedItem, traversal};
-use rustc_middle::mono::{CollectionMode, InstantiationMode, MonoItem, NormalizationErrorInMono};
+use rustc_middle::mono::{CollectionMode, MonoItem, NormalizationErrorInMono};
 use rustc_middle::query::TyCtxtAt;
 use rustc_middle::ty::adjustment::{CustomCoerceUnsized, PointerCoercion};
 use rustc_middle::ty::layout::ValidityRequirement;
@@ -238,7 +238,6 @@ use crate::diagnostics::{
     self, EncounteredErrorWhileInstantiating, EncounteredErrorWhileInstantiatingGlobalAsm,
     NoOptimizedMir, RecursionLimit,
 };
-use crate::items_of_instance_for_partitioning;
 
 #[derive(PartialEq)]
 pub(crate) enum MonoItemCollectionStrategy {
@@ -259,7 +258,7 @@ struct SharedState<'tcx> {
 
 pub(crate) struct UsageMap<'tcx> {
     // Maps every mono item to the mono items used by it.
-    pub used_map: UnordMap<MonoItem<'tcx>, Vec<MonoItem<'tcx>>>,
+    used_map: UnordMap<MonoItem<'tcx>, &'tcx [Spanned<MonoItem<'tcx>>]>,
 
     // Maps each mono item with users to the mono items that use it.
     // Be careful: subsets `used_map`, so unused items are vacant.
@@ -271,37 +270,25 @@ impl<'tcx> UsageMap<'tcx> {
         UsageMap { used_map: Default::default(), user_map: Default::default() }
     }
 
-    fn record_used<'a>(&mut self, user_item: MonoItem<'tcx>, used_items: &'a MonoItems<'tcx>)
-    where
-        'tcx: 'a,
-    {
-        for used_item in used_items.items() {
-            self.user_map.entry(used_item).or_default().push(user_item);
+    fn record_used(
+        &mut self,
+        user_item: MonoItem<'tcx>,
+        used_items: &'tcx [Spanned<MonoItem<'tcx>>],
+    ) {
+        for item in used_items {
+            self.user_map.entry(item.node).or_default().push(user_item);
         }
 
-        assert!(self.used_map.insert(user_item, used_items.items().collect()).is_none());
+        assert!(self.used_map.insert(user_item, used_items).is_none());
+    }
+
+    /// Returns the distinct outgoing edges in their original collection order.
+    pub(crate) fn used_items(&self, item: MonoItem<'tcx>) -> impl Iterator<Item = MonoItem<'tcx>> {
+        self.used_map[&item].iter().map(|edge| edge.node)
     }
 
     pub(crate) fn get_user_items(&self, item: MonoItem<'tcx>) -> &[MonoItem<'tcx>] {
         self.user_map.get(&item).map(|items| items.as_slice()).unwrap_or(&[])
-    }
-
-    /// Internally iterate over all inlined items used by `item`.
-    pub(crate) fn for_each_inlined_used_item<F>(
-        &self,
-        tcx: TyCtxt<'tcx>,
-        item: MonoItem<'tcx>,
-        mut f: F,
-    ) where
-        F: FnMut(MonoItem<'tcx>),
-    {
-        let used_items = self.used_map.get(&item).unwrap();
-        for used_item in used_items.iter() {
-            let is_inlined = used_item.instantiation_mode(tcx) == InstantiationMode::LocalCopy;
-            if is_inlined {
-                f(*used_item);
-            }
-        }
     }
 }
 
@@ -316,18 +303,10 @@ impl<'tcx> MonoItems<'tcx> {
         Self { items: FxIndexMap::default() }
     }
 
-    fn is_empty(&self) -> bool {
-        self.items.is_empty()
-    }
-
     fn push(&mut self, item: Spanned<MonoItem<'tcx>>) {
         // Insert only if the entry does not exist. A normal insert would stomp the first span that
         // got inserted.
         self.items.entry(item.node).or_insert(item.span);
-    }
-
-    fn items(&self) -> impl Iterator<Item = MonoItem<'tcx>> {
-        self.items.keys().cloned()
     }
 }
 
@@ -388,8 +367,6 @@ fn collect_items_rec<'tcx>(
     recursion_limit: Limit,
     mode: CollectionMode,
 ) {
-    let mut used_items = MonoItems::new();
-    let mut mentioned_items = MonoItems::new();
     let recursion_depth_reset;
 
     // Post-monomorphization errors MVP
@@ -417,12 +394,13 @@ fn collect_items_rec<'tcx>(
     // FIXME: don't rely on global state, instead bubble up errors. Note: this is very hard to do.
     let error_count = tcx.dcx().err_count_on_current_thread();
 
-    // In `mentioned_items` we collect items that were mentioned in this MIR but possibly do not
-    // need to be monomorphized. This is done to ensure that optimizing away function calls does not
-    // hide const-eval errors that those calls would otherwise have triggered.
-    match starting_item.node {
+    // Function queries already own deduplicated, ordered edges. Borrow them
+    // directly, including the mentioned edges needed to catch const-eval errors
+    // in optimized-away code. Statics and assembly have only used edges.
+    let (used, mentioned) = match starting_item.node {
         MonoItem::Static(def_id) => {
             recursion_depth_reset = None;
+            let mut used_items = MonoItems::new();
 
             // Statics always get evaluated (which is possible because they can't be generic), so for
             // `MentionedItems` collection there's nothing to do here.
@@ -456,9 +434,7 @@ fn collect_items_rec<'tcx>(
                 }
             }
 
-            // mentioned_items stays empty since there's no codegen for statics. statics don't get
-            // optimized, and if they did then the const-eval interpreter would have to worry about
-            // mentioned_items.
+            (&*tcx.arena.alloc_from_iter(used_items), &[][..])
         }
         MonoItem::Fn(instance) => {
             // Sanity check whether this ended up being collected accidentally
@@ -473,27 +449,23 @@ fn collect_items_rec<'tcx>(
                 recursion_limit,
             ));
 
-            {
-                let Ok((used, mentioned)) = items_of_instance_for_partitioning(tcx, instance, mode)
-                else {
-                    // Normalization errors here are usually due to trait solving overflow.
-                    // FIXME: I assume that there are few type errors at post-analysis stage, but not
-                    // entirely sure.
-                    // We have to emit the error outside of `items_of_instance` to access the
-                    // span of the `starting_item`.
-                    let def_id = instance.def_id();
-                    let def_span = tcx.def_span(def_id);
-                    let def_path_str = tcx.def_path_str(def_id);
-                    tcx.dcx().emit_fatal(RecursionLimit {
-                        span: starting_item.span,
-                        instance,
-                        def_span,
-                        def_path_str,
-                    });
-                };
-                used_items.extend(used.into_iter().copied());
-                mentioned_items.extend(mentioned.into_iter().copied());
-            }
+            let Ok(edges) = tcx.items_of_instance((instance, mode)) else {
+                // Normalization errors here are usually due to trait solving overflow.
+                // FIXME: I assume that there are few type errors at post-analysis stage, but not
+                // entirely sure.
+                // We have to emit the error outside of `items_of_instance` to access the
+                // span of the `starting_item`.
+                let def_id = instance.def_id();
+                let def_span = tcx.def_span(def_id);
+                let def_path_str = tcx.def_path_str(def_id);
+                tcx.dcx().emit_fatal(RecursionLimit {
+                    span: starting_item.span,
+                    instance,
+                    def_span,
+                    def_path_str,
+                });
+            };
+            edges
         }
         MonoItem::GlobalAsm(item_id) => {
             assert!(
@@ -501,6 +473,7 @@ fn collect_items_rec<'tcx>(
                 "should never encounter global_asm when collecting mentioned items"
             );
             recursion_depth_reset = None;
+            let mut used_items = MonoItems::new();
 
             let item = tcx.hir_item(item_id);
             if let hir::ItemKind::GlobalAsm { asm, .. } = item.kind {
@@ -543,7 +516,8 @@ fn collect_items_rec<'tcx>(
                 span_bug!(item.span, "Mismatch between hir::Item type and MonoItem type")
             }
 
-            // mention_items stays empty as nothing gets optimized here.
+            // Nothing gets optimized here; all references are used.
+            (&*tcx.arena.alloc_from_iter(used_items), &[][..])
         }
     };
 
@@ -577,49 +551,42 @@ fn collect_items_rec<'tcx>(
     // This is part of the output of collection and hence only relevant for "used" items.
     // ("Mentioned" items are only considered internally during collection.)
     if mode == CollectionMode::UsedItems {
-        state.usage_map.lock().record_used(starting_item.node, &used_items);
+        state.usage_map.lock().record_used(starting_item.node, used);
     }
 
+    // Mark used items before filtering mentioned items. Release the locks
+    // before recursing, preserving the order and first span of each edge.
+    let mut pending = Vec::new();
+    let used_len;
     {
         let mut visited = OnceCell::default();
         if mode == CollectionMode::UsedItems {
-            used_items
-                .items
-                .retain(|k, _| visited.get_mut_or_init(|| state.visited.lock()).insert(*k));
+            for item in used {
+                if visited.get_mut_or_init(|| state.visited.lock()).insert(item.node) {
+                    pending.push(item);
+                }
+            }
+        } else {
+            assert!(used.is_empty(), "'mentioned' collection should never encounter used items");
         }
-
-        let mut mentioned = OnceCell::default();
-        mentioned_items.items.retain(|k, _| {
-            !visited.get_or_init(|| state.visited.lock()).contains(k)
-                && mentioned.get_mut_or_init(|| state.mentioned.lock()).insert(*k)
-        });
-    }
-    if mode == CollectionMode::MentionedItems {
-        assert!(used_items.is_empty(), "'mentioned' collection should never encounter used items");
-    } else {
-        for used_item in used_items {
-            collect_items_rec(
-                tcx,
-                used_item,
-                state,
-                recursion_depths,
-                recursion_limit,
-                CollectionMode::UsedItems,
-            );
+        used_len = pending.len();
+        let mut seen = OnceCell::default();
+        for item in mentioned {
+            if !visited.get_or_init(|| state.visited.lock()).contains(&item.node)
+                && seen.get_mut_or_init(|| state.mentioned.lock()).insert(item.node)
+            {
+                pending.push(item);
+            }
         }
     }
 
-    // Walk over mentioned items *after* used items, so that if an item is both mentioned and used then
-    // the loop above has fully collected it, so this loop will skip it.
-    for mentioned_item in mentioned_items {
-        collect_items_rec(
-            tcx,
-            mentioned_item,
-            state,
-            recursion_depths,
-            recursion_limit,
-            CollectionMode::MentionedItems,
-        );
+    let (used, mentioned) = pending.split_at(used_len);
+    for (items, mode) in
+        [(used, CollectionMode::UsedItems), (mentioned, CollectionMode::MentionedItems)]
+    {
+        for &&item in items {
+            collect_items_rec(tcx, item, state, recursion_depths, recursion_limit, mode);
+        }
     }
 
     if let Some((def_id, depth)) = recursion_depth_reset {
@@ -1975,5 +1942,4 @@ pub(crate) fn provide(providers: &mut Providers) {
     providers.hooks.should_codegen_locally = should_codegen_locally;
     providers.queries.collect_mono_item_roots = collect_mono_item_roots;
     providers.queries.items_of_instance = items_of_instance;
-    providers.queries.partition_items_of_instance = |tcx, key| tcx.items_of_instance(key);
 }

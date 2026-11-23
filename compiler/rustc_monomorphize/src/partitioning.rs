@@ -135,6 +135,7 @@ use crate::graph_checks::target_specific_checks;
 struct PartitioningCx<'a, 'tcx> {
     tcx: TyCtxt<'tcx>,
     usage_map: &'a UsageMap<'tcx>,
+    local_copies: UnordSet<MonoItem<'tcx>>,
 }
 
 struct PlacedMonoItems<'tcx> {
@@ -151,11 +152,16 @@ fn partition<'tcx, I>(
     usage_map: &UsageMap<'tcx>,
 ) -> Vec<CodegenUnit<'tcx>>
 where
-    I: Iterator<Item = MonoItem<'tcx>>,
+    I: Iterator<Item = MonoItem<'tcx>> + Clone,
 {
     let _prof_timer = tcx.prof.generic_activity("cgu_partitioning");
 
-    let cx = &PartitioningCx { tcx, usage_map };
+    // Instantiation mode depends on the item, regardless of who calls it.
+    let local_copies = mono_items
+        .clone()
+        .filter(|item| item.instantiation_mode(tcx) == InstantiationMode::LocalCopy)
+        .collect();
+    let cx = &PartitioningCx { tcx, usage_map, local_copies };
 
     // Place all mono items into a codegen unit. `place_mono_items` is
     // responsible for initializing the CGU size estimates.
@@ -254,9 +260,8 @@ where
         // are handled at the bottom of the loop based on reachability, with one exception.
         // The #[lang = "start"] item is the program entrypoint, so there are no calls to it in MIR.
         // So even if its mode is LocalCopy, we need to treat it like a root.
-        match mono_item.instantiation_mode(cx.tcx) {
-            InstantiationMode::GloballyShared { .. } => {}
-            InstantiationMode::LocalCopy => continue,
+        if cx.local_copies.contains(&mono_item) {
+            continue;
         }
 
         let characteristic_def_id = if place_by_user {
@@ -308,21 +313,12 @@ where
         // going via another root item. This includes drop-glue, functions from
         // external crates, and local functions the definition of which is
         // marked with `#[inline]`.
-        let mut reachable_inlined_items = FxIndexSet::default();
-        get_reachable_inlined_items(cx.tcx, mono_item, cx.usage_map, &mut reachable_inlined_items);
-
-        // Add those inlined items. It's possible an inlined item is reachable
-        // from multiple root items within a CGU, which is fine, it just means
-        // the `insert` will be a no-op.
-        for inlined_item in reachable_inlined_items {
-            // This is a CGU-private copy.
-            cgu.items_mut().entry(inlined_item).or_insert_with(|| MonoItemData {
-                inlined: true,
-                linkage: Linkage::Internal,
-                visibility: Visibility::Default,
-                size_estimate: inlined_item.size_estimate(cx.tcx),
-            });
-        }
+        place_inlined(cx, cgu, mono_item, &|copy| MonoItemData {
+            inlined: true,
+            linkage: Linkage::Internal,
+            visibility: Visibility::Default,
+            size_estimate: copy.size_estimate(cx.tcx),
+        });
     }
 
     // Always ensure we have at least one CGU; otherwise, if we have a
@@ -345,18 +341,20 @@ where
     PlacedMonoItems { codegen_units, internalization_candidates }
 }
 
-fn get_reachable_inlined_items<'tcx>(
-    tcx: TyCtxt<'tcx>,
+/// Insert each private copy once in depth-first order. A copy already in
+/// this unit has had its children placed, or is on the current DFS path.
+fn place_inlined<'tcx>(
+    cx: &PartitioningCx<'_, 'tcx>,
+    cgu: &mut CodegenUnit<'tcx>,
     item: MonoItem<'tcx>,
-    usage_map: &UsageMap<'tcx>,
-    visited: &mut FxIndexSet<MonoItem<'tcx>>,
+    data: &impl Fn(MonoItem<'tcx>) -> MonoItemData,
 ) {
-    usage_map.for_each_inlined_used_item(tcx, item, |inlined_item| {
-        let is_new = visited.insert(inlined_item);
-        if is_new {
-            get_reachable_inlined_items(tcx, inlined_item, usage_map, visited);
+    for copy in cx.usage_map.used_items(item) {
+        if cx.local_copies.contains(&copy) && !cgu.items().contains_key(&copy) {
+            cgu.items_mut().insert(copy, data(copy));
+            place_inlined(cx, cgu, copy, data);
         }
-    });
+    }
 }
 
 fn split_large_codegen_units<'tcx>(
@@ -486,11 +484,7 @@ fn place_split_root<'tcx>(
     data: MonoItemData,
 ) {
     cgu.items_mut().insert(item, data);
-    let mut inlined = FxIndexSet::default();
-    get_reachable_inlined_items(cx.tcx, item, cx.usage_map, &mut inlined);
-    for copy in inlined {
-        cgu.items_mut().entry(copy).or_insert(original[&copy]);
-    }
+    place_inlined(cx, cgu, item, &|copy| original[&copy]);
 }
 
 /// Ohm gives unoptimized macro helpers room for a second CGU. Keep them together
@@ -567,7 +561,7 @@ fn split_macro_helper<'tcx>(cx: &PartitioningCx<'_, 'tcx>, cgus: &mut Vec<Codege
         let end = token_items.len();
         for i in start..end {
             let item = token_items[i];
-            token_items.extend(cx.usage_map.used_map.get(&item).unwrap().iter().copied());
+            token_items.extend(cx.usage_map.used_items(item));
         }
         start = end;
     }
@@ -1690,16 +1684,16 @@ fn debug_dump<'a, 'tcx: 'a>(tcx: TyCtxt<'tcx>, label: &str, cgus: &[CodegenUnit<
 }
 
 #[inline(never)] // give this a place in the profiler
-fn assert_symbols_are_distinct<'a, 'tcx, I>(tcx: TyCtxt<'tcx>, mono_items: I)
-where
-    I: Iterator<Item = &'a MonoItem<'tcx>>,
-    'tcx: 'a,
-{
+fn assert_symbols_are_distinct<'tcx>(tcx: TyCtxt<'tcx>, mono_items: &[MonoItem<'tcx>]) {
     let _prof_timer = tcx.prof.generic_activity("assert_symbols_are_distinct");
 
-    let mut symbols: Vec<_> =
-        mono_items.map(|mono_item| (mono_item, mono_item.symbol_name(tcx))).collect();
+    let mut seen = UnordSet::with_capacity(mono_items.len());
+    if mono_items.iter().all(|item| seen.insert(item.symbol_name(tcx))) {
+        return;
+    }
 
+    // Pick the same conflict and diagnostic spans regardless of traversal order.
+    let mut symbols: Vec<_> = mono_items.iter().map(|item| (item, item.symbol_name(tcx))).collect();
     symbols.sort_by_key(|sym| sym.1);
 
     for &[(mono_item1, ref sym1), (mono_item2, ref sym2)] in symbols.array_windows() {
@@ -1737,7 +1731,7 @@ fn collect_and_partition_mono_items(tcx: TyCtxt<'_>, (): ()) -> MonoItemPartitio
                 codegen_units[0].make_primary();
                 &*tcx.arena.alloc_from_iter(codegen_units)
             },
-            || assert_symbols_are_distinct(tcx, items.iter()),
+            || assert_symbols_are_distinct(tcx, &items),
         )
     });
 
@@ -1939,14 +1933,14 @@ pub(crate) fn provide(providers: &mut Providers) {
             .unwrap_or_else(|| panic!("failed to find cgu with name {name:?}"))
     };
 
-    providers.queries.size_estimate = |tcx, instance| {
-        match instance.def {
+    providers.queries.size_estimate = |tcx, def| {
+        match def {
             // "Normal" functions size estimate: the number of
             // statements, plus one for the terminator.
             InstanceKind::Item(..)
             | InstanceKind::Shim(ShimKind::DropGlue(..))
             | InstanceKind::Shim(ShimKind::AsyncDropGlueCtor(..)) => {
-                let mir = tcx.instance_mir(instance.def);
+                let mir = tcx.instance_mir(def);
                 mir.basic_blocks
                     .iter()
                     .map(|bb| {

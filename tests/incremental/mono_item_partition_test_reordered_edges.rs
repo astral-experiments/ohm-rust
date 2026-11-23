@@ -1,8 +1,9 @@
-//@ revisions: rpass1 rpass2 rpass3
+//@ revisions: rpass1 rpass2 rpass3 rpass4
 //@ compile-flags: --test -Zquery-dep-graph -Zpublic-api-hash=no -Zohm-incremental-mono-partitions -Zincremental-verify-ich
 //@ [rpass1]exec-env:EXPECTED=12
 //@ [rpass2]exec-env:EXPECTED=21
 //@ [rpass3]exec-env:EXPECTED=12
+//@ [rpass4]exec-env:EXPECTED=1122
 //@ ignore-backends: gcc
 
 #![feature(rustc_attrs)]
@@ -15,6 +16,10 @@ static CALL_ORDER: AtomicUsize = AtomicUsize::new(0);
 fn record<const DIGIT: usize>() -> bool {
     let previous = CALL_ORDER.load(Ordering::Relaxed);
     CALL_ORDER.store(previous * 10 + DIGIT, Ordering::Relaxed);
+    // After two partition hits, change the shared MIR. Both instantiations
+    // must see the change even though they use one size estimate.
+    #[cfg(rpass4)]
+    CALL_ORDER.store(CALL_ORDER.load(Ordering::Relaxed) * 10 + DIGIT, Ordering::Relaxed);
     true
 }
 
