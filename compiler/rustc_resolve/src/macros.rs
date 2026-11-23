@@ -911,19 +911,21 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
         suggestion_span: Option<Span>,
     ) -> Result<(Option<&'ra Arc<SyntaxExtension>>, Res), Determinacy> {
         let path_span = ast_path.span;
-        let mut path = Segment::from_path(ast_path);
-
-        // Possibly apply the macro helper hack
-        if deleg_impl.is_none()
-            && kind == MacroKind::Bang
-            && let [segment] = path.as_slice()
-            && segment.ident.span.ctxt().outer_expn_data().local_inner_macros
-        {
-            let root = Ident::new(kw::DollarCrate, segment.ident.span);
-            path.insert(0, Segment::from_ident(root));
-        }
-
-        let res = if deleg_impl.is_some() || path.len() > 1 {
+        // A single name is stored as an Ident at finalization. Only
+        // delegation and qualified paths need a vector of segments.
+        let local_inner =
+            deleg_impl.is_none() && kind == MacroKind::Bang && ast_path.segments.len() == 1 && {
+                let ctxt = ast_path.segments[0].ident.span.ctxt();
+                !ctxt.is_root() && ctxt.outer_expn_data().local_inner_macros
+            };
+        let res = if deleg_impl.is_some() || ast_path.segments.len() > 1 || local_inner {
+            let path = if local_inner {
+                let segment = &ast_path.segments[0];
+                let root = Ident::new(kw::DollarCrate, segment.ident.span);
+                vec![Segment::from_ident(root), segment.into()]
+            } else {
+                Segment::from_path(ast_path)
+            };
             let ns = if deleg_impl.is_some() { TypeNS } else { MacroNS };
             let res = match self.reborrow().maybe_resolve_path(
                 &path,
@@ -954,8 +956,9 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
             self.prohibit_imported_non_macro_attrs(None, res.ok(), path_span);
             res
         } else {
+            let ident = ast_path.segments[0].ident;
             let binding = self.reborrow().resolve_ident_in_scope_set(
-                path[0].ident,
+                ident,
                 ScopeSet::Macro(kind),
                 parent_scope,
                 None,
@@ -970,7 +973,7 @@ impl<'ra, 'tcx> Resolver<'ra, 'tcx> {
             }
 
             self.single_segment_macro_resolutions.borrow_mut_checked(&self).push((
-                path[0].ident,
+                ident,
                 kind,
                 *parent_scope,
                 binding.ok(),

@@ -971,6 +971,36 @@ impl SyntaxContext {
         })
     }
 
+    /// The defining crate for a `$crate`, `crate` or absolute path root.
+    pub fn crate_for_path_root(self, name: Symbol) -> CrateNum {
+        if self.is_root() {
+            return LOCAL_CRATE;
+        }
+        HygieneData::with(|data| {
+            let scope = if name == kw::DollarCrate {
+                // For a macro_rules! invoked from a macro, prefer the semi-opaque
+                // marks below the prepended opaque marks. Without semi-opaque
+                // marks, use the last opaque mark encountered.
+                // FIXME: This heuristic does not cover macro definitions
+                // produced by macros of the other kind.
+                let mut ctxt = data.normalize_to_macro_rules(self);
+                let mut scope = None;
+                for kind in [Transparency::Opaque, Transparency::SemiOpaque] {
+                    while !ctxt.is_root() && data.outer_mark(ctxt).1 == kind {
+                        scope = Some(data.remove_mark(&mut ctxt).0);
+                    }
+                }
+                scope
+            } else {
+                let mut ctxt = data.normalize_to_macros_2_0(self);
+                data.adjust(&mut ctxt, ExpnId::root())
+            };
+            // A macro's defining module is in the macro's own crate.
+            // AST transforms and unmarked paths have local scopes.
+            scope.and_then(|id| data.expn_data(id).macro_def_id).map_or(LOCAL_CRATE, |id| id.krate)
+        })
+    }
+
     #[inline]
     pub(crate) fn dollar_crate_name(self) -> Symbol {
         HygieneData::with(|data| data.syntax_context_data[self.0 as usize].dollar_crate_name)
