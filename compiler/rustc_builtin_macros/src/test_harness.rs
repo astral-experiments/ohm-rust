@@ -309,14 +309,6 @@ fn add_main(cx: &mut TestCtxt<'_>, c: &mut ast::Crate) {
 
     test_runner.span = sp;
 
-    let test_main_path_expr = ecx.expr_path(test_runner);
-    let mut test_runner_arguments = thin_vec![mk_tests_slice(cx, sp)];
-    if let Some(filter) = focused_filter {
-        test_runner_arguments.push(ecx.expr_str(sp, Symbol::intern(filter)));
-    }
-    let call_test_main = ecx.expr_call(sp, test_main_path_expr, test_runner_arguments);
-    let call_test_main = ecx.stmt_expr(call_test_main);
-
     // extern crate test
     let test_extern_stmt =
         ecx.item(sp, ast::AttrVec::new(), ast::ItemKind::ExternCrate(None, test_ident));
@@ -338,7 +330,7 @@ fn add_main(cx: &mut TestCtxt<'_>, c: &mut ast::Crate) {
         ecx.ty(sp, ast::TyKind::Tup(ThinVec::new()))
     };
 
-    let main_body = ecx.block(sp, thin_vec![call_test_main]);
+    let main_body = mk_test_main_body(cx, sp, test_runner, focused_filter);
 
     let decl = ecx.fn_decl(ThinVec::new(), ast::FnRetTy::Ty(main_ret_ty));
     let sig = ast::FnSig { decl, header: ast::FnHeader::default(), span: sp };
@@ -393,12 +385,15 @@ fn focused_test_filter<'a>(cx: &'a TestCtxt<'_>) -> Option<&'a str> {
     }
 }
 
-/// Creates a slice containing each selected test like so:
-/// &[&test1, &test2]
-fn mk_tests_slice(cx: &TestCtxt<'_>, sp: Span) -> Box<ast::Expr> {
+/// Builds the harness entry point's body, passing the selected descriptors to the runner.
+fn mk_test_main_body(
+    cx: &TestCtxt<'_>,
+    sp: Span,
+    test_runner: ast::Path,
+    filter: Option<&str>,
+) -> Box<ast::Block> {
     debug!("building test vector from {} tests", cx.test_cases.len());
     let ecx = &cx.ext_cx;
-    let filter = focused_test_filter(cx);
 
     let mut tests = cx.test_cases.clone();
     if let Some(filter) = filter {
@@ -419,6 +414,7 @@ fn mk_tests_slice(cx: &TestCtxt<'_>, sp: Span) -> Box<ast::Expr> {
             .collect(),
     );
 
+    let mut statements = ThinVec::new();
     if let Some(filter) = filter
         && tests.len() != cx.test_cases.len()
     {
@@ -457,15 +453,18 @@ fn mk_tests_slice(cx: &TestCtxt<'_>, sp: Span) -> Box<ast::Expr> {
             ecx.expr_block(ecx.block(sp, thin_vec![discard_unselected_tests])),
             None,
         );
-        ecx.expr_block(
-            ecx.block(
-                sp,
-                thin_vec![ecx.stmt_semi(preserve_liveness), ecx.stmt_expr(selected_tests)],
-            ),
-        )
-    } else {
-        selected_tests
+        // A block around the slice argument would drop its borrowed temporaries
+        // before the runner call in edition 2024.
+        statements.push(ecx.stmt_semi(preserve_liveness));
     }
+
+    let mut args = thin_vec![selected_tests];
+    if let Some(filter) = filter {
+        args.push(ecx.expr_str(sp, Symbol::intern(filter)));
+    }
+    let call = ecx.expr_call(sp, ecx.expr_path(test_runner), args);
+    statements.push(ecx.stmt_expr(call));
+    ecx.block(sp, statements)
 }
 
 fn get_test_name(i: &ast::Item) -> Option<Symbol> {
