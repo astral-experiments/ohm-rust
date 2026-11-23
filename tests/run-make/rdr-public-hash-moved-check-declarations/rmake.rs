@@ -48,6 +48,7 @@ fn reader() {
 }
 
 fn main() {
+    check_cfg_locations();
     check_derived_declarations();
     check_derive_after_last_method();
     check_traits_and_constructors();
@@ -315,4 +316,29 @@ fn check_derive_after_last_method() {
     let at = "pub const LINE: u32 = line!();";
     let before = hash(&format!("{source}{at}"), true, false);
     assert_ne!(before, hash(&format!("{moved}{at}"), true, false));
+}
+
+fn check_cfg_locations() {
+    let source = r#"
+        #[cfg(any(all(), not(unix)))]
+        pub struct Pen { #[cfg(not(any()))] pub color: u32 }
+        impl Pen {
+            #[cfg(any(all(), target_os = "linux"))]
+            pub fn color(&self) -> u32 { self.color }
+        }
+    "#;
+    let moved = format!("\n{source}");
+    let first = hash(source, true, false);
+    let disk = disk_hash();
+    assert_eq!(first, hash(&moved, true, false));
+    assert_ne!(disk, disk_hash());
+
+    // The declaration remains active. Even an equal-length whitespace edit is visible.
+    assert_ne!(first, hash(&moved.replace(" = ", "  ="), true, false));
+    assert_ne!(first, hash(&moved.replace("linux", "macos"), true, false));
+
+    assert_ne!(hash(source, false, false), hash(&moved, false, false));
+
+    let generated = "macro_rules! make { () => { #[cfg(all())] pub struct Pen; } } make!();";
+    assert_ne!(hash(generated, true, false), hash(&format!("\n{generated}"), true, false));
 }
