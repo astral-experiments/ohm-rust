@@ -235,9 +235,10 @@ fn derived_receivers() {
 // should share a shard even when they have different const arguments.
 fn specialized_bodies() {
     const PER_MARKER: u64 = 8;
-    let mut source = String::from(
-        "#[inline(never)] fn apply<const N: u64, T, F: Fn(u64) -> u64>(mut x: u64, f: F) -> u64 {\n",
-    );
+    let mut source = String::from(concat!(
+        "#[inline(never)] fn apply<const N: u64, T, F: Fn(u64) -> u64>",
+        "(mut x: u64, f: F) -> u64 {\n",
+    ));
     for i in 0..OPERATIONS {
         writeln!(source, "x = x.wrapping_mul({MULTIPLIER}).wrapping_add({i});").unwrap();
     }
