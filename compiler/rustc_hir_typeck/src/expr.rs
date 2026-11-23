@@ -1753,6 +1753,29 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         })
                 })
                 .unwrap_or_else(|| self.next_ty_var(expr.span));
+            if args.len() >= 64
+                && let Some(rows) = self.string_table_rows(expr, args, coerce_to)
+            {
+                let mut coerce = CoerceMany::with_capacity(coerce_to, rows.examples.len());
+                for &e in &rows.examples {
+                    let ty = self.check_expr_with_hint(e, coerce_to);
+                    coerce.coerce(self, &self.misc(e.span), e, ty);
+                }
+                if self.tainted_by_errors().is_some() {
+                    // Report errors at the original locations of the remaining rows.
+                    let mut checked = rows.examples.iter().peekable();
+                    for e in args {
+                        if checked.next_if(|other| other.hir_id == e.hir_id).is_none() {
+                            let ty = self.check_expr_with_hint(e, coerce_to);
+                            coerce.coerce(self, &self.misc(e.span), e, ty);
+                        }
+                    }
+                } else {
+                    rows.copy_types(&mut self.typeck_results.borrow_mut());
+                    self.string_rows.set(Some(Box::new(rows)));
+                }
+                return Ty::new_array(self.tcx, coerce.complete(self), args.len() as u64);
+            }
             let (checked, known) = if self.is_literal_table(expr, args, coerce_to) {
                 let nodes_per_row = 1 + coerce_to.opt_tuple_fields().map_or(0, |tys| tys.len());
                 self.typeck_results
