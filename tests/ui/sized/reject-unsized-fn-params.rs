@@ -12,4 +12,9 @@ pub trait Foo {
 pub fn f(_: dyn ToString) {}
 //~^ ERROR the size for values of type
 
+// Each binding needs its own suggestion, even when the types are identical.
+pub fn repeated(_a: str, _b: str) {}
+//~^ ERROR the size for values of type `str`
+//~| ERROR the size for values of type `str`
+
 fn main() { }
