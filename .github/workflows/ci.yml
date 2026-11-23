@@ -374,6 +374,7 @@ jobs:
             tests/run-make/ohm-macro-helper-cgus
             tests/run-make/ohm-cgu-version-stability
             tests/run-make/test-harness-exact-filter
+            tests/run-make/incremental-matches-expansion
             tests/run-make/parallel-query-depth-limits
             tests/run-make/incremental-derive-call-site
             tests/run-make/incremental-declaration-locations

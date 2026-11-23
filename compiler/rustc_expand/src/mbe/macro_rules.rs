@@ -260,6 +260,7 @@ impl WhichMatcher {
 }
 
 pub struct MacroRulesMacroExpander {
+    pub(crate) matches_template: Option<Box<MatchesTemplate>>,
     node_id: NodeId,
     name: Ident,
     span: Span,
@@ -268,6 +269,174 @@ pub struct MacroRulesMacroExpander {
     kinds: MacroKinds,
     rules: Vec<MacroRule>,
     macro_rules: bool,
+}
+
+/// Definition-site locations for the standard boolean match. Check the
+/// rule as well as the diagnostic item: a different sysroot can change
+/// the matcher, the expansion or both.
+pub(crate) struct MatchesTemplate {
+    attr: Span,
+    allow: Span,
+    open: Span,
+    lint: Span,
+    close: Span,
+    lint_name: Symbol,
+    scrutinee: Span,
+    condition: Span,
+    expr: Span,
+    pat: Span,
+    guard: Span,
+    yes: Span,
+    wild: Span,
+    no: Span,
+}
+
+impl MatchesTemplate {
+    fn parse(sess: &Session, def: &ast::MacroDef) -> Option<Self> {
+        let mut parser = Parser::new(&sess.psess, def.body.tokens.clone(), None);
+        let mut take = |expected: &str| {
+            let first = parser.token.span;
+            for piece in expected.split_ascii_whitespace() {
+                if !parser.token.span.ctxt().is_root()
+                    || pprust::token_to_string(&parser.token) != piece
+                {
+                    return None;
+                }
+                parser.bump();
+            }
+            Some(first.to(parser.prev_token.span))
+        };
+        take("( $ expression : expr , $ pattern : pat $ ( if $ guard : expr ) ? $ ( , ) ? ) => {")?;
+        let start = take("# [")?;
+        let allow = take("allow")?;
+        let open = take("(")?;
+        let lint = take("non_exhaustive_omitted_patterns")?;
+        let lint_name = Symbol::intern(
+            &rustc_lint_defs::builtin::NON_EXHAUSTIVE_OMITTED_PATTERNS.name.to_ascii_lowercase(),
+        );
+        let close = take(")")?;
+        let attr = start.to(take("]")?);
+        let expr = take("match")?;
+        let scrutinee = take("$ expression")?;
+        take("{")?;
+        let pat = take("$ pattern")?;
+        take("$ (")?;
+        let kw_if = take("if")?;
+        let condition = take("$ guard")?;
+        let guard = kw_if.to(condition);
+        take(") ? =>")?;
+        let yes = take("true")?;
+        take(",")?;
+        let wild = take("_")?;
+        take("=>")?;
+        let no = take("false")?;
+        let expr = expr.to(take("}")?);
+        take("} ;")?;
+        (parser.token == token::Eof).then_some(Self {
+            attr,
+            allow,
+            open,
+            lint,
+            close,
+            lint_name,
+            scrutinee,
+            condition,
+            expr,
+            pat,
+            guard,
+            yes,
+            wild,
+            no,
+        })
+    }
+
+    /// Expand the core expression directly. Keep the declarative matcher for
+    /// other fragment kinds, tracing, and diagnostics on malformed calls.
+    pub(crate) fn expand(&self, cx: &ExtCtxt<'_>, input: TokenStream) -> Option<Box<ast::Expr>> {
+        use rustc_parse::parser::ParseNtResult;
+
+        let mut parser = cx.new_parser_from_tts(input).recovery(Recovery::Forbidden);
+        let expr_kind = NonterminalKind::Expr(token::NtExprKind::Expr);
+        if !Parser::nonterminal_may_begin_with(expr_kind, &parser.token) {
+            return None;
+        }
+        let ParseNtResult::Expr(expr, _) =
+            parser.parse_nonterminal(expr_kind).map_err(|e| e.cancel()).ok()?
+        else {
+            return None;
+        };
+        if !parser.eat(exp!(Comma))
+            || !Parser::nonterminal_may_begin_with(NonterminalKind::Pat(PatWithOr), &parser.token)
+        {
+            return None;
+        }
+        let ParseNtResult::Pat(pat, _) = parser
+            .parse_nonterminal(NonterminalKind::Pat(PatWithOr))
+            .map_err(|e| e.cancel())
+            .ok()?
+        else {
+            return None;
+        };
+        let pat = *pat.node;
+        let guard = if parser.eat_keyword(exp!(If)) {
+            if !Parser::nonterminal_may_begin_with(expr_kind, &parser.token) {
+                return None;
+            }
+            let ParseNtResult::Expr(cond, _) =
+                parser.parse_nonterminal(expr_kind).map_err(|e| e.cancel()).ok()?
+            else {
+                return None;
+            };
+            Some(Box::new(ast::Guard {
+                span_with_leading_if: cx.with_mixed_site_ctxt(self.guard),
+                cond: *cond,
+            }))
+        } else {
+            None
+        };
+        let _ = parser.eat(exp!(Comma));
+        if parser.token != token::Eof || cx.dcx().has_errors().is_some() {
+            return None;
+        }
+        let sp = cx.with_mixed_site_ctxt(self.expr);
+        let marked = |s: Span| s.with_ctxt(sp.ctxt());
+        rustc_span::with_metavar_spans(|map| {
+            map.insert(expr.span, marked(self.scrutinee));
+            map.insert(pat.span, marked(self.pat));
+            if let Some(g) = &guard {
+                map.insert(g.cond.span, marked(self.condition));
+            }
+        });
+        let mut arm =
+            cx.arm(marked(self.pat.to(self.yes)), pat, cx.expr_bool(marked(self.yes), true));
+        arm.guard = guard;
+        let other = cx.arm(
+            marked(self.wild.to(self.no)),
+            cx.pat_wild(marked(self.wild)),
+            cx.expr_bool(marked(self.no), false),
+        );
+        tracing::info!(target: "matches_syntax", "used matches template");
+        let mut expr = cx.expr_match(sp, expr, thin_vec::thin_vec![arm, other]);
+        let args = ast::AttrArgs::Delimited(ast::DelimArgs {
+            dspan: DelimSpan { open: marked(self.open), close: marked(self.close) },
+            delim: Delimiter::Parenthesis,
+            tokens: TokenStream::new(vec![tokenstream::TokenTree::Token(
+                Token::from_ast_ident(Ident::new(self.lint_name, marked(self.lint))),
+                tokenstream::Spacing::Alone,
+            )]),
+        });
+        let attr = cx.attr_nested(
+            ast::AttrItem {
+                unsafety: Safety::Default,
+                path: ast::Path::from_ident(Ident::new(sym::allow, marked(self.allow))),
+                args,
+                span: marked(self.allow.to(self.close)),
+            },
+            marked(self.attr),
+        );
+        expr.attrs.push(attr);
+        Some(expr)
+    }
 }
 
 impl MacroRulesMacroExpander {
@@ -1015,7 +1184,21 @@ pub fn compile_declarative_macro(
     .flatten()
     .map(|directive| *directive);
 
+    let native_matches = !is_defined_in_current_crate(node_id)
+        && edition == Edition::Edition2024
+        && sess.opts.unstable_opts.deduplicate_diagnostics
+        && sess.opts.unstable_opts.unpretty.is_none()
+        && find_attr!(attrs, RustcDiagnosticItem(name) => *name)
+            .is_some_and(|name| name.as_str() == "matches_macro");
     let exp = MacroRulesMacroExpander {
+        matches_template: if native_matches
+            && macro_rules
+            && transparency == Transparency::SemiOpaque
+        {
+            MatchesTemplate::parse(sess, macro_def).map(Box::new)
+        } else {
+            None
+        },
         name: ident,
         kinds,
         span,

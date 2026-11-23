@@ -754,6 +754,20 @@ impl<'a, 'b> MacroExpander<'a, 'b> {
                         }
                         Err(guar) => return ExpandResult::Ready(fragment_kind.dummy(span, guar)),
                     }
+                } else if let SyntaxExtensionKind::MacroRules(rules) = ext
+                    && let Some(template) = &rules.matches_template
+                    && matches!(
+                        fragment_kind,
+                        AstFragmentKind::Expr
+                            | AstFragmentKind::MethodReceiverExpr
+                            | AstFragmentKind::OptExpr
+                    )
+                    && !macro_stats
+                    && !self.cx.trace_macros()
+                    && !span.from_expansion()
+                    && let Some(expr) = template.expand(self.cx, mac.args.tokens.clone())
+                {
+                    fragment_kind.make_from(crate::base::MacEager::expr(expr)).unwrap()
                 } else if let Some(expander) = ext.as_legacy_bang() {
                     let tok_result = match expander.expand(self.cx, span, mac.args.tokens.clone()) {
                         ExpandResult::Ready(tok_result) => tok_result,
