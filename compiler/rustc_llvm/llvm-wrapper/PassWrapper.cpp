@@ -944,8 +944,11 @@ extern "C" LLVMRustResult LLVMRustOptimize(
        SanitizerOptions->SanitizeThread || SanitizerOptions->SanitizeHWAddress ||
        SanitizerOptions->SanitizeKernelAddress ||
        SanitizerOptions->SanitizeKernelHWAddress);
-  if (MergeFunctions && IsPreLink && !NoPrepopulatePasses && !PGOOpt &&
-      !InstrumentCoverage && !HasSanitizer && LLVMPluginsLen == 0) {
+  // AMDGPU kernel aliases lose their .kd descriptors. Merging during prelink
+  // would drop exported descriptors even if the final crate disables merging.
+  if (MergeFunctions && IsPreLink && !TargetTriple.isAMDGPU() &&
+      !NoPrepopulatePasses && !PGOOpt && !InstrumentCoverage && !HasSanitizer &&
+      LLVMPluginsLen == 0) {
     // Merge canonicalized bodies before global cleanup and CGSCC optimization.
     // Instrumented and plugin-defined pipelines retain their existing ordering.
     PB.registerPipelineEarlySimplificationEPCallback(
