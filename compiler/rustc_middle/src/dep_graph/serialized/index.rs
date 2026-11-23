@@ -30,11 +30,21 @@ impl SeekIndexBuilder {
         }
     }
 
-    pub(super) fn record_node(&mut self, node: DepNode, index: DepNodeIndex, offset: usize) {
-        debug_assert_eq!(self.offsets[index.as_usize()], [0; 8]);
-        self.offsets[index.as_usize()] = (offset as u64).to_le_bytes();
-        if matches!(node.kind, super::DepKind::typeck_root | super::DepKind::mir_borrowck) {
-            self.roots.push((node, index));
+    /// Rows arrive in slot order, including holes and slots written by other workers.
+    #[inline]
+    pub(super) fn record_retained<'a>(
+        &mut self,
+        rows: impl ExactSizeIterator<Item = Option<(DepNodeIndex, &'a DepNode, usize)>>,
+    ) {
+        self.reserve_slots(rows.len());
+        for (slot, row) in self.offsets.iter_mut().zip(rows) {
+            if let Some((index, node, offset)) = row {
+                debug_assert_eq!(*slot, [0; 8]);
+                *slot = (offset as u64).to_le_bytes();
+                if matches!(node.kind, DepKind::typeck_root | DepKind::mir_borrowck) {
+                    self.roots.push((*node, index));
+                }
+            }
         }
     }
 
