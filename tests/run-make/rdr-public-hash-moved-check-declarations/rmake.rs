@@ -48,6 +48,7 @@ fn reader() {
 }
 
 fn main() {
+    check_field_restriction();
     check_cfg_locations();
     check_derived_declarations();
     check_derive_after_last_method();
@@ -105,6 +106,27 @@ fn main() {
     }
     assert_ne!(hash(SOURCE, true, true), hash(&moved, true, true));
     check_span_text();
+}
+
+/// Check that moving a restricted field leaves cached type queries valid.
+fn check_field_restriction() {
+    // Separate threads can hash the variant for metadata and incremental queries in either order.
+    let source = "#![feature(mut_restriction)]\n\
+        pub enum E { V { mut(crate) x: u8 } }\n\
+        pub type Pair = (E, E);";
+    let moved = format!("\n{source}");
+    for input in [source, &moved, source] {
+        rfs::write("dep.rs", input);
+        rustc()
+            .input("dep.rs")
+            .crate_type("rlib")
+            .emit("metadata")
+            .arg("-Zpublic-api-hash")
+            .arg("-Zincremental-verify-ich")
+            .arg("-Zthreads=4")
+            .incremental("restricted-fields")
+            .run();
+    }
 }
 
 fn check_span_text() {
