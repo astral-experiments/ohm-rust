@@ -212,12 +212,16 @@ pub(crate) trait TablePublicApiHasher<I: Idx>: Default {
     fn iter_hasher(&self) -> Self::IterHasher;
 }
 
+/// Rustdoc resolves links on an exported item in the module where it was defined.
+/// Include the link tables even when that module is private and unreachable.
+pub(crate) type RDRHashDocLinks<I> = RDRHashAll<I, true>;
+
 /// Records every encoded table entry in the public API reachability graph.
-pub(crate) struct RDRHashAll<I: Idx> {
+pub(crate) struct RDRHashAll<I: Idx, const INCLUDE_AT_ROOT: bool = false> {
     _marker: std::marker::PhantomData<I>,
 }
 
-impl<I: Idx> Default for RDRHashAll<I> {
+impl<I: Idx, const INCLUDE_AT_ROOT: bool> Default for RDRHashAll<I, INCLUDE_AT_ROOT> {
     fn default() -> Self {
         Self { _marker: Default::default() }
     }
@@ -273,7 +277,9 @@ impl<'a, const ENABLED: bool> PublicApiHashingContext<'a, ENABLED> {
     }
 }
 
-impl<I: Idx> TablePublicApiHasher<I> for RDRHashAll<I> {
+impl<I: Idx, const INCLUDE_AT_ROOT: bool> TablePublicApiHasher<I>
+    for RDRHashAll<I, INCLUDE_AT_ROOT>
+{
     type IterHasher = OrderedIterHasher;
     #[inline(always)]
     fn digest<'a, V>(
@@ -289,7 +295,13 @@ impl<I: Idx> TablePublicApiHasher<I> for RDRHashAll<I> {
         }
         let mut hasher = StableHasher::default();
         value.stable_hash(hcx.hcx_mut(), &mut hasher);
-        hcx.add_node_hash(&index.into(), hasher.finish());
+        let hash = hasher.finish();
+        let node = index.into();
+        hcx.add_node_hash(&node, hash);
+        if INCLUDE_AT_ROOT && node != CRATE_DEF_ID.into() {
+            // Reuse just this row's digest without making the whole module reachable.
+            hcx.add_node_hash(&CRATE_DEF_ID.into(), hash);
+        }
     }
 
     #[inline(always)]
