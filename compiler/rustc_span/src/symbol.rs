@@ -2734,7 +2734,10 @@ impl Symbol {
         let hash = FxBuildHasher::default().hash_one(bytes);
         with_session_globals(|globals| {
             globals.symbol_interner.0.with_lock(|inner| {
-                inner.indices.find(hash, |&(s, _)| s == bytes).map(|&(_, n)| Self::new(n))
+                inner
+                    .indices
+                    .find(hash, |&n| inner.byte_strs[n as usize].bytes() == bytes)
+                    .map(|&n| Self::new(n))
             })
         })
     }
@@ -2949,7 +2952,7 @@ pub(crate) struct Interner(Lock<InternerInner>);
 // between `Interner`s.
 struct InternerInner {
     arena: DroplessArena,
-    indices: HashTable<(&'static [u8], u32)>,
+    indices: HashTable<u32>,
     byte_strs: Vec<StoredBytes<'static>>,
 }
 
@@ -2962,18 +2965,26 @@ impl Interner {
         let (size_hint, _) = values.size_hint();
         let mut conflicting_values: Vec<&[u8]> = Vec::new();
 
-        let mut indices: HashTable<(&'static [u8], u32)> = HashTable::with_capacity(size_hint);
+        // A bucket only needs the index into byte_strs. Reserve room for identifiers
+        // from the crate and its imports while using less memory than the old
+        // (slice, index) table, even with hashbrown's control bytes.
+        let capacity =
+            size_hint + init.len() * if cfg!(target_pointer_width = "64") { 3 } else { 1 };
+        let mut indices: HashTable<u32> = HashTable::with_capacity(capacity);
         let hasher = FxBuildHasher::default();
 
         let arena = DroplessArena::default();
-        let mut byte_strs = Vec::with_capacity(size_hint);
+        let mut byte_strs: Vec<StoredBytes<'static>> = Vec::with_capacity(size_hint);
 
         for v in values {
-            match indices.entry(hasher.hash_one(&v), |&(s, _)| s == v, |&(s, _)| hasher.hash_one(s))
-            {
-                Entry::Occupied(v) => conflicting_values.push(v.get().0),
+            match indices.entry(
+                hasher.hash_one(v),
+                |&i| byte_strs[i as usize].bytes() == v,
+                |&i| hasher.hash_one(byte_strs[i as usize].bytes()),
+            ) {
+                Entry::Occupied(_) => conflicting_values.push(v),
                 Entry::Vacant(view) => {
-                    view.insert((v, byte_strs.len() as u32));
+                    view.insert(byte_strs.len() as u32);
                     byte_strs.push(if v.len() >= LARGE_BYTE_STRING_LEN {
                         // SAFETY: this interner owns both the arena and byte_strs.
                         unsafe { StoredBytes::in_arena(&arena, v).in_interner() }
@@ -3010,16 +3021,16 @@ impl Interner {
         self.0.with_lock(|inner| {
             match inner.indices.entry(
                 hash_of_byte_str,
-                |&(s, _)| s == byte_str,
-                |&(s, _)| hasher.hash_one(s),
+                |&i| inner.byte_strs[i as usize].bytes() == byte_str,
+                |&i| hasher.hash_one(inner.byte_strs[i as usize].bytes()),
             ) {
-                Entry::Occupied(v) => v.get().1,
+                Entry::Occupied(v) => *v.get(),
                 Entry::Vacant(view) => {
                     // SAFETY: this interner owns the arena, index and byte_strs.
                     let stored =
                         unsafe { StoredBytes::in_arena(&inner.arena, byte_str).in_interner() };
                     let idx = inner.byte_strs.len() as u32;
-                    view.insert((stored.bytes(), idx));
+                    view.insert(idx);
                     inner.byte_strs.push(stored);
                     idx
                 }

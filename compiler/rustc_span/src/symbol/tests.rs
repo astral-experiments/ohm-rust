@@ -52,6 +52,14 @@ fn large_strings_keep_their_bytes_and_share_symbol_ids() {
         );
     }
 
+    // Force several resizes while the interner contains both static bytes and
+    // arena strings with trailing fingerprints. Only the bytes form the key.
+    for i in 0..256 {
+        interner.intern_str(&format!("key{i}"));
+    }
+    assert_eq!(interner.intern_str(""), Symbol::new(0));
+    assert_eq!(interner.intern_byte_str(large.as_bytes()), ByteSymbol::new(1));
+
     let mut changed = large.as_bytes().to_owned();
     changed[LARGE_BYTE_STRING_LEN / 2] ^= 1;
     let changed_id = interner.intern_byte_str(&changed);
