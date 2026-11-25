@@ -5,6 +5,33 @@ fn node(kind: DepKind, first: u64, second: u64) -> DepNode {
 }
 
 #[test]
+fn row_layout_matches_every_inline_header_and_spill() {
+    let n = node(DepKind::CompileMonoItem, 1, 2);
+    for width in 1..=DEP_NODE_SIZE {
+        for count in 0..=SerializedNodeHeader::MAX_INLINE_LEN + 1 {
+            let header = SerializedNodeHeader::new(
+                &n,
+                DepNodeIndex::from_u32(4),
+                Fingerprint::ZERO,
+                1 << (8 * (width - 1)),
+                count,
+            );
+            let layout = header.layout();
+            assert_eq!(usize::from(layout.width), header.bytes_per_index());
+            if let Some(len) = header.len() {
+                assert_eq!(layout.num_edges, len);
+                assert_eq!(
+                    layout.stride as usize,
+                    size_of::<SerializedNodeHeader>() + count * width
+                );
+            } else {
+                assert_eq!(layout.stride, 0);
+            }
+        }
+    }
+}
+
+#[test]
 fn edge_targets_stop_at_each_list_boundary() {
     let mut graph = SerializedDepGraph::default();
     let mut bytes = Vec::new();
@@ -13,10 +40,8 @@ fn edge_targets_stop_at_each_list_boundary() {
         graph.row_index.push(RowIndex {
             node: node(DepKind::Null, 0, 0),
             edges_start: bytes.len(),
-            width: width as u8,
-            header_len: 0,
+            layout: RowLayout { width: width as u8, num_edges: count as u32, ..Default::default() },
             next: None,
-            num_edges: count as u32,
         });
         for value in &values[..count] {
             bytes.extend_from_slice(&value.to_le_bytes()[..width]);
