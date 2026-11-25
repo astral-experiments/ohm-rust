@@ -230,7 +230,12 @@ fn check_refreshed_dependency_hash(output: &str) {
     };
 
     rfs::write("refresh_supplier.rs", "pub struct Marker;\n");
-    rfs::write("refresh_facade.rs", "pub use refresh_supplier::Marker;\n");
+    // Repeat the crate name in the item prefix. The full and refreshed
+    // suffixes must encode the name identically in both output modes.
+    rfs::write(
+        "refresh_facade.rs",
+        "pub fn refresh_facade() {}\npub use refresh_supplier::Marker;\n",
+    );
     rfs::write(
         "refresh_reader.rs",
         "pub fn read(value: refresh_facade::Marker) -> refresh_supplier::Marker { value }\n",
@@ -305,6 +310,27 @@ fn check_refreshed_dependency_hash(output: &str) {
         let expanded = rfs::read("librefresh_facade.rmeta");
         facade("cold-expanded-facade");
         assert_eq!(expanded, rfs::read("librefresh_facade.rmeta"));
+
+        // The imported spans live in a separate, unchanged file. An edit in
+        // the root module should allow the facade to retain those spans.
+        rfs::write("producer.rs", supplier_src);
+        rfs::write("refresh_supplier.rs", "mod producer;\n");
+        supplier("refresh-supplier");
+        facade("separate-facade");
+        rfs::write("refresh_supplier.rs", "mod producer;\npub struct Addition;\n");
+        supplier("refresh-supplier");
+        facade("separate-facade").assert_stderr_contains("reused metadata item prefix");
+        let separate = rfs::read("librefresh_facade.rmeta");
+        facade("cold-separate-facade");
+        assert_eq!(separate, rfs::read("librefresh_facade.rmeta"));
+
+        // If the producer moves those spans, fresh metadata is required.
+        rfs::write("producer.rs", format!("\n{supplier_src}"));
+        supplier("refresh-supplier");
+        facade("separate-facade").assert_stderr_not_contains("reused metadata item prefix");
+        let moved = rfs::read("librefresh_facade.rmeta");
+        facade("cold-moved-facade");
+        assert_eq!(moved, rfs::read("librefresh_facade.rmeta"));
 
         // First change an exported field, then the associated type of a foreign
         // trait impl. Both the ordered item roots and the implicit dependency

@@ -507,6 +507,50 @@ bool canMove(const llvm::Module &M, StringRef Mapping) {
 }
 } // namespace
 
+// The last argument of a local #[track_caller] function can go unused,
+// for example in a specialization of Result::from_residual. Require every
+// use of the record to pass the same test. An external or forwarding
+// callee could still inspect the line.
+static bool deadCallerLocation(const llvm::GlobalVariable &G) {
+  if (G.hasName() || G.use_empty())
+    return false;
+  for (const llvm::Use &U : G.uses()) {
+    const llvm::Function *F = nullptr;
+    unsigned I;
+    if (!llvm::ohm_location::passedToCallee(U, F, I) || !F->hasLocalLinkage() ||
+        F->isDeclaration() || F->hasFnAttribute(llvm::Attribute::Naked) ||
+        I + 1 != F->arg_size())
+      return false;
+    const auto *Arg = F->getArg(I);
+    if (!Arg->use_empty() || Arg->isUsedByMetadata())
+      return false;
+  }
+  return true;
+}
+
+extern "C" void LLVMRustDwarfStableDeadLocations(LLVMModuleRef Ref) {
+  llvm::Module &M = *llvm::unwrap(Ref);
+  for (auto &G : M.globals()) {
+    // readRecord only accepts private immutable locations without metadata.
+    auto R = llvm::ohm_location::readRecord(G);
+    if (!R || !R->HasColumn || !deadCallerLocation(G))
+      continue;
+    // Preserve the file, column and valid, dereferenceable argument storage.
+    // Source locations in debug info still carry the actual line.
+    std::string Bytes = R->Tail->getAsString().str();
+    llvm::support::endian::write32le(Bytes.data() + 8, 1);
+    auto *Tail =
+        llvm::ConstantDataArray::getString(M.getContext(), Bytes, false);
+    auto *Init = llvm::cast<llvm::ConstantStruct>(G.getInitializer());
+    G.setInitializer(llvm::ConstantStruct::get(Init->getType(),
+                                               {Init->getOperand(0), Tail}));
+    // A detached initializer remains a user of the filename, which prevents
+    // LLVM from certifying that all users belong to the module.
+    if (Init->use_empty() && !Init->isUsedByMetadata())
+      Init->destroyConstant();
+  }
+}
+
 extern "C" bool LLVMRustDwarfTypedShape(LLVMModuleRef Ref,
                                         LLVMTargetMachineRef TM,
                                         uint64_t *Shape) {
@@ -606,6 +650,7 @@ LLVMRustDwarfTypedMatch(LLVMModuleRef M, const char *Old, size_t N,
   return Out.release();
 }
 #else
+extern "C" void LLVMRustDwarfStableDeadLocations(LLVMModuleRef) {}
 extern "C" bool LLVMRustDwarfTypedShape(LLVMModuleRef, LLVMTargetMachineRef,
                                         uint64_t *) {
   return false;

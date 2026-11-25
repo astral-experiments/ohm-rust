@@ -145,6 +145,8 @@ impl Entry {
                 )
             }
             SplitDebuginfo::Off => {
+                // The optimizer and the certificate must see the same initializer.
+                unsafe { llvm::LLVMRustDwarfStableDeadLocations(module.module_llvm.llmod()) };
                 let (exact, lines) = if unsafe { llvm::LLVMRustCanReplayDwarfLineScopes() }
                     && let Some(lines) = line_proof(module.module_llvm.llmod(), MAXIMUM - 124)
                 {

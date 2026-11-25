@@ -844,7 +844,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> Encodable<EncodeContext<'a, 'tcx, M>> f
             };
 
             if let Some(builder) = &mut s.metadata_prefix_manifest {
-                builder.dependency_hashes.record_source(s.tcx, source_file);
+                builder.dependency_hashes.record_source(source_file);
             }
             (SpanKind::Foreign, metadata_index)
         } else {
@@ -1198,6 +1198,10 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
     ) -> (GraphHashed<LazyTable<u32, Option<LazyValue<SourceFile>>>>, FxIndexSet<usize>) {
         let source_map_position = self.position();
         if let Some(builder) = &mut self.metadata_prefix_manifest {
+            // Prefix reuse starts with a fresh encoder. Emit the suffix with
+            // the same symbol shorthands in a full encoding, even when the
+            // crate name also occurred earlier as an item or dependency.
+            self.symbol_index_table = FxHashMap::default();
             builder.manifest.prefix_position = source_map_position;
             builder.manifest.source_files.clear();
         }
@@ -1268,7 +1272,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 on_disk_index.try_into().expect("cannot export more than U32_MAX files");
             adapted.set_some_unhashed(on_disk_index, self.lazy(&adapted_source_file));
             if let Some(builder) = &mut self.metadata_prefix_manifest {
-                builder.dependency_hashes.record_source(self.tcx, source_file);
+                builder.dependency_hashes.record_source(source_file);
                 let layout = source_file_layout_fingerprint(self.tcx, source_file);
                 builder.manifest.source_files.push((source_file.stable_id, layout));
             }
