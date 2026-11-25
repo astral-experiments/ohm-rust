@@ -103,6 +103,7 @@ impl Linker {
                 incr_comp_session.as_ref().unwrap(),
                 WorkProduct::METADATA_WORKPRODUCT_CGU_NAME,
                 &[(OutputType::Metadata.extension(), path)],
+                None,
             );
             work_products.insert(id, product);
 
