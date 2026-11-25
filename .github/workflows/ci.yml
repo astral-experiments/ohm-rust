@@ -335,6 +335,9 @@ jobs:
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 tests/incremental/rdr
+          tests/incremental/typed-body-uses.rs
+          tests/incremental/body-uses-signature.rs
+          tests/ui/const-generics/mgca/type_const-use.rs
           tests/incremental/mono_item_partition_body_change.rs
           tests/incremental/mono_item_partition_caller_local_body_change.rs
           tests/incremental/mono_item_partition_edited_roots.rs

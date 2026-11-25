@@ -44,7 +44,8 @@ const FILE_MAGIC: &[u8] = b"RSIC";
 // Mono edges share a query and size estimates are keyed by MIR definition.
 // Native metadata separates local inputs from upstream public hashes.
 // Query footers can index dense values by a bitmap and ordered offsets.
-const HEADER_FORMAT_VERSION: u16 = 61402;
+// Body uses include declarations for eligible functions and constants.
+const HEADER_FORMAT_VERSION: u16 = 61403;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);
