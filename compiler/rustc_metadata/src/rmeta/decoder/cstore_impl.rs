@@ -155,6 +155,15 @@ macro_rules! provide_one {
             let reads_metadata_input = match DepKind::$name {
                 DepKind::public_api_hash | DepKind::crate_hash
                 | DepKind::external_metadata_input_hash => false,
+                DepKind::def_span | DepKind::def_ident_span
+                    if $tcx.dep_graph.is_fully_enabled()
+                        && CStore::from_tcx($tcx).has_public_api_hash($def_id.krate) =>
+                {
+                    // Formatting can move the end of a declaration without changing its
+                    // public hash. Revalidate the span when the reader actually runs.
+                    $tcx.ensure_ok().external_definition_span_input($def_id.krate);
+                    false
+                }
                 DepKind::exported_non_generic_symbols => {
                     // Non-generic symbols are only consumed during linking and remain outside
                     // the public API hash.
@@ -790,6 +799,13 @@ pub(in crate::rmeta) fn provide(providers: &mut Providers) {
         ..providers.queries
     };
     provide_extern(&mut providers.extern_queries);
+    providers.extern_queries.external_definition_span_input = |tcx, cnum| {
+        let input = tcx.external_metadata_input_hash(cnum);
+        let full = CStore::from_tcx(tcx).get_crate_data(cnum).private_hash();
+        let mut hasher = StableHasher::new();
+        (input, full).hash(&mut hasher);
+        hasher.finish()
+    };
     providers.extern_queries.external_incoherent_impls_input = |tcx, cnum| {
         let has_impls =
             CStore::from_tcx(tcx).get_crate_data(cnum).root.incoherent_impls.num_elems != 0;

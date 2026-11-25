@@ -2205,6 +2205,13 @@ rustc_queries! {
         separate_provide_extern
     }
 
+    /// Track supplier bindings and the full metadata hash for imported source locations.
+    query external_definition_span_input(_: CrateNum) -> Fingerprint {
+        eval_always
+        desc { "tracking the source locations of imported definitions" }
+        separate_provide_extern
+    }
+
     /// Returns the public API hash of a reachable external `DefId`.
     ///
     /// Falls back to the crate public hash for legacy metadata and panics for local or private
