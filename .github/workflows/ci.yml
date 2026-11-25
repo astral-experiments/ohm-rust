@@ -404,6 +404,7 @@ jobs:
             tests/run-make/incremental-whole-crate-metadata
             tests/run-make/incremental-vacant-dep-graph-slots
             tests/run-make/incremental-missing-query-cache
+            tests/run-make/ohm-reordered-mono-spans
             tests/run-make/ohm-retained-mono-values
             tests/run-make/ohm-written-impl-paths
             tests/run-make/capped-mir-lints

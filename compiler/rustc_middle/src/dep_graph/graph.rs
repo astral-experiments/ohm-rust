@@ -1142,13 +1142,14 @@ impl DepGraph {
 
     /// Returns the old edges except those which the caller will read again after rewriting its suffix.
     ///
+    /// `refreshed` receives the edge kind and whether the changed edge was already seen.
     /// Call this after normal green-marking so all query side effects have
     /// already been replayed. Unknown edges conservatively prevent reuse.
     pub fn previous_dependencies_except_red(
         &self,
         dep_node: &DepNode,
         changed_dep_node: &DepNode,
-        refreshed_kind: DepKind,
+        refreshed: impl Fn(DepKind, bool) -> bool,
     ) -> Option<Vec<Option<DepNodeIndex>>> {
         let data = self.data()?;
         let previous_index = data.previous.node_to_index_opt(dep_node)?;
@@ -1157,7 +1158,7 @@ impl DepGraph {
 
         for previous_dependency in data.previous.edge_targets_from(previous_index) {
             let dependency = data.previous.index_to_node(previous_dependency);
-            if dependency.kind == refreshed_kind {
+            if refreshed(dependency.kind, found_changed_dependency) {
                 continue;
             }
             if dependency == changed_dep_node {

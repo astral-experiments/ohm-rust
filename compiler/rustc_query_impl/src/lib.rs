@@ -36,13 +36,14 @@ pub fn query_system<'tcx>(
     ohm_incremental_mono_partitions: bool,
 ) -> QuerySystem<'tcx> {
     let mut query_vtables = query_vtables::make_query_vtables(incremental);
-    if incremental && (public_api_hash || ohm_incremental_mono_partitions) {
+    // Collection needs the full ordered edges for diagnostics. Only their
+    // fingerprint changes when we use them to validate incremental partitions.
+    if incremental && ohm_incremental_mono_partitions {
+        query_vtables.items_of_instance.hash_value_fn =
+            Some(query_vtables::hash_partition_mono_item_edges);
+    } else if incremental && public_api_hash {
         query_vtables.items_of_instance.hash_value_fn =
             Some(query_vtables::hash_incremental_mono_item_edges);
-    }
-    if incremental && ohm_incremental_mono_partitions {
-        query_vtables.partition_items_of_instance.hash_value_fn =
-            Some(query_vtables::hash_partition_mono_item_edges);
     }
 
     QuerySystem {

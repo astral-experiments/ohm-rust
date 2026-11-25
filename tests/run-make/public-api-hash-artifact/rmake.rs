@@ -180,6 +180,24 @@ fn downstream_exported_macro_value() -> u32 {
     run("macro-value-user").stdout_utf8().trim().parse().unwrap()
 }
 
+// A private body edit can refresh the source map while keeping every exported
+// byte range intact. Native locations also depend on checksums and display columns.
+fn check_native_locations(flags: &[&str], separator: &str) {
+    let compile = || compile_and_read_public_api_hash_with_output(false, flags, "metadata,link").0;
+    let source = |value, separator: &str| {
+        format!("#[allow(dead_code)] fn hidden() -> u32 {{ {value} }}{separator}pub struct Marker;")
+    };
+    rfs::write("lib.rs", source(1, " "));
+    let before = compile();
+    rfs::write("lib.rs", source(2, separator));
+    let after = compile();
+    assert_ne!(before, after);
+    let warm = rfs::read(metadata_work_product());
+    rfs::remove_dir_all("incremental");
+    assert_eq!(compile(), after);
+    assert_eq!(rfs::read(metadata_work_product()), warm);
+}
+
 fn check_refreshed_dependency_hash(output: &str) {
     let compile = |name: &str, incremental: &str| {
         let mut command = rustc();
@@ -242,7 +260,7 @@ fn check_refreshed_dependency_hash(output: &str) {
     let magic = if output == "metadata" {
         b"ohm-metadata-prefix-v4\0"
     } else {
-        b"ohm-metadata-prefix-v5\0"
+        b"ohm-metadata-prefix-v6\0"
     };
     assert!(manifest_bytes.starts_with(magic));
     manifest_bytes[magic.len() - 2] = b'3';
@@ -287,10 +305,45 @@ fn check_refreshed_dependency_hash(output: &str) {
         let expanded = rfs::read("librefresh_facade.rmeta");
         facade("cold-expanded-facade");
         assert_eq!(expanded, rfs::read("librefresh_facade.rmeta"));
+
+        // First change an exported field, then the associated type of a foreign
+        // trait impl. Both the ordered item roots and the implicit dependency
+        // roots must agree with a full encode after consecutive refreshes.
+        rfs::write("refresh_facade.rs", "pub use refresh_supplier::Marker;\n");
+        let mut previous = None;
+        for (i, (field, output)) in
+            [("u32", "u32"), ("u64", "u32"), ("u64", "u16")].into_iter().enumerate()
+        {
+            rfs::write(
+                "refresh_supplier.rs",
+                format!(
+                    "pub struct Marker(pub {field});\n\
+                     impl std::ops::Neg for Marker {{\n\
+                         type Output = {output}; fn neg(self) -> Self::Output {{ 0 }}\n\
+                     }}\n"
+                ),
+            );
+            supplier("item-supplier");
+            let result = facade("item-facade");
+            let hash = rustc()
+                .input("librefresh_facade.rmeta")
+                .arg("-Zls=public_hash")
+                .run()
+                .stdout_utf8();
+            if let Some(previous) = previous.replace(hash.clone()) {
+                result.assert_stderr_contains("reused metadata item prefix");
+                assert_ne!(hash, previous);
+            }
+            let warm = rfs::read("librefresh_facade.rmeta");
+            facade(&format!("cold-item-facade-{i}"));
+            assert_eq!(warm, rfs::read("librefresh_facade.rmeta"));
+        }
     }
 }
 
 fn main() {
+    run_make_support::run_in_tmpdir(|| check_native_locations(&[], "\t"));
+    run_make_support::run_in_tmpdir(|| check_native_locations(&["-Cdwarf-version=5"], " "));
     for output in ["metadata", "metadata,link"] {
         run_make_support::run_in_tmpdir(|| check_refreshed_dependency_hash(output));
     }

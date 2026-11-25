@@ -53,12 +53,12 @@ impl StableHash for UnspannedMonoItems<'_, '_> {
 
 /// Hashes only the structural edges relevant to a monomorphization partition.
 ///
-/// The underlying query still owns diagnostics and returns its original ordered, spanned edges.
+/// The collection query still owns diagnostics and returns its original ordered, spanned edges.
 /// Used and mentioned edges remain separate, and sorting their stable fingerprints preserves
 /// multiplicity while allowing a body edit to reorder otherwise identical call-graph edges.
 pub(crate) fn hash_partition_mono_item_edges<'tcx>(
     hcx: &mut StableHashState<'_>,
-    erased_value: &Erased<rustc_middle::queries::partition_items_of_instance::Value<'tcx>>,
+    erased_value: &Erased<rustc_middle::queries::items_of_instance::Value<'tcx>>,
 ) -> Fingerprint {
     let value = erase::restore_val(*erased_value);
     let canonical =
