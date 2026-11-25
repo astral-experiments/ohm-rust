@@ -94,16 +94,17 @@ impl DependencyHashMode {
         }
     }
 
-    pub(super) fn record_source(&mut self, tcx: TyCtxt<'_>, file: &SourceFile) {
+    pub(super) fn record_source(&mut self, file: &SourceFile) {
         if let Self::Native(inputs) = self {
-            // Suffix refreshes keep the original item bytes across local edits.
-            // Keep their original source state until the next fresh encoding.
-            inputs.sources.entry(file.stable_id).or_insert_with(|| {
-                if file.is_imported() {
-                    tcx.ensure_ok().public_api_hash(file.cnum);
-                }
-                NativePrefixInputs::source_fingerprint(file)
-            });
+            // `ohm_metadata_input_hashes` already tracks the supplier's public hash.
+            // Reading it here too would stop green marking before the refreshable
+            // inputs, even when the imported file and its metadata index are unchanged.
+            // Keep the original file fingerprint across local-only refreshes so
+            // `can_refresh` can validate it when a supplier changes.
+            inputs
+                .sources
+                .entry(file.stable_id)
+                .or_insert_with(|| NativePrefixInputs::source_fingerprint(file));
         }
     }
 
