@@ -304,7 +304,8 @@ pub fn run_compiler(at_args: &[String], callbacks: &mut (dyn Callbacks + Send)) 
             // Analysis can load dependency sources to render diagnostics. A public hash
             // need not cover the whole line. Native relinks also need monomorphization.
             let dep_info = sess.opts.output_types.contains_key(&OutputType::DepInfo);
-            let dep_info_only = dep_info && sess.opts.output_types.len() == 1;
+            let dep_info_only =
+                dep_info && sess.opts.output_types.len() == 1 && !sess.opts.ohm_check_only();
             let check_relink_inputs = sess.opts.unstable_opts.ohm_check_relink_inputs
                 && sess.opts.output_types.should_codegen()
                 && !sess.opts.unstable_opts.no_codegen;

@@ -74,6 +74,9 @@ pub fn emit_wrapper_file(sess: &Session, data: &[u8], tmpdir: &Path, name: &str)
 }
 
 pub fn encode_and_write_metadata(tcx: TyCtxt<'_>) -> Result<EncodedMetadata, ErrorGuaranteed> {
+    if tcx.sess.opts.ohm_check_only() {
+        return Ok(EncodedMetadata::default());
+    }
     let out_filename = filename_for_metadata(tcx.sess, tcx.output_filenames(()));
     // To avoid races with another rustc process scanning the output directory,
     // we need to write the file somewhere else and atomically move it to its
