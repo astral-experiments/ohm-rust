@@ -1320,6 +1320,15 @@ impl<'tcx> AttributeMap<'tcx> {
     }
 }
 
+/// Nested definitions in HIR visitor order, collected while indexing an owner.
+#[derive(Clone, Copy, Debug)]
+pub enum InnerDef {
+    Body(LocalDefId),
+    AnonConst(LocalDefId),
+    Opaque(LocalDefId),
+    Item(ItemId),
+}
+
 /// Map of all HIR nodes inside the current owner.
 /// These nodes are mapped by `ItemLocalId` alongside the index of their parent node.
 /// The HIR tree, including bodies, is pre-hashed.
@@ -1336,8 +1345,9 @@ pub struct OwnerNodes<'tcx> {
     pub bodies: SortedMap<ItemLocalId, &'tcx Body<'tcx>>,
     /// Whether any node in this owner has a parsed `#[loop_match]` or `#[const_continue]`.
     pub has_loop_control_attrs: bool,
-    /// Whether the item collector can encounter other items, nested bodies, or opaque types.
-    pub has_inner_defs: bool,
+    /// An empty slice identifies leaf owners. `None` requests a full walk,
+    /// e.g. for an impl whose members have their own owners.
+    pub inner_defs: Option<&'tcx [InnerDef]>,
 }
 
 impl<'tcx> OwnerNodes<'tcx> {
@@ -1358,7 +1368,7 @@ impl<'tcx> OwnerNodes<'tcx> {
             ),
             bodies: SortedMap::new(),
             has_loop_control_attrs: false,
-            has_inner_defs: false,
+            inner_defs: Some(&[]),
         }
     }
 }

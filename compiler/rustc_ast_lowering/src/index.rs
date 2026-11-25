@@ -8,6 +8,7 @@ use rustc_index::IndexVec;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::CRATE_MOD_ID;
 use rustc_span::{DUMMY_SP, Span, span_bug};
+use smallvec::SmallVec;
 use tracing::{debug, instrument};
 
 /// A visitor that walks over the HIR and collects `Node`s into a HIR map.
@@ -19,7 +20,7 @@ struct NodeCollector<'a, 'hir> {
     /// Outputs
     nodes: IndexVec<ItemLocalId, ParentedNode<'hir>>,
     parenting: LocalDefIdMap<ItemLocalId>,
-    has_inner_defs: bool,
+    inner_defs: Option<SmallVec<[InnerDef; 2]>>,
     lint_roots: &'hir mut [u32],
     num_lint_roots: usize,
 
@@ -36,7 +37,12 @@ pub(super) fn index_hir<'hir>(
     bodies: &SortedMap<ItemLocalId, &'hir Body<'hir>>,
     num_nodes: usize,
     attrs: &SortedMap<ItemLocalId, &[Attribute]>,
-) -> (IndexVec<ItemLocalId, ParentedNode<'hir>>, LocalDefIdMap<ItemLocalId>, &'hir [u32], bool) {
+) -> (
+    IndexVec<ItemLocalId, ParentedNode<'hir>>,
+    LocalDefIdMap<ItemLocalId>,
+    &'hir [u32],
+    Option<&'hir [InnerDef]>,
+) {
     let err_node = ParentedNode { parent: ItemLocalId::ZERO, node: Node::Err(item.span()) };
     let mut nodes = IndexVec::from_elem_n(err_node, num_nodes);
     // A single attribute entry needs no ordering. Otherwise mark the still-empty node slots
@@ -62,7 +68,7 @@ pub(super) fn index_hir<'hir>(
         nodes,
         bodies,
         parenting: Default::default(),
-        has_inner_defs: false,
+        inner_defs: Some(SmallVec::new()),
         lint_roots,
         num_lint_roots,
     };
@@ -84,17 +90,22 @@ pub(super) fn index_hir<'hir>(
         }
     }
 
+    let inner_defs = collector.inner_defs.map(|v| -> &'hir [InnerDef] {
+        if v.is_empty() { &[] } else { tcx.hir_arena.alloc_from_iter(v) }
+    });
     (
         collector.nodes,
         collector.parenting,
         &collector.lint_roots[..collector.num_lint_roots],
-        collector.has_inner_defs,
+        inner_defs,
     )
 }
 
 impl<'a, 'hir> NodeCollector<'a, 'hir> {
     #[instrument(level = "debug", skip(self))]
-    #[inline]
+    // Each caller constructs a specific node variant. Inlining lets the optimizer
+    // specialize its store into the node table.
+    #[cfg_attr(not(debug_assertions), inline(always))]
     fn insert(&mut self, span: Span, hir_id: HirId, node: Node<'hir>) {
         debug_assert_eq!(self.owner, hir_id.owner);
         debug_assert_ne!(hir_id.local_id.as_u32(), 0);
@@ -160,7 +171,6 @@ impl<'a, 'hir> NodeCollector<'a, 'hir> {
     }
 
     fn insert_nested(&mut self, item: LocalDefId) {
-        self.has_inner_defs = true;
         if self.parent_node != ItemLocalId::ZERO {
             self.parenting.insert(item, self.parent_node);
         }
@@ -174,18 +184,27 @@ impl<'a, 'hir> Visitor<'hir> for NodeCollector<'a, 'hir> {
 
     fn visit_nested_item(&mut self, item: ItemId) {
         debug!("visit_nested_item: {:?}", item);
+        if self.parent_node == ItemLocalId::ZERO {
+            // Module members are already listed by the module itself.
+            self.inner_defs = None;
+        } else if let Some(defs) = &mut self.inner_defs {
+            defs.push(InnerDef::Item(item));
+        }
         self.insert_nested(item.owner_id.def_id);
     }
 
     fn visit_nested_trait_item(&mut self, item_id: TraitItemId) {
+        self.inner_defs = None;
         self.insert_nested(item_id.owner_id.def_id);
     }
 
     fn visit_nested_impl_item(&mut self, item_id: ImplItemId) {
+        self.inner_defs = None;
         self.insert_nested(item_id.owner_id.def_id);
     }
 
     fn visit_nested_foreign_item(&mut self, foreign_id: ForeignItemId) {
+        self.inner_defs = None;
         self.insert_nested(foreign_id.owner_id.def_id);
     }
 
@@ -293,7 +312,9 @@ impl<'a, 'hir> Visitor<'hir> for NodeCollector<'a, 'hir> {
     }
 
     fn visit_opaque_ty(&mut self, opaq: &'hir OpaqueTy<'hir>) {
-        self.has_inner_defs = true;
+        if let Some(defs) = &mut self.inner_defs {
+            defs.push(InnerDef::Opaque(opaq.def_id));
+        }
         self.insert(opaq.span, opaq.hir_id, Node::OpaqueTy(opaq));
 
         self.with_parent(opaq.hir_id, |this| {
@@ -302,7 +323,9 @@ impl<'a, 'hir> Visitor<'hir> for NodeCollector<'a, 'hir> {
     }
 
     fn visit_anon_const(&mut self, constant: &'hir AnonConst) {
-        self.has_inner_defs = true;
+        if let Some(defs) = &mut self.inner_defs {
+            defs.push(InnerDef::AnonConst(constant.def_id));
+        }
         self.insert(constant.span, constant.hir_id, Node::AnonConst(constant));
 
         self.with_parent(constant.hir_id, |this| {
@@ -311,7 +334,9 @@ impl<'a, 'hir> Visitor<'hir> for NodeCollector<'a, 'hir> {
     }
 
     fn visit_inline_const(&mut self, constant: &'hir ConstBlock) {
-        self.has_inner_defs = true;
+        if let Some(defs) = &mut self.inner_defs {
+            defs.push(InnerDef::Body(constant.def_id));
+        }
         self.insert(DUMMY_SP, constant.hir_id, Node::ConstBlock(constant));
 
         self.with_parent(constant.hir_id, |this| {
@@ -320,8 +345,10 @@ impl<'a, 'hir> Visitor<'hir> for NodeCollector<'a, 'hir> {
     }
 
     fn visit_expr(&mut self, expr: &'hir Expr<'hir>) {
-        if let ExprKind::Closure(..) = expr.kind {
-            self.has_inner_defs = true;
+        if let ExprKind::Closure(closure) = expr.kind
+            && let Some(defs) = &mut self.inner_defs
+        {
+            defs.push(InnerDef::Body(closure.def_id));
         }
         self.insert(expr.span, expr.hir_id, Node::Expr(expr));
 

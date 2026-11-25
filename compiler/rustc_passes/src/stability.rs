@@ -547,6 +547,7 @@ fn check_mod_unstable_api_usage(tcx: TyCtxt<'_>, mod_id: LocalModId) {
 pub(crate) fn provide(providers: &mut Providers) {
     *providers = Providers {
         check_mod_unstable_api_usage,
+        check_fn_unstable_api_usage,
         stability_implications,
         lookup_stability,
         lookup_const_stability,
@@ -704,7 +705,22 @@ impl<'tcx> Checker<'tcx> {
     }
 }
 
+fn check_fn_unstable_api_usage(tcx: TyCtxt<'_>, id: LocalDefId) {
+    let mod_id = tcx.parent_module_from_def_id(id);
+    let mut checker = Checker { tcx, mod_id, unstable_reexports: FxIndexMap::default() };
+    checker.visit_body(tcx.hir_body_owned_by(id));
+    debug_assert!(checker.unstable_reexports.is_empty());
+}
+
 impl<'tcx> Visitor<'tcx> for Checker<'tcx> {
+    fn visit_nested_body(&mut self, body: hir::BodyId) {
+        if let Some(id) = self.tcx.hir_module_check_fn(body) {
+            self.tcx.ensure_ok().check_fn_unstable_api_usage(id);
+        } else {
+            self.visit_body(self.tcx.hir_body(body));
+        }
+    }
+
     type NestedFilter = nested_filter::OnlyBodies;
 
     /// Because stability levels are scoped lexically, we want to walk

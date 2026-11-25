@@ -18,7 +18,7 @@ fn lint_expectations(tcx: TyCtxt<'_>, (): ()) -> Vec<(StableLintExpectationId, L
     let mut expectations = Vec::new();
 
     for owner in krate.owners() {
-        let lints = tcx.shallow_lint_levels_on(owner);
+        let lints = tcx.owner_lint_levels(owner);
         expectations.extend_from_slice(&lints.expectations);
     }
 

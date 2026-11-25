@@ -210,13 +210,15 @@ impl ShallowLintLevelMap {
             return Some(*level_spec);
         }
 
+        // No local lint can override the owner's inherited levels here.
+        let start = if self.specs.is_empty() { start.owner.into() } else { start };
         let mut owner = start.owner;
         let mut specs = &self.specs;
 
         for parent in tcx.hir_parent_id_iter(start) {
             if parent.owner != owner {
                 owner = parent.owner;
-                specs = &tcx.shallow_lint_levels_on(owner).specs;
+                specs = &tcx.owner_lint_levels(owner).specs;
             }
             if let Some(map) = specs.get(&parent.local_id)
                 && let Some(level_spec) = map.get(&id)
@@ -242,7 +244,7 @@ impl ShallowLintLevelMap {
     }
 }
 
-impl TyCtxt<'_> {
+impl<'tcx> TyCtxt<'tcx> {
     /// Can an analysis used only to emit these lints be omitted under `--cap-lints=allow`?
     ///
     /// Check the crate-wide set to retain forced warnings and future incompatibility
@@ -257,9 +259,24 @@ impl TyCtxt<'_> {
         lints.iter().all(|lint| skippable.contains(&LintId::of(lint)))
     }
 
+    /// Empty and documentation-only owners need no lint level query. Reading
+    /// the tracked attribute map makes adding a lint invalidate the caller.
+    pub fn owner_lint_levels(self, owner: rustc_hir::OwnerId) -> &'tcx ShallowLintLevelMap {
+        const EMPTY: &ShallowLintLevelMap =
+            &ShallowLintLevelMap { specs: SortedMap::new(), expectations: Vec::new() };
+        if owner != rustc_hir::CRATE_OWNER_ID {
+            match self.hir_attr_map(owner).map.range(..) {
+                [] => return EMPTY,
+                [(_, attrs)] if attrs.iter().all(|a| a.doc_str().is_some()) => return EMPTY,
+                _ => {}
+            }
+        }
+        self.shallow_lint_levels_on(owner)
+    }
+
     /// Fetch and return the user-visible lint level spec for the given lint at the given HirId.
     pub fn lint_level_spec_at_node(self, lint: &'static Lint, id: HirId) -> StableLevelSpec {
-        self.shallow_lint_levels_on(id.owner).lint_level_spec_at_node(self, LintId::of(lint), id)
+        self.owner_lint_levels(id.owner).lint_level_spec_at_node(self, LintId::of(lint), id)
     }
 }
 

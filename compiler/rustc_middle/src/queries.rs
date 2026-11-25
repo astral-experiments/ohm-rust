@@ -1322,6 +1322,22 @@ rustc_queries! {
         desc { "linting {}", describe_as_module(key, tcx) }
     }
 
+    query lint_fn(key: LocalDefId) {
+        desc { "linting `{}`", tcx.def_path_str(key) }
+    }
+
+    query check_fn_name_privacy(key: LocalDefId) {
+        desc { "checking name privacy in `{}`", tcx.def_path_str(key) }
+    }
+
+    query check_fn_type_privacy(key: LocalDefId) {
+        desc { "checking type privacy in `{}`", tcx.def_path_str(key) }
+    }
+
+    query check_fn_unstable_api_usage(key: LocalDefId) {
+        desc { "checking for unstable API usage in `{}`", tcx.def_path_str(key) }
+    }
+
     query check_unused_traits(_: ()) {
         desc { "checking unused trait imports in crate" }
     }
