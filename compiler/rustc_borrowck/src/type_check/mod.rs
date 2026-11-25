@@ -687,20 +687,16 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                 }
 
                 if !self.tcx().features().unsized_fn_params() {
-                    let sized = tcx.require_lang_item(LangItem::Sized, self.last_span);
-                    // Avoid interning arguments and a predicate for an assignment
-                    // whose Sized proof would immediately return no constraints.
-                    if self.infcx.disable_trait_solver_fast_paths()
-                        || !place_ty.has_trivial_sizedness(tcx, ty::SizedTraitKind::Sized)
-                        || !self.infcx.region_state_is_empty()
-                    {
-                        let trait_ref = ty::TraitRef::new(tcx, sized, [place_ty]);
-                        self.prove_trait_ref(
-                            trait_ref,
-                            location.to_locations(),
-                            ConstraintCategory::SizedBound,
-                        );
-                    }
+                    let trait_ref = ty::TraitRef::new(
+                        tcx,
+                        tcx.require_lang_item(LangItem::Sized, self.last_span),
+                        [place_ty],
+                    );
+                    self.prove_trait_ref(
+                        trait_ref,
+                        location.to_locations(),
+                        ConstraintCategory::SizedBound,
+                    );
                 }
             }
             StatementKind::AscribeUserType((place, projection), variance) => {
@@ -822,8 +818,11 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                 // don't have to check it twice.
                 //
                 // See #91068 for an example.
-                self.prove_wf(
-                    unnormalized_sig.inputs_and_output.iter().map(Into::into),
+                self.prove_clauses(
+                    unnormalized_sig
+                        .inputs_and_output
+                        .iter()
+                        .map(|ty| ty::ClauseKind::WellFormed(ty.into())),
                     term_location.to_locations(),
                     ConstraintCategory::Boring,
                 );
@@ -841,8 +840,10 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                 // with built-in `Fn` implementations, since the impl may not be
                 // well-formed itself.
                 if sig != unnormalized_sig {
-                    self.prove_wf(
-                        sig.inputs_and_output.iter().map(Into::into),
+                    self.prove_clauses(
+                        sig.inputs_and_output
+                            .iter()
+                            .map(|ty| ty::ClauseKind::WellFormed(ty.into())),
                         term_location.to_locations(),
                         ConstraintCategory::Boring,
                     );
@@ -1841,7 +1842,11 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                 self.prove_declared_clauses(def_id, args, locations);
 
                 assert_eq!(tcx.trait_impl_of_assoc(def_id), None);
-                self.prove_wf(args.terms(), locations, ConstraintCategory::Boring);
+                self.prove_clauses(
+                    args.terms().map(|t| ty::ClauseKind::WellFormed(t.into())),
+                    locations,
+                    ConstraintCategory::Boring,
+                );
             }
         }
     }

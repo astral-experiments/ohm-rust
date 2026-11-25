@@ -41,18 +41,11 @@ use rustc_span::bug;
 
 use super::InferCtxt;
 
-/// Number variables in encounter order. A goal with a single variable
-/// needs no hash table, even if that variable occurs multiple times.
-enum FreshTypes<'tcx> {
-    Empty,
-    One(ty::InferTy, Ty<'tcx>),
-    Many(FxHashMap<ty::InferTy, Ty<'tcx>>),
-}
-
 pub struct TypeFreshener<'a, 'tcx> {
     infcx: &'a InferCtxt<'tcx>,
+    ty_freshen_count: u32,
     const_freshen_count: u32,
-    ty_freshen_map: FreshTypes<'tcx>,
+    ty_freshen_map: FxHashMap<ty::InferTy, Ty<'tcx>>,
     const_freshen_map: FxHashMap<ty::InferConst, ty::Const<'tcx>>,
 }
 
@@ -60,8 +53,9 @@ impl<'a, 'tcx> TypeFreshener<'a, 'tcx> {
     pub fn new(infcx: &'a InferCtxt<'tcx>) -> TypeFreshener<'a, 'tcx> {
         TypeFreshener {
             infcx,
+            ty_freshen_count: 0,
             const_freshen_count: 0,
-            ty_freshen_map: FreshTypes::Empty,
+            ty_freshen_map: Default::default(),
             const_freshen_map: Default::default(),
         }
     }
@@ -70,22 +64,14 @@ impl<'a, 'tcx> TypeFreshener<'a, 'tcx> {
     where
         F: FnOnce(u32) -> Ty<'tcx>,
     {
-        match &mut self.ty_freshen_map {
-            FreshTypes::Empty => {
-                let ty = mk_fresh(0);
-                self.ty_freshen_map = FreshTypes::One(input, ty);
-                ty
-            }
-            FreshTypes::One(prev, ty) if *prev == input => *ty,
-            FreshTypes::One(prev, prev_ty) => {
-                let ty = mk_fresh(1);
-                self.ty_freshen_map =
-                    FreshTypes::Many([(*prev, *prev_ty), (input, ty)].into_iter().collect());
-                ty
-            }
-            FreshTypes::Many(map) => {
-                let index = map.len();
-                *map.entry(input).or_insert_with(|| mk_fresh(index.try_into().unwrap()))
+        match self.ty_freshen_map.entry(input) {
+            Entry::Occupied(entry) => *entry.get(),
+            Entry::Vacant(entry) => {
+                let index = self.ty_freshen_count;
+                self.ty_freshen_count += 1;
+                let t = mk_fresh(index);
+                entry.insert(t);
+                t
             }
         }
     }
@@ -205,14 +191,13 @@ impl<'a, 'tcx> TypeFreshener<'a, 'tcx> {
         match ty {
             ty::TyVar(v) => {
                 let mut inner = self.infcx.inner.borrow_mut();
-                let (root, value) = inner.type_variables().probe_with_root_vid(v);
-                match value.known() {
+                match inner.type_variables().probe(v).known() {
                     Some(ty) => {
                         drop(inner);
                         ty.fold_with(self)
                     }
                     None => {
-                        let input = ty::TyVar(root);
+                        let input = ty::TyVar(inner.type_variables().root_var(v));
                         self.freshen_ty(input, |n| Ty::new_fresh(self.infcx.tcx, n))
                     }
                 }
@@ -220,12 +205,12 @@ impl<'a, 'tcx> TypeFreshener<'a, 'tcx> {
 
             ty::IntVar(v) => {
                 let mut inner = self.infcx.inner.borrow_mut();
-                let (root, value) = inner.int_unification_table().inlined_probe_key_value(v);
+                let value = inner.int_unification_table().probe_value(v);
                 match value {
                     ty::IntVarValue::IntType(ty) => Ty::new_int(self.infcx.tcx, ty),
                     ty::IntVarValue::UintType(ty) => Ty::new_uint(self.infcx.tcx, ty),
                     ty::IntVarValue::Unknown => {
-                        let input = ty::IntVar(root);
+                        let input = ty::IntVar(inner.int_unification_table().find(v));
                         self.freshen_ty(input, |n| Ty::new_fresh_int(self.infcx.tcx, n))
                     }
                 }
@@ -233,11 +218,11 @@ impl<'a, 'tcx> TypeFreshener<'a, 'tcx> {
 
             ty::FloatVar(v) => {
                 let mut inner = self.infcx.inner.borrow_mut();
-                let (root, value) = inner.float_unification_table().inlined_probe_key_value(v);
+                let value = inner.float_unification_table().probe_value(v);
                 match value {
                     ty::FloatVarValue::Known(ty) => Ty::new_float(self.infcx.tcx, ty),
                     ty::FloatVarValue::Unknown => {
-                        let input = ty::FloatVar(root);
+                        let input = ty::FloatVar(inner.float_unification_table().find(v));
                         self.freshen_ty(input, |n| Ty::new_fresh_float(self.infcx.tcx, n))
                     }
                 }

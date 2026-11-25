@@ -38,27 +38,29 @@ impl<'a, 'tcx> TypeFolder<TyCtxt<'tcx>> for DeepResolverIgnoringRegions<'a, 'tcx
     #[inline]
     fn fold_ty(&mut self, t: Ty<'tcx>) -> Ty<'tcx> {
         if !t.has_non_region_infer() {
-            return t;
-        }
-
-        // Shallow resolution finds the root or its value. An unresolved
-        // variable is a leaf. Only compound types need recursive folding
-        // and deduplication, regardless of how many variables name them.
-        let t = if matches!(t.kind(), ty::Infer(_)) {
-            let resolved = self.infcx.shallow_resolve(t);
-            if matches!(resolved.kind(), ty::Infer(_)) || !resolved.has_non_region_infer() {
-                return resolved;
-            }
-            resolved
+            t // micro-optimize -- if there is nothing in this type that this fold affects...
+        } else if let Some(&ty) = self.cache.get(&t) {
+            ty
         } else {
-            t
-        };
-        if let Some(&resolved) = self.cache.get(&t) {
-            return resolved;
+            let shallow = self.infcx.shallow_resolve(t);
+            // Shallow resolution is idempotent. Reuse the resolved type's flags and
+            // cache entry in this frame, retaining the original debug traversal.
+            let res = if !cfg!(debug_assertions) && shallow != t {
+                if !shallow.has_non_region_infer() {
+                    shallow
+                } else if let Some(&ty) = self.cache.get(&shallow) {
+                    ty
+                } else {
+                    let res = shallow.super_fold_with(self);
+                    assert!(self.cache.insert(shallow, res));
+                    res
+                }
+            } else {
+                shallow.super_fold_with(self)
+            };
+            assert!(self.cache.insert(t, res));
+            res
         }
-        let resolved = t.super_fold_with(self);
-        assert!(self.cache.insert(t, resolved));
-        resolved
     }
 
     fn fold_const(&mut self, ct: Const<'tcx>) -> Const<'tcx> {
