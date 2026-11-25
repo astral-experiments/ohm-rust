@@ -1307,6 +1307,12 @@ impl<T: Idx> GrowableBitSet<T> {
         Self { words: words.take(len).collect(), marker: PhantomData }
     }
 
+    /// Bits in increasing index order, starting at the low bit of each word.
+    #[inline]
+    pub fn words(&self) -> &[u64] {
+        &self.words
+    }
+
     /// Mutates `self = self | other`.
     #[inline]
     pub fn union(&mut self, other: &GrowableBitSet<T>) {

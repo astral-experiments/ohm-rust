@@ -39,6 +39,9 @@ use crate::query::{QueryCache, erase};
 use crate::ty::codec::{RefDecodable, TyDecoder, TyEncoder, forward_all_decoder_methods_to};
 use crate::ty::{self, Ty, TyCtxt};
 
+#[cfg(test)]
+mod tests;
+
 const TAG_FILE_FOOTER: u128 = 0xC0FFEE_C0FFEE_C0FFEE_C0FFEE_C0FFEE;
 const TAG_SYNTAX_FOOTER: u128 = TAG_FILE_FOOTER + 1;
 const MAX_CACHE_GENERATIONS: usize = 3;
@@ -97,6 +100,8 @@ pub struct OnDiskCache {
     /// For query dep nodes that have a disk-cached return value, maps the node
     /// index to the position of its serialized value in `serialized_data`.
     query_values_index: FxHashMap<SerializedDepNodeIndex, AbsoluteBytePos>,
+    /// Dense first generation values. The sparse table still holds module syntax.
+    dense_values: Option<DenseValues>,
 
     /// For `DepKind::SideEffect` dep nodes, maps the node index to the position
     /// of its serialized [`QuerySideEffect`] in `serialized_data`.
@@ -129,6 +134,80 @@ pub struct OnDiskCache {
     foreign_expn_data: UnhashMap<ExpnHash, u32>,
 }
 
+/// Positions in increasing dep-node order. Contiguous little-endian offsets can
+/// be read in bulk without decoding and hashing a pair for each saved value.
+#[derive(Encodable, Decodable)]
+struct OrderedOffsets {
+    indices: GrowableBitSet<SerializedDepNodeIndex>,
+    bytes: Vec<u8>,
+}
+
+struct DenseValues {
+    ordered: OrderedOffsets,
+    /// Byte offset of the first entry for each bitmap word.
+    starts: Vec<u32>,
+}
+
+impl DenseValues {
+    fn new(ordered: OrderedOffsets) -> Result<Self, ()> {
+        let mut end = 0u32;
+        let mut starts = Vec::with_capacity(ordered.indices.words().len());
+        for word in ordered.indices.words() {
+            starts.push(end);
+            end = end.checked_add(word.count_ones() * 4).ok_or(())?;
+        }
+        if end as usize != ordered.bytes.len() {
+            return Err(());
+        }
+        Ok(Self { ordered, starts })
+    }
+
+    #[inline]
+    fn position(&self, index: SerializedDepNodeIndex) -> Option<usize> {
+        let slot = index.as_usize();
+        let word_index = slot / 64;
+        let bit = 1u64 << (slot % 64);
+        let &word = self.ordered.indices.words().get(word_index)?;
+        if word & bit == 0 {
+            return None;
+        }
+        Some((self.starts[word_index] + (word & (bit - 1)).count_ones() * 4) as usize)
+    }
+
+    #[inline]
+    fn get(&self, index: SerializedDepNodeIndex) -> Option<AbsoluteBytePos> {
+        let pos = self.position(index)?;
+        let raw = self.ordered.bytes[pos..][..4].try_into().unwrap();
+        Some(AbsoluteBytePos(u32::from_le_bytes(raw).into()))
+    }
+
+    fn pack(pairs: &[(SerializedDepNodeIndex, AbsoluteBytePos)]) -> Option<OrderedOffsets> {
+        let slots = pairs.iter().map(|(i, _)| i.as_usize() + 1).max()?;
+        // At most 12 bytes per pair including bitmap words and their offsets.
+        // Sparse or wide positions can still use the original format.
+        let bytes = pairs.len().checked_mul(4)?;
+        if slots.div_ceil(64).checked_mul(12)? > pairs.len().checked_mul(8)?
+            || bytes > u32::MAX as usize
+        {
+            return None;
+        }
+        let mut indices = GrowableBitSet::with_capacity(slots);
+        for &(index, _) in pairs {
+            if !indices.insert(index) {
+                return None;
+            }
+        }
+        let ordered = OrderedOffsets { indices, bytes: vec![0; bytes] };
+        let mut values = Self::new(ordered).unwrap();
+        for &(index, pos) in pairs {
+            let i = values.position(index).unwrap();
+            let bytes = u32::try_from(pos.0).ok()?.to_le_bytes();
+            values.ordered.bytes[i..][..4].copy_from_slice(&bytes);
+        }
+        Some(values.ordered)
+    }
+}
+
 /// With retained graph indices, a bitmap describes all aliases. Graph
 /// compaction can move indices, which need an explicit pair.
 #[derive(Default, Encodable, Decodable)]
@@ -151,6 +230,7 @@ struct Footer {
     forwarded_allocations: Vec<(usize, usize, usize)>,
     file_index_to_stable_id: FxHashMap<SourceFileIndex, EncodedSourceFileId>,
     query_values_index: Vec<(SerializedDepNodeIndex, AbsoluteBytePos)>,
+    ordered_offsets: Option<OrderedOffsets>,
     side_effects_index: Vec<(SerializedDepNodeIndex, AbsoluteBytePos)>,
     // The location of all allocations.
     // Most uses only need values up to u32::MAX, but benchmarking indicates that we can use a u64
@@ -318,6 +398,15 @@ impl OnDiskCache {
                     && footer.query_values_index.len() <= saved / 8
                     && saved_query_slots.count() >= saved / 2
             });
+        let dense_values = if let Some(ordered) = footer.ordered_offsets {
+            if previous_cache.is_some() || !footer.query_values_index.is_empty() {
+                return Err(());
+            }
+            saved_query_slots = ordered.indices.clone();
+            Some(DenseValues::new(ordered)?)
+        } else {
+            None
+        };
         let mut remapped_queries = FxHashMap::default();
         for (index, previous) in moved {
             saved_query_slots.insert(index);
@@ -348,6 +437,7 @@ impl OnDiskCache {
             pending_query_values: Default::default(),
             file_index_to_stable_id: footer.file_index_to_stable_id,
             file_index_to_file: Default::default(),
+            dense_values,
             query_values_index: footer.query_values_index.into_iter().chain(syntax).collect(),
             side_effects_index: footer.side_effects_index.into_iter().collect(),
             alloc_decoding_state,
@@ -374,6 +464,7 @@ impl OnDiskCache {
             pending_query_values: Default::default(),
             file_index_to_stable_id: Default::default(),
             file_index_to_file: Default::default(),
+            dense_values: None,
             query_values_index: Default::default(),
             side_effects_index: Default::default(),
             alloc_decoding_state: Arc::new(AllocDecodingState::new(Vec::new())),
@@ -405,8 +496,9 @@ impl OnDiskCache {
             return false;
         }
         if self.replace_overlay {
-            // All aliases point at the same slot in the previous generation. An
-            // explicitly encoded value shadows its alias and must be re-encoded.
+            // An explicitly encoded value shadows the alias and must be re-encoded.
+            // Only the first generation uses dense offsets, so this table contains
+            // every explicit value of an overlay.
             if self.query_values_index.contains_key(&previous_index) {
                 return false;
             }
@@ -589,7 +681,15 @@ impl OnDiskCache {
 
             // Encode the file footer.
             let footer_pos = encoder.position() as u64;
-            let query_values_index = mem::take(&mut encoder.query_values_index);
+            let mut query_values_index = mem::take(&mut encoder.query_values_index);
+            let ordered_offsets = if previous_cache_len.is_none() && footer_pos <= u32::MAX as u64 {
+                DenseValues::pack(&query_values_index)
+            } else {
+                None
+            };
+            if ordered_offsets.is_some() {
+                query_values_index = Vec::new();
+            }
             let side_effects_index = mem::take(&mut encoder.side_effects_index);
             encoder.encode_tagged(
                 TAG_FILE_FOOTER,
@@ -599,6 +699,7 @@ impl OnDiskCache {
                     forwarded_allocations,
                     file_index_to_stable_id,
                     query_values_index,
+                    ordered_offsets,
                     side_effects_index,
                     interpret_alloc_index,
                     syntax_contexts,
@@ -637,9 +738,8 @@ impl OnDiskCache {
         tcx: TyCtxt<'_>,
         dep_node_index: SerializedDepNodeIndex,
     ) -> Option<QuerySideEffect> {
-        let side_effect: Option<QuerySideEffect> =
-            self.load_indexed(tcx, dep_node_index, &self.side_effects_index);
-        side_effect
+        let &pos = self.side_effects_index.get(&dep_node_index)?;
+        Some(self.with_decoder(tcx, pos, |decoder| decode_tagged(decoder, dep_node_index)))
     }
 
     /// Returns true if there is a disk-cached query return value for the given node.
@@ -668,7 +768,13 @@ impl OnDiskCache {
         let mut cache = self;
         let mut index = dep_node_index;
         loop {
-            if let Some(value) = cache.load_indexed(tcx, index, &cache.query_values_index) {
+            let pos = cache
+                .dense_values
+                .as_ref()
+                .and_then(|values| values.get(index))
+                .or_else(|| cache.query_values_index.get(&index).copied());
+            if let Some(pos) = pos {
+                let value = cache.with_decoder(tcx, pos, |decoder| decode_tagged(decoder, index));
                 self.loaded_query_values.lock().insert(dep_node_index);
                 return Some(value);
             }
@@ -678,20 +784,6 @@ impl OnDiskCache {
             index = cache.remapped_queries.get(&index).copied().unwrap_or(index);
             cache = cache.previous_cache.as_deref()?;
         }
-    }
-
-    fn load_indexed<'tcx, T>(
-        &self,
-        tcx: TyCtxt<'tcx>,
-        dep_node_index: SerializedDepNodeIndex,
-        index: &FxHashMap<SerializedDepNodeIndex, AbsoluteBytePos>,
-    ) -> Option<T>
-    where
-        T: for<'a> Decodable<CacheDecoder<'a, 'tcx>>,
-    {
-        let pos = index.get(&dep_node_index).cloned()?;
-        let value = self.with_decoder(tcx, pos, |decoder| decode_tagged(decoder, dep_node_index));
-        Some(value)
     }
 
     fn with_decoder<'a, 'tcx, T, F: for<'s> FnOnce(&mut CacheDecoder<'s, 'tcx>) -> T>(

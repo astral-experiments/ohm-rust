@@ -43,7 +43,8 @@ const FILE_MAGIC: &[u8] = b"RSIC";
 // Cached public API hashes must mix fingerprints at branching components.
 // Mono edges share a query and size estimates are keyed by MIR definition.
 // Native metadata separates local inputs from upstream public hashes.
-const HEADER_FORMAT_VERSION: u16 = 61401;
+// Query footers can index dense values by a bitmap and ordered offsets.
+const HEADER_FORMAT_VERSION: u16 = 61402;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);

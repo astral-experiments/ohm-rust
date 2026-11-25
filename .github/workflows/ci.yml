@@ -317,7 +317,7 @@ jobs:
         run: >-
           python3 x.py --ci false --set build.submodules=false --set rust.debug-assertions=true
           --set rust.lto=off test --stage 1 compiler/rustc_middle
-          --test-args 'aliases_preserve_allocation_identity resolver_slots_ query::job::tests:: dep_graph::serialized::tests:: lazy_worker_cache recorder_ c_linker_generic_summary_keeps_retention_exceptions'
+          --test-args 'aliases_preserve_allocation_identity resolver_slots_ query::job::tests:: query::on_disk_cache::tests:: dep_graph::serialized::tests:: lazy_worker_cache recorder_ c_linker_generic_summary_keeps_retention_exceptions'
 
       - name: Run library search tests
         run: >-
