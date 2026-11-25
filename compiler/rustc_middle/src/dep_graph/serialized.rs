@@ -138,7 +138,8 @@ fn fingerprint_hash(fingerprint: PackedFingerprint) -> u64 {
 fn reverse_bucket(node: &DepNode, size: usize) -> usize {
     // Mix in the kind because many queries have the same definition as their key.
     let hash = fingerprint_hash(node.key_fingerprint) as usize;
-    (hash ^ node.kind.as_usize().wrapping_mul(0x9e3779b9)) & (size - 1)
+    let kind = u32::from(node.kind.as_u16()).wrapping_mul(0x9e3779b9);
+    (hash ^ kind as usize) & (size - 1)
 }
 
 /// Link the row just read into its reverse bucket.
@@ -197,8 +198,8 @@ impl SerializedDepGraph {
         source: SerializedDepNodeIndex,
     ) -> impl Iterator<Item = SerializedDepNodeIndex> + Clone {
         let header = self.row_index[source];
-        let bytes_per_index = header.width as usize;
-        let edge_bytes = header.num_edges as usize * bytes_per_index;
+        let bytes_per_index = header.layout.width as usize;
+        let edge_bytes = header.layout.num_edges as usize * bytes_per_index;
         // The padding after the last edge is too short to read another index.
         let mut raw = &self.row_bytes()[header.edges_start..][..edge_bytes + DEP_NODE_PAD];
 
@@ -235,8 +236,8 @@ impl SerializedDepGraph {
 
         let row = &self.row_index[source];
         let bytes = &self.row_bytes()[row.edges_start..];
-        let count = row.num_edges as usize;
-        match row.width {
+        let count = row.layout.num_edges as usize;
+        match row.layout.width {
             1 => walk::<1>(&bytes[..count], visit),
             2 => walk::<2>(&bytes[..count * 2], visit),
             3 => {
@@ -262,7 +263,7 @@ impl SerializedDepGraph {
         index: SerializedDepNodeIndex,
         edges: &[DepNodeIndex],
     ) -> bool {
-        match (self.row_index[index].num_edges, edges) {
+        match (self.row_index[index].layout.num_edges, edges) {
             (0, []) => true,
             (1, [edge]) => self.edge_targets_from(index).next().unwrap().as_u32() == edge.as_u32(),
             _ => false,
@@ -308,10 +309,10 @@ impl SerializedDepGraph {
         dep_node_index: SerializedDepNodeIndex,
     ) -> Fingerprint {
         let row = self.row_index[dep_node_index];
-        if row.header_len == 0 {
+        if row.layout.header_len == 0 {
             return Fingerprint::ZERO;
         }
-        self.header_at(row.edges_start - usize::from(row.header_len)).value_fingerprint()
+        self.header_at(row.edges_start - usize::from(row.layout.header_len)).value_fingerprint()
     }
 
     /// The number of dep-node indices, counting those that hold no node.
@@ -337,10 +338,42 @@ impl SerializedDepGraph {
 struct RowIndex {
     node: DepNode,
     edges_start: usize,
-    num_edges: u32,
+    layout: RowLayout,
+    next: Option<SerializedDepNodeIndex>,
+}
+
+/// The width and inline count occupy the high bits of the packed header.
+/// Decode them together with the byte stride to the next row. A zero stride
+/// indicates a count stored after the header as a varint.
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+struct RowLayout {
+    stride: u16,
     header_len: u8,
     width: u8,
-    next: Option<SerializedDepNodeIndex>,
+    num_edges: u32,
+}
+
+impl RowLayout {
+    const COUNT: usize = 1 << (SerializedNodeHeader::LEN_BITS + DEP_NODE_WIDTH_BITS);
+    const INLINE: &[Self; Self::COUNT] = &{
+        let header_len = size_of::<SerializedNodeHeader>() as u8;
+        let mut layouts =
+            [RowLayout { num_edges: 0, stride: 0, header_len, width: 0 }; Self::COUNT];
+        let mut i = 0;
+        while i < layouts.len() {
+            let width = (i & ((1 << DEP_NODE_WIDTH_BITS) - 1)) + 1;
+            layouts[i].width = width as u8;
+            if let Some(count) = (i >> DEP_NODE_WIDTH_BITS).checked_sub(1) {
+                layouts[i].num_edges = count as u32;
+                let stride = header_len as usize + width * count;
+                assert!(stride <= u16::MAX as usize);
+                layouts[i].stride = stride as u16;
+            }
+            i += 1;
+        }
+        layouts
+    };
 }
 
 impl RowIndex {
@@ -351,16 +384,14 @@ impl RowIndex {
                 key_fingerprint: PackedFingerprint::from(Fingerprint::ZERO),
             },
             edges_start: 0,
-            num_edges: 0,
-            header_len: 0,
-            width: 0,
+            layout: RowLayout::default(),
             // Empty slots are never linked. Index zero permits zero-filling this array.
             next: Some(SerializedDepNodeIndex::from_u32(0)),
         }
     }
 
     fn end(self) -> usize {
-        self.edges_start + self.num_edges as usize * usize::from(self.width)
+        self.edges_start + self.layout.num_edges as usize * usize::from(self.layout.width)
     }
 }
 
@@ -399,34 +430,40 @@ impl SerializedDepGraph {
             IndexVec::<SerializedDepNodeIndex, _>::from_elem_n(RowIndex::empty(), node_max);
         let timer = profiler.generic_activity("incr_comp_load_dep_graph_rows");
         let mut buckets = vec![None; node_count.checked_next_power_of_two()?];
+        let data = &bytes[start..d.len()];
+        const HEADER_SIZE: usize = size_of::<SerializedNodeHeader>();
+        // For inline counts, the end of the fixed header is also the edge
+        // offset. Its distance to the next header end is in the layout table.
+        let mut header_end = HEADER_SIZE;
         for _ in 0..node_count {
-            let row_start = d.position();
-            // Decode the header for this edge; the header packs together as many of the fixed-size
-            // fields as possible to limit the number of times we update decoder state.
-            let node_header = SerializedNodeHeader { bytes: d.read_array() };
-
-            let Unpacked { index, kind, key_fingerprint, len, bytes_per_index, .. } =
-                node_header.unpack();
+            let header = SerializedNodeHeader { bytes: *data.get(..header_end)?.last_chunk()? };
+            let Unpacked { index, kind, key_fingerprint, .. } = header.unpack();
             let row = row_index.get_mut(index)?;
             if kind == DepKind::Null || row.node.kind != DepKind::Null {
                 return None;
             }
             row.node = DepNode { kind, key_fingerprint };
-
-            // If the length of this node's edge list is small, the length is stored in the header.
-            // If it is not, we fall back to another decoder call.
-            let (num_edges, header_len) = match len {
-                Some(len) => (len, size_of::<SerializedNodeHeader>() as u8),
-                None => (d.read_u32(), (d.position() - row_start).try_into().unwrap()),
-            };
-
-            row.edges_start = d.position() - start;
-            row.num_edges = num_edges;
-            row.header_len = header_len;
-            row.width = bytes_per_index as u8;
-            let _ = d.read_raw_bytes(bytes_per_index * num_edges as usize);
+            row.layout = header.layout();
+            row.edges_start = header_end;
+            if row.layout.stride == 0 {
+                std::hint::cold_path();
+                let mut len = d.split_at(start + header_end);
+                row.layout.num_edges = len.read_u32();
+                row.edges_start = len.position() - start;
+                let extra = row.edges_start - header_end;
+                row.layout.header_len = (HEADER_SIZE + extra).try_into().ok()?;
+                let extent =
+                    (row.layout.num_edges as usize).checked_mul(usize::from(row.layout.width))?;
+                header_end = row.edges_start.checked_add(extent)?.checked_add(HEADER_SIZE)?;
+            } else {
+                // The header read above bounds the offset by the length of a slice.
+                header_end += usize::from(row.layout.stride);
+            }
             link_row(&mut row_index, &mut buckets, index);
         }
+        // Each header read bounds the preceding edge list. Bound the final
+        // list too and resume decoding the footer after the rows.
+        let _ = d.read_raw_bytes(header_end - HEADER_SIZE);
         drop(timer);
         let padded_end = d.position() + DEP_NODE_PAD;
         let mut total = 0;
@@ -535,8 +572,18 @@ impl SerializedNodeHeader {
     }
 
     #[inline]
+    fn head(&self) -> u16 {
+        u16::from_le_bytes(self.bytes[..2].try_into().unwrap())
+    }
+
+    #[inline]
+    fn layout(&self) -> RowLayout {
+        RowLayout::INLINE[usize::from(self.head()) >> Self::KIND_BITS]
+    }
+
+    #[inline]
     fn unpack(&self) -> Unpacked {
-        let head = u16::from_le_bytes(self.bytes[..2].try_into().unwrap());
+        let head = self.head();
         let index = u32::from_le_bytes(self.bytes[2..6].try_into().unwrap());
         let key_fingerprint = self.bytes[6..22].try_into().unwrap();
         let value_fingerprint = self.bytes[22..].try_into().unwrap();
@@ -929,7 +976,7 @@ impl EncoderState {
         // and reused slots can put adjacent indices in different parts of the file.
         // Only join rows whose byte ranges are contiguous.
         let mut append = |row: &RowIndex| {
-            let start = row.edges_start - usize::from(row.header_len);
+            let start = row.edges_start - usize::from(row.layout.header_len);
             if start != run.end {
                 encoder.emit_raw_bytes(&bytes[run.clone()]);
                 run.start = start;
@@ -937,7 +984,7 @@ impl EncoderState {
             }
             run.end = row.end();
             nodes += 1;
-            edges += row.num_edges as usize;
+            edges += row.layout.num_edges as usize;
             kinds[row.node.kind.as_usize()] += 1;
             run_offset + (start - run.start)
         };
