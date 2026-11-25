@@ -11,4 +11,7 @@ fn uses_const() {
     CONST;
 }
 
-fn main() {}
+fn main() {
+    // Keep the direct constant live during dead-code analysis. It has no typed body.
+    uses_const();
+}

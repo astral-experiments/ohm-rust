@@ -10,12 +10,13 @@ use std::sync::atomic::Ordering;
 use hir::def_id::{LocalDefIdMap, LocalDefIdSet};
 use rustc_abi::FieldIdx;
 use rustc_attr_ir::find_attr;
-use rustc_data_structures::fx::{FxHashMap, FxHashSet, FxIndexSet};
+use rustc_data_structures::fx::{FxHashMap, FxIndexSet};
 use rustc_errors::{ErrorGuaranteed, MultiSpan};
 use rustc_hir::def::{CtorKind, CtorOf, DefKind, Res};
 use rustc_hir::def_id::{DefId, LocalDefId, LocalModId};
 use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::{self as hir, ForeignItemId, ItemId, Node, PatKind, QPath};
+use rustc_index::IndexVec;
 use rustc_lint_defs::builtin::{DEAD_CODE, DEAD_CODE_PUB_IN_BINARY};
 use rustc_lint_defs::{self as lint, Lint, StableLintExpectationId};
 use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
@@ -124,6 +125,7 @@ enum ImplItemCheckResult {
 struct SymbolUseVisitor<'tcx> {
     tcx: TyCtxt<'tcx>,
     uses: Vec<SymbolUse>,
+    primary_body: Option<LocalDefId>,
     maybe_typeck_results: Option<&'tcx ty::TypeckResults<'tcx>>,
     repr_unconditionally_treats_fields_as_live: bool,
     repr_has_repr_simd_or_scalable: bool,
@@ -131,11 +133,34 @@ struct SymbolUseVisitor<'tcx> {
     ignore_variant_stack: Vec<DefId>,
 }
 
+/// Whether to collect liveness information for the declaration and body together.
+/// Leave derived methods on the path that handles ignored trait implementations.
+fn summarize_item(tcx: TyCtxt<'_>, id: LocalDefId) -> bool {
+    match tcx.def_kind(id) {
+        // A direct const argument has no typed body.
+        DefKind::Const => !tcx.features().gca_min_const_items(),
+        DefKind::Fn => !tcx.is_foreign_item(id),
+        DefKind::AssocFn => {
+            let parent = tcx.local_parent(id);
+            matches!(tcx.def_kind(parent), DefKind::Impl { .. })
+                && !tcx.is_automatically_derived(parent.to_def_id())
+        }
+        _ => false,
+    }
+}
+
 fn body_uses<'tcx>(tcx: TyCtxt<'tcx>, id: LocalDefId) -> &'tcx BodyUses<'tcx> {
     let results = tcx.typeck(id);
     let mut visitor = SymbolUseVisitor::new(tcx);
-    let tainted_by_errors =
-        visitor.visit_typed_body(tcx.hir_body_owned_by(id), results).break_value();
+    // Include the signature of the item in the existing
+    // summary. Then the crate-wide traversal depends on the symbols the
+    // item uses, even when the HIR of its body changes.
+    let tainted_by_errors = if summarize_item(tcx, id) {
+        visitor.primary_body = Some(id);
+        visitor.visit_node(tcx.hir_node_by_def_id(id)).break_value()
+    } else {
+        visitor.visit_typed_body(tcx.hir_body_owned_by(id), results).break_value()
+    };
     tcx.arena.alloc(BodyUses {
         trait_imports: &results.used_trait_imports,
         tainted_by_errors,
@@ -148,6 +173,7 @@ impl<'tcx> SymbolUseVisitor<'tcx> {
         Self {
             tcx,
             uses: Vec::new(),
+            primary_body: None,
             maybe_typeck_results: None,
             repr_unconditionally_treats_fields_as_live: false,
             repr_has_repr_simd_or_scalable: false,
@@ -473,7 +499,7 @@ impl<'tcx> SymbolUseVisitor<'tcx> {
 struct Liveness<'tcx> {
     worklist: Vec<WorkItem>,
     tcx: TyCtxt<'tcx>,
-    scanned: FxHashSet<(LocalDefId, ComesFromAllowExpect)>,
+    scanned: IndexVec<LocalDefId, Option<ComesFromAllowExpect>>,
     live_symbols: LocalDefIdSet,
     // maps from ADTs to ignored derived traits (e.g. Debug and Clone)
     // and the span of their respective impl (i.e., part of the derive
@@ -598,18 +624,28 @@ impl<'tcx> Liveness<'tcx> {
                 }
             }
 
-            if !self.scanned.insert((id, propagated)) {
+            // A visit from an ordinary root subsumes both contexts. After a visit
+            // from an allow/expect root we must still process an ordinary visit.
+            let scanned = self.scanned.ensure_contains_elem(id, || None);
+            if *scanned == Some(ComesFromAllowExpect::No) || *scanned == Some(propagated) {
                 continue;
-            } else if propagated == ComesFromAllowExpect::No {
-                // If the item is not coming from an `#[allow]` or `#[expect]`,
-                // we also mark it as scanned with `ComesFromAllowExpect::Yes`
-                // to avoid re-scanning it in the future.
-                self.scanned.insert((id, ComesFromAllowExpect::Yes));
             }
+            *scanned = Some(propagated);
 
             // Avoid accessing the HIR for the synthesized associated type generated for RPITITs.
             if self.tcx.is_impl_trait_in_trait(id.to_def_id()) {
                 self.live_symbols.insert(id);
+                continue;
+            }
+
+            if summarize_item(self.tcx, id) {
+                let uses = self.tcx.body_uses(id);
+                for &usage in uses.symbols {
+                    self.mark_use(usage);
+                }
+                if let Some(err) = uses.tainted_by_errors {
+                    return Err(err);
+                }
                 continue;
             }
 
@@ -772,7 +808,11 @@ impl<'tcx> Visitor<'tcx> for SymbolUseVisitor<'tcx> {
         if self.maybe_typeck_results.is_some() {
             return self.visit_typed_body(self.tcx.hir_body(body), self.tcx.typeck_body(body));
         }
-        let uses = self.tcx.body_uses(self.tcx.hir_body_owner_def_id(body));
+        let owner = self.tcx.hir_body_owner_def_id(body);
+        if self.primary_body == Some(owner) {
+            return self.visit_typed_body(self.tcx.hir_body(body), self.tcx.typeck(owner));
+        }
+        let uses = self.tcx.body_uses(owner);
         self.uses.extend_from_slice(uses.symbols);
         match uses.tainted_by_errors {
             Some(err) => ControlFlow::Break(err),
@@ -950,12 +990,15 @@ fn has_allow_dead_code_or_lang_attr(
     tcx: TyCtxt<'_>,
     def_id: LocalDefId,
 ) -> Option<ComesFromAllowExpect> {
-    fn has_allow_expect_dead_code(tcx: TyCtxt<'_>, def_id: LocalDefId) -> bool {
-        let hir_id = tcx.local_def_id_to_hir_id(def_id);
-        let lint_level = tcx.lint_level_spec_at_node(DEAD_CODE, hir_id).level();
-        matches!(lint_level, lint::Allow | lint::Expect)
-    }
+    dead_code_seed(tcx, def_id, tcx.local_def_id_to_hir_id(def_id))
+}
 
+/// Classify a seed when its HIR identity is already available.
+fn dead_code_seed(
+    tcx: TyCtxt<'_>,
+    def_id: LocalDefId,
+    hir_id: hir::HirId,
+) -> Option<ComesFromAllowExpect> {
     fn has_used_like_attr(tcx: TyCtxt<'_>, def_id: LocalDefId) -> bool {
         tcx.def_kind(def_id).has_codegen_attrs() && {
             let cg_attrs = tcx.codegen_fn_attrs(def_id);
@@ -968,10 +1011,11 @@ fn has_allow_dead_code_or_lang_attr(
         }
     }
 
-    if has_allow_expect_dead_code(tcx, def_id) {
+    if matches!(tcx.lint_level_spec_at_node(DEAD_CODE, hir_id).level(), lint::Allow | lint::Expect)
+    {
         Some(ComesFromAllowExpect::Yes)
     } else if has_used_like_attr(tcx, def_id)
-        || find_attr!(tcx, def_id, Lang(..) | RustcCanonicalSymbol)
+        || find_attr!(tcx, hir_id, Lang(..) | RustcCanonicalSymbol)
     {
         Some(ComesFromAllowExpect::No)
     } else {
@@ -1000,7 +1044,8 @@ fn maybe_record_as_seed<'tcx>(
     push_into_worklist: &mut impl FnMut(WorkItem),
     unsolved_items: &mut Vec<LocalDefId>,
 ) {
-    let allow_dead_code = has_allow_dead_code_or_lang_attr(tcx, owner_id.def_id);
+    let allow_dead_code =
+        dead_code_seed(tcx, owner_id.def_id, hir::HirId::make_owner(owner_id.def_id));
     if let Some(comes_from_allow) = allow_dead_code {
         push_into_worklist(WorkItem {
             id: owner_id.def_id,

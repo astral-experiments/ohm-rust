@@ -5,7 +5,8 @@ use rustc_hir::HirId;
 use rustc_hir::def_id::{DefId, LocalDefId, LocalDefIdMap, LocalDefIdSet};
 use rustc_macros::{StableHash, TyDecodable, TyEncodable};
 
-/// The names that one typed body uses, independently of which bodies are live.
+/// The names used by a typed body, including the signature for ordinary
+/// functions, constants and impl methods, independently of which bodies are live.
 #[derive(Clone, Copy, Debug, StableHash, TyDecodable, TyEncodable)]
 pub struct BodyUses<'tcx> {
     pub trait_imports: &'tcx UnordSet<LocalDefId>,
