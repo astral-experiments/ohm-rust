@@ -290,6 +290,13 @@ fn check_derive_after_last_method() {
                   }\n\
                   #[derive(Clone, Debug)]\n\
                   pub enum Ink<T> { None, Color(T) }\n";
+    check_last_method(source);
+    let trait_impl =
+        source.replace("impl Writer", "trait Write { fn write(); } impl Write for Writer");
+    check_last_method(&trait_impl);
+}
+
+fn check_last_method(source: &str) {
     let moved = source.replace("write() {}", "write() {\n let _ = \"μ\";\n}");
     let first = hash(source, true, false);
     let disk = disk_hash();
