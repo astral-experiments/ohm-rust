@@ -4103,6 +4103,7 @@ fn prefetch_mir(tcx: TyCtxt<'_>) {
 // will allow us to slice the metadata to the precise length that we just
 // generated regardless of trailing bytes that end up in it.
 
+#[derive(Default)]
 pub struct EncodedMetadata {
     // The declaration order matters because `full_metadata` should be dropped
     // before `_temp_dir`.

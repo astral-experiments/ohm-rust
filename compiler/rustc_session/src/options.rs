@@ -264,6 +264,14 @@ macro_rules! top_level_options {
         }
 
         impl Options {
+            /// Run full analysis without producing a library when only dep-info was requested.
+            /// Explicit metadata and codegen requests always take precedence.
+            pub fn ohm_check_only(&self) -> bool {
+                self.unstable_opts.ohm_check_only
+                    && self.output_types.len() == 1
+                    && self.output_types.contains_key(&OutputType::DepInfo)
+            }
+
             pub fn dep_tracking_hash(&self, for_crate_hash: bool) -> Hash64 {
                 if !for_crate_hash
                     && self.unstable_opts.ohm_shared_stages
@@ -271,7 +279,8 @@ macro_rules! top_level_options {
                     && self.output_types.keys().all(|kind| matches!(
                         kind, OutputType::Metadata | OutputType::DepInfo | OutputType::Exe
                     ))
-                    && (self.output_types.contains_key(&OutputType::Metadata)
+                    && (self.ohm_check_only()
+                        || self.output_types.contains_key(&OutputType::Metadata)
                         || self.output_types.contains_key(&OutputType::Exe))
                 {
                     let mut options = self.clone();
@@ -2760,6 +2769,8 @@ options! {
         "group incremental generic instances by local callable arguments or by sole users at opt level 0"),
     ohm_cgu_split_limit: Option<NonZero<usize>> = (None, parse_opt_number, [TRACKED],
         "maximum shards per oversized incremental codegen unit at opt-level 0 or 1; 1 disables splitting"),
+    ohm_check_only: bool = (false, parse_bool, [UNTRACKED],
+        "run full analysis even when only dep-info is requested"),
     ohm_check_relink_inputs: bool = (false, parse_bool, [TRACKED],
         "check native codegen inputs before allowing Cargo to reuse saved objects"),
     ohm_early_metadata: bool = (false, parse_bool, [TRACKED],

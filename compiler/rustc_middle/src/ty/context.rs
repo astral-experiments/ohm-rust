@@ -1299,6 +1299,9 @@ impl<'tcx> TyCtxt<'tcx> {
     }
 
     pub fn needs_metadata(self) -> bool {
+        if self.sess.opts.ohm_check_only() {
+            return false;
+        }
         self.crate_types().iter().any(|ty| match *ty {
             CrateType::Executable
             | CrateType::StaticLib

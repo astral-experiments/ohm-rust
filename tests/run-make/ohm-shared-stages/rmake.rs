@@ -119,6 +119,7 @@ fn consumer(expected: u64) {
 }
 
 fn main() {
+    check_without_metadata();
     rfs::write("api.rs", "pub fn id<T>(value: T) -> T { value }\npub fn seed() -> u64 { id(0) }\n");
     for (directory, emit) in [("api-check", "metadata"), ("api-build", "metadata,link")] {
         rfs::create_dir(directory);
@@ -272,4 +273,40 @@ fn main() {
         .run()
         .stderr_utf8();
     assert!(log.contains("ohm_latest_check_reuse, kind=mir_borrowck"), "{log}");
+}
+
+fn check_without_metadata() {
+    let compile = |emit: &str| {
+        let mut command = rustc();
+        command
+            .input("leaf.rs")
+            .crate_type("rlib")
+            .arg("-Zohm-early-metadata")
+            .arg("-Zohm-shared-stages")
+            .arg("-Zpublic-api-hash")
+            .incremental("leaf-incremental")
+            .emit(emit);
+        command
+    };
+
+    // Asking for dep-info alone normally stops before checking the body.
+    rfs::write("leaf.rs", "pub fn value() -> u8 { false }");
+    compile("dep-info").run();
+    compile("dep-info").arg("-Zohm-check-only").run_fail().assert_stderr_contains("E0308");
+
+    rfs::write("leaf.rs", "pub fn value() -> u8 { 1 }");
+    compile("dep-info").arg("-Zohm-check-only").run();
+    assert!(PathBuf::from("leaf.d").is_file());
+    assert!(!PathBuf::from("libleaf.rmeta").exists());
+
+    // An explicit output request wins. The check's state must remain usable.
+    compile("metadata,dep-info").arg("-Zohm-check-only").arg("-Zassert-incr-state=loaded").run();
+    assert!(PathBuf::from("libleaf.rmeta").is_file());
+
+    rfs::write("leaf.rs", "pub fn value() -> u16 { 256 }");
+    compile("dep-info").arg("-Zohm-check-only").arg("-Zassert-incr-state=loaded").run();
+    compile("metadata,link").arg("-Zassert-incr-state=loaded").run();
+    rfs::write("caller.rs", "extern crate leaf; fn main() { assert_eq!(256u16, leaf::value()); }");
+    rustc().input("caller.rs").extern_("leaf", "libleaf.rlib").run();
+    run("caller");
 }
