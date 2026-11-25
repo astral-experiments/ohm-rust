@@ -1,12 +1,17 @@
 //! Random access to a check's serialized graph, without materializing its nodes or edges.
 
 use std::cell::Cell;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use rustc_data_structures::fingerprint::Fingerprint;
+use rustc_index::IndexSlice;
 use rustc_serialize::opaque::MemDecoder;
 use rustc_serialize::{Decoder, Encoder};
 
-use super::{DepKind, DepNode, DepNodeIndex, SerializedDepNodeIndex, SerializedNodeHeader};
+use super::{
+    DepKind, DepNode, DepNodeIndex, SerializedDepGraph, SerializedDepNodeIndex,
+    SerializedNodeHeader,
+};
 
 const FOOTER_BYTES: usize = 24;
 const INDEX_TRAILER_BYTES: usize = 24;
@@ -32,18 +37,12 @@ impl SeekIndexBuilder {
 
     /// Rows arrive in slot order, including holes and slots written by other workers.
     #[inline]
-    pub(super) fn record_retained<'a>(
-        &mut self,
-        rows: impl ExactSizeIterator<Item = Option<(DepNodeIndex, &'a DepNode, usize)>>,
-    ) {
+    pub(super) fn record_retained(&mut self, rows: impl ExactSizeIterator<Item = Option<usize>>) {
         self.reserve_slots(rows.len());
         for (slot, row) in self.offsets.iter_mut().zip(rows) {
-            if let Some((index, node, offset)) = row {
+            if let Some(offset) = row {
                 debug_assert_eq!(*slot, [0; 8]);
                 *slot = (offset as u64).to_le_bytes();
-                if matches!(node.kind, DepKind::typeck_root | DepKind::mir_borrowck) {
-                    self.roots.push((*node, index));
-                }
             }
         }
     }
@@ -63,16 +62,79 @@ impl SeekIndexBuilder {
         self.roots.append(roots);
     }
 
+    /// Merge newly written roots with retained entries from the old directory.
+    /// A strictly increasing sequence of retained root keys with the expected
+    /// count must contain every retained root exactly once.
+    fn merge_roots(
+        &self,
+        previous: &SerializedDepGraph,
+        retained: &IndexSlice<SerializedDepNodeIndex, AtomicBool>,
+        count: usize,
+    ) -> Option<Vec<[u8; 4]>> {
+        let mut merged = Vec::with_capacity(count);
+        let mut new = self.roots.iter().peekable();
+        let mut last = None;
+        for &slot in &previous.sorted_roots {
+            let raw = u32::from_le_bytes(slot);
+            if !retained.raw.get(raw as usize)?.load(Ordering::Relaxed) {
+                continue;
+            }
+            let node = previous.index_to_node(SerializedDepNodeIndex::from_u32(raw));
+            if !matches!(node.kind, DepKind::typeck_root | DepKind::mir_borrowck) {
+                return None;
+            }
+            let current = key(node);
+            if last.is_some_and(|last| last >= current) {
+                return None;
+            }
+            last = Some(current);
+            while let Some((_, index)) = new.next_if(|(node, _)| key(node) < current) {
+                merged.push(index.as_u32().to_le_bytes());
+            }
+            merged.push(slot);
+        }
+        merged.extend(new.map(|(_, index)| index.as_u32().to_le_bytes()));
+        (merged.len() == count).then_some(merged)
+    }
+
     /// Appends an optional seek directory before the ordinary graph footer.
-    pub(super) fn encode(&mut self, encoder: &mut impl Encoder, start: usize, node_max: u32) {
+    pub(super) fn encode(
+        &mut self,
+        encoder: &mut impl Encoder,
+        start: usize,
+        node_max: u32,
+        previous: &SerializedDepGraph,
+        retained: &IndexSlice<SerializedDepNodeIndex, AtomicBool>,
+        count: usize,
+    ) {
         assert!(self.offsets.len() <= node_max as usize);
         self.reserve_slots(node_max as usize);
         encoder.emit_raw_bytes(self.offsets.as_flattened());
         self.roots.sort_unstable_by_key(|(node, _)| key(node));
-        for (_, index) in &self.roots {
-            encoder.emit_raw_bytes(&index.as_u32().to_le_bytes());
+        if self.roots.len() != count
+            && let Some(merged) = self.merge_roots(previous, retained, count)
+        {
+            encoder.emit_raw_bytes(merged.as_flattened());
+        } else {
+            if self.roots.len() != count {
+                // The previous graph may have no seek directory, or a
+                // malformed one. Reconstruct it from the decoded rows.
+                for (index, flag) in retained.iter_enumerated() {
+                    if flag.load(Ordering::Relaxed) {
+                        let node = previous.index_to_node(index);
+                        if matches!(node.kind, DepKind::typeck_root | DepKind::mir_borrowck) {
+                            self.roots.push((*node, DepNodeIndex::from_u32(index.as_u32())));
+                        }
+                    }
+                }
+                self.roots.sort_unstable_by_key(|(node, _)| key(node));
+            }
+            assert_eq!(self.roots.len(), count);
+            for (_, index) in &self.roots {
+                encoder.emit_raw_bytes(&index.as_u32().to_le_bytes());
+            }
         }
-        for value in [start as u64, self.roots.len() as u64, INDEX_MAGIC] {
+        for value in [start as u64, count as u64, INDEX_MAGIC] {
             encoder.emit_raw_bytes(&value.to_le_bytes());
         }
     }
@@ -88,6 +150,11 @@ pub(super) struct SeekIndexMetadata {
 }
 
 impl SeekIndexMetadata {
+    pub(super) fn roots(self, data: &[u8]) -> &[[u8; 4]] {
+        // decode checked this span against the start of the trailer.
+        data[self.roots_start..self.roots_start + self.roots_len * 4].as_chunks().0
+    }
+
     pub(super) fn decode(decoder: &mut MemDecoder<'_>) -> Option<Self> {
         let footer = decoder.len().checked_sub(FOOTER_BYTES)?;
         let trailer = footer.checked_sub(INDEX_TRAILER_BYTES)?;

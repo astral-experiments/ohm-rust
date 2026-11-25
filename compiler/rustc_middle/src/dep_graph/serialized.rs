@@ -49,7 +49,7 @@ mod index;
 #[cfg(test)]
 mod tests;
 pub(super) use index::IndexedDepGraph;
-use index::SeekIndexBuilder;
+use index::{SeekIndexBuilder, SeekIndexMetadata};
 use rustc_data_structures::fingerprint::{Fingerprint, PackedFingerprint};
 use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::memmap::Mmap;
@@ -110,6 +110,8 @@ pub struct SerializedDepGraph {
     rows: Option<OwnedSlice>,
     /// The head of each reverse lookup chain. Its links live in `row_index`.
     buckets: Vec<Option<SerializedDepNodeIndex>>,
+    /// Slots from the optional seek directory, in root-key order.
+    sorted_roots: Vec<[u8; 4]>,
     /// The number of nodes actually encoded. [`Self::index_space_len`] also
     /// counts the holes.
     live_node_count: usize,
@@ -426,6 +428,8 @@ impl SerializedDepGraph {
 
         debug!(?node_count, ?edge_count);
 
+        let sorted_roots = SeekIndexMetadata::decode(d)
+            .map_or_else(Vec::new, |index| index.roots(&bytes).to_vec());
         let mut row_index =
             IndexVec::<SerializedDepNodeIndex, _>::from_elem_n(RowIndex::empty(), node_max);
         let timer = profiler.generic_activity("incr_comp_load_dep_graph_rows");
@@ -481,6 +485,7 @@ impl SerializedDepGraph {
             row_index,
             rows: Some(rows),
             buckets,
+            sorted_roots,
             live_node_count: node_count,
             session_count,
         }))
@@ -938,7 +943,16 @@ impl EncoderState {
 
         if let Some(index) = &self.seek_index {
             let start = encoder.position();
-            index.lock().encode(&mut encoder, start, node_max);
+            let count = kind_stats[DepKind::typeck_root.as_usize()]
+                + kind_stats[DepKind::mir_borrowck.as_usize()];
+            index.lock().encode(
+                &mut encoder,
+                start,
+                node_max,
+                &self.previous,
+                &self.retained_rows,
+                count as usize,
+            );
         }
 
         debug!(?node_max, ?node_count, ?edge_count);
@@ -989,18 +1003,13 @@ impl EncoderState {
             run_offset + (start - run.start)
         };
 
-        let rows = self.previous.row_index.iter_enumerated().zip(self.retained_rows.iter());
+        let rows = self.previous.row_index.iter().zip(self.retained_rows.iter());
         if let Some(seek) = &self.seek_index {
-            seek.lock().record_retained(rows.map(|((index, row), retained)| {
-                if retained.load(Ordering::Relaxed) {
-                    let offset = append(row);
-                    Some((DepNodeIndex::from_u32(index.as_u32()), &row.node, offset))
-                } else {
-                    None
-                }
-            }));
+            seek.lock().record_retained(
+                rows.map(|(row, retained)| retained.load(Ordering::Relaxed).then(|| append(row))),
+            );
         } else {
-            for ((_, row), retained) in rows {
+            for (row, retained) in rows {
                 if retained.load(Ordering::Relaxed) {
                     append(row);
                 }
