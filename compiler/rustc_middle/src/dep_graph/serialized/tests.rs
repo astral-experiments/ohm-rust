@@ -195,12 +195,20 @@ fn check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges() {
     NodeInfo { node: retained, value_fingerprint: Fingerprint::ZERO, edges: &dependencies }
         .encode(&mut file, retained_index);
     count += 1;
-    seek.record_retained((0..400usize).map(|slot| {
-        (slot == retained_index.as_usize()).then_some((retained_index, &retained, offset))
-    }));
+    seek.record_retained(
+        (0..400usize).map(|slot| (slot == retained_index.as_usize()).then_some(offset)),
+    );
     let start = file.data.len();
     let node_max = 512;
-    seek.encode(&mut file, start, node_max);
+    let mut old = vec![node(DepKind::Null, 0, 0); 400];
+    old[retained_index.as_usize()] = retained;
+    let mut previous = graph(old);
+    let flags = IndexVec::from_fn_n(
+        |i: SerializedDepNodeIndex| AtomicBool::new(i.as_u32() == retained_index.as_u32()),
+        400,
+    );
+    previous.sorted_roots = vec![retained_index.as_u32().to_le_bytes()];
+    seek.encode(&mut file, start, node_max, &previous, &flags, 3);
     for value in [u64::from(node_max), count, 2 * dependencies.len() as u64] {
         file.emit_raw_bytes(&value.to_le_bytes());
     }
@@ -236,4 +244,25 @@ fn check_index_reads_requested_nodes_with_sparse_indices_and_spilled_edges() {
         &file.data[file.data.len() - 24 - rustc_serialize::opaque::MAGIC_END_BYTES.len()..],
     );
     assert!(IndexedDepGraph::new(&legacy, 8).is_none());
+}
+
+#[test]
+fn retained_roots_match_reconstruction_even_with_an_invalid_directory() {
+    let root = |n| node(DepKind::typeck_root, n, 2);
+    let mut previous = graph(vec![root(1), node(DepKind::Red, 3, 4), root(3), root(4)]);
+    let flags =
+        IndexVec::from_fn_n(|i: SerializedDepNodeIndex| AtomicBool::new(i.as_u32() != 3), 4);
+    let encode = |graph: &SerializedDepGraph| {
+        let mut seek = SeekIndexBuilder::default();
+        let mut additions = vec![(root(2), DepNodeIndex::from_u32(4))];
+        seek.record_chunk(32, 5, &mut Vec::new(), &mut additions);
+        let mut file = MemEncoder::new();
+        seek.encode(&mut file, 0, 5, graph, &flags, 3);
+        file.data
+    };
+    let expected = encode(&previous);
+    for slots in [vec![0, 2, 3], vec![0], vec![2, 0], vec![0, 0], vec![0, 1], vec![u32::MAX]] {
+        previous.sorted_roots = slots.into_iter().map(u32::to_le_bytes).collect();
+        assert_eq!(encode(&previous), expected);
+    }
 }
