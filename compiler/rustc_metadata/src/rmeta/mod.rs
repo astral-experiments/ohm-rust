@@ -53,7 +53,7 @@ use table::TableBuilder;
 use crate::eii::EiiMapEncodedKeyValue;
 use crate::rmeta::encoder::MetadataEncoder;
 use crate::rmeta::encoder::public_api_hasher::{
-    GraphHashed, PublicHashes, RDRHashAll, RDRHashNone,
+    GraphHashed, PublicHashes, RDRHashAll, RDRHashDocLinks, RDRHashNone,
 };
 
 mod decoder;
@@ -603,8 +603,8 @@ define_tables! {
     macro_definition: Table<RDRHashAll, DefIndex, LazyValue<ast::DelimArgs>>,
     deduced_param_attrs: Table<RDRHashAll, DefIndex, LazyArray<DeducedParamAttrs>>,
     collect_return_position_impl_trait_in_trait_tys: Table<RDRHashAll, DefIndex, LazyValue<DefIdMap<ty::EarlyBinder<'static, Ty<'static>>>>>,
-    doc_link_resolutions: Table<RDRHashAll, DefIndex, LazyValue<DocLinkResMap>>,
-    doc_link_traits_in_scope: Table<RDRHashAll, DefIndex, LazyArray<DefId>>,
+    doc_link_resolutions: Table<RDRHashDocLinks, DefIndex, LazyValue<DocLinkResMap>>,
+    doc_link_traits_in_scope: Table<RDRHashDocLinks, DefIndex, LazyArray<DefId>>,
     assumed_wf_types_for_rpitit: Table<RDRHashAll, DefIndex, LazyArray<(Ty<'static>, Span)>>,
     opaque_ty_origin: Table<RDRHashAll, DefIndex, LazyValue<hir::OpaqueTyOrigin<DefId>>>,
     anon_const_kind: Table<RDRHashAll, DefIndex, LazyValue<ty::AnonConstKind>>,
