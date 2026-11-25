@@ -9,6 +9,7 @@ use rustc_codegen_ssa::MemFlags;
 use rustc_codegen_ssa::mir::operand::{OperandRef, OperandValue};
 use rustc_codegen_ssa::mir::place::{PlaceRef, PlaceValue};
 use rustc_codegen_ssa::traits::*;
+use rustc_middle::mono::MonoItem;
 use rustc_middle::ty;
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::layout::LayoutOf;
@@ -111,6 +112,44 @@ fn get_attrs<'ll>(this: &ArgAttributes, cx: &CodegenCx<'ll, '_>) -> SmallVec<[&'
     }
 
     attrs
+}
+
+/// Stabilize the LLVM hint on calls and declarations that borrow a large opaque
+/// upstream struct. Adding a private field can change this hint in many units
+/// that only pass the pointer along, preventing reuse of their native objects.
+///
+/// Round down so the guarantee remains valid. Keep the exact hint on definitions
+/// because LLVM can use it to speculate loads from the end of the struct.
+fn borrowed_arg_hint(
+    sess: &Session,
+    conv: CanonAbi,
+    ty: Ty<'_>,
+    attrs: &ArgAttributes,
+) -> Option<ArgAttributes> {
+    const GRANULE: u64 = 16;
+    let bytes = attrs.pointee_size.bytes();
+    if bytes >= 64
+        && bytes % GRANULE != 0
+        && conv == CanonAbi::Rust
+        && attrs.regular.contains(ArgAttribute::NoFree)
+        && sess.opts.optimize == config::OptLevel::Less
+        && sess.opts.incremental.is_some()
+        && sess.opts.unstable_opts.ohm_check_relink_inputs
+        && sess.opts.debuginfo == config::DebugInfo::LineTablesOnly
+        && sess.target.llvm_target == "x86_64-unknown-linux-gnu"
+        && sess.opts.cg.llvm_args.is_empty()
+        && sess.lto() == config::Lto::No
+        && let ty::Ref(_, referent, rustc_hir::Mutability::Not) = *ty.kind()
+        && let ty::Adt(def, args) = *referent.kind()
+        && args.is_empty()
+        && !def.did().is_local()
+        && def.is_struct()
+        && def.all_fields().all(|field| !field.vis.is_public())
+    {
+        Some(ArgAttributes { pointee_size: Size::from_bytes(bytes - bytes % GRANULE), ..*attrs })
+    } else {
+        None
+    }
 }
 
 impl ArgAttributesExt for ArgAttributes {
@@ -561,7 +600,13 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
                     attributes::apply_to_llfn(llfn, llvm::AttributePlace::Argument(i), &[byref]);
                 }
                 PassMode::Direct(attrs) => {
-                    let i = apply(attrs);
+                    let hint = borrowed_arg_hint(cx.sess(), self.conv, arg.layout.ty, attrs)
+                        .filter(|_| {
+                            instance.is_some_and(|i| {
+                                !cx.codegen_unit.items().contains_key(&MonoItem::Fn(i))
+                            })
+                        });
+                    let i = apply(hint.as_ref().unwrap_or(attrs));
                     if let BackendRepr::Scalar(scalar) = arg.layout.backend_repr {
                         apply_range_attr(llvm::AttributePlace::Argument(i), scalar);
                     }
@@ -720,8 +765,11 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
                         &[byref],
                     );
                 }
-                PassMode::Direct(attrs)
-                | PassMode::Indirect {
+                PassMode::Direct(attrs) => {
+                    let hint = borrowed_arg_hint(bx.cx.sess(), self.conv, arg.layout.ty, attrs);
+                    apply(bx.cx, hint.as_ref().unwrap_or(attrs));
+                }
+                PassMode::Indirect {
                     attrs,
                     meta_attrs: None,
                     address_space: _,
