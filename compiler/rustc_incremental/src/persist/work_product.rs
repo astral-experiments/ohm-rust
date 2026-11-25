@@ -14,7 +14,7 @@ use crate::diagnostics;
 use crate::persist::fs::*;
 
 /// Copies a CGU work product to the incremental compilation directory, so next compilation can
-/// find and reuse it.
+/// find and reuse it. Files with the `preserve_name` extension keep their original basename.
 ///
 /// Panics when incr comp is disabled.
 pub fn copy_cgu_workproduct_to_incr_comp_cache_dir(
@@ -22,13 +22,18 @@ pub fn copy_cgu_workproduct_to_incr_comp_cache_dir(
     incr_comp_session: &IncrCompSession,
     cgu_name: &str,
     files: &[(&'static str, &Path)],
+    preserve_name: Option<&str>,
 ) -> (WorkProductId, WorkProduct) {
     debug!(?cgu_name, ?files);
     assert!(sess.opts.incremental.is_some());
 
     let mut saved_files = UnordMap::default();
     for (ext, path) in files {
-        let file_name = format!("{cgu_name}.{ext}");
+        let file_name = if Some(*ext) == preserve_name {
+            path.file_name().unwrap().to_str().unwrap().to_owned()
+        } else {
+            format!("{cgu_name}.{ext}")
+        };
         let path_in_incr_dir = in_incr_comp_dir_sess(incr_comp_session, &file_name);
         match link_or_copy(path, &path_in_incr_dir) {
             Ok(_) => {

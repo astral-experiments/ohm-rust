@@ -496,6 +496,19 @@ fn copy_all_cgu_workproducts_to_incr_comp_cache_dir(
 
     let _timer = sess.timer("copy_all_cgu_workproducts_to_incr_comp_cache_dir");
 
+    // A relinkable object names an invocation-specific file in its split DWARF.
+    // Keep that basename in the cache so we can recreate it if Cargo clears the
+    // relink directory. Changed units still get fresh names for saved link states.
+    let preserve_name = if sess.opts.unstable_opts.emit_rlink && sess.target_can_use_split_dwarf() {
+        match preserve_objects_for_their_debuginfo(sess) {
+            (_, true) => Some(config::DWARF_OBJECT_EXT),
+            (true, _) => Some(OutputType::Object.extension()),
+            _ => None,
+        }
+    } else {
+        None
+    };
+
     for module in compiled_modules.modules.iter().filter(|m| m.kind == ModuleKind::Regular) {
         let mut files = Vec::new();
         if let Some(object_file_path) = &module.object {
@@ -521,6 +534,7 @@ fn copy_all_cgu_workproducts_to_incr_comp_cache_dir(
             incr_comp_session.unwrap(),
             &module.name,
             files.as_slice(),
+            preserve_name,
         );
         // LTO writes its input directly into the session. Index it with the object
         // so a check carries both files forward as a single work product.
@@ -934,15 +948,22 @@ fn execute_copy_from_cache_work_item(
         &cgcx.output_filenames
     };
 
-    let load_from_incr_comp_dir = |output_path: PathBuf, saved_path: &str, stable: bool| {
+    let load_from_incr_comp_dir = |mut output_path: PathBuf, saved_path: &str, stable: bool| {
         let source_file_in_incr_comp_dir = incr_comp_session_dir.join(saved_path);
+        // Most work products are named <cgu>.<ext>. A cached .rcgu file keeps
+        // the original basename referenced by the object's split DWARF.
+        let retained = cgcx.split_debuginfo == rustc_target::spec::SplitDebuginfo::Unpacked
+            && (saved_path.ends_with(".rcgu.dwo") || saved_path.ends_with(".rcgu.o"));
+        if retained {
+            output_path.set_file_name(source_file_in_incr_comp_dir.file_name().unwrap());
+        }
         debug!(
             "copying preexisting module `{}` from {:?} to {}",
             module.name,
             source_file_in_incr_comp_dir,
             output_path.display()
         );
-        if stable {
+        if stable || retained {
             // Unlink before restoring into a stable name: a copy fallback must never
             // overwrite an inode still linked into a previous incremental session.
             ensure_removed(dcx, &output_path);

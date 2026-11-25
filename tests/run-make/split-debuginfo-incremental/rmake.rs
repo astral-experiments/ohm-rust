@@ -6,9 +6,9 @@
 // and publishing them must not corrupt hard-linked incremental work products.
 
 use std::collections::BTreeSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use run_make_support::{is_darwin, rfs, run, run_in_tmpdir, rustc, target};
+use run_make_support::{is_darwin, llvm_dwarfdump, rfs, run, run_in_tmpdir, rustc, target};
 
 fn debug_objects() -> BTreeSet<PathBuf> {
     rfs::read_dir(".")
@@ -25,9 +25,44 @@ fn main() {
         return;
     }
 
+    if target().contains("linux") {
+        for kind in ["split", "single"] {
+            run_in_tmpdir(|| check_reused_debug_files(kind));
+        }
+    }
     run_in_tmpdir(check_rebuilds);
     run_in_tmpdir(|| check_saved_link_state("-Zemit-rlink"));
     run_in_tmpdir(|| check_saved_link_state("-Zno-link"));
+}
+
+/// A relinkable object still names its original split debug file after a cache hit.
+fn check_reused_debug_files(kind: &str) {
+    for _ in 0..3 {
+        // Cargo replaces the relink directory before a full rebuild.
+        rfs::create_dir("objects");
+        rustc()
+            .input("main.rs")
+            .output("test")
+            .incremental("incr")
+            .debuginfo("2")
+            .split_debuginfo("unpacked")
+            .arg(format!("-Zsplit-dwarf-kind={kind}"))
+            .args(["-Zemit-rlink", "-Ztemps-dir=objects"])
+            .run();
+        let info = llvm_dwarfdump()
+            .input("test")
+            .arg("--debug-info")
+            .arg("--recurse-depth=0")
+            .run()
+            .stdout_utf8();
+        let mut names = info.lines().filter(|line| line.contains("dwo_name")).peekable();
+        assert!(names.peek().is_some());
+        for line in names {
+            let path = line.split('"').nth(1).unwrap();
+            assert!(Path::new(path).is_file(), "missing debug file {path}");
+        }
+        rfs::remove_dir_all("objects");
+    }
 }
 
 fn check_rebuilds() {
