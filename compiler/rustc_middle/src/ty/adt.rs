@@ -9,9 +9,7 @@ use rustc_attr_ir::lang_items::LangItem;
 use rustc_data_structures::fingerprint::Fingerprint;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::intern::Interned;
-use rustc_data_structures::stable_hash::{
-    StableHash, StableHashControls, StableHashCtxt, StableHasher,
-};
+use rustc_data_structures::stable_hash::{StableHash, StableHashCtxt, StableHasher};
 use rustc_errors::ErrorGuaranteed;
 use rustc_hir as hir;
 use rustc_hir::def::{CtorKind, DefKind, Res};
@@ -245,7 +243,7 @@ impl Hash for AdtDefData<'_> {
 impl StableHash for AdtDefData<'_> {
     fn stable_hash<Hcx: StableHashCtxt>(&self, hcx: &mut Hcx, hasher: &mut StableHasher) {
         thread_local! {
-            static CACHE: RefCell<FxHashMap<(usize, StableHashControls), Fingerprint>> = Default::default();
+            static CACHE: RefCell<FxHashMap<(usize, usize), Fingerprint>> = Default::default();
         }
 
         // Incremental users that inspect the fields acquire the dependency
@@ -256,7 +254,8 @@ impl StableHash for AdtDefData<'_> {
         let hash: Fingerprint = CACHE.with(|cache| {
             let addr = self as *const Self as usize;
             let stable_hash_controls = hcx.stable_hash_controls();
-            *cache.borrow_mut().entry((addr, stable_hash_controls)).or_insert_with(|| {
+            let key = (addr, super::impls_ty::type_hash_mode(hcx));
+            *cache.borrow_mut().entry(key).or_insert_with(|| {
                 let ty::AdtDefData { did, variants: _, ref flags, ref repr } = *self;
 
                 let mut hasher = StableHasher::new();
