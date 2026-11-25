@@ -96,3 +96,64 @@ pub(super) fn compare(previous: &[u8], current: &[u8]) -> Option<LineMap> {
     let sources = checksums.into_keys().map(Path::to_owned).collect();
     Some(LineMap { cwd: cwd.to_owned(), sources, changed })
 }
+
+/// Propose only the recorded row pairs for one imported caller's file. This
+/// cannot authorize reuse. The typed matcher must invert them in the current
+/// module and check the complete ordered input against the bound predecessor.
+pub(super) fn imported_rows(
+    previous: &[u8],
+    current: &[u8],
+    directory: &str,
+    filename: &str,
+    hashes: (&str, &str),
+) -> Option<Vec<[u32; 2]>> {
+    let mut old = Reader(previous);
+    let mut new = Reader(current);
+    if old.string()? != directory || new.string()? != directory {
+        return None;
+    }
+    // The normalized digests include the differing runtime line literal.
+    old.take(32)?;
+    new.take(32)?;
+    let count = old.word()?;
+    if count != new.word()? {
+        return None;
+    }
+    let path = Path::new(directory).join(filename);
+    let mut selected = None;
+    for id in 0..count {
+        let name = old.string()?;
+        if name != new.string()? {
+            return None;
+        }
+        let pair = (old.string()?, new.string()?);
+        if name == path.to_str()? && (selected.replace(id).is_some() || pair != hashes) {
+            return None;
+        }
+    }
+    let id = selected?;
+    let n = old.word()?;
+    if n != new.word()? || (n as usize).checked_mul(8)? != old.0.len() || old.0.len() != new.0.len()
+    {
+        return None;
+    }
+    let mut pairs = Vec::new();
+    for _ in 0..n {
+        let file = old.word()?;
+        if file != new.word()? || file >= count {
+            return None;
+        }
+        let (from, to) = (old.word()?, new.word()?);
+        if from == 0 || to == 0 {
+            return None;
+        }
+        if file == id {
+            if from.max(to) > 1_000_000 || pairs.len() >= 65_536 {
+                return None;
+            }
+            pairs.push([from, to]);
+        }
+    }
+    pairs.sort_unstable();
+    pairs.windows(2).all(|w| w[0][0] < w[1][0] && w[0][1] < w[1][1]).then_some(pairs)
+}

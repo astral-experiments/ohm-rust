@@ -6,7 +6,7 @@ use rustc_fs_util::TempDirBuilder;
 
 use super::dwarf_cache::{digest, open_file, read_file};
 
-const MAGIC: &[u8; 8] = b"OHMDWT01";
+const MAGIC: &[u8; 8] = b"OHMDWT02";
 const HEADER: usize = 8 + 16 + 32 + 8;
 const MAXIMUM: usize = 128 << 20;
 

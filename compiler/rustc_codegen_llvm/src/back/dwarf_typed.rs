@@ -30,7 +30,7 @@ fn replay(
     {
         return None;
     }
-    let (mapping, proof) = source::mapping(donor.sources, files)?;
+    let (mapping, proof) = source::mapping(donor.sources, files, entry.normalized_proofs())?;
     // The previous native is a regular work product whose complete hash was
     // checked by the existing line certificate. A two-miss refresh can leave a
     // still-valid, older packet behind. Refuse to pair it with today's `.o`.

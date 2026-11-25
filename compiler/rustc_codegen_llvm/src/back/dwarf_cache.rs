@@ -307,6 +307,14 @@ impl Entry {
         (expected == digest(&object)).then_some(object)
     }
 
+    pub(super) fn normalized_proofs(&self) -> Option<(&[u8], &[u8])> {
+        let old = self.previous.as_ref()?;
+        if self.exact.is_some() || old[..8] != NORMALIZED_MAGIC[..] {
+            return None;
+        }
+        Some((proofs(old)?.0, &self.proof))
+    }
+
     pub(super) fn install_typed(&self, bytes: &[u8]) -> Option<CompiledModule> {
         let temp =
             TempDirBuilder::new().prefix("ohm-dwarf-").tempdir_in(self.object.parent()?).ok()?;
