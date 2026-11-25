@@ -407,6 +407,7 @@ jobs:
             tests/run-make/ohm-reordered-mono-spans
             tests/run-make/ohm-borrow-hints
             tests/run-make/ohm-unused-caller-lines
+            tests/run-make/ohm-imported-caller-lines
             tests/run-make/ohm-retained-mono-values
             tests/run-make/ohm-written-impl-paths
             tests/run-make/capped-mir-lints

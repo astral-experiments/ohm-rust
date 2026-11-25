@@ -1,4 +1,4 @@
-//! Derive a checked line correspondence from the source bytes used by each compiler.
+//! Derive rows for the typed proof from local source bytes or imported LLVM coordinates.
 use std::collections::BTreeSet;
 
 use rustc_codegen_ssa::back::write::DwarfSourceFile;
@@ -23,9 +23,12 @@ fn identity<'a>(
 fn current(file: &DwarfSourceFile) -> Option<Vec<u8>> {
     // SourceMap normalizes a BOM and CRLF after recording the original hash.
     // Read original bytes and authenticate them against the actual frontend input.
-    let bytes = read_file(&file.path)?;
+    let bytes = read_file(file.path.as_ref()?)?;
     (SourceFileHash::new_in_memory(file.hash.kind, &bytes) == file.hash).then_some(bytes)
 }
+
+const LOCAL_BYTES: u8 = 0;
+const IMPORTED_MD5: u8 = 1;
 
 pub(super) fn capture(mut keys: &[u8], inventory: &[DwarfSourceFile]) -> Option<Vec<u8>> {
     let mut sources = Vec::new();
@@ -33,8 +36,16 @@ pub(super) fn capture(mut keys: &[u8], inventory: &[DwarfSourceFile]) -> Option<
         let directory = take(&mut keys)?;
         let filename = take(&mut keys)?;
         let Some(file) = identity(inventory, directory, filename) else { continue };
-        let Some(bytes) = current(file) else { continue };
-        for field in [directory, filename, &bytes] {
+        let (kind, bytes) = if file.path.is_none() {
+            if !matches!(file.hash.kind, SourceFileHashAlgorithm::Md5) {
+                continue;
+            }
+            (IMPORTED_MD5, file.hash.hash_bytes().to_vec())
+        } else {
+            let Some(bytes) = current(file) else { continue };
+            (LOCAL_BYTES, bytes)
+        };
+        for field in [directory, filename, &[kind], &bytes] {
             append(&mut sources, field)?;
         }
     }
@@ -42,10 +53,13 @@ pub(super) fn capture(mut keys: &[u8], inventory: &[DwarfSourceFile]) -> Option<
 }
 
 fn hex_hash(algorithm: SourceFileHashAlgorithm, bytes: &[u8]) -> String {
+    hex(SourceFileHash::new_in_memory(algorithm, bytes).hash_bytes())
+}
+
+fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write;
-    let hash = SourceFileHash::new_in_memory(algorithm, bytes);
-    let mut text = String::with_capacity(hash.hash_bytes().len() * 2);
-    for byte in hash.hash_bytes() {
+    let mut text = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
         write!(text, "{byte:02x}").unwrap();
     }
     text
@@ -117,21 +131,70 @@ fn source_rows(old: &[u8], new: &[u8]) -> Option<(usize, usize, Vec<[usize; 2]>,
     Some((old_count, new_count, pairs, Vec::new()))
 }
 
+/// The source map knows the checksum of an imported file but need not know
+/// its local path. Both LLVM certificates must agree with those checksums.
+fn imported_map(
+    (previous, current): (&[u8], &[u8]),
+    file: &DwarfSourceFile,
+    prior: &[u8],
+) -> Option<(Value, Value)> {
+    if prior.len() != 16 || !matches!(file.hash.kind, SourceFileHashAlgorithm::Md5) {
+        return None;
+    }
+    let old = hex(prior);
+    let new = hex(file.hash.hash_bytes());
+    let pairs = super::dwarf_certificate::imported_rows(
+        previous,
+        current,
+        &file.directory,
+        &file.filename,
+        (&old, &new),
+    )?;
+    let [old_lines, new_lines] = *pairs.last()?;
+    let map = json!({"directory": file.directory, "filename": file.filename, "lines": pairs});
+    let proof = json!({
+        "directory": file.directory, "filename": file.filename, "old_lines": old_lines,
+        "new_lines": new_lines, "old": { "md5": old }, "new": { "md5": new }
+    });
+    Some((map, proof))
+}
+
 pub(super) fn mapping(
     mut sources: &[u8],
     inventory: &[DwarfSourceFile],
+    proofs: Option<(&[u8], &[u8])>,
 ) -> Option<(Vec<u8>, Vec<u8>)> {
     let mut maps = Vec::new();
     let mut witnesses = Vec::new();
     let mut seen = BTreeSet::new();
+    let mut has_imported_map = false;
     while !sources.is_empty() {
         let directory = take(&mut sources)?;
         let filename = take(&mut sources)?;
+        let &[kind] = take(&mut sources)? else { return None };
         let prior = take(&mut sources)?;
         if !seen.insert((directory, filename)) {
             return None;
         }
         let Some(file) = identity(inventory, directory, filename) else { continue };
+        match (kind, file.path.is_some()) {
+            (LOCAL_BYTES, true) => {}
+            (IMPORTED_MD5, false) => {
+                if file.hash.hash_bytes() != prior {
+                    // Each map scans both certificates and LLVM allocates a
+                    // dense inverse table. Bound this work to one imported file.
+                    if has_imported_map {
+                        return None;
+                    }
+                    let (rows, witness) = imported_map(proofs?, file, prior)?;
+                    maps.push(rows);
+                    witnesses.push(witness);
+                    has_imported_map = true;
+                }
+                continue;
+            }
+            _ => return None,
+        }
         if SourceFileHash::new_in_memory(file.hash.kind, prior) == file.hash {
             continue;
         }
@@ -151,9 +214,11 @@ pub(super) fn mapping(
     }
     let mapping = serde_json::to_vec(&json!({"version": 1, "files": maps})).ok()?;
     let mapping_hash = hex_hash(SourceFileHashAlgorithm::Sha256, &mapping);
-    let witness =
-        serde_json::to_vec(&json!({"version": 2, "map_sha256": mapping_hash, "files": witnesses}))
-            .ok()?;
+    let version = if has_imported_map { 3 } else { 2 };
+    let witness = serde_json::to_vec(
+        &json!({"version": version, "map_sha256": mapping_hash, "files": witnesses}),
+    )
+    .ok()?;
     Some((mapping, witness))
 }
 

@@ -321,17 +321,18 @@ pub type TargetMachineFactoryFn<B> = Arc<
         + Sync,
 >;
 
-/// Additional resources used by optimize_and_codegen (not module specific)
-/// A local file identity supplied by the frontend that produced the debug info.
-/// The bytes are fetched lazily and must still match the frontend's source hash.
+/// Frontend file identity used to match a caller record to its source.
+/// Only local files have a readable path. Imported records use LLVM's
+/// previously captured checksum and line coordinates.
 #[derive(Clone, Encodable, Decodable)]
 pub struct DwarfSourceFile {
     pub directory: String,
     pub filename: String,
-    pub path: PathBuf,
+    pub path: Option<PathBuf>,
     pub hash: rustc_span::SourceFileHash,
 }
 
+/// Additional resources used by optimize_and_codegen (not module specific)
 #[derive(Clone, Encodable, Decodable)]
 pub struct CodegenContext {
     // Resources needed when running LTO
@@ -1494,16 +1495,29 @@ fn start_executing_work<B: WriteBackendMethods>(
     {
         for file in sess.source_map().files().iter() {
             let rustc_span::FileName::Real(name) = &file.name else { continue };
-            let Some(path) = name.local_path() else { continue };
-            if file.src.is_none() {
-                continue;
-            }
             let (directory, filename) = name.debuginfo_directory_and_filename();
+            let path = if file.is_imported() {
+                if sess.opts.unstable_opts.remap_cwd_prefix.as_deref() != Some(directory)
+                    || filename.extension().is_none_or(|ext| ext != "rs")
+                    || !filename
+                        .components()
+                        .all(|part| matches!(part, std::path::Component::Normal(_)))
+                {
+                    continue;
+                }
+                None
+            } else {
+                let Some(path) = name.local_path() else { continue };
+                if file.src.is_none() {
+                    continue;
+                }
+                Some(path.to_owned())
+            };
             if let (Some(directory), Some(filename)) = (directory.to_str(), filename.to_str()) {
                 dwarf_typed_sources.push(DwarfSourceFile {
                     directory: directory.to_owned(),
                     filename: filename.to_owned(),
-                    path: path.to_owned(),
+                    path,
                     hash: file.src_hash,
                 });
             }
