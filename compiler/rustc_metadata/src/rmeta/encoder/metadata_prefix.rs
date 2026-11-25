@@ -30,6 +30,7 @@ use crate::rmeta::table::FixedSizeEncoding;
 pub(super) struct NativePrefixInputs {
     crate_identity: Fingerprint,
     sources: FxIndexMap<StableSourceFileId, Fingerprint>,
+    pub(super) recipe: Vec<u8>,
 }
 
 impl NativePrefixInputs {
@@ -78,6 +79,7 @@ impl DependencyHashMode {
             Self::Native(NativePrefixInputs {
                 crate_identity: NativePrefixInputs::crate_identity(tcx),
                 sources: FxIndexMap::default(),
+                recipe: Vec::new(),
             })
         } else {
             Self::Check
@@ -88,7 +90,7 @@ impl DependencyHashMode {
         match self {
             Self::Tracked => b"ohm-metadata-prefix-v3\0",
             Self::Check => b"ohm-metadata-prefix-v4\0",
-            Self::Native(_) => b"ohm-metadata-prefix-v5\0",
+            Self::Native(_) => b"ohm-metadata-prefix-v6\0",
         }
     }
 
@@ -170,8 +172,43 @@ pub(super) fn relocate_metadata_table<'tcx, I, T: FixedSizeEncoding>(
     LazyTable::from_position_and_encoded_size(position, table.width, table.len)
 }
 
-pub(super) fn source_file_layout_fingerprint(source_file: &SourceFile) -> Fingerprint {
+pub(super) fn native_location_uses_checksum(tcx: TyCtxt<'_>) -> bool {
+    tcx.sess.dwarf_version() >= 5
+        || tcx.sess.target.is_like_msvc
+        || tcx.sess.opts.unstable_opts.embed_source
+}
+
+pub(super) fn source_file_layout_fingerprint(
+    tcx: TyCtxt<'_>,
+    source_file: &SourceFile,
+) -> Fingerprint {
     let mut hasher = StableHasher::new();
+    // Local-only edits can refresh the source map without checking dependency hashes.
+    // Preserve the inputs to native location fingerprints in the retained item data.
+    if tcx.sess.opts.output_types.should_codegen() {
+        if native_location_uses_checksum(tcx) {
+            source_file.src_hash.hash(&mut hasher);
+        } else if let Some(src) = &source_file.src {
+            // Line starts below account for newlines. Byte offsets alone miss changes
+            // to display columns, e.g. replacing a space with a tab before a span.
+            const BLOCK: usize = 32;
+            let ordinary = |byte| matches!(byte, b' '..=b'~' | b'\n');
+            for (i, bytes) in src.as_bytes().chunks(BLOCK).enumerate() {
+                // Counting over a fixed-size block lets LLVM vectorize the common case.
+                if let Some(block) = bytes.first_chunk::<BLOCK>()
+                    && block.iter().filter(|&&b| ordinary(b)).count() == BLOCK
+                {
+                    continue;
+                }
+                for (j, &byte) in bytes.iter().enumerate() {
+                    if !ordinary(byte) {
+                        (i * BLOCK + j, byte).hash(&mut hasher);
+                    }
+                }
+            }
+            src.len().hash(&mut hasher);
+        }
+    }
     source_file.name.hash(&mut hasher);
     source_file.stable_id.hash(&mut hasher);
     source_file.normalized_source_len.hash(&mut hasher);
@@ -487,6 +524,8 @@ impl MetadataPrefixManifest {
             skip(&mut bytes, 16)?;
             let count = usize::try_from(read_unsigned(&mut bytes, usize::BITS)?).ok()?;
             skip(&mut bytes, count.checked_mul(32)?)?;
+            let len = usize::try_from(read_unsigned(&mut bytes, usize::BITS)?).ok()?;
+            skip(&mut bytes, len)?;
         }
         read_unsigned(&mut bytes, u64::BITS)?;
         read_unsigned(&mut bytes, usize::BITS)?;
