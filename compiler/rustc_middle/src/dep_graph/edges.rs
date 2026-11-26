@@ -11,11 +11,9 @@ pub(crate) const SMALL_READS_MAX: usize = 16;
 /// The reads recorded by one task so far, deduplicated and in first-read order.
 #[derive(Debug)]
 pub(crate) enum TaskReads {
-    /// The first few reads, with a shortcut for consecutive duplicates and a filter
-    /// that skips the exact scan when an index has not been seen before.
-    ///
-    /// The filter adds 8 bytes to `TaskReads` on 64-bit hosts (72 to 80 bytes).
-    Small { len: u8, buf: [DepNodeIndex; SMALL_READS_MAX], last: DepNodeIndex, seen: u64 },
+    /// The first few reads, with a filter that skips the exact scan
+    /// when an index has not been seen before.
+    Small { len: u8, buf: [DepNodeIndex; SMALL_READS_MAX], seen: u64 },
 
     /// The reads of a task that outgrew the inline buffer.
     Recorded(ReadsRecorder),
@@ -24,12 +22,7 @@ pub(crate) enum TaskReads {
 impl TaskReads {
     #[inline]
     pub(crate) fn new() -> Self {
-        TaskReads::Small {
-            len: 0,
-            buf: [DepNodeIndex::ZERO; SMALL_READS_MAX],
-            last: DepNodeIndex::ZERO,
-            seen: 0,
-        }
+        TaskReads::Small { len: 0, buf: [DepNodeIndex::ZERO; SMALL_READS_MAX], seen: 0 }
     }
 
     /// Records a read and returns whether it was new for the task. The pool provides a
@@ -38,36 +31,37 @@ impl TaskReads {
     pub(crate) fn insert(&mut self, index: DepNodeIndex, pool: &Lock<Vec<ReadsRecorder>>) -> bool {
         match self {
             TaskReads::Recorded(recorder) => recorder.insert(index),
-            TaskReads::Small { len, buf, last, seen } => {
+            TaskReads::Small { len, buf, seen } => {
                 let n = usize::from(*len);
-                if n > 0 && *last == index {
-                    return false;
-                }
 
                 // A clear bit proves absence; a set bit may be a hash collision, so
                 // those reads still need an exact lookup in the inline buffer.
                 let bit = 1u64 << (index.as_u32() & 63);
                 if (*seen & bit != 0) && buf[..n].contains(&index) {
-                    *last = index;
                     false
                 } else if n < SMALL_READS_MAX {
                     buf[n] = index;
                     *len += 1;
-                    *last = index;
                     *seen |= bit;
                     true
                 } else {
                     // The inline buffer is full: move the reads into a pooled recorder.
-                    let seed = *buf;
-                    let mut recorder = pool.lock().pop().unwrap_or_default();
-                    recorder.clear();
-                    recorder.seed(&seed);
-                    recorder.insert(index);
-                    *self = TaskReads::Recorded(recorder);
+                    self.spill(index, pool);
                     true
                 }
             }
         }
+    }
+
+    // Moving a recorder out of the pool needs a large temporary. Keep it
+    // out of the stack frame used to record ordinary reads.
+    #[cold]
+    fn spill(&mut self, index: DepNodeIndex, pool: &Lock<Vec<ReadsRecorder>>) {
+        let mut recorder = pool.lock().pop().unwrap_or_default();
+        recorder.clear();
+        recorder.seed(self.edges());
+        recorder.insert(index);
+        *self = TaskReads::Recorded(recorder);
     }
 
     /// The task's deduplicated reads, in first-read order.
@@ -123,12 +117,18 @@ impl ReadsRecorder {
     fn slot(&mut self, index: DepNodeIndex) -> &mut u8 {
         let index = index.as_usize();
         if index >= self.epochs.raw.len() {
-            // New indices keep showing up all session, so growing to exactly
-            // `index + 1` (e.g. `ensure_contains_elem`) would resize again and
-            // again. The power-of-two slack makes resizes rare, and starting
-            // at 64 skips the smallest sizes.
-            self.epochs.raw.resize((index + 1).next_power_of_two().max(64), 0);
+            return self.grow(index);
         }
+        &mut self.epochs.raw[index]
+    }
+
+    #[cold]
+    fn grow(&mut self, index: usize) -> &mut u8 {
+        // New indices keep showing up all session, so growing to exactly
+        // `index + 1` (e.g. `ensure_contains_elem`) would resize again and
+        // again. The power-of-two slack makes resizes rare, and starting
+        // at 64 skips the smallest sizes.
+        self.epochs.raw.resize((index + 1).next_power_of_two().max(64), 0);
         &mut self.epochs.raw[index]
     }
 

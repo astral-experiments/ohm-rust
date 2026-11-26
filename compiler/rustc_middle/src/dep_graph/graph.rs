@@ -397,7 +397,7 @@ impl DepGraph {
         {
             read_deps(|task_deps| {
                 if let TaskDepsRef::Allow(deps) = task_deps {
-                    deps.lock().whole_crate_read = true;
+                    deps.inner.lock().whole_crate_read = true;
                 }
             });
         }
@@ -448,11 +448,11 @@ impl DepGraphData {
         let (result, task_deps) = if tcx.is_eval_always(dep_node.kind) {
             (with_deps(TaskDepsRef::EvalAlways, op), None)
         } else {
-            let task_deps = Lock::new(TaskDeps::new(
+            let task_deps = ActiveTaskDeps::new(TaskDeps::new(
                 #[cfg(debug_assertions)]
                 Some(dep_node),
             ));
-            (with_deps(TaskDepsRef::Allow(&task_deps), op), Some(task_deps.into_inner()))
+            (with_deps(TaskDepsRef::Allow(&task_deps), op), Some(task_deps.inner.into_inner()))
         };
 
         let edges: &[DepNodeIndex] = task_deps.as_ref().map_or(&[], |deps| deps.edges());
@@ -499,12 +499,12 @@ impl DepGraphData {
     {
         debug_assert!(!tcx.is_eval_always(dep_kind));
 
-        let task_deps = Lock::new(TaskDeps::new(
+        let task_deps = ActiveTaskDeps::new(TaskDeps::new(
             #[cfg(debug_assertions)]
             None,
         ));
         let result = with_deps(TaskDepsRef::Allow(&task_deps), op);
-        let task_deps = task_deps.into_inner();
+        let task_deps = task_deps.inner.into_inner();
         let reads = task_deps.edges();
 
         let dep_node_index = match reads.len() {
@@ -588,8 +588,8 @@ impl DepGraph {
     pub fn read_index(&self, dep_node_index: DepNodeIndex) {
         if let Some(ref data) = self.data {
             read_deps(|task_deps| {
-                let mut task_deps = match task_deps {
-                    TaskDepsRef::Allow(deps) => deps.lock(),
+                let deps = match task_deps {
+                    TaskDepsRef::Allow(deps) => deps,
                     TaskDepsRef::EvalAlways => {
                         // We don't need to record dependencies of eval_always
                         // queries. They are re-evaluated unconditionally anyway.
@@ -601,26 +601,18 @@ impl DepGraph {
                         panic_on_forbidden_read(data, dep_node_index)
                     }
                 };
-                let task_deps = &mut *task_deps;
 
                 if cfg!(debug_assertions) {
                     data.current.total_read_count.fetch_add(1, Ordering::Relaxed);
                 }
 
-                let new_read = task_deps.reads.insert(dep_node_index, &data.read_recorder_pool);
-                if new_read {
+                let new_read = deps.insert(
+                    dep_node_index,
+                    &data.read_recorder_pool,
                     #[cfg(debug_assertions)]
-                    {
-                        if let Some(target) = task_deps.node
-                            && let Some(ref forbidden_edge) = data.current.forbidden_edge
-                        {
-                            let src = forbidden_edge.index_to_node.lock()[&dep_node_index];
-                            if forbidden_edge.test(&src, &target) {
-                                panic!("forbidden edge {:?} -> {:?} created", src, target)
-                            }
-                        }
-                    }
-                } else if cfg!(debug_assertions) {
+                    data.current.forbidden_edge.as_ref(),
+                );
+                if cfg!(debug_assertions) && !new_read {
                     data.current.total_duplicate_read_count.fetch_add(1, Ordering::Relaxed);
                 }
             })
@@ -738,7 +730,7 @@ impl DepGraph {
             let mut reads = SmallVec::<[DepNodeIndex; SMALL_READS_MAX]>::new();
             read_deps(|task_deps| match task_deps {
                 TaskDepsRef::Allow(deps) => {
-                    reads = SmallVec::from_slice(deps.lock().edges());
+                    reads = SmallVec::from_slice(deps.inner.lock().edges());
                 }
                 TaskDepsRef::EvalAlways => {
                     reads.push(DepNodeIndex::FOREVER_RED_NODE);
@@ -1643,7 +1635,7 @@ pub enum TaskDepsRef<'a> {
     /// New dependencies can be added to the
     /// `TaskDeps`. This is used when executing a 'normal' query
     /// (no `eval_always` modifier)
-    Allow(&'a Lock<TaskDeps>),
+    Allow(&'a ActiveTaskDeps),
     /// This is used when executing an `eval_always` query. We don't
     /// need to track dependencies for a query that's always
     /// re-executed -- but we need to know that this is an `eval_always`
@@ -1659,8 +1651,73 @@ pub enum TaskDepsRef<'a> {
     Forbid,
 }
 
+/// A positive lookup avoids locking the full recorder on repeated reads.
+/// This cache lives only as long as the task, even when the recorder is pooled.
 #[derive(Debug)]
-pub struct TaskDeps {
+pub struct ActiveTaskDeps {
+    recent: [AtomicU32; 8],
+    inner: Lock<TaskDeps>,
+}
+
+impl ActiveTaskDeps {
+    #[inline]
+    fn new(deps: TaskDeps) -> Self {
+        const { assert!(DepNodeIndex::MAX_AS_U32 < u32::MAX) };
+        Self { recent: [const { AtomicU32::new(u32::MAX) }; 8], inner: Lock::new(deps) }
+    }
+
+    #[inline]
+    fn slot(&self, index: DepNodeIndex) -> &AtomicU32 {
+        &self.recent[index.as_usize() % self.recent.len()]
+    }
+
+    #[inline]
+    fn insert(
+        &self,
+        index: DepNodeIndex,
+        pool: &Lock<Vec<ReadsRecorder>>,
+        #[cfg(debug_assertions)] forbidden: Option<&EdgeFilter>,
+    ) -> bool {
+        self.slot(index).load(Ordering::Relaxed) != index.as_u32()
+            && self.record(
+                index,
+                pool,
+                #[cfg(debug_assertions)]
+                forbidden,
+            )
+    }
+
+    // Keep allocation, pool access and the lock guard off the repeat-read path.
+    #[inline(never)]
+    fn record(
+        &self,
+        dep_node_index: DepNodeIndex,
+        pool: &Lock<Vec<ReadsRecorder>>,
+        #[cfg(debug_assertions)] forbidden: Option<&EdgeFilter>,
+    ) -> bool {
+        let mut task_deps = self.inner.lock();
+        let new_read = task_deps.reads.insert(dep_node_index, pool);
+        #[cfg(debug_assertions)]
+        if new_read {
+            if let Some(target) = task_deps.node
+                && let Some(forbidden_edge) = forbidden
+            {
+                let src = forbidden_edge.index_to_node.lock()[&dep_node_index];
+                if forbidden_edge.test(&src, &target) {
+                    panic!("forbidden edge {:?} -> {:?} created", src, target)
+                }
+            }
+        }
+        // Edges only accumulate. A stale match is still a duplicate, and a
+        // collision or stale miss falls back to exact membership under the lock.
+        // No task data is accessed through the slot, so relaxed ordering suffices.
+        self.slot(dep_node_index).store(dep_node_index.as_u32(), Ordering::Relaxed);
+        new_read
+    }
+}
+
+#[derive(Debug)]
+struct TaskDeps {
     whole_crate_read: bool,
     #[cfg(debug_assertions)]
     node: Option<DepNode>,
@@ -1831,3 +1888,6 @@ impl<'tcx> TyCtxt<'tcx> {
         self.dep_kind_vtable(kind).is_eval_always
     }
 }
+
+#[cfg(test)]
+mod tests;
