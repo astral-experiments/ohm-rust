@@ -104,7 +104,7 @@ use rustc_attr_ir::lang_items::LangItem;
 use rustc_attr_ir::{InlineAttr, Linkage};
 use rustc_data_structures::either::Either;
 use rustc_data_structures::fingerprint::Fingerprint;
-use rustc_data_structures::fx::{FxIndexMap, FxIndexSet};
+use rustc_data_structures::fx::{FxIndexMap, FxIndexSet, IndexEntry};
 use rustc_data_structures::stable_hash::{StableHasher, ToStableHashKey};
 use rustc_data_structures::sync::par_join;
 use rustc_data_structures::unord::{UnordMap, UnordSet};
@@ -349,11 +349,31 @@ fn place_inlined<'tcx>(
     item: MonoItem<'tcx>,
     data: &impl Fn(MonoItem<'tcx>) -> MonoItemData,
 ) {
-    for copy in cx.usage_map.used_items(item) {
-        if cx.local_copies.contains(&copy) && !cgu.items().contains_key(&copy) {
-            cgu.items_mut().insert(copy, data(copy));
-            place_inlined(cx, cgu, copy, data);
+    if cx.local_copies.is_empty() {
+        return;
+    }
+
+    // Collection can start at many items, so this walk can be much deeper
+    // than the collector's call stack. Save only unfinished sibling lists.
+    let mut pending = Vec::new();
+    let mut children = cx.usage_map.used_items(item);
+    loop {
+        while let Some(copy) = children.next() {
+            if cx.local_copies.contains(&copy)
+                && let IndexEntry::Vacant(entry) = cgu.items_mut().entry(copy)
+            {
+                entry.insert(data(copy));
+                let next = cx.usage_map.used_items(copy);
+                if next.len() != 0 {
+                    if children.len() != 0 {
+                        pending.push(children);
+                    }
+                    children = next;
+                }
+            }
         }
+        let Some(tail) = pending.pop() else { break };
+        children = tail;
     }
 }
 
