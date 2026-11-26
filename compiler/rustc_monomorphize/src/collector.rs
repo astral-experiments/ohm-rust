@@ -283,7 +283,10 @@ impl<'tcx> UsageMap<'tcx> {
     }
 
     /// Returns the distinct outgoing edges in their original collection order.
-    pub(crate) fn used_items(&self, item: MonoItem<'tcx>) -> impl Iterator<Item = MonoItem<'tcx>> {
+    pub(crate) fn used_items(
+        &self,
+        item: MonoItem<'tcx>,
+    ) -> impl ExactSizeIterator<Item = MonoItem<'tcx>> {
         self.used_map[&item].iter().map(|edge| edge.node)
     }
 
