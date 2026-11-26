@@ -2513,15 +2513,42 @@ impl SourceFile {
     /// number. If the source_file is empty or the position is located before the
     /// first line, `None` is returned.
     pub fn lookup_line(&self, pos: RelativeBytePos) -> Option<usize> {
-        self.lines().partition_point(|x| x <= &pos).checked_sub(1)
+        Self::lookup_line_in(self.lines(), pos)
+    }
+
+    #[inline]
+    fn lookup_line_in(lines: &[RelativeBytePos], pos: RelativeBytePos) -> Option<usize> {
+        // Searching a fixed-size final window lets the optimizer unroll its binary search.
+        const N: usize = 512;
+        if lines.len() < N {
+            return lines.partition_point(|x| x <= &pos).checked_sub(1);
+        }
+        let (chunks, _) = lines.as_chunks::<N>();
+        let before = chunks.partition_point(|chunk| chunk[N - 1] <= pos);
+        // For a short tail, overlap the previous chunk. All overlapping entries
+        // precede the partition point, so counting from this base is still exact.
+        let base = (before * N).min(lines.len() - N);
+        let window = &lines[base..][..N];
+        (base + window.partition_point(|x| x <= &pos)).checked_sub(1)
+    }
+
+    // Share the decoded lines across both operations when filling the position cache.
+    #[inline]
+    fn lookup_line_bounds(&self, pos: RelativeBytePos) -> Option<(usize, Range<BytePos>)> {
+        let lines = self.lines();
+        let index = Self::lookup_line_in(lines, pos)?;
+        Some((index, self.line_bounds_in(lines, index)))
     }
 
     pub fn line_bounds(&self, line_index: usize) -> Range<BytePos> {
         if self.is_empty() {
             return self.start_pos..self.start_pos;
         }
+        self.line_bounds_in(self.lines(), line_index)
+    }
 
-        let lines = self.lines();
+    #[inline]
+    fn line_bounds_in(&self, lines: &[RelativeBytePos], line_index: usize) -> Range<BytePos> {
         assert!(line_index < lines.len());
         if line_index == (lines.len() - 1) {
             self.absolute_position(lines[line_index])..self.end_position()

@@ -43,10 +43,8 @@ impl<'sm> CachingSourceMapView<'sm> {
     #[inline]
     fn pos_to_line(&self, pos: BytePos) -> (Range<BytePos>, usize) {
         let pos = self.file.relative_position(pos);
-        let line_index = self.file.lookup_line(pos).unwrap();
-        let line_bounds = self.file.line_bounds(line_index);
-        let line_number = line_index + 1;
-        (line_bounds, line_number)
+        let (index, bounds) = self.file.lookup_line_bounds(pos).unwrap();
+        (bounds, index + 1)
     }
 
     #[inline]
@@ -61,6 +59,13 @@ impl<'sm> CachingSourceMapView<'sm> {
         &mut self,
         pos: BytePos,
     ) -> Option<(Arc<SourceFile>, usize, RelativeBytePos)> {
+        let (line, col) = self.line_and_byte_column(pos)?;
+        Some((Arc::clone(&self.file), line, col))
+    }
+
+    /// Returns the one-based line and zero-based byte column without cloning the source file.
+    #[inline]
+    pub fn line_and_byte_column(&mut self, pos: BytePos) -> Option<(usize, RelativeBytePos)> {
         if self.line_bounds.contains(&pos) {
             // Cache hit: do nothing.
         } else {
@@ -75,7 +80,7 @@ impl<'sm> CachingSourceMapView<'sm> {
         };
 
         let col = RelativeBytePos(pos.to_u32() - self.line_bounds.start.to_u32());
-        Some((Arc::clone(&self.file), self.line_number, col))
+        Some((self.line_number, col))
     }
 
     pub fn span_data_to_lines_and_cols(
@@ -146,16 +151,9 @@ impl<'sm> CachingSourceMapView<'sm> {
     }
 
     fn file_for_position(&self, pos: BytePos) -> Option<Arc<SourceFile>> {
-        if !self.source_map.files().is_empty() {
-            let file_idx = self.source_map.lookup_source_file_idx(pos);
-            let file = &self.source_map.files()[file_idx];
-
-            if file_contains(file, pos) {
-                return Some(Arc::clone(file));
-            }
-        }
-
-        None
+        // Construction requires a nonempty map, and registered files are never removed.
+        let file = self.source_map.lookup_source_file(pos);
+        file_contains(&file, pos).then_some(file)
     }
 }
 

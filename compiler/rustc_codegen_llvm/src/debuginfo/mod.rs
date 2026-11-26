@@ -19,7 +19,8 @@ use rustc_middle::ty::{self, GenericArgsRef, Instance, Ty, TypeVisitableExt, Unn
 use rustc_session::Session;
 use rustc_session::config::{self, DebugInfo};
 use rustc_span::{
-    BytePos, Pos, SourceFile, SourceFileAndLine, SourceFileHash, Span, StableSourceFileId, Symbol,
+    BytePos, CachingSourceMapView, Pos, SourceFile, SourceFileAndLine, SourceFileHash, Span,
+    StableSourceFileId, Symbol,
 };
 use rustc_target::callconv::FnAbi;
 use rustc_target::spec::DebuginfoKind;
@@ -51,6 +52,8 @@ mod utils;
 
 /// A context object for maintaining all state needed by the debuginfo module.
 pub(crate) struct CodegenUnitDebugContext<'ll, 'tcx> {
+    // Consecutive MIR statements often refer to the same line or file.
+    locations: RefCell<Option<CachingSourceMapView<'tcx>>>,
     builder: DIBuilderBox<'ll>,
     created_files: RefCell<UnordMap<Option<(StableSourceFileId, SourceFileHash)>, &'ll DIFile>>,
 
@@ -105,6 +108,7 @@ impl<'ll, 'tcx> CodegenUnitDebugContext<'ll, 'tcx> {
         let builder = DIBuilderBox::new(llmod);
         // DIBuilder inherits context from the module, so we'd better use the same one
         CodegenUnitDebugContext {
+            locations: RefCell::new(None),
             builder,
             created_files: Default::default(),
             type_map: Default::default(),
@@ -408,7 +412,16 @@ impl<'ll, 'tcx> DebugInfoBuilderMethods<'tcx> for Builder<'_, 'll, 'tcx> {
     ) -> &'ll DILocation {
         let (line, col) = if span.is_dummy() {
             (0, 0)
+        } else if let Some(dbg) = &self.dbg_cx
+            && let Some((line, col)) = dbg
+                .locations
+                .borrow_mut()
+                .get_or_insert_with(|| CachingSourceMapView::new(self.tcx.sess.source_map()))
+                .line_and_byte_column(span.lo())
+        {
+            (line as u32, self.debug_column(col.to_u32() + 1))
         } else {
+            // Empty files have no line to cache.
             let DebugLoc { line, col, .. } = self.lookup_debug_loc(span.lo());
             (line, col)
         };
@@ -697,14 +710,14 @@ impl<'ll> CodegenCx<'ll, '_> {
             Err(file) => (file, UNKNOWN_LINE_NUMBER, UNKNOWN_COLUMN_NUMBER),
         };
 
+        DebugLoc { file, line, col: self.debug_column(col) }
+    }
+
+    fn debug_column(&self, col: u32) -> u32 {
         // For MSVC, omit the column number.
         // Otherwise, emit it. This mimics clang behaviour.
         // See discussion in https://github.com/rust-lang/rust/issues/42921
-        if self.sess().target.is_like_msvc {
-            DebugLoc { file, line, col: UNKNOWN_COLUMN_NUMBER }
-        } else {
-            DebugLoc { file, line, col }
-        }
+        if self.sess().target.is_like_msvc { UNKNOWN_COLUMN_NUMBER } else { col }
     }
 
     fn create_template_type_parameter(

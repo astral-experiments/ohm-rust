@@ -117,3 +117,20 @@ fn test_unnormalized_source_length() {
     assert_eq!(sf.unnormalized_source_len, 19);
     assert_eq!(sf.normalized_source_len.0, 14);
 }
+
+#[test]
+fn lookup_line_window_boundaries() {
+    for len in [511, 512, 513, 1023, 1024, 1025, 4101] {
+        let sf = SourceFile::new(
+            FileName::Anon(Hash64::ZERO),
+            "ab\n".repeat(len - 1) + "c",
+            SourceFileHashAlgorithm::Sha256,
+            Some(SourceFileHashAlgorithm::Sha256),
+        )
+        .unwrap();
+        for pos in 0..3 * len {
+            assert_eq!(sf.lookup_line(RelativeBytePos(pos as u32)), Some(pos / 3));
+        }
+        assert_eq!(sf.lookup_line(RelativeBytePos(u32::MAX)), Some(len - 1));
+    }
+}
