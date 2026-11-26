@@ -12,6 +12,34 @@ fn init_source_map() -> SourceMap {
     sm
 }
 
+#[test]
+fn cached_spans_match_source_lines() {
+    let sm = init_source_map();
+    let mut view = crate::CachingSourceMapView::new(&sm);
+    for (i, text) in ["", "\n\n", "x", "λ\t\r\n界\n", "xy\n\nz"].into_iter().enumerate() {
+        let file = sm.new_source_file(filename(&sm, &format!("lines{i}.rs")), text.to_owned());
+        // Include one-past-end, both with and without a trailing newline.
+        for start in file.start_pos.0..=file.end_position().0 {
+            for end in start..=file.end_position().0 {
+                let lo = BytePos(start);
+                let hi = BytePos(end);
+                let span = SpanData { lo, hi, ctxt: SyntaxContext::root(), parent: None };
+                let actual = view.span_data_to_lines_and_cols(&span);
+                if file.is_empty() {
+                    assert!(actual.is_none());
+                    continue;
+                }
+                let (_, l, c, r, d) = actual.unwrap();
+                for (pos, line, col) in [(lo, l, c), (hi, r, d)] {
+                    let index = file.lookup_line(file.relative_position(pos)).unwrap();
+                    assert_eq!(line, index + 1);
+                    assert_eq!(col, pos - file.line_bounds(index).start);
+                }
+            }
+        }
+    }
+}
+
 impl SourceMap {
     /// Returns `Some(span)`, a union of the LHS and RHS span. The LHS must precede the RHS. If
     /// there are gaps between LHS and RHS, the resulting union will cross these gaps.
@@ -835,4 +863,18 @@ fn file_lookup_at_page_boundaries() {
         }
         assert_eq!(sm.lookup_source_file_idx(BytePos(u32::MAX)), idx);
     }
+}
+
+#[test]
+fn cached_byte_columns() {
+    let sm = init_source_map();
+    let mut view = crate::CachingSourceMapView::new(&sm);
+    let file = sm.new_source_file(filename(&sm, "columns.rs"), "界\tX\r\ny\n".into());
+    for (offset, line, column) in [(0, 1, 0), (4, 1, 4), (6, 2, 0), (8, 2, 2), (5, 1, 5)] {
+        let pos = file.absolute_position(RelativeBytePos(offset));
+        assert_eq!(view.line_and_byte_column(pos), Some((line, RelativeBytePos(column))));
+    }
+    let empty = sm.new_source_file(filename(&sm, "empty_columns.rs"), String::new());
+    assert_eq!(view.line_and_byte_column(empty.start_pos), None);
+    assert_eq!(view.line_and_byte_column(file.start_pos), Some((1, RelativeBytePos(0))));
 }
