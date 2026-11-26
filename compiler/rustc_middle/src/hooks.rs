@@ -74,6 +74,8 @@ declare_hooks! {
     /// to trigger this manually when decoding a foreign `Span`
     hook import_source_files(key: CrateNum) -> ();
 
+    hook indexed_generic_export_untracked(cnum: CrateNum, ordinal: usize) -> Option<crate::middle::exported_symbols::ExportedSymbol<'tcx>>;
+
     /// The caller tracks the trait directories and every present typed impl list.
     hook for_each_trait_impl_supplier_untracked(
         trait_hash: DefPathHash,

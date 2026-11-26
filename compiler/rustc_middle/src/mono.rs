@@ -23,6 +23,7 @@ use tracing::debug;
 use crate::dep_graph::dep_node::{make_compile_codegen_unit, make_compile_mono_item};
 use crate::dep_graph::{DepNode, DepNodeKey, WorkProduct, WorkProductId};
 use crate::middle::codegen_fn_attrs::CodegenFnAttrFlags;
+use crate::middle::exported_symbols::{ExportedSymbol, SymbolExportInfo};
 use crate::ty::{self, GenericArgs, Instance, InstanceKind, ShimKind, SymbolName, Ty, TyCtxt};
 
 /// The high word of an upstream monomorphization's key. Two different instances
@@ -32,12 +33,6 @@ use crate::ty::{self, GenericArgs, Instance, InstanceKind, ShimKind, SymbolName,
 pub struct UpstreamMonoBucket(pub u32);
 
 impl UpstreamMonoBucket {
-    /// Group nearby buckets into one of 4096 cache entries. This amortizes
-    /// the dependency node and disk index across all lookups in the page.
-    pub fn page(self) -> Self {
-        Self(self.0 >> 20)
-    }
-
     /// Computes the sort key of an instance. Only incremental sessions need
     /// to recover its bucket in another compiler process.
     pub fn sort_key<'tcx>(
@@ -58,6 +53,30 @@ impl UpstreamMonoBucket {
     /// Extracts the recoverable word used to address the sorted export table.
     pub fn from_sort_key((first, _): (u64, u64)) -> Self {
         Self((first >> 32) as u32)
+    }
+}
+
+impl<'tcx> TyCtxt<'tcx> {
+    /// Read one upstream export, tracking the same dependency as a full-table lookup.
+    pub fn exported_generic_symbol(self, cnum: CrateNum, ordinal: usize) -> ExportedSymbol<'tcx> {
+        let cache = &self.query_system.query_vtables.exported_generic_symbols.cache;
+        if let Some(value) = crate::query::calls::try_get_cached(self, cache, cnum) {
+            let symbols: &'tcx [(ExportedSymbol<'tcx>, SymbolExportInfo)] =
+                crate::query::erase::restore_val(value);
+            return symbols[ordinal].0;
+        }
+
+        // A green external query need not materialize every row. Track it even if
+        // the packed ordinal has not changed: the exact instance there may differ.
+        self.ensure_ok().exported_generic_symbols(cnum);
+        if let Some(symbol) = self.indexed_generic_export_untracked(cnum, ordinal) {
+            if self.sess.opts.unstable_opts.incremental_verify_ich {
+                assert_eq!(symbol, self.exported_generic_symbols(cnum)[ordinal].0);
+            }
+            symbol
+        } else {
+            self.exported_generic_symbols(cnum)[ordinal].0
+        }
     }
 }
 

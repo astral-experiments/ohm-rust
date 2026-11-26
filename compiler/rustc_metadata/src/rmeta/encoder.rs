@@ -548,6 +548,7 @@ pub(super) struct EncodeContext<'a, 'tcx, M: MetadataEncoder<'tcx>> {
     hygiene_ctxt: Rc<RefCell<HygieneEncodeContext>>,
     // Used for both `Symbol`s and `ByteSymbol`s.
     symbol_index_table: FxHashMap<u32, usize>,
+    generic_export_positions: Vec<[u8; 4]>,
     spec_encoder_data: M,
     early_bodies: Option<FxHashSet<LocalDefId>>,
 }
@@ -1327,6 +1328,11 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             self.emit_raw_bytes(prefix);
             self.emit_raw_bytes(tail);
             DefPathHashMapRef::BorrowedFromTcx(indices).encode(self);
+        }
+        if !self.generic_export_positions.is_empty() {
+            self.emit_raw_bytes(super::GENERIC_EXPORT_INDEX);
+            let positions = std::mem::take(&mut self.generic_export_positions);
+            self.emit_raw_bytes(positions.as_flattened());
         }
         root
     }
@@ -4039,7 +4045,28 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         empty_proc_macro!(self);
 
         self.with_record_mode(RecordMode::None, |this| {
-            hashed_lazy_array!(this, exported_symbols.iter(), hcx)
+            // Keep the original stream, type shorthands and hashes intact. Save positions
+            // for large tables so a green consumer can cheaply read one newly needed row.
+            if exported_symbols.len() < 256 {
+                return hashed_lazy_array!(this, exported_symbols.iter(), hcx);
+            }
+            let mut positions = Vec::with_capacity(exported_symbols.len());
+            let mut hasher = PublicApiHasher::default();
+            let value = this.lazy_array_with(exported_symbols, |ecx, symbol| {
+                hasher.digest(&symbol, hcx);
+                if let LazyState::NodeStart(_) = ecx.lazy_state
+                    && let Ok(pos) = u32::try_from(ecx.position())
+                {
+                    positions.push(pos.to_le_bytes());
+                }
+                symbol.encode(ecx);
+            });
+            // Index only arrays whose entries can each be decoded independently
+            // from the original NodeStart state.
+            if positions.len() == exported_symbols.len() {
+                this.generic_export_positions = positions;
+            }
+            Hashed { value, hash: hasher.finish(hcx) }
         })
     }
 
@@ -4336,9 +4363,10 @@ fn try_reuse_metadata_prefix(
     }
     let mut previous_root = metadata.get_root();
     let public_hash = metadata.get_crate_hashes().public_hash;
+    let (unhashed, _, export_positions) = metadata.get_root_with_incremental_tables();
     if !previous_root.public_api_hash_opt_enabled
         || previous_root.source_map.len != manifest.source_files.len()
-        || metadata.get_root_unhashed().extra_filename != tcx.sess.opts.cg.extra_filename
+        || unhashed.extra_filename != tcx.sess.opts.cg.extra_filename
         || !previous_root
             .decode_target_modifiers(&metadata)
             .eq(tcx.sess.opts.gather_target_modifiers())
@@ -4414,6 +4442,19 @@ fn try_reuse_metadata_prefix(
         .tempfile_in(output_directory)
         .ok()?;
     let prefix_position = manifest.prefix_position;
+    // The export array is in the verified prefix, so copying it preserves the
+    // byte positions in its optional index. The index itself follows the root.
+    let mut export_index = None;
+    if let Some(start) = export_positions {
+        let exports = previous_root.exported_generic_symbols;
+        let bytes = metadata.get(start.get()..)?.get(..exports.num_elems.checked_mul(4)?)?;
+        let valid = exports.position.get()..prefix_position;
+        let (positions, _) = bytes.as_chunks::<4>();
+        if !positions.iter().all(|pos| valid.contains(&(u32::from_le_bytes(*pos) as usize))) {
+            return None;
+        }
+        export_index = Some(bytes);
+    }
     let mut refreshed_source_files = FxIndexSet::default();
     with_encode_metadata_header::<DefPathHashDefIdEncoder<'_>>(tcx, temporary_file.path(), |ecx| {
         let preamble = ecx.position();
@@ -4451,6 +4492,10 @@ fn try_reuse_metadata_prefix(
         let root: LazyValue<CrateRoot> = ecx.lazy(previous_root);
         ecx.finish_crate_hash();
         let unhashed = ecx.encode_unhashed_crate_root();
+        if let Some(bytes) = export_index {
+            ecx.emit_raw_bytes(super::GENERIC_EXPORT_INDEX);
+            ecx.emit_raw_bytes(bytes);
+        }
         // Terminal metadata uses its exact private hash for rustc readers. Refresh that
         // identity even when just the source map changed and the Cargo key survived.
         let public_hash = if is_terminal {
@@ -4759,6 +4804,7 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
         is_proc_macro: tcx.crate_types().contains(&CrateType::ProcMacro),
         hygiene_ctxt: Default::default(),
         symbol_index_table: Default::default(),
+        generic_export_positions: Vec::new(),
         spec_encoder_data: Default::default(),
         early_bodies: early::enabled(tcx).then(|| early::interface_bodies(tcx)),
     };

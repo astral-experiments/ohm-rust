@@ -364,6 +364,7 @@ pub(crate) struct CrateHashes {
     pub(crate) public_hash: Svh,
 }
 
+const GENERIC_EXPORT_INDEX: &[u8] = b"ohm-exports-1";
 const INCREMENTAL_PATHS: &[u8] = b"ohm-paths-1";
 
 /// A separate struct for extra metadata that must be encoded *after*

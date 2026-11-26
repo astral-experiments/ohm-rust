@@ -367,9 +367,35 @@ fn check_refreshed_dependency_hash(output: &str) {
     }
 }
 
+// The generic export stream is reused, but the optional large-table index is
+// after the source map. A prefix refresh must preserve both on edit and revert.
+fn check_export_index_refresh() {
+    use std::fmt::Write;
+
+    let mut defs = String::from("#[inline(never)] pub fn f<const N: u32>() -> u32 { N }\n");
+    for n in 0..256 {
+        writeln!(defs, "pub fn n{n}() -> u32 {{ f::<{n}>() }}").unwrap();
+    }
+    rfs::write("defs.rs", defs);
+    let build = |value, reuse| {
+        let src = format!("pub mod defs; #[inline(never)] pub fn value() -> u32 {{ {value} }}\n");
+        rfs::write("lib.rs", src);
+        compile_and_read_public_api_hash_with_output(
+            reuse,
+            &["-Zshare-generics=yes"],
+            "metadata,link",
+        );
+        rfs::read("liblib.rmeta")
+    };
+    let original = build(1, false);
+    build(2, true);
+    assert!(original == build(1, true));
+}
+
 fn main() {
     run_make_support::run_in_tmpdir(|| check_native_locations(&[], "\t"));
     run_make_support::run_in_tmpdir(|| check_native_locations(&["-Cdwarf-version=5"], " "));
+    run_make_support::run_in_tmpdir(check_export_index_refresh);
     for output in ["metadata", "metadata,link"] {
         run_make_support::run_in_tmpdir(|| check_refreshed_dependency_hash(output));
     }
