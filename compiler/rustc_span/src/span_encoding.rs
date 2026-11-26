@@ -375,7 +375,15 @@ impl Span {
                 };
             },
             InlineParent(span) => span.data(),
-            PartiallyInterned(span) => span.data(),
+            PartiallyInterned(span) => {
+                let ctxt = map(SyntaxContext::from_u16(span.ctxt));
+                // A non-root inline context cannot make the position or parent fit
+                // in an inline form. The interned row does not include the context.
+                if !ctxt.is_root() && ctxt.as_u32() <= MAX_CTXT {
+                    return PartiallyInterned::span(span.index, ctxt.as_u32() as u16);
+                }
+                return span.data().with_ctxt(ctxt);
+            },
             Interned(span) => span.data(),
         };
 
@@ -445,7 +453,8 @@ impl Span {
         if let Some(old_parent) = data.parent {
             (*SPAN_TRACK)(old_parent);
         }
-        data.with_parent(parent)
+        // Keep tracking the old parent even if the encoded span is already correct.
+        if data.parent == parent { self } else { data.with_parent(parent) }
     }
 
     #[inline]
@@ -477,11 +486,17 @@ impl Span {
 #[derive(Default)]
 pub(crate) struct SpanInterner {
     spans: FxIndexSet<SpanData>,
+    last: usize,
 }
 
 impl SpanInterner {
     fn intern(&mut self, span_data: &SpanData) -> u32 {
+        // Lowering generated tokens frequently interns the same span in succession.
+        if self.spans.get_index(self.last) == Some(span_data) {
+            return self.last as u32;
+        }
         let (index, _) = self.spans.insert_full(*span_data);
+        self.last = index;
         index as u32
     }
 }

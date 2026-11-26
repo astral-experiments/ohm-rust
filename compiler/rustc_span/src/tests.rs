@@ -134,3 +134,41 @@ fn lookup_line_window_boundaries() {
         assert_eq!(sf.lookup_line(RelativeBytePos(u32::MAX)), Some(len - 1));
     }
 }
+
+#[test]
+fn parented_expansion_spans_round_trip() {
+    use crate::def_id::{DefIndex, LocalDefId};
+
+    create_default_session_globals_then(|| {
+        for lo in [0, 1, 0xff_ffff, 0x100_0000, u32::MAX - 32767] {
+            for len in [0, 1, 255, 256, 32766, 32767] {
+                for ctxt in [0, 1, 32766, 32767, 65535] {
+                    let ctxt = SyntaxContext::from_u32(ctxt);
+                    let bare = Span::new(BytePos(lo), BytePos(lo + len), ctxt, None);
+                    for parent in [0, 1, 32766, 32767, 65535] {
+                        let parent =
+                            Some(LocalDefId { local_def_index: DefIndex::from_u32(parent) });
+                        let s = Span::new(BytePos(lo + len), BytePos(lo), ctxt, parent);
+                        let data = s.data_untracked();
+                        assert_eq!(data.lo, BytePos(lo));
+                        assert_eq!(data.hi, BytePos(lo + len));
+                        assert_eq!(data.parent, parent);
+                        assert_eq!(data.ctxt, ctxt);
+                        assert_eq!(s.parent(), parent);
+                        assert_eq!(s.ctxt(), ctxt);
+                        assert_eq!(s.from_expansion(), !ctxt.is_root());
+                        assert_eq!(s.is_dummy(), lo == 0 && len == 0);
+                        assert!(s.eq_ctxt(bare));
+                        assert_eq!(s.to(s), s);
+                        assert_eq!(s.with_parent(parent), s);
+                        let other = SyntaxContext::from_u32(2);
+                        assert_eq!(s.with_ctxt(other), Span::new(data.lo, data.hi, other, parent));
+                        assert_eq!(s.with_parent(None), bare);
+                        assert_eq!(bare.with_parent(parent), s);
+                        assert_eq!(s.with_ctxt(SyntaxContext::root()).with_ctxt(ctxt), s);
+                    }
+                }
+            }
+        }
+    });
+}
