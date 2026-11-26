@@ -28,3 +28,15 @@ fn trait_impl_suppliers_in_crate_order() {
     assert_eq!(visit(Some(4)), [(1, 0), (5, 1)]);
     assert_eq!(visit(None), [(1, 0), (2, 2), (3, 3), (5, 1), (7, 4)]);
 }
+
+#[test]
+fn shorthand_positions_must_match_even_when_they_share_a_slot() {
+    let mut cache = super::RecentShorthands::EMPTY;
+    let other = 7 + cache.0.len();
+    cache.insert(7, 1);
+    assert_eq!(cache.get(7), Some(1));
+    assert_eq!(cache.get(other), None);
+    cache.insert(other, 2);
+    assert_eq!(cache.get(7), None);
+    assert_eq!(cache.get(other), Some(2));
+}

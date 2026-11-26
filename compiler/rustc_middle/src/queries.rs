@@ -2135,14 +2135,18 @@ rustc_queries! {
         desc { "collecting available upstream monomorphizations" }
     }
 
-    /// A contiguous slice of the upstream provider table cached across incremental builds.
-    query upstream_monomorphization_page(page: UpstreamMonoBucket) -> &'tcx [UpstreamMono<'tcx>] {
+    /// Index every winning export, including those no caller used in the last session.
+    query upstream_monomorphization_index(_: ()) -> &'tcx [u8] {
         cache_on_disk
-        desc { "loading upstream monomorphization page {:?}", page }
+        // Recompute demanded buckets when the index inputs change. Their fingerprints
+        // still isolate consumers from unrelated upstream changes.
+        no_hash
+        desc { "indexing available upstream monomorphizations" }
     }
 
     /// Returns every entry in a bucket. The caller compares exact instance identities.
     query upstream_monomorphizations_in(bucket: UpstreamMonoBucket) -> &'tcx [UpstreamMono<'tcx>] {
+        cache_on_disk
         desc { "looking up upstream monomorphizations in bucket {:?}", bucket }
     }
 

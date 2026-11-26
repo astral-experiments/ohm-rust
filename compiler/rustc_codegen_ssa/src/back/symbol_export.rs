@@ -3,8 +3,7 @@ use std::collections::hash_map::Entry::*;
 use rustc_abi::{CanonAbi, X86Call};
 use rustc_ast::expand::allocator::{AllocatorKind, NO_ALLOC_SHIM_IS_UNSTABLE, global_fn_name};
 use rustc_crate_store::CrateDepKind;
-use rustc_data_structures::fx::FxHashSet;
-use rustc_data_structures::unord::UnordMap;
+use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_hir as hir;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{CrateNum, DefId, DefIdMap, LOCAL_CRATE, LocalDefId};
@@ -500,18 +499,53 @@ fn exported_generic_symbols_provider_local<'tcx>(
     tcx.arena.alloc_from_iter(symbols)
 }
 
-fn upstream_monomorphizations_provider<'tcx>(
+struct UpstreamMonoIndex {
+    bucket: UpstreamMonoBucket,
+    provider: CrateNum,
+    slot: usize,
+    ordinal: usize,
+}
+
+// Index into the tracked, ordered crates query, never an untracked raw crate number.
+// Pack the slot and export ordinal into one word. If they do not fit, the lookup
+// uses the original full table. Both words can be promoted from disk as raw bytes.
+fn pack(slot: usize, ordinal: usize, crates: usize) -> u32 {
+    ordinal
+        .checked_mul(crates)
+        .and_then(|base| base.checked_add(slot))
+        .and_then(|address| u32::try_from(address).ok())
+        .unwrap_or(u32::MAX)
+}
+
+fn export_instance<'tcx>(
     tcx: TyCtxt<'tcx>,
-    (): (),
-) -> &'tcx [UpstreamMono<'tcx>] {
+    exported_symbol: ExportedSymbol<'tcx>,
+    drop_glue: Option<DefId>,
+    async_drop: Option<DefId>,
+) -> Option<(DefId, GenericArgsRef<'tcx>)> {
+    Some(match exported_symbol {
+        ExportedSymbol::Generic(def_id, args) => (def_id, args),
+        ExportedSymbol::DropGlue(ty) => (drop_glue?, tcx.mk_args(&[ty.into()])),
+        ExportedSymbol::AsyncDropGlueCtorShim(ty) => (async_drop?, tcx.mk_args(&[ty.into()])),
+        ExportedSymbol::AsyncDropGlue(def_id, ty) => (def_id, tcx.mk_args(&[ty.into()])),
+        ExportedSymbol::NonGeneric(..)
+        | ExportedSymbol::ThreadLocalShim(..)
+        | ExportedSymbol::NoDefId(..) => unreachable!("{exported_symbol:?}"),
+    })
+}
+
+fn upstream_monomorphizations<'tcx, T: Copy>(
+    tcx: TyCtxt<'tcx>,
+    entry: impl Fn(UpstreamMonoIndex, DefId, GenericArgsRef<'tcx>) -> T,
+) -> &'tcx [T] {
     let cnums = tcx.crates(());
 
-    let mut instances = UnordMap::default();
+    let mut instances = FxHashMap::default();
 
     let drop_glue_fn_def_id = tcx.lang_items().drop_glue_fn();
     let async_drop_in_place_fn_def_id = tcx.lang_items().async_drop_in_place_fn();
 
-    for &cnum in cnums.iter() {
+    for (slot, &cnum) in cnums.iter().enumerate() {
         // It should be possible to compile to build a crate against a conditional dependency then
         // later link that crate without the conditional dependency, so we cannot use exported
         // generics from conditional dependencies.
@@ -520,60 +554,95 @@ fn upstream_monomorphizations_provider<'tcx>(
             continue;
         }
 
-        for (exported_symbol, _) in tcx.exported_generic_symbols(cnum).iter() {
-            let (def_id, args) = match *exported_symbol {
-                ExportedSymbol::Generic(def_id, args) => (def_id, args),
-                ExportedSymbol::DropGlue(ty) => {
-                    if let Some(drop_in_place_fn_def_id) = drop_glue_fn_def_id {
-                        (drop_in_place_fn_def_id, tcx.mk_args(&[ty.into()]))
-                    } else {
-                        // `drop_glue` does not exist, don't try to use it.
-                        continue;
-                    }
-                }
-                ExportedSymbol::AsyncDropGlueCtorShim(ty) => {
-                    if let Some(async_drop_in_place_fn_def_id) = async_drop_in_place_fn_def_id {
-                        (async_drop_in_place_fn_def_id, tcx.mk_args(&[ty.into()]))
-                    } else {
-                        continue;
-                    }
-                }
-                ExportedSymbol::AsyncDropGlue(def_id, ty) => (def_id, tcx.mk_args(&[ty.into()])),
-                ExportedSymbol::NonGeneric(..)
-                | ExportedSymbol::ThreadLocalShim(..)
-                | ExportedSymbol::NoDefId(..) => unreachable!("{exported_symbol:?}"),
+        for (ordinal, &(symbol, _)) in tcx.exported_generic_symbols(cnum).iter().enumerate() {
+            let Some((def_id, args)) =
+                export_instance(tcx, symbol, drop_glue_fn_def_id, async_drop_in_place_fn_def_id)
+            else {
+                continue;
             };
 
             match instances.entry((def_id, args)) {
                 Occupied(mut e) => {
                     // If there are multiple monomorphizations available,
                     // we select one deterministically.
-                    let other_cnum = *e.get();
+                    let (other_slot, _) = *e.get();
+                    let other_cnum = cnums[other_slot];
                     if tcx.stable_crate_id(other_cnum) > tcx.stable_crate_id(cnum) {
-                        e.insert(cnum);
+                        e.insert((slot, ordinal));
                     }
                 }
                 Vacant(e) => {
-                    e.insert(cnum);
+                    e.insert((slot, ordinal));
                 }
             }
         }
     }
 
-    let sorted = instances
-        .into_items()
-        .map(|((def_id, args), provider)| {
+    #[allow(rustc::potential_query_instability, reason = "rows are sorted by stable keys below")]
+    let mut rows: Vec<_> = instances
+        .into_iter()
+        .map(|((def_id, args), (slot, ordinal))| {
+            let provider = cnums[slot];
             let key = UpstreamMonoBucket::sort_key(tcx, def_id, args);
-            let entry = UpstreamMono {
-                bucket: UpstreamMonoBucket::from_sort_key(key),
-                def_id,
-                args,
-                provider,
-            };
-            ((key, tcx.stable_crate_id(provider).as_u64()), entry)
+            let bucket = UpstreamMonoBucket::from_sort_key(key);
+            let row = entry(UpstreamMonoIndex { bucket, provider, slot, ordinal }, def_id, args);
+            ((key, tcx.stable_crate_id(provider).as_u64()), row)
         })
-        .into_sorted_stable_ord_by_key(|(key, _)| key);
-    tcx.arena.alloc_from_iter(sorted.into_iter().map(|(_, entry)| entry))
+        .collect();
+
+    if let Some(order) = upstream_order(&rows) {
+        tcx.arena.alloc_from_iter(order.into_iter().map(|index| rows[index as usize].1))
+    } else {
+        rows.sort_unstable_by_key(|(key, _)| *key);
+        tcx.arena.alloc_from_iter(rows.into_iter().map(|(_, entry)| entry))
+    }
+}
+
+#[cfg(test)]
+mod tests;
+
+type UpstreamSortKey = ((u64, u64), u64);
+
+fn upstream_order<T>(rows: &[(UpstreamSortKey, T)]) -> Option<Vec<u32>> {
+    if rows.len() < 256 || rows.len() > u32::MAX as usize {
+        return None;
+    }
+
+    let bits = rows.len().ilog2();
+    let prefix = |((word, _), _): UpstreamSortKey| (word >> (64 - bits)) as usize;
+    let mut offsets = vec![0u32; 1 << bits];
+    for &(key, _) in rows {
+        offsets[prefix(key)] += 1;
+    }
+
+    let mut total = 0;
+    for count in &mut offsets {
+        let next = total + *count;
+        *count = total;
+        total = next;
+    }
+
+    let mut order = vec![0u32; rows.len()];
+    for (i, &(key, _)) in rows.iter().enumerate() {
+        let offset = &mut offsets[prefix(key)];
+        order[*offset as usize] = i as u32;
+        *offset += 1;
+    }
+
+    let key = |&index: &u32| rows[index as usize].0;
+    let mut start = 0;
+    for end in offsets {
+        let end = end as usize;
+        if end - start > 1 {
+            let group = &mut order[start..end];
+            group.sort_unstable_by_key(key);
+            if group.windows(2).any(|pair| key(&pair[0]) == key(&pair[1])) {
+                return None;
+            }
+        }
+        start = end;
+    }
+    Some(order)
 }
 
 fn has_generic_symbols_for_c_linker_provider(tcx: TyCtxt<'_>, _: LocalCrate) -> bool {
@@ -592,24 +661,60 @@ pub(crate) fn provide(providers: &mut Providers) {
     providers.queries.exported_non_generic_symbols = exported_non_generic_symbols_provider_local;
     providers.queries.exported_generic_symbols = exported_generic_symbols_provider_local;
     providers.queries.has_generic_symbols_for_c_linker = has_generic_symbols_for_c_linker_provider;
-    providers.queries.upstream_monomorphizations = upstream_monomorphizations_provider;
-    providers.queries.upstream_monomorphization_page = |tcx, page| {
-        let entries = tcx.upstream_monomorphizations(());
-        let first = entries.partition_point(|entry| entry.bucket.page() < page);
-        let tail = &entries[first..];
-        &tail[..tail.partition_point(|entry| entry.bucket.page() == page)]
+    providers.queries.upstream_monomorphizations = |tcx, ()| {
+        upstream_monomorphizations(tcx, |row, def_id, args| UpstreamMono {
+            bucket: row.bucket,
+            def_id,
+            args,
+            provider: row.provider,
+        })
+    };
+    providers.queries.upstream_monomorphization_index = |tcx, ()| {
+        let crates = tcx.crates(()).len();
+        let rows = upstream_monomorphizations(tcx, |row, _, _| {
+            let address = pack(row.slot, row.ordinal, crates);
+            ((u64::from(row.bucket.0) << 32) | u64::from(address)).to_le_bytes()
+        });
+        rows.as_flattened()
     };
     providers.queries.upstream_monomorphizations_in = |tcx, bucket| {
-        // Keep the dependency on a single exact bucket while fetching its
-        // entries from a page retained from the previous compiler session.
-        let entries = if tcx.dep_graph.is_fully_enabled() {
-            tcx.upstream_monomorphization_page(bucket.page())
-        } else {
-            tcx.upstream_monomorphizations(())
+        let full = || {
+            let entries = tcx.upstream_monomorphizations(());
+            let first = entries.partition_point(|entry| entry.bucket < bucket);
+            let tail = &entries[first..];
+            &tail[..tail.iter().take_while(|entry| entry.bucket == bucket).count()]
         };
-        let first = entries.partition_point(|entry| entry.bucket < bucket);
-        let tail = &entries[first..];
-        &tail[..tail.iter().take_while(|entry| entry.bucket == bucket).count()]
+        if !tcx.dep_graph.is_fully_enabled() {
+            return full();
+        }
+
+        let (index, remainder) = tcx.upstream_monomorphization_index(()).as_chunks::<8>();
+        assert!(remainder.is_empty());
+        let key = |row: &[u8; 8]| (u64::from_le_bytes(*row) >> 32) as u32;
+        let address = |row: &[u8; 8]| u64::from_le_bytes(*row) as u32;
+        let first = index.partition_point(|row| key(row) < bucket.0);
+        let tail = &index[first..];
+        let len = tail.iter().take_while(|row| key(row) == bucket.0).count();
+        if len == 0 {
+            return &[];
+        }
+
+        if tail[..len].iter().any(|row| address(row) == u32::MAX) {
+            return full();
+        }
+        let crates = tcx.crates(());
+
+        // A new positive lookup needs only the selected providers. Record dependencies
+        // on their actual symbols and the lang items used to interpret drop glue.
+        let drop_glue = tcx.lang_items().drop_glue_fn();
+        let async_drop = tcx.lang_items().async_drop_in_place_fn();
+        tcx.arena.alloc_from_iter(tail[..len].iter().map(|row| {
+            let packed = address(row) as usize;
+            let provider = crates[packed % crates.len()];
+            let symbol = tcx.exported_generic_symbol(provider, packed / crates.len());
+            let (def_id, args) = export_instance(tcx, symbol, drop_glue, async_drop).unwrap();
+            UpstreamMono { bucket, def_id, args, provider }
+        }))
     };
     providers.queries.is_unreachable_local_definition = is_unreachable_local_definition_provider;
     providers.queries.wasm_import_module_map = wasm_import_module_map;

@@ -246,6 +246,8 @@ pub(crate) struct CrateMetadata {
     pub(super) forward_whole_crate_reads: bool,
     /// Crate-level metadata that is not in the SVH.
     unhashed: CrateRootUnhashed,
+    /// Byte positions in this exact blob. Never retained in the incremental cache.
+    generic_export_positions: Option<NonZero<usize>>,
     trait_impls: Vec<TraitGroup>,
     /// Inherent impls which do not follow the normal coherence rules.
     ///
@@ -367,6 +369,25 @@ impl<'a> LazyDecoder for BlobDecodeContext<'a> {
     }
 }
 
+/// A small working set of already resolved type shorthands in one metadata blob.
+/// A position alone is sufficient here because a decoder never switches crates.
+struct RecentShorthands<T>([Option<(usize, T)>; 256]);
+
+impl<T: Copy> RecentShorthands<T> {
+    const EMPTY: Self = Self([None; 256]);
+
+    #[inline]
+    fn get(&self, pos: usize) -> Option<T> {
+        let (found, value) = self.0[pos % self.0.len()]?;
+        (found == pos).then_some(value)
+    }
+
+    #[inline]
+    fn insert(&mut self, pos: usize, value: T) {
+        self.0[pos % self.0.len()] = Some((pos, value));
+    }
+}
+
 /// This is the decode context used when crate metadata was already read.
 /// Decoding of some types, like `Span` require some information to already been read.
 /// Can be constructed from a [`TyCtxt`] and [`CrateMetadata`] (see impls of the [`MetaDecoder`]
@@ -378,6 +399,7 @@ pub(super) struct MetadataDecodeContext<'a, 'tcx> {
 
     // Used for decoding interpret::AllocIds in a cached & thread-safe manner.
     alloc_decoding_session: AllocDecodingSession<'a>,
+    recent_types: Option<Box<RecentShorthands<Ty<'tcx>>>>,
 }
 
 impl<'a, 'tcx> LazyDecoder for MetadataDecodeContext<'a, 'tcx> {
@@ -438,6 +460,7 @@ impl<'a, 'tcx> MetaDecoder for (&'a CrateMetadata, TyCtxt<'tcx>) {
         MetadataDecodeContext {
             blob_decoder: self.0.blob().decoder(pos),
             cdata: self.0,
+            recent_types: None,
             tcx: self.1,
             alloc_decoding_session: self.0.alloc_decoding_state.new_decoding_session(),
         }
@@ -567,16 +590,21 @@ impl<'a, 'tcx> TyDecoder<'tcx> for MetadataDecodeContext<'a, 'tcx> {
     where
         F: FnOnce(&mut Self) -> Ty<'tcx>,
     {
-        let tcx = self.tcx;
-
-        let key = ty::CReaderCacheKey { cnum: Some(self.cdata.cnum), cache_id: 0, pos: shorthand };
-
-        if let Some(&ty) = tcx.caches.ty_rcache.borrow().get(&key) {
+        if let Some(ty) = self.recent_types.as_ref().and_then(|cache| cache.get(shorthand)) {
             return ty;
         }
 
-        let ty = or_insert_with(self);
-        tcx.caches.ty_rcache.borrow_mut().insert(key, ty);
+        let tcx = self.tcx;
+        let key = ty::CReaderCacheKey { cnum: Some(self.cdata.cnum), cache_id: 0, pos: shorthand };
+        let cached = tcx.caches.ty_rcache.borrow().get(&key).copied();
+        let ty = cached.unwrap_or_else(|| {
+            let ty = or_insert_with(self);
+            tcx.caches.ty_rcache.borrow_mut().insert(key, ty);
+            ty
+        });
+        if let Some(cache) = &mut self.recent_types {
+            cache.insert(shorthand, ty);
+        }
         ty
     }
 
@@ -910,23 +938,30 @@ impl MetadataBlob {
         LazyValue::<CrateRootUnhashed>::from_position(pos).decode(self)
     }
 
-    pub(crate) fn get_root_with_incremental_paths(
+    pub(crate) fn get_root_with_incremental_tables(
         &self,
-    ) -> (CrateRootUnhashed, Option<rustc_hir::def_path_hash_map::ExternalDefPaths>) {
+    ) -> (
+        CrateRootUnhashed,
+        Option<rustc_hir::def_path_hash_map::ExternalDefPaths>,
+        Option<NonZero<usize>>,
+    ) {
         use super::INCREMENTAL_PATHS;
         use super::def_path_hash_map::{decode_bytes, decode_map};
         let mut d = self.decoder(self.unhashed_pos().get());
         let root = CrateRootUnhashed::decode(&mut d);
-        let len = INCREMENTAL_PATHS.len();
-        if d.opaque.remaining() < len || d.read_raw_bytes(len) != INCREMENTAL_PATHS {
-            return (root, None);
-        }
-        let paths = rustc_hir::def_path_hash_map::ExternalDefPaths {
-            id: StableCrateId::decode(&mut d),
-            hashes: decode_bytes(&mut d),
-            indices: decode_map(&mut d),
-        };
-        (root, Some(paths))
+        let paths = self[d.opaque.position()..].starts_with(INCREMENTAL_PATHS).then(|| {
+            let _ = d.read_raw_bytes(INCREMENTAL_PATHS.len());
+            rustc_hir::def_path_hash_map::ExternalDefPaths {
+                id: StableCrateId::decode(&mut d),
+                hashes: decode_bytes(&mut d),
+                indices: decode_map(&mut d),
+            }
+        });
+        let offset = d.opaque.position();
+        let positions = self[offset..]
+            .starts_with(GENERIC_EXPORT_INDEX)
+            .then(|| NonZero::new(offset + GENERIC_EXPORT_INDEX.len()).unwrap());
+        (root, paths, positions)
     }
 
     pub(crate) fn get_dep_extra_filenames(&self) -> IndexVec<CrateNum, String> {
@@ -1933,11 +1968,34 @@ impl CrateMetadata {
         tcx.arena.alloc_from_iter(self.root.exported_non_generic_symbols.decode((self, tcx)))
     }
 
+    fn indexed_generic_export<'tcx>(
+        &self,
+        tcx: TyCtxt<'tcx>,
+        ordinal: usize,
+    ) -> Option<ExportedSymbol<'tcx>> {
+        let start = self.generic_export_positions?.get();
+        let array = self.root.exported_generic_symbols;
+        let table = self.blob.get(start..)?.get(..array.num_elems.checked_mul(4)?)?;
+        let pos = u32::from_le_bytes(*table.as_chunks::<4>().0.get(ordinal)?) as usize;
+        if pos < array.position.get() || pos >= self.blob.root_pos().get() {
+            return None;
+        }
+        let mut dcx = (self, tcx).decoder(pos);
+        dcx.set_lazy_state(LazyState::NodeStart(array.position));
+        Some(ExportedSymbol::decode(&mut dcx))
+    }
+
     fn exported_generic_symbols<'tcx>(
         &self,
         tcx: TyCtxt<'tcx>,
     ) -> &'tcx [(ExportedSymbol<'tcx>, SymbolExportInfo)] {
-        tcx.arena.alloc_from_iter(self.root.exported_generic_symbols.decode((self, tcx)))
+        let mut symbols = self.root.exported_generic_symbols.decode((self, tcx));
+        // Large symbol tables repeatedly refer to the same types. Keep hits local
+        // to this stream to avoid taking the shared cache lock for each one.
+        if symbols.len() >= 256 {
+            symbols.dcx.recent_types = Some(Box::new(RecentShorthands::EMPTY));
+        }
+        tcx.arena.alloc_from_iter(symbols)
     }
 
     fn get_macro(&self, tcx: TyCtxt<'_>, id: DefIndex) -> ast::MacroDef {
@@ -2287,6 +2345,7 @@ impl CrateMetadata {
         blob: MetadataBlob,
         root: CrateRoot,
         unhashed: CrateRootUnhashed,
+        generic_export_positions: Option<NonZero<usize>>,
         raw_proc_macros: Option<&'static [ProcMacroClient]>,
         cnum: CrateNum,
         cnum_map: CrateNumMap,
@@ -2343,6 +2402,7 @@ impl CrateMetadata {
             blob,
             root,
             unhashed,
+            generic_export_positions,
             trait_impls,
             incoherent_impls: Default::default(),
             raw_proc_macros,

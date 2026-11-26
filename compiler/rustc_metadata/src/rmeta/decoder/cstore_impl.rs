@@ -1010,6 +1010,9 @@ impl CrateStore for CStore {
 }
 
 fn provide_cstore_hooks(providers: &mut Providers) {
+    providers.hooks.indexed_generic_export_untracked = |tcx, cnum, ordinal| {
+        CStore::from_tcx(tcx).get_crate_data(cnum).indexed_generic_export(tcx, ordinal)
+    };
     providers.hooks.append_external_incoherent_impls = |tcx, cnum, simp, impls| {
         if tcx.dep_graph.is_fully_enabled() && tcx.external_incoherent_impls_input(cnum).is_none() {
             return;

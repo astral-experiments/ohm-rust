@@ -9,7 +9,7 @@ pub fn width<T>() -> usize {
 }
 
 pub fn widths() -> (usize, usize) {
-    #[cfg(rpass1)]
+    #[cfg(any(rpass1, rpass3, rpass4))]
     let other = width::<u16>();
     #[cfg(rpass2)]
     let other = width::<u32>();
