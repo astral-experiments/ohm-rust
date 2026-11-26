@@ -1252,6 +1252,16 @@ impl Span {
         if let Some(span) = self.to_in_same_inline_context(end) {
             return span;
         }
+        // Macro expansion can give neighboring tokens identical positions.
+        // Keep both tracking visits from prepare_to_combine without interning
+        // the result again.
+        if self == end {
+            if let Some(parent) = self.parent() {
+                (*SPAN_TRACK)(parent);
+                (*SPAN_TRACK)(parent);
+            }
+            return self;
+        }
         match Span::prepare_to_combine(self, end) {
             Ok((from, to, parent)) => {
                 Span::new(cmp::min(from.lo, to.lo), cmp::max(from.hi, to.hi), from.ctxt, parent)
