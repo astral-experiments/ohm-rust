@@ -11,6 +11,10 @@
 #include "../../../src/llvm-project/llvm/lib/Bitcode/Writer/OhmCallerLocationProof.h"
 #include "llvm-c/Core.h"
 #include "llvm/Bitcode/OhmDebugObjectSignature.h"
+#if __has_include("llvm/CodeGen/OhmDebugObjectSources.h")
+#include "llvm/CodeGen/OhmDebugObjectSources.h"
+#define OHM_DEBUG_REBASE
+#endif
 #include "llvm/DebugInfo/DWARF/OhmRuntimeLocations.h"
 #include "llvm/IR/ClosedOptimizerContext.h"
 #include "llvm/IR/Module.h"
@@ -628,6 +632,19 @@ extern "C" LLVMRustBuffer *LLVMRustDwarfTypedSnapshot(LLVMModuleRef Ref) {
   return Out.release();
 }
 
+static LLVMRustBuffer *takeObject(LLVMMemoryBufferRef Result, bool Matched) {
+  if (!Result)
+    return nullptr;
+  std::unique_ptr<LLVMOpaqueMemoryBuffer, decltype(&LLVMDisposeMemoryBuffer)>
+      Buf(Result, LLVMDisposeMemoryBuffer);
+  const size_t Size = LLVMGetBufferSize(Buf.get());
+  if (!Matched || !Size || Size > 128u << 20)
+    return nullptr;
+  auto Out = std::make_unique<LLVMRustBuffer>();
+  Out->data.assign(LLVMGetBufferStart(Buf.get()), Size);
+  return Out.release();
+}
+
 extern "C" LLVMRustBuffer *
 LLVMRustDwarfTypedMatch(LLVMModuleRef M, const char *Old, size_t N,
                         const char *Owners, size_t NOwners, const char *Map,
@@ -638,16 +655,7 @@ LLVMRustDwarfTypedMatch(LLVMModuleRef M, const char *Old, size_t N,
   Check C{llvm::unwrap(M), {Owners, NOwners}, {Map, NMap}, {Binary, NBinary}};
   int Code = ohm_bc_match_relocatable_v1(M, Old, N, Map, NMap, Proof, NProof,
                                          callback, &C);
-  if (!C.result)
-    return nullptr;
-  std::unique_ptr<LLVMOpaqueMemoryBuffer, decltype(&LLVMDisposeMemoryBuffer)>
-      Buf(C.result, LLVMDisposeMemoryBuffer);
-  const size_t OutputSize = LLVMGetBufferSize(Buf.get());
-  if (Code != 2 || C.calls != 1 || !OutputSize || OutputSize > 128u << 20)
-    return nullptr;
-  auto Out = std::make_unique<LLVMRustBuffer>();
-  Out->data.assign(LLVMGetBufferStart(Buf.get()), OutputSize);
-  return Out.release();
+  return takeObject(C.result, Code == 2 && C.calls == 1);
 }
 #else
 extern "C" void LLVMRustDwarfStableDeadLocations(LLVMModuleRef) {}
@@ -669,6 +677,17 @@ extern "C" LLVMRustBuffer *LLVMRustDwarfTypedMatch(LLVMModuleRef, const char *,
   return nullptr;
 }
 #endif
+
+extern "C" LLVMRustBuffer *LLVMRustDwarfRebase(const char *Map, size_t NMap,
+                                               const char *Obj, size_t NObj) {
+#ifdef OHM_DEBUG_REBASE
+  LLVMMemoryBufferRef Result = nullptr;
+  int Code = ohm_debug_rebase_v1(Map, NMap, Obj, NObj, &Result, nullptr);
+  return takeObject(Result, Code == 0);
+#else
+  return nullptr;
+#endif
+}
 
 extern "C" void *LLVMRustDwarfStartEmittedNames(LLVMModuleRef m) {
 #ifdef OHM_EMITTED_GLOBALS

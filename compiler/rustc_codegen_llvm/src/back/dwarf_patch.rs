@@ -286,7 +286,8 @@ fn canonical_program(
     files: &Files<'_>,
     mut p: usize,
     mut relocated: std::collections::BTreeSet<usize>,
-) -> Option<Vec<u8>> {
+) -> Option<(Vec<u8>, bool)> {
+    let mut repack = false;
     let mut out = data.get(..p)?.to_vec();
     let (mut old, mut new, mut file) = (1i64, 1i64, 1usize);
     let mut check = Vec::with_capacity(24);
@@ -311,14 +312,11 @@ fn canonical_program(
                 let len = usize::try_from(leb(data, &mut p, false)?).ok()?;
                 let ext = *data.get(p)?;
                 if matches!(ext, 2 | 4) {
-                    if len == 0
-                        || (ext == 2
-                            && (len != 9
-                                || out.len() != row
-                                || !relocated.remove(&p.checked_add(1)?)))
+                    if len == 0 || (ext == 2 && (len != 9 || !relocated.remove(&p.checked_add(1)?)))
                     {
                         return None;
                     }
+                    repack |= ext == 2 && out.len() != row;
                     p = p.checked_add(len)?;
                     out.extend_from_slice(data.get(row..p)?);
                     continue;
@@ -377,7 +375,15 @@ fn canonical_program(
             (old, new, file) = (1, 1, 1);
         }
     }
-    (relocated.is_empty() && out.len() == data.len()).then_some(out)
+    if !relocated.is_empty() {
+        return None;
+    }
+    if out.len() != data.len() {
+        repack = true;
+        let length = u32::try_from(out.len().checked_sub(4)?).ok()?;
+        out.get_mut(..4)?.copy_from_slice(&length.to_le_bytes());
+    }
+    Some((out, repack))
 }
 
 fn line_relocations(data: &[u8], line: Range<usize>) -> Option<std::collections::BTreeSet<usize>> {
@@ -618,7 +624,28 @@ fn info(
     Some(signature)
 }
 
-pub(super) fn replay_embedded(object: &mut [u8], map: &LineMap) -> Option<()> {
+/// Rewrite a verified embedded object when the new line program moves
+/// relocation offsets. LLVM validates and repacks both DWARF and ELF.
+fn rebase_embedded(object: &[u8], map: &LineMap) -> Option<Vec<u8>> {
+    use serde_json::json;
+
+    let mut files = Vec::with_capacity(map.changed.len());
+    for (name, lines) in &map.changed {
+        let pairs: Vec<_> = lines.iter().collect();
+        files.push(json!({"directory": map.cwd, "filename": name, "lines": pairs}));
+    }
+    let mapping = serde_json::to_vec(&json!({"version": 1, "files": files})).ok()?;
+    super::dwarf_cache::copy_buffer(unsafe {
+        crate::llvm::LLVMRustDwarfRebase(
+            mapping.as_ptr(),
+            mapping.len(),
+            object.as_ptr(),
+            object.len(),
+        )
+    })
+}
+
+pub(super) fn replay_embedded(object: &mut Vec<u8>, map: &LineMap) -> Option<()> {
     let o = sections(object)?;
     if o.keys().any(|name| {
         !matches!(
@@ -635,20 +662,39 @@ pub(super) fn replay_embedded(object: &mut [u8], map: &LineMap) -> Option<()> {
     }
     let line = o.get(".debug_line")?.clone();
     let mut bytes = object.get(line.clone())?.to_vec();
+    let mut repacked = None;
     let files = if let Some(files) = lines(&mut bytes, map) {
         files
     } else {
         let original = &object[line.clone()];
         let (files, start) = line_header(original, map)?;
         let relocated = line_relocations(object, line.clone())?;
-        bytes = canonical_program(original, &files, start, relocated)?;
+        let (program, repack) = canonical_program(original, &files, start, relocated)?;
+        bytes = program;
+        if repack {
+            // LLVM needs the original object to validate and move the ELF relocations.
+            repacked = Some(rebase_embedded(object, map)?);
+        }
         files
     };
-    object.get_mut(line)?.copy_from_slice(&bytes);
     let ab = abbrevs(object.get(o.get(".debug_abbrev")?.clone())?)?;
-    info(object.get_mut(o.get(".debug_info")?.clone())?, &ab, &files, UnitKind::Embedded)?
-        .is_none()
-        .then_some(())
+    let attrs = object.get_mut(o.get(".debug_info")?.clone())?;
+    if info(attrs, &ab, &files, UnitKind::Embedded)?.is_some() {
+        return None;
+    }
+    if let Some(updated) = repacked {
+        // Require the same bytes as our complete, certificate-checked row and DIE walks.
+        let sections = sections(&updated)?;
+        if updated.get(sections.get(".debug_line")?.clone())? != bytes
+            || updated.get(sections.get(".debug_info")?.clone())? != attrs
+        {
+            return None;
+        }
+        *object = updated;
+    } else {
+        object.get_mut(line)?.copy_from_slice(&bytes);
+    }
+    Some(())
 }
 
 pub(super) fn replay(obj: &mut [u8], dwo: &mut [u8], map: &LineMap) -> Option<()> {

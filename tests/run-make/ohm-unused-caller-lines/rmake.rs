@@ -54,16 +54,11 @@ fn digest(object: &Path) -> [u8; 32] {
     bytes[start..start + 32].try_into().unwrap()
 }
 
-fn main() {
-    // Keep this bounds check in place. Its typed packet indicates that the
-    // LLVM provider has the caller-location support needed by this test.
-    let prefix = "pub fn at(xs: &[u8]) -> u8 { xs[0] }\n";
-    let src = fs::read_to_string("fixture.rs").unwrap();
-    let old = compile(&format!("{prefix}\n{src}"));
+fn check_replay(previous: &str, shifted: &str) {
+    let old = compile(previous);
     let object = find_object(Path::new("incr")).unwrap();
     let before = object.with_extension("dwarf-typed").exists().then(|| digest(&object));
-    let shifted = format!("{prefix}\n\n{src}");
-    let new = compile(&shifted);
+    let new = compile(shifted);
     let object = find_object(Path::new("incr")).unwrap();
     if let Some(before) = before {
         assert_eq!(before, digest(&object));
@@ -73,9 +68,25 @@ fn main() {
     }
     let incremental = fs::read(object).unwrap();
     fs::remove_dir_all("incr").unwrap();
-    compile(&shifted);
+    compile(shifted);
     assert!(incremental == fs::read(find_object(Path::new("incr")).unwrap()).unwrap());
     fs::remove_dir_all("incr").unwrap();
+}
+
+fn main() {
+    // Keep this bounds check in place. Its typed packet indicates that the
+    // LLVM provider has the caller-location support needed by this test.
+    let prefix = "pub fn at(xs: &[u8]) -> u8 { xs[0] }\n";
+    let src = fs::read_to_string("fixture.rs").unwrap();
+    check_replay(&format!("{prefix}\n{src}"), &format!("{prefix}\n\n{src}"));
+
+    // Moving the first function across the one-byte signed LEB boundary
+    // moves the following function's DW_LNE_set_address relocation.
+    let funcs = "pub fn first(x: u32) -> u32 { x ^ 1 }\npub fn second(x: u32) -> u32 { x ^ 2 }\n";
+    let short = format!("{prefix}{}{funcs}", "\n".repeat(30));
+    let long = format!("{prefix}{}{funcs}", "\n".repeat(96));
+    check_replay(&short, &long);
+    check_replay(&long, &short);
 
     // Both calls have the same location, but the second one reads the line.
     let src = fs::read_to_string("observe.rs").unwrap();

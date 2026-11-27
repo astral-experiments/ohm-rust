@@ -2594,6 +2594,12 @@ unsafe extern "C" {
         object: *const u8,
         object_len: usize,
     ) -> Option<&'static mut Buffer>;
+    pub(crate) fn LLVMRustDwarfRebase(
+        map: *const u8,
+        map_len: usize,
+        object: *const u8,
+        object_len: usize,
+    ) -> Option<&'static mut Buffer>;
     pub(crate) fn LLVMRustDwarfLineCertificate(M: &Module) -> Option<&'static mut Buffer>;
     pub(crate) fn LLVMRustDwarfDigest(data: *const u8, size: usize, digest: *mut u8);
     pub(crate) fn LLVMRustModuleSerialize(M: &Module, is_thin: bool) -> &'static mut Buffer;

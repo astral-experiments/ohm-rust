@@ -2,20 +2,10 @@
 use rustc_codegen_ssa::CompiledModule;
 use rustc_codegen_ssa::back::write::{CodegenContext, DwarfSourceFile};
 
-use super::dwarf_cache::{Entry, read_file};
+use super::dwarf_cache::{Entry, copy_buffer, read_file};
 use super::dwarf_typed_source as source;
 use super::dwarf_typed_store::{Donor, Packet, Store, take};
 use crate::{ModuleLlvm, llvm};
-
-fn buffer(value: Option<&'static mut llvm::Buffer>) -> Option<Vec<u8>> {
-    let value = value?;
-    let size = unsafe { llvm::LLVMRustBufferLen(value) };
-    let bytes = (size <= 128 << 20).then(|| unsafe {
-        std::slice::from_raw_parts(llvm::LLVMRustBufferPtr(value), size).to_vec()
-    });
-    unsafe { llvm::LLVMRustBufferFree(value) };
-    bytes
-}
 
 fn replay(
     module: &ModuleLlvm,
@@ -37,7 +27,7 @@ fn replay(
     if entry.bound_donor()?.as_slice() != donor.object {
         return None;
     }
-    let result = buffer(unsafe {
+    let result = copy_buffer(unsafe {
         llvm::LLVMRustDwarfTypedMatch(
             m,
             donor.ordered.as_ptr(),
@@ -56,7 +46,7 @@ fn replay(
 }
 
 fn snapshot(module: &ModuleLlvm, files: &[DwarfSourceFile]) -> Option<Packet> {
-    let bytes = buffer(unsafe { llvm::LLVMRustDwarfTypedSnapshot(module.llmod()) })?;
+    let bytes = copy_buffer(unsafe { llvm::LLVMRustDwarfTypedSnapshot(module.llmod()) })?;
     let (context, mut rest) = bytes.split_at_checked(32)?;
     let ordered = take(&mut rest)?.to_vec();
     let owners = take(&mut rest)?.to_vec();
@@ -79,7 +69,7 @@ impl EmittedNames {
     }
 
     fn bind(&self, packet: &mut Packet) {
-        if let Some(names) = buffer(unsafe {
+        if let Some(names) = copy_buffer(unsafe {
             llvm::LLVMRustDwarfFinishEmittedNames(
                 self.0.as_ptr(),
                 packet.owners.as_ptr(),
