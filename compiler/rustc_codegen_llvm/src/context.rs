@@ -27,6 +27,7 @@ use rustc_session::config::{
 use rustc_session::{PointerAuthSchema, Session};
 use rustc_span::{DUMMY_SP, Span, Symbol, bug, sym};
 use rustc_structures::CrateType;
+use rustc_target::callconv::ArgAttributes;
 use rustc_target::spec::{
     Arch, CfgAbi, Env, FramePointer, HasTargetSpec, Os, RelocModel, SmallDataThresholdSupport,
     Target, TlsModel,
@@ -102,6 +103,9 @@ pub(crate) struct FullCx<'ll, 'tcx> {
 
     /// Cache instances of monomorphic and polymorphic items
     pub instances: RefCell<FxHashMap<Instance<'tcx>, &'ll Value>>,
+    /// Result of applying ABI argument attributes at an index in an LLVM list.
+    pub arg_attrs:
+        RefCell<FxHashMap<(llvm::AttributeList, u32, ArgAttributes), llvm::AttributeList>>,
     /// Cache instances of intrinsics
     pub intrinsic_instances: RefCell<FxHashMap<Instance<'tcx>, &'ll Value>>,
     /// Cache generated vtables
@@ -739,6 +743,7 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
                 tls_model,
                 codegen_unit,
                 instances: Default::default(),
+                arg_attrs: Default::default(),
                 intrinsic_instances: Default::default(),
                 vtables: Default::default(),
                 const_str_cache: Default::default(),

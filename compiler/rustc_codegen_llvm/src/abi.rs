@@ -152,10 +152,34 @@ fn borrowed_arg_hint(
     }
 }
 
+// The same ABI attribute sequences occur in many declarations and calls.
+// LLVM uniques lists in the context, so the input handle identifies all prior
+// attributes, including any added independently (such as range or sret).
+fn apply_arg_attrs(
+    attrs: &ArgAttributes,
+    idx: AttributePlace,
+    cx: &CodegenCx<'_, '_>,
+    value: &Value,
+    apply: impl FnOnce(&Value, AttributePlace, &[&Attribute]),
+) {
+    if *attrs == ArgAttributes::new() {
+        return;
+    }
+    let before = unsafe { llvm::LLVMRustGetAttributes(value) };
+    let mut cache = cx.arg_attrs.borrow_mut();
+    let key = (before, idx.as_uint(), *attrs);
+    if let Some(&after) = cache.get(&key) {
+        // The cached list belongs to this LLVM context.
+        unsafe { llvm::LLVMRustSetAttributes(value, after) };
+        return;
+    }
+    apply(value, idx, &get_attrs(attrs, cx));
+    cache.insert(key, unsafe { llvm::LLVMRustGetAttributes(value) });
+}
+
 impl ArgAttributesExt for ArgAttributes {
     fn apply_attrs_to_llfn(&self, idx: AttributePlace, cx: &CodegenCx<'_, '_>, llfn: &Value) {
-        let attrs = get_attrs(self, cx);
-        attributes::apply_to_llfn(llfn, idx, &attrs);
+        apply_arg_attrs(self, idx, cx, llfn, attributes::apply_to_llfn);
     }
 
     fn apply_attrs_to_callsite(
@@ -164,8 +188,7 @@ impl ArgAttributesExt for ArgAttributes {
         cx: &CodegenCx<'_, '_>,
         callsite: &Value,
     ) {
-        let attrs = get_attrs(self, cx);
-        attributes::apply_to_callsite(callsite, idx, &attrs);
+        apply_arg_attrs(self, idx, cx, callsite, attributes::apply_to_callsite);
     }
 }
 
