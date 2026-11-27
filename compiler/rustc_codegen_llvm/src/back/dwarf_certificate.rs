@@ -97,7 +97,7 @@ pub(super) fn compare(previous: &[u8], current: &[u8]) -> Option<LineMap> {
     Some(LineMap { cwd: cwd.to_owned(), sources, changed })
 }
 
-/// Propose only the recorded row pairs for one imported caller's file. This
+/// Propose only the recorded row pairs for one file. This
 /// cannot authorize reuse. The typed matcher must invert them in the current
 /// module and check the complete ordered input against the bound predecessor.
 pub(super) fn imported_rows(
@@ -156,4 +156,47 @@ pub(super) fn imported_rows(
     }
     pairs.sort_unstable();
     pairs.windows(2).all(|w| w[0][0] < w[1][0] && w[0][1] < w[1][1]).then_some(pairs)
+}
+
+/// Files present in both ordered inputs whose checksums changed. Reading the
+/// directory first avoids a second row walk for single-file edits.
+pub(super) fn changed_checksums<'a>(
+    previous: &'a [u8],
+    current: &'a [u8],
+    limit: usize,
+) -> Option<Vec<(&'a str, &'a str, &'a str, &'a str)>> {
+    let mut old = Reader(previous);
+    let mut new = Reader(current);
+    let directory = new.string()?;
+    if old.string()? != directory {
+        return None;
+    }
+    old.take(32)?;
+    new.take(32)?;
+    let n = new.word()?;
+    if n != old.word()? {
+        return None;
+    }
+    let mut changed = Vec::new();
+    for _ in 0..n {
+        let name = new.string()?;
+        if old.string()? != name {
+            return None;
+        }
+        let (from, to) = (old.string()?, new.string()?);
+        if from != to {
+            if changed.len() == limit {
+                return None;
+            }
+            let relative = Path::new(name).strip_prefix(directory).ok()?.to_str()?;
+            if relative.is_empty()
+                || relative.split('/').any(|part| matches!(part, "" | "." | ".."))
+                || Path::new(directory).join(relative).to_str()? != name
+            {
+                return None;
+            }
+            changed.push((directory, relative, from, to));
+        }
+    }
+    Some(changed)
 }
