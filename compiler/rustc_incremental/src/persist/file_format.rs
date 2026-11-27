@@ -45,7 +45,8 @@ const FILE_MAGIC: &[u8] = b"RSIC";
 // Native metadata separates local inputs from upstream public hashes.
 // Query footers can index dense values by a bitmap and ordered offsets.
 // Body uses include declarations for eligible functions and constants.
-const HEADER_FORMAT_VERSION: u16 = 61403;
+// Implicit trait bounds refer to the declaration span.
+const HEADER_FORMAT_VERSION: u16 = 61451;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);
