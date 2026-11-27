@@ -47,7 +47,8 @@ const FILE_MAGIC: &[u8] = b"RSIC";
 // Body uses include declarations for eligible functions and constants.
 // Imported definition spans have their own metadata input in the dependency graph.
 // Upstream provider indices replace cached monomorphization pages.
-const HEADER_FORMAT_VERSION: u16 = 61450;
+// Implicit trait bounds refer to the declaration span.
+const HEADER_FORMAT_VERSION: u16 = 61451;
 
 pub(crate) fn write_file_header(stream: &mut FileEncoder<'_>, sess: &Session) {
     stream.emit_raw_bytes(FILE_MAGIC);

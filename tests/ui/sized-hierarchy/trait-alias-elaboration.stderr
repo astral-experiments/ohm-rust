@@ -2,7 +2,7 @@ error[E0225]: only auto traits can be used as additional traits in a trait objec
   --> $DIR/trait-alias-elaboration.rs:11:16
    |
 LL | trait Qux = Clone;
-   | ------------------ additional non-auto trait
+   | --------- additional non-auto trait
 LL |
 LL | type Foo = dyn Qux + MetaSized;
    |                ^^^   --------- first non-auto trait

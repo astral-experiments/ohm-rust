@@ -129,7 +129,7 @@ fn gather_explicit_clauses_of(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::Generi
             }
             ItemKind::Trait { bounds: self_bounds, .. }
             | ItemKind::TraitAlias(_, _, _, self_bounds) => {
-                is_trait = Some((self_bounds, item.span));
+                is_trait = Some((self_bounds, tcx.def_span(def_id)));
             }
             _ => {}
         }
@@ -646,19 +646,22 @@ pub(super) fn implied_clauses_with_filter<'tcx>(
         | PredicateFilter::SelfOnly
         | PredicateFilter::SelfTraitThatDefines(_)
         | PredicateFilter::SelfAndAssociatedTypeBounds => {
+            // Implicit bounds belong to the declaration. Including the trait body
+            // would invalidate users of these bounds on edits to associated items.
+            let span = tcx.def_span(trait_def_id);
             icx.lowerer().add_implicit_sizedness_bounds(
                 &mut bounds,
                 self_param_ty,
                 superbounds,
                 ImpliedBoundsContext::TraitDef(trait_def_id),
-                item.span,
+                span,
             );
             icx.lowerer().add_default_traits(
                 &mut bounds,
                 self_param_ty,
                 superbounds,
                 ImpliedBoundsContext::TraitDef(trait_def_id),
-                item.span,
+                span,
             );
         }
         //`ConstIfConst` is only interested in `[const]` bounds.
@@ -894,7 +897,7 @@ pub(super) fn type_param_clauses<'tcx>(
         && param_id == item_hir_id
     {
         let identity_trait_ref = ty::TraitRef::identity(tcx, item_def_id.to_def_id());
-        extend = Some((identity_trait_ref.upcast(tcx), item.span));
+        extend = Some((identity_trait_ref.upcast(tcx), tcx.def_span(item_def_id)));
     }
 
     let icx = ItemCtxt::new(tcx, item_def_id);
