@@ -202,6 +202,121 @@ impl<'tcx, V: CodegenObject> LocalRef<'tcx, V> {
 
 ///////////////////////////////////////////////////////////////////////////
 
+/// A derive emitted by an upstream macro can keep all its definition-site
+/// locations when the invocation moves. Put those locations and the body in
+/// a query so a change to the expansion alone needn't invalidate every CGU
+/// containing a copy. Other MIR consumers still see the original body.
+pub(crate) fn derived_codegen<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    method: rustc_span::def_id::LocalDefId,
+) -> Option<&'tcx (&'tcx Body<'tcx>, rustc_span::Span)> {
+    use mir::visit::MutVisitor;
+    use rustc_span::{Span, SyntaxContext, hygiene};
+
+    let parent = tcx.trait_impl_of_assoc(method.to_def_id())?;
+    if !tcx.is_automatically_derived(parent) {
+        return None;
+    }
+    let mut def_span = tcx.def_span(method);
+    if def_span.is_dummy()
+        || !def_span.from_expansion()
+        || !tcx.sess.source_map().is_imported(def_span)
+    {
+        return None;
+    }
+
+    let mir = tcx.optimized_mir(method.to_def_id());
+    if mir.coverage_mir_info.is_some()
+        || mir.source_scopes.iter().any(|s| s.inlined.is_some())
+        || mir.basic_blocks.iter().any(|b| {
+            !matches!(
+                b.terminator().kind,
+                mir::TerminatorKind::Return | mir::TerminatorKind::Call { .. }
+            )
+        })
+    {
+        return None;
+    }
+
+    struct DefinitionSite<'tcx> {
+        body: Span,
+        collapsed: bool,
+        tcx: TyCtxt<'tcx>,
+    }
+    impl<'tcx> MutVisitor<'tcx> for DefinitionSite<'tcx> {
+        fn tcx(&self) -> TyCtxt<'tcx> {
+            self.tcx
+        }
+        fn visit_span(&mut self, span: &mut Span) {
+            if hygiene::walk_chain_collapsed(*span, self.body) != *span {
+                self.collapsed = true;
+            }
+            let s = span.data();
+            *span = Span::new(s.lo, s.hi, SyntaxContext::root(), None);
+        }
+    }
+    let mut sites = DefinitionSite { body: mir.span, collapsed: false, tcx };
+    sites.visit_span(&mut def_span);
+    let mut body = mir.clone();
+    sites.visit_body(&mut body);
+    // The visitor sees operands but not the surrounding argument or
+    // mentioned-item spans. Both are part of the MIR fingerprint.
+    for bb in body.basic_blocks_mut() {
+        if let mir::TerminatorKind::Call { args, .. } = &mut bb.terminator_mut().kind {
+            for arg in args.iter_mut() {
+                sites.visit_span(&mut arg.span);
+            }
+        }
+    }
+    if let Some(items) = &mut body.mentioned_items {
+        for item in items {
+            sites.visit_span(&mut item.span);
+        }
+    }
+    if sites.collapsed {
+        return None;
+    }
+    let body: &'tcx Body<'tcx> = tcx.arena.alloc(body);
+    Some(tcx.arena.alloc((body, def_span)))
+}
+
+/// Use definition-site MIR only when no callee observes the expansion's
+/// invocation site. Resolve the concrete instance to include tracked impls.
+pub fn derived_method<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    instance: Instance<'tcx>,
+) -> Option<(&'tcx Body<'tcx>, rustc_span::Span)> {
+    let ty::InstanceKind::Item(method) = instance.def else { return None };
+    let local = method.as_local()?;
+    if tcx.sess.opts.debuginfo != rustc_session::config::DebugInfo::LineTablesOnly
+        || tcx.sess.opts.optimize != rustc_session::config::OptLevel::Less
+        || tcx.sess.opts.incremental.is_none()
+        || !tcx.sess.opts.unstable_opts.ohm_split_large_cgus
+        || tcx.def_kind(local) != rustc_hir::def::DefKind::AssocFn
+    {
+        return None;
+    }
+    let &(body, span) = tcx.ohm_derived_codegen(local)?;
+    let env = ty::TypingEnv::fully_monomorphized();
+    for bb in body.basic_blocks.iter() {
+        if let mir::TerminatorKind::Call { func, .. } = &bb.terminator().kind {
+            let ft = instance.instantiate_mir_and_normalize_erasing_regions(
+                tcx,
+                env,
+                ty::EarlyBinder::bind(tcx, func.ty(body, tcx)),
+            );
+            let ty::FnDef(did, args) = *ft.kind() else { return None };
+            let callee = Instance::try_resolve(tcx, env, did, args.no_bound_vars()?).ok()??;
+            if !matches!(callee.def, ty::InstanceKind::Item(_))
+                || callee.def.requires_caller_location(tcx)
+            {
+                return None;
+            }
+        }
+    }
+    Some((body, span))
+}
+
 #[instrument(level = "debug", skip(cx))]
 pub fn codegen_mir<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     cx: &'a Bx::CodegenCx,
@@ -212,7 +327,9 @@ pub fn codegen_mir<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let tcx = cx.tcx();
     let llfn = cx.get_fn(instance);
 
-    let mut mir = tcx.instance_mir(instance.def);
+    let mut mir = derived_method(tcx, instance)
+        .map(|(body, _)| body)
+        .unwrap_or_else(|| tcx.instance_mir(instance.def));
     // Note that the ABI logic has deduced facts about the functions' parameters based on the MIR we
     // got here (`deduce_param_attrs`). That means we can *not* apply arbitrary further MIR
     // transforms as that may invalidate those deduced facts!

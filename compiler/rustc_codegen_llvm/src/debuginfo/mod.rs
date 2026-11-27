@@ -136,7 +136,9 @@ impl<'ll, 'tcx> DebugInfoBuilderMethods<'tcx> for Builder<'_, 'll, 'tcx> {
 
         let def_id = instance.def_id();
         let (containing_scope, is_method) = get_containing_scope(self, instance);
-        let span = tcx.def_span(def_id);
+        let span = rustc_codegen_ssa::mir::derived_method(tcx, instance)
+            .map(|(_, span)| span)
+            .unwrap_or_else(|| tcx.def_span(def_id));
         let loc = self.lookup_debug_loc(span.lo());
         let file_metadata = file_metadata(self, &loc.file);
 
