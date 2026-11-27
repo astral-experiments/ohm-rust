@@ -1,5 +1,7 @@
 #![feature(rustc_attrs)]
 #![allow(internal_features)]
+// Rerun late lints on the moved revision so they read the unchanged type check.
+#![cfg_attr(moved, warn(unused_results))]
 
 use subject::{Error, Lock};
 
