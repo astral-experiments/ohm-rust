@@ -1232,6 +1232,7 @@ impl CrateInfo {
 }
 
 pub(crate) fn provide(providers: &mut Providers) {
+    providers.ohm_derived_codegen = mir::derived_codegen;
     providers.ohm_instance_mir_has_asm = |tcx, instance| {
         tcx.instance_mir(instance)
             .basic_blocks
