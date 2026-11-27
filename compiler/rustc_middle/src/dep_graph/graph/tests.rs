@@ -82,3 +82,30 @@ fn concurrent_reads_record_each_dependency_once() {
     assert_eq!(inserted, expected);
     assert_eq!(recorded, expected);
 }
+
+#[test]
+fn recent_slot_collision_checks_exact_membership_before_spilling() {
+    set_dyn_thread_safe_mode(true);
+    let pool = Lock::new(Vec::new());
+    let task = ActiveTaskDeps::new(TaskDeps::new(
+        #[cfg(debug_assertions)]
+        None,
+    ));
+    let high = DepNodeIndex::MAX_AS_U32;
+    let slot = high % task.recent.len() as u32;
+    let mut edges = Vec::new();
+    for raw in [high, slot, high, slot, 0, high] {
+        let index = DepNodeIndex::from_u32(raw);
+        let new = task.insert(
+            index,
+            &pool,
+            #[cfg(debug_assertions)]
+            None,
+        );
+        assert_eq!(new, !edges.contains(&index));
+        if new {
+            edges.push(index);
+        }
+    }
+    assert_eq!(task.inner.into_inner().edges(), edges);
+}
