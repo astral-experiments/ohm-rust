@@ -127,3 +127,45 @@ fn bounds_the_number_and_extent_of_imported_maps() {
     let after = imported_certificate(&new[..1], &(2..=65_538).collect::<Vec<_>>());
     assert!(mapping(&capture_imports(&old[..1]), &new, Some((&before, &after))).is_none());
 }
+
+#[test]
+fn conflicting_suffix_uses_only_verified_compiler_rows() {
+    let prior = b"first\nold\nrepeat\nremoved\nrepeat\nend\n";
+    let now = b"first\nnew\nrepeat\nend\n";
+    let old = [imported("input.rs", prior)];
+    let new = [imported("input.rs", now)];
+    let before = imported_certificate(&old, &[2, 3, 6]);
+    let after = imported_certificate(&new, &[2, 3, 4]);
+    let (_, _, mut rows, _) = source_rows(prior, now).unwrap();
+    assert_eq!(rows, [[1, 1], [5, 3], [6, 4]]);
+    middle_rows((&before, &after), &new[0], prior, now, &mut rows).unwrap();
+    assert_eq!(rows, [[3, 3], [6, 4]]);
+}
+
+#[test]
+fn supplements_multi_hunk_caller_moves_with_another_files_debug_rows() {
+    let dir = rustc_fs_util::TempDirBuilder::new().tempdir_in(std::env::temp_dir()).unwrap();
+    let path = dir.path().join("caller.rs");
+    let prior = b"first\nold\nmiddle\ngone\nlast\n";
+    let now = b"first\nchanged\nextra\nmiddle\nnew\nlast\n";
+    let mut old = [imported("caller.rs", prior), imported("other.rs", b"a\nb\nc\n")];
+    let mut new = [imported("caller.rs", now), imported("other.rs", b"a\nb\nx\nc\n")];
+    old[0].path = Some(path.clone());
+    new[0].path = Some(path.clone());
+    new[1].path = Some(dir.path().join("other.rs"));
+    let before = imported_certificate(&old, &[3]);
+    let after = imported_certificate(&new, &[4]);
+    std::fs::write(&path, prior).unwrap();
+    let saved = capture_imports(&old[..1]);
+    std::fs::write(path, now).unwrap();
+    let proposed = |inventory: &[DwarfSourceFile]| {
+        let (map, _) = mapping(&saved, inventory, Some((&before, &after))).unwrap();
+        serde_json::from_slice::<Value>(&map).unwrap()
+    };
+    let map = proposed(&new);
+    assert_eq!(map["files"][0]["lines"], json!([[1, 1], [3, 4], [5, 6]]));
+    assert_eq!(map["files"][1]["filename"], "other.rs");
+    assert_eq!(map["files"][1]["lines"], json!([[3, 4]]));
+    new[1].hash = old[1].hash;
+    assert_eq!(proposed(&new)["files"].as_array().unwrap().len(), 1);
+}
