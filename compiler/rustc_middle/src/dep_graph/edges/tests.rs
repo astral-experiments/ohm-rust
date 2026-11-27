@@ -11,11 +11,11 @@ fn recorder_reuse_preserves_order_and_exact_membership() {
         let expected: Vec<_> =
             (0..40).map(|i| DepNodeIndex::from_u32(((i * 17) % 40) * 64 + round % 4)).collect();
         for &index in &expected {
-            assert!(task.insert(index, &pool));
-            assert!(!task.insert(index, &pool));
+            assert!(task.insert(index, &pool, || true));
+            assert!(!task.insert(index, &pool, || true));
         }
         for &index in expected.iter().rev() {
-            assert!(!task.insert(index, &pool));
+            assert!(!task.insert(index, &pool, || true));
         }
         assert_eq!(task.edges(), expected.as_slice());
         let TaskReads::Recorded(recorder) = task else { panic!("expected a recorder") };
@@ -32,7 +32,7 @@ fn recorder_pool_bounds_nested_retention() {
     for task_index in 0..12 {
         let mut task = TaskReads::new();
         for read in 0..32 {
-            assert!(task.insert(DepNodeIndex::from_u32(task_index * 4096 + read), &pool));
+            assert!(task.insert(DepNodeIndex::from_u32(task_index * 4096 + read), &pool, || true));
         }
         held.push(task);
     }
@@ -47,8 +47,8 @@ fn recorder_pool_bounds_nested_retention() {
         let mut task = TaskReads::new();
         for read in 0..32 {
             let index = DepNodeIndex::from_u32(task_index * 4096 + read);
-            assert!(task.insert(index, &pool));
-            assert!(!task.insert(index, &pool));
+            assert!(task.insert(index, &pool, || true));
+            assert!(!task.insert(index, &pool, || true));
         }
         assert_eq!(task.edges().len(), 32);
         reused.push(task);

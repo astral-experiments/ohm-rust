@@ -1655,7 +1655,7 @@ pub enum TaskDepsRef<'a> {
 /// This cache lives only as long as the task, even when the recorder is pooled.
 #[derive(Debug)]
 pub struct ActiveTaskDeps {
-    recent: [AtomicU32; 8],
+    recent: [AtomicU32; 32],
     inner: Lock<TaskDeps>,
 }
 
@@ -1663,7 +1663,7 @@ impl ActiveTaskDeps {
     #[inline]
     fn new(deps: TaskDeps) -> Self {
         const { assert!(DepNodeIndex::MAX_AS_U32 < u32::MAX) };
-        Self { recent: [const { AtomicU32::new(u32::MAX) }; 8], inner: Lock::new(deps) }
+        Self { recent: [const { AtomicU32::new(u32::MAX) }; 32], inner: Lock::new(deps) }
     }
 
     #[inline]
@@ -1696,7 +1696,13 @@ impl ActiveTaskDeps {
         #[cfg(debug_assertions)] forbidden: Option<&EdgeFilter>,
     ) -> bool {
         let mut task_deps = self.inner.lock();
-        let new_read = task_deps.reads.insert(dep_node_index, pool);
+        // The unlocked probe may race with another reader. Under the lock an empty
+        // slot proves absence: every recorded read sets its slot before unlocking,
+        // and collisions never restore the empty sentinel.
+        let slot = self.slot(dep_node_index);
+        let new_read = task_deps
+            .reads
+            .insert(dep_node_index, pool, || slot.load(Ordering::Relaxed) != u32::MAX);
         #[cfg(debug_assertions)]
         if new_read {
             if let Some(target) = task_deps.node
@@ -1711,7 +1717,7 @@ impl ActiveTaskDeps {
         // Edges only accumulate. A stale match is still a duplicate, and a
         // collision or stale miss falls back to exact membership under the lock.
         // No task data is accessed through the slot, so relaxed ordering suffices.
-        self.slot(dep_node_index).store(dep_node_index.as_u32(), Ordering::Relaxed);
+        slot.store(dep_node_index.as_u32(), Ordering::Relaxed);
         new_read
     }
 }
