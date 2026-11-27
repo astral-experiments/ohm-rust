@@ -88,6 +88,16 @@ fn main() {
     check_replay(&short, &long);
     check_replay(&long, &short);
 
+    // The inlined operation and the return acquire the same numeric line
+    // in different files. Reusing the object must preserve the is_stmt flags
+    // that a fresh compile would emit on each file change.
+    fs::write("helper.rs", "\n\n#[inline(always)]\npub fn xor(x: u32) -> u32 { x ^ 1 }\n").unwrap();
+    let caller = "pub fn first(x: u32) -> u32 { helper::xor(x) }\n";
+    let previous = format!("{prefix}mod helper;\n{caller}");
+    let shifted = format!("{prefix}mod helper;\n\n{caller}");
+    check_replay(&previous, &shifted);
+    check_replay(&shifted, &previous);
+
     // Both calls have the same location, but the second one reads the line.
     let src = fs::read_to_string("observe.rs").unwrap();
     for src in [src.clone(), format!("\n{src}")] {

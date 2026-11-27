@@ -1762,7 +1762,7 @@ extern "C" bool LLVMRustClosedModuleHash(LLVMModuleRef M, uint8_t *Digest) {
 }
 
 extern "C" bool LLVMRustCanReplayDwarfLineScopes() {
-#ifdef LLVM_OHM_REPLAYABLE_DWARF_LINE_SCOPES_V1
+#if defined(LLVM_OHM_REPLAYABLE_DWARF_LINE_SCOPES_V1) && defined(LLVM_OHM_FILE_AWARE_DWARF_STATEMENTS)
   return true;
 #else
   return false;
