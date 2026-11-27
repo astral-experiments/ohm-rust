@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::hash_map::Entry;
 use std::marker::PhantomData;
 use std::ops::Range;
@@ -19,6 +20,9 @@ use super::{FunctionCx, LocalRef, PerLocalVarDebugInfoIndexVec};
 use crate::traits::*;
 
 pub struct FunctionDebugContext<'tcx, S, L> {
+    /// Consecutive MIR statements often share a scope and span.
+    last_location: Cell<Option<(mir::SourceInfo, L)>>,
+
     /// Maps from source code to the corresponding debug info scope.
     pub scopes: IndexVec<mir::SourceScope, DebugScope<S, L>>,
 
@@ -226,8 +230,17 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
     }
 
     fn dbg_loc(&self, bx: &mut Bx, source_info: mir::SourceInfo) -> Option<Bx::DILocation> {
+        let last = &self.debug_context.as_ref()?.last_location;
+        if let Some((source, loc)) = last.get()
+            && source == source_info
+        {
+            return Some(loc);
+        }
+
         let (dbg_scope, inlined_at, span) = self.adjusted_span_and_dbg_scope(bx, source_info)?;
-        Some(bx.dbg_loc(dbg_scope, inlined_at, span))
+        let loc = bx.dbg_loc(dbg_scope, inlined_at, span);
+        last.set(Some((source_info, loc)));
+        Some(loc)
     }
 
     fn adjusted_span_and_dbg_scope(
@@ -740,6 +753,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
 
         // Initialize fn debug context (including scopes).
         self.debug_context = Some(FunctionDebugContext {
+            last_location: Cell::new(None),
             scopes: IndexVec::with_capacity(self.mir.source_scopes.len()),
             inlined_function_scopes: Default::default(),
         });

@@ -79,8 +79,16 @@ pub(super) struct Entry {
     split: Option<(PathBuf, PathBuf)>,
 }
 
+/// Copy and release an optional LLVM buffer subject to the work-product size limit.
+pub(super) fn copy_buffer(buffer: Option<&'static mut llvm::Buffer>) -> Option<Vec<u8>> {
+    copy_buffer_bounded(buffer?, MAXIMUM)
+}
+
 fn line_proof(module: &llvm::Module, budget: usize) -> Option<Vec<u8>> {
-    let buffer = unsafe { llvm::LLVMRustDwarfLineCertificate(module) }?;
+    copy_buffer_bounded(unsafe { llvm::LLVMRustDwarfLineCertificate(module) }?, budget)
+}
+
+fn copy_buffer_bounded(buffer: &'static mut llvm::Buffer, budget: usize) -> Option<Vec<u8>> {
     let size = unsafe { llvm::LLVMRustBufferLen(buffer) };
     let proof = (size <= budget).then(|| unsafe {
         slice::from_raw_parts(llvm::LLVMRustBufferPtr(buffer), size).to_owned()

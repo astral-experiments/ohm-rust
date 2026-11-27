@@ -29,6 +29,11 @@ use crate::llvm;
 use crate::llvm::MetadataKindId;
 use crate::macros::TryFromU32;
 
+/// An immutable, uniqued attribute list owned by the LLVM context.
+#[repr(transparent)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct AttributeList(*const c_void);
+
 /// In the LLVM-C API, boolean values are passed as `typedef int LLVMBool`,
 /// which has a different ABI from Rust or C++ `bool`.
 ///
@@ -2055,6 +2060,8 @@ unsafe extern "C" {
         NameLen: size_t,
         FunctionTy: &'a Type,
     ) -> &'a Value;
+    pub(crate) fn LLVMRustGetAttributes(V: &Value) -> AttributeList;
+    pub(crate) fn LLVMRustSetAttributes(V: &Value, Attrs: AttributeList);
     pub(crate) fn LLVMRustAddFunctionAttributes<'a>(
         Fn: &'a Value,
         index: c_uint,
@@ -2591,6 +2598,12 @@ unsafe extern "C" {
         mapping_len: usize,
         witness: *const u8,
         witness_len: usize,
+        object: *const u8,
+        object_len: usize,
+    ) -> Option<&'static mut Buffer>;
+    pub(crate) fn LLVMRustDwarfRebase(
+        map: *const u8,
+        map_len: usize,
         object: *const u8,
         object_len: usize,
     ) -> Option<&'static mut Buffer>;

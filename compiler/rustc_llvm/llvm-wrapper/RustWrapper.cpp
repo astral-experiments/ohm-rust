@@ -40,7 +40,9 @@
 #include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
+#include <cstring>
 #include <iostream>
+#include <type_traits>
 
 // Some of the functions below rely on LLVM modules that may not always be
 // available. As such, we only try to build it in the first place, if
@@ -409,6 +411,28 @@ extern "C" bool LLVMRustHasAttributeAtIndex(LLVMValueRef Fn, unsigned Index,
                                             LLVMRustAttributeKind RustAttr) {
   Function *F = unwrap<Function>(Fn);
   return F->hasParamAttribute(Index, fromRust(RustAttr));
+}
+
+// Copy the immutable, context-owned handle across the FFI.
+static_assert(std::is_trivially_copyable_v<AttributeList>);
+static_assert(sizeof(AttributeList) == sizeof(void *));
+
+extern "C" const void *LLVMRustGetAttributes(LLVMValueRef V) {
+  auto *F = dyn_cast<Function>(unwrap(V));
+  AttributeList Attrs =
+      F ? F->getAttributes() : unwrap<CallBase>(V)->getAttributes();
+  const void *Raw;
+  std::memcpy(&Raw, &Attrs, sizeof(Raw));
+  return Raw;
+}
+
+extern "C" void LLVMRustSetAttributes(LLVMValueRef V, const void *Raw) {
+  AttributeList Attrs;
+  std::memcpy(static_cast<void *>(&Attrs), &Raw, sizeof(Attrs));
+  if (auto *F = dyn_cast<Function>(unwrap(V)))
+    F->setAttributes(Attrs);
+  else
+    unwrap<CallBase>(V)->setAttributes(Attrs);
 }
 
 extern "C" void LLVMRustAddFunctionAttributes(LLVMValueRef Fn, unsigned Index,
