@@ -1,6 +1,5 @@
 //! Server-side handles and storage for per-handle data.
 
-use std::collections::BTreeMap;
 use std::hash::Hash;
 use std::num::NonZero;
 use std::ops::Index;
@@ -14,7 +13,7 @@ pub(super) type Handle = NonZero<u32>;
 /// be looked up using its handle.
 pub(super) struct OwnedStore<T: 'static> {
     counter: &'static AtomicU32,
-    data: BTreeMap<Handle, T>,
+    data: FxHashMap<Handle, T>,
 }
 
 impl<T> OwnedStore<T> {
@@ -23,7 +22,7 @@ impl<T> OwnedStore<T> {
         // when `NonZero::new` (aka `Handle::new`) is called in `alloc`.
         assert_ne!(counter.load(Ordering::Relaxed), 0);
 
-        OwnedStore { counter, data: BTreeMap::new() }
+        OwnedStore { counter, data: FxHashMap::default() }
     }
 }
 
