@@ -38,8 +38,8 @@ use rustc_session::config::mitigation_coverage::DeniedPartialMitigation;
 use rustc_span::def_id::ModId;
 use rustc_span::hygiene::HygieneDecodeContext;
 use rustc_span::{
-    BlobDecoder, BytePos, ByteSymbol, DUMMY_SP, Pos, RemapPathScopeComponents, SpanData,
-    SpanDecoder, Symbol, SyntaxContext, bug, kw,
+    BlobDecoder, BytePos, ByteSymbol, DUMMY_SP, Pos, RemapPathScopeComponents, SourceFileHash,
+    SourceFileHashAlgorithm, SpanData, SpanDecoder, Symbol, SyntaxContext, bug, kw,
 };
 use tracing::debug;
 
@@ -256,6 +256,8 @@ pub(crate) struct CrateMetadata {
     incoherent_impls: OnceLock<FxIndexMap<SimplifiedType, LazyArray<DefIndex>>>,
     /// Proc macro function pointers for this crate, if it's a proc macro crate.
     raw_proc_macros: Option<&'static [ProcMacroClient]>,
+    /// The Rust crate hash excludes native code linked into the macro library.
+    trusted_proc_macros: OnceLock<Option<(Vec<Symbol>, SourceFileHash)>>,
     /// One translation per file index. Only the first span imports the file.
     source_map_import_info: Box<[OnceLock<ImportedSourceFile>]>,
     /// For every definition in this crate, maps its `DefPathHash` to its `DefIndex`.
@@ -1366,19 +1368,67 @@ impl CrateMetadata {
             .decode((self, tcx))
     }
 
+    /// Match the defining crate and exported name, independent of import aliases.
+    /// Only trust macros whose behavior is determined by the library and their
+    /// token inputs. A dylib digest cannot account for ambient state or libraries
+    /// loaded dynamically by the macro.
+    fn trusted_proc_macro(&self, tcx: TyCtxt<'_>, name: &str) -> Option<SourceFileHash> {
+        let opts = &tcx.sess.opts;
+        // In dual mode the metadata could describe a different library from
+        // the host dylib loaded by CStore.
+        if opts.incremental.is_none()
+            || opts.unstable_opts.dual_proc_macros
+            || opts.unstable_opts.wasm_proc_macros
+        {
+            return None;
+        }
+        let (names, hash) = self
+            .trusted_proc_macros
+            .get_or_init(|| {
+                const VAR: &str = "RUSTC_OHM_PURE_MACROS";
+                let list = std::env::var(VAR).ok();
+                // Record even an absent variable so Cargo notices either transition.
+                tcx.sess
+                    .env_depinfo
+                    .borrow_mut()
+                    .insert((Symbol::intern(VAR), list.as_deref().map(Symbol::intern)));
+                let krate = self.root.name();
+                let names: Vec<_> = list?
+                    .split(',')
+                    .filter_map(|entry| entry.split_once("::"))
+                    .filter(|&(k, _)| k == krate.as_str())
+                    .map(|(_, export)| Symbol::intern(export))
+                    .collect();
+                if names.is_empty() {
+                    return None;
+                }
+                let file = std::fs::File::open(self.source.dylib.as_ref()?).ok()?;
+                let hash = SourceFileHash::new(SourceFileHashAlgorithm::Blake3, file).ok()?;
+                Some((names, hash))
+            })
+            .as_ref()?;
+        names.contains(&Symbol::intern(name)).then_some(*hash)
+    }
+
     fn load_proc_macro<'tcx>(&self, tcx: TyCtxt<'tcx>, id: DefIndex) -> SyntaxExtension {
         let (name, kind, helper_attrs) = match self.raw_proc_macro(tcx, id) {
             (client, ProcMacroKind::CustomDerive { trait_name, attributes }) => {
                 let helper_attrs =
                     attributes.into_iter().map(|attr| Symbol::intern(&attr)).collect();
+                let dylib_hash = self.trusted_proc_macro(tcx, &trait_name);
                 (
                     trait_name,
-                    SyntaxExtensionKind::Derive(Arc::new(DeriveProcMacro { client })),
+                    SyntaxExtensionKind::Derive(Arc::new(DeriveProcMacro { client, dylib_hash })),
                     helper_attrs,
                 )
             }
             (client, ProcMacroKind::Attr { name }) => {
-                (name, SyntaxExtensionKind::Attr(Arc::new(AttrProcMacro { client })), Vec::new())
+                let dylib_hash = self.trusted_proc_macro(tcx, &name);
+                (
+                    name,
+                    SyntaxExtensionKind::Attr(Arc::new(AttrProcMacro { client, dylib_hash })),
+                    Vec::new(),
+                )
             }
             (client, ProcMacroKind::Bang { name }) => {
                 (name, SyntaxExtensionKind::Bang(Arc::new(BangProcMacro { client })), Vec::new())
@@ -2406,6 +2456,7 @@ impl CrateMetadata {
             trait_impls,
             incoherent_impls: Default::default(),
             raw_proc_macros,
+            trusted_proc_macros: OnceLock::new(),
             def_path_hash_map,
             expn_hash_map: Default::default(),
             alloc_decoding_state,

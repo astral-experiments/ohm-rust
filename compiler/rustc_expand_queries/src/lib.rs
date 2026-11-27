@@ -6,6 +6,7 @@ use rustc_middle::ty::TyCtxt;
 mod derive;
 
 pub fn setup_callbacks() {
+    rustc_expand::proc_macro::EXPAND_EXPR.swap(&(derive::expand_expr as _));
     rustc_expand::module::MODULE_CACHE.swap(&(syntax_cache as _));
     rustc_expand::proc_macro::EXPAND_ATTRIBUTE_MACRO_CACHED
         .swap(&(derive::expand_attribute_macro_cached as _));

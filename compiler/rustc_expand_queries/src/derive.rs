@@ -7,11 +7,12 @@ use rustc_middle::dep_graph::DepNodeIndex;
 use rustc_middle::query::ProcMacroExpansion;
 use rustc_middle::ty::{self, TyCtxt};
 use rustc_proc_macro as pm;
-use rustc_span::{ErrorGuaranteed, FileName, LocalExpnId, Symbol};
+use rustc_span::{ErrorGuaranteed, FileName, LocalExpnId, SourceFileHash, Symbol};
 
 type ProcMacroClient = pm::bridge::client::Client;
 
 pub(crate) fn expand_derive_macro_cached(
+    hash: SourceFileHash,
     invoc_id: LocalExpnId,
     input: TokenStream,
     ecx: &mut ExtCtxt<'_>,
@@ -19,13 +20,14 @@ pub(crate) fn expand_derive_macro_cached(
 ) -> Result<TokenStream, ()> {
     ty::tls::with(|tcx| {
         let input = &*tcx.arena.alloc(input);
-        let key: (LocalExpnId, &TokenStream) = (invoc_id, input);
+        let key = (invoc_id, hash, input);
 
         QueryProcMacroExpandCtx::enter(ecx, client, move || tcx.derive_macro_expansion(key))
     })
 }
 
 pub(super) fn expand_attribute_macro_cached(
+    hash: SourceFileHash,
     annotation: TokenStream,
     annotated: TokenStream,
     ecx: &mut ExtCtxt<'_>,
@@ -34,7 +36,7 @@ pub(super) fn expand_attribute_macro_cached(
     ty::tls::with(|tcx| {
         let annotation = &*tcx.arena.alloc(annotation);
         let annotated = &*tcx.arena.alloc(annotated);
-        let key = (ecx.current_expansion.id, annotation, annotated);
+        let key = (ecx.current_expansion.id, hash, annotation, annotated);
         QueryProcMacroExpandCtx::enter(ecx, client, || tcx.attribute_macro_expansion(key))
     })
 }
@@ -42,9 +44,9 @@ pub(super) fn expand_attribute_macro_cached(
 /// Cache attribute output tokens while keeping the annotation and item as distinct inputs.
 pub(super) fn attribute_macro_expansion<'tcx>(
     tcx: TyCtxt<'tcx>,
-    key: (LocalExpnId, &'tcx TokenStream, &'tcx TokenStream),
+    key: (LocalExpnId, SourceFileHash, &'tcx TokenStream, &'tcx TokenStream),
 ) -> ProcMacroExpansion<'tcx, ErrorGuaranteed> {
-    let (invoc_id, annotation, annotated) = key;
+    let (invoc_id, _, annotation, annotated) = key;
     let expn_data = invoc_id.expn_data();
     let _ = tcx.crate_hash(expn_data.macro_def_id.unwrap().krate);
 
@@ -63,9 +65,9 @@ pub(super) fn attribute_macro_expansion<'tcx>(
 /// Provide a query for computing the output of a derive macro.
 pub(super) fn derive_macro_expansion<'tcx>(
     tcx: TyCtxt<'tcx>,
-    key: (LocalExpnId, &'tcx TokenStream),
+    key: (LocalExpnId, SourceFileHash, &'tcx TokenStream),
 ) -> ProcMacroExpansion<'tcx, ()> {
-    let (invoc_id, input) = key;
+    let (invoc_id, _, input) = key;
 
     // Make sure that we invalidate the query when the crate defining the proc macro changes
     let _ = tcx.crate_hash(invoc_id.expn_data().macro_def_id.unwrap().krate);
@@ -158,3 +160,22 @@ impl QueryProcMacroExpandCtx {
 
 // Expansion queries borrow the current expansion context and client through scoped TLS.
 scoped_tls::scoped_thread_local!(static PROC_MACRO_EXPAND_CTX: QueryProcMacroExpandCtx);
+
+/// The bridge marks the macro forever red before expanding an expression.
+/// Restore the resolver's eval-always context for untracked module lookups.
+pub(super) fn expand_expr(
+    ecx: &mut ExtCtxt<'_>,
+    expr: Box<rustc_ast::Expr>,
+) -> Box<rustc_ast::Expr> {
+    let expand = || rustc_expand::proc_macro::expand_expr(ecx, expr);
+    if !PROC_MACRO_EXPAND_CTX.is_set() {
+        return expand();
+    }
+    ty::tls::with_context(|icx| {
+        let icx = ty::tls::ImplicitCtxt {
+            task_deps: rustc_middle::dep_graph::TaskDepsRef::EvalAlways,
+            ..*icx
+        };
+        ty::tls::enter_context(&icx, expand)
+    })
+}

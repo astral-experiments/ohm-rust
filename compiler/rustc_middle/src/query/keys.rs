@@ -10,7 +10,9 @@ use rustc_data_structures::stable_hash::StableHash;
 use rustc_hir::OwnerId;
 use rustc_hir::def_id::{CrateNum, DefId, LOCAL_CRATE, LocalDefId, LocalModId};
 use rustc_span::def_id::ModId;
-use rustc_span::{DUMMY_SP, ExpnId, Ident, LocalExpnId, Span, StableSourceFileId, Symbol};
+use rustc_span::{
+    DUMMY_SP, ExpnId, Ident, LocalExpnId, SourceFileHash, Span, StableSourceFileId, Symbol,
+};
 
 use crate::dep_graph::DepNodeIndex;
 use crate::infer::canonical::CanonicalQueryInput;
@@ -429,13 +431,13 @@ impl<'tcx> QueryKey for ty::Value<'tcx> {
     }
 }
 
-impl<'tcx> QueryKey for (LocalExpnId, &'tcx TokenStream) {
+impl<'tcx> QueryKey for (LocalExpnId, SourceFileHash, &'tcx TokenStream) {
     fn default_span(&self, _tcx: TyCtxt<'_>) -> Span {
         self.0.expn_data().call_site
     }
 }
 
-impl<'tcx> QueryKey for (LocalExpnId, &'tcx TokenStream, &'tcx TokenStream) {
+impl<'tcx> QueryKey for (LocalExpnId, SourceFileHash, &'tcx TokenStream, &'tcx TokenStream) {
     fn default_span(&self, _tcx: TyCtxt<'_>) -> Span {
         self.0.expn_data().call_site
     }

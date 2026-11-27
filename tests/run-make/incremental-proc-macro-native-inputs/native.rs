@@ -9,10 +9,12 @@ unsafe extern "C" {
 
 #[proc_macro_derive(Observe)]
 pub fn observe(_: TokenStream) -> TokenStream {
+    eprintln!("EXECUTED derive");
     format!("const DERIVED: i32 = {};", unsafe { value() }).parse().unwrap()
 }
 
 #[proc_macro_attribute]
 pub fn observe_attr(_: TokenStream, _: TokenStream) -> TokenStream {
+    eprintln!("EXECUTED attribute");
     format!("const ATTR: i32 = {};", unsafe { value() }).parse().unwrap()
 }

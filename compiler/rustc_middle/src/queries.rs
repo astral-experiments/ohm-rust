@@ -151,14 +151,15 @@ rustc_queries! {
     /// Caches the expansion of a derive proc macro, e.g. `#[derive(Serialize)]`.
     /// The key is:
     /// - A unique key corresponding to the invocation of a macro.
+    /// - Hash of the trusted procedural macro library.
     /// - Token stream which serves as an input to the macro.
-    query derive_macro_expansion(key: (LocalExpnId, &'tcx TokenStream)) -> ProcMacroExpansion<'tcx, ()> {
+    query derive_macro_expansion(key: (LocalExpnId, SourceFileHash, &'tcx TokenStream)) -> ProcMacroExpansion<'tcx, ()> {
         desc { "expanding a derive (proc) macro" }
         cache_on_disk
     }
 
     /// The annotation and annotated item are separate inputs.
-    query attribute_macro_expansion(key: (LocalExpnId, &'tcx TokenStream, &'tcx TokenStream))
+    query attribute_macro_expansion(key: (LocalExpnId, SourceFileHash, &'tcx TokenStream, &'tcx TokenStream))
         -> ProcMacroExpansion<'tcx, ErrorGuaranteed>
     {
         desc { "expanding an attribute (proc) macro" }
