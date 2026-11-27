@@ -1377,15 +1377,15 @@ fn run_required_analyses(tcx: TyCtxt<'_>) {
 
     sess.time("MIR_borrow_checking", || {
         tcx.par_hir_body_owners(|def_id| {
-            let not_typeck_child = !tcx.is_typeck_child(def_id.to_def_id());
-            if not_typeck_child {
+            let typeck_child = tcx.is_typeck_child(def_id.to_def_id());
+            if !typeck_child {
                 // Child unsafety and borrowck happens together with the parent
                 tcx.ensure_ok().check_unsafety(def_id);
             }
             if tcx.is_trivial_const(def_id) {
                 return;
             }
-            if not_typeck_child {
+            if !typeck_child {
                 tcx.ensure_ok().mir_borrowck(def_id);
                 tcx.ensure_ok().check_transmutes(def_id);
                 if !tcx.sess.opts.unstable_opts.offload.is_empty() {
@@ -1401,8 +1401,9 @@ fn run_required_analyses(tcx: TyCtxt<'_>) {
             if tcx.codegen_output_mode(()).0 || tcx.hir_body_const_context(def_id).is_some() {
                 tcx.ensure_ok().mir_drops_elaborated_and_const_checked(def_id);
             }
-            if tcx.is_coroutine(def_id.to_def_id())
-                && (!tcx.is_async_drop_in_place_coroutine(def_id.to_def_id()))
+            if typeck_child
+                && tcx.is_coroutine(def_id.to_def_id())
+                && !tcx.is_async_drop_in_place_coroutine(def_id.to_def_id())
             {
                 // Forced inlining runs after layout preparation and can diagnose an invalid call.
                 if tcx.coroutine_has_forced_inline_calls(def_id) {

@@ -212,7 +212,9 @@ pub fn check_crate_bodies(tcx: TyCtxt<'_>) {
     //
     // This must not be parallelized since `coroutine_by_move_body_def_id` creates new `DefId`-s
     // inside, which must be done in deterministic order to have reproducible binaries.
-    tcx.hir_body_owners().for_each(|item_def_id| {
+    // A coroutine body is nested even when its enclosing item is an async fn.
+    // This list preserves the relative order of those bodies.
+    tcx.hir_crate_items(()).nested_bodies().for_each(|item_def_id| {
         // Ensure we generate the new `DefId` before finishing `check_crate`.
         // Afterwards we freeze the list of `DefId`s.
         if tcx.needs_coroutine_by_move_body_def_id(item_def_id.to_def_id()) {
