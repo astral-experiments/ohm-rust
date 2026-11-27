@@ -896,7 +896,7 @@ impl MetadataBlob {
     pub(crate) fn terminal_check_hash(&self) -> Option<Svh> {
         match self.get_root().rdr_hashes {
             PublicHashes::TerminalCheck(hash) => Some(hash),
-            PublicHashes::None | PublicHashes::Items(_) => None,
+            PublicHashes::None | PublicHashes::Items(_) | PublicHashes::CheckedItems(..) => None,
         }
     }
 

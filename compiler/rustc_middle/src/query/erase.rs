@@ -195,6 +195,7 @@ impl_erasable_for_types_with_no_type_params! {
     Option<&'_ [rustc_span::MultiByteChar]>,
     Option<(mir::ConstValue, Ty<'_>)>,
     Option<(rustc_span::def_id::DefId, rustc_session::config::EntryFnType)>,
+    Option<Fingerprint>,
     Option<mir::CoroutineCodegenLayout<'_>>,
     Option<mir::CoroutineDebugInfo<'_>>,
     Option<rustc_abi::Align>,

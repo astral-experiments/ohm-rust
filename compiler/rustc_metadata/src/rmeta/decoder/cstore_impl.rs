@@ -541,6 +541,12 @@ provide! { tcx, def_id, other, cdata, cstore,
     anon_const_kind => { table }
     const_of_item => { table }
     args_known_to_outlive_alias_params => { table }
+    extern_def_check_hash => {
+        cdata.root.rdr_hashes.check_items()?.local.get(cdata, def_id.index)
+    }
+    extern_global_check_hash => {
+        cdata.root.rdr_hashes.check_items().map(|items| items.public_global_hash)
+    }
     extern_def_public_hash => {
         if let Some(rdr_hashes) = cdata.root.rdr_hashes.as_ref() {
             rdr_hashes

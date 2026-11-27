@@ -215,7 +215,7 @@ pub(super) trait MetadataEncoder<'tcx>: Sized + Default {
     fn crate_hashes<'h>(
         ecx: &mut EncodeContext<'_, 'tcx, Self>,
         hcx: &mut impl PublicApiHashState<'h>,
-        root: &HashableCrateRoot,
+        root: &mut HashableCrateRoot,
     ) -> (Option<Svh>, PublicHashes);
 
     fn record_encoded_index(&mut self, _node: Node<'tcx>);
@@ -429,7 +429,7 @@ impl<'tcx, const HASH: bool> MetadataEncoder<'tcx> for DefPathHashDefIdEncoder<'
     fn crate_hashes<'h>(
         ecx: &mut EncodeContext<'_, 'tcx, Self>,
         hcx: &mut impl PublicApiHashState<'h>,
-        root: &HashableCrateRoot,
+        root: &mut HashableCrateRoot,
     ) -> (Option<Svh>, PublicHashes) {
         if HASH {
             public_api_hasher::crate_hashes(ecx, hcx, root)
@@ -502,7 +502,7 @@ impl<'tcx> MetadataEncoder<'tcx> for DefIndexDefIdEncoder {
     fn crate_hashes<'h>(
         _ecx: &mut EncodeContext<'_, 'tcx, Self>,
         _hcx: &mut impl PublicApiHashState<'h>,
-        _root: &HashableCrateRoot,
+        _root: &mut HashableCrateRoot,
     ) -> (Option<Svh>, PublicHashes) {
         (None, PublicHashes::None)
     }
@@ -540,6 +540,9 @@ pub(super) struct EncodeContext<'a, 'tcx, M: MetadataEncoder<'tcx>> {
     // order of `SourceFiles`, and encoded inside `Span`s.
     required_source_files: Option<FxIndexSet<usize>>,
     hash_declaration_text: bool,
+    dual_check: bool,
+    check_deps: Option<Fingerprint>,
+    exact_locations: IndexVec<LocalDefId, Fingerprint>,
     // Only spans in the row currently being encoded can be omitted from its graph edges.
     declaration_spans: FxHashSet<Span>,
     native_line_shapes: Option<FxHashMap<(StableSourceFileId, usize), Fingerprint>>,
@@ -682,7 +685,8 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> SpanEncoder for EncodeContext<'a, 'tcx,
     }
 
     fn encode_span(&mut self, span: Span) {
-        let record = !self.hash_declaration_text || !self.declaration_spans.contains(&span);
+        let record = !(self.hash_declaration_text || self.dual_check)
+            || !self.declaration_spans.contains(&span);
         match self.span_shorthands.entry(span) {
             Entry::Occupied(o) => {
                 // If an offset is smaller than the absolute position, we encode with the offset.
@@ -2401,7 +2405,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
     /// declaration tokens moved. Keep their spelling and file identity in its freshness key,
     /// and retain the exact spans in metadata for compiler queries and diagnostics.
     fn declaration_text(&mut self, span: Span) -> Option<Fingerprint> {
-        if !self.hash_declaration_text || span.is_dummy() {
+        if span.is_dummy() {
             return None;
         }
         let data = span.data();
@@ -2427,8 +2431,40 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         Some(hasher.finish())
     }
 
+    /// Store the exact coordinates and text of ordinary identifiers and doc comments
+    /// separately. Both graphs still use the original span for every other purpose.
+    fn ordinary_declaration(
+        &mut self,
+        id: DefId,
+        span: Span,
+        attr: Option<(usize, &rustc_attr_ir::Attribute)>,
+    ) -> Option<Fingerprint> {
+        if !self.hash_declaration_text && !(self.dual_check && span.ctxt().is_root()) {
+            return None;
+        }
+        let text = self.declaration_text(span)?;
+        if self.dual_check {
+            let location = self.tcx.with_stable_hashing_context(|hcx| {
+                let mut hcx = hcx.hash_spans_as_parentless();
+                let mut hasher = StableHasher::new();
+                // Attribute content can differ from the source of a macro-provided span.
+                // Bind both to the owner, even for doc continuations omitted by the hint.
+                (id, span, attr).stable_hash(&mut hcx, &mut hasher);
+                text.hash(&mut hasher);
+                hasher.finish::<Fingerprint>()
+            });
+            let row =
+                self.exact_locations.ensure_contains_elem(id.expect_local(), || Fingerprint::ZERO);
+            *row = row.combine(location);
+        }
+        Some(text)
+    }
+
     /// Record a declaration location whose text replaces its coordinates in this row.
     fn record_declaration_span(&mut self, span: Span) -> Option<Fingerprint> {
+        if !self.hash_declaration_text {
+            return None;
+        }
         let text = self.declaration_text(span)?;
         self.declaration_spans.insert(span);
         Some(text)
@@ -2528,10 +2564,12 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
 
         let id = def_id.to_def_id();
         let mut previous_line_doc = false;
+        let mut ordinal = 0;
         let (attrs, digest) = self.encode_declaration_array(
             id,
             attr_iter,
             |ecx, attr| {
+                ordinal += 1;
                 let continuation = std::mem::take(&mut previous_line_doc);
                 match attr {
                     rustc_attr_ir::Attribute::Parsed(AttributeKind::CfgTrace(entries))
@@ -2550,7 +2588,8 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                         style,
                         ..
                     }) if kind.is_sugared() => {
-                        let text = ecx.record_declaration_span(*span)?;
+                        let text = ecx.ordinary_declaration(id, *span, Some((ordinal, attr)))?;
+                        ecx.declaration_spans.insert(*span);
                         // Only the terminal hint can treat a run of /// lines as one
                         // comment. Keep its first line, and encode every line for readers.
                         previous_line_doc = kind.comment_kind()
@@ -2764,7 +2803,7 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
                 }
                 if let Some(ident_span) = ident_span {
                     let encoded = self.encode_diagnostic_span(def_id, ident_span, false);
-                    if let Some(text) = self.declaration_text(ident_span) {
+                    if let Some(text) = self.ordinary_declaration(def_id, ident_span, None) {
                         self.tables.def_ident_span.set_some_hashed(
                             def_id.index,
                             encoded,
@@ -3707,7 +3746,9 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
             self.metadata_prefix_manifest.as_ref().is_some_and(|builder| {
                 !matches!(builder.dependency_hashes, DependencyHashMode::Tracked)
             });
-        let deps = crate_deps(self.tcx, refreshes_dependency_hashes).collect::<Vec<_>>();
+        let tcx = self.tcx;
+        let deps = crate_deps(tcx, refreshes_dependency_hashes, self.hash_declaration_text)
+            .collect::<Vec<_>>();
 
         {
             // Sanity-check the crate numbers
@@ -3723,20 +3764,26 @@ impl<'a, 'tcx, M: MetadataEncoder<'tcx>> EncodeContext<'a, 'tcx, M> {
         // FIXME (#2166): This is not nearly enough to support correct versioning
         // but is enough to get transitive crate dependencies working.
         let mut hasher = PublicApiHasher::default();
-        let array = self.lazy_array(deps.into_iter().map(|(cnum, dep, public_global_hash)| {
-            let CrateDep { name, hash, host_hash, kind, is_private } = &dep;
-            hasher.digest(cnum, hcx);
-            hasher.digest(name, hcx);
-            // We only include the global part of dependency hashes, not the full public hash.
-            // The remaining, item specific, part of public_hash should only be included when those
-            // items are reachable in the public hash graph.
-            let _ = hash;
-            hasher.digest(public_global_hash, hcx);
-            hasher.digest(host_hash, hcx);
-            hasher.digest(kind, hcx);
-            hasher.digest(is_private, hcx);
+        let mut check_hasher = self.dual_check.then(PublicApiHasher::default);
+        let array = self.lazy_array(deps.into_iter().map(|(cnum, dep, global)| {
+            let CrateDep { name, hash: _, host_hash, kind, is_private } = &dep;
+            // Both graphs cover every dependency's implicit roots here. Individual
+            // definitions contribute only where the current graph reaches them.
+            let mut digest = |hasher: &mut PublicApiHasher, global: Fingerprint| {
+                hasher.digest(cnum, hcx);
+                hasher.digest(name, hcx);
+                hasher.digest(global, hcx);
+                hasher.digest(host_hash, hcx);
+                hasher.digest(kind, hcx);
+                hasher.digest(is_private, hcx);
+            };
+            digest(&mut hasher, global);
+            if let Some(check) = &mut check_hasher {
+                digest(check, tcx.extern_global_check_hash(cnum).unwrap_or(global));
+            }
             dep
         }));
+        self.check_deps = check_hasher.and_then(|check| check.finish(hcx));
         Hashed { value: array, hash: hasher.finish(hcx) }
     }
 
@@ -4353,7 +4400,7 @@ fn try_reuse_metadata_prefix(
     }
     let mut checked_end = preamble;
     for ((mut previous, pos), (_, current, _)) in
-        previous_root.crate_deps_with_hash_positions(&metadata).zip(crate_deps(tcx, false))
+        previous_root.crate_deps_with_hash_positions(&metadata).zip(crate_deps(tcx, false, false))
     {
         let end = pos.checked_add(size_of::<u128>())?;
         if pos < checked_end || end > manifest.prefix_position {
@@ -4376,10 +4423,19 @@ fn try_reuse_metadata_prefix(
         return None;
     }
     let is_terminal = matches!(previous_root.rdr_hashes, PublicHashes::TerminalCheck(_));
+    let check_range = if let Some(items) = previous_root.rdr_hashes.check_items() {
+        let ranges = items.local.encoded_range(&metadata)?;
+        if ranges.start < manifest.prefix_position {
+            return None;
+        }
+        Some(ranges)
+    } else {
+        None
+    };
     let table_ranges = match &previous_root.rdr_hashes {
         PublicHashes::None => return None,
         PublicHashes::TerminalCheck(_) => None,
-        PublicHashes::Items(items) => {
+        PublicHashes::Items(items) | PublicHashes::CheckedItems(items, _) => {
             Some((items.local.encoded_range(&metadata)?, items.expn.encoded_range(&metadata)?))
         }
     };
@@ -4442,10 +4498,16 @@ fn try_reuse_metadata_prefix(
         });
         if let Some(hashes) = &replay {
             previous_root.rdr_hashes = PublicHashes::Items(hashes.items.encode(ecx, hashes.global));
-        } else if let PublicHashes::Items(items) = &mut previous_root.rdr_hashes {
+        } else if let PublicHashes::Items(items) | PublicHashes::CheckedItems(items, _) =
+            &mut previous_root.rdr_hashes
+        {
             let (local, expn) = table_ranges.unwrap();
             items.local = relocate_metadata_table(ecx, &metadata, items.local, local);
             items.expn = relocate_metadata_table(ecx, &metadata, items.expn, expn);
+        }
+        if let PublicHashes::CheckedItems(_, items) = &mut previous_root.rdr_hashes {
+            items.local =
+                relocate_metadata_table(ecx, &metadata, items.local, check_range.unwrap());
         }
         let root: LazyValue<CrateRoot> = ecx.lazy(previous_root);
         ecx.finish_crate_hash();
@@ -4743,6 +4805,14 @@ fn with_encode_metadata_header<'tcx, M: MetadataEncoder<'tcx>>(
         source_file_cache,
         interpret_allocs: Default::default(),
         required_source_files,
+        dual_check: M::HASH_PUBLIC_API
+            && tcx.dep_graph.is_fully_enabled()
+            && !tcx.sess.opts.unstable_opts.ohm_terminal_check_hash
+            && tcx.sess.opts.unstable_opts.metadata_crate_hash
+            && !tcx.codegen_output_mode(()).0
+            && !tcx.sess.opts.unstable_opts.incremental_ignore_spans,
+        exact_locations: Default::default(),
+        check_deps: None,
         hash_declaration_text: M::HASH_PUBLIC_API
             && tcx.sess.opts.unstable_opts.ohm_terminal_check_hash
             && tcx.sess.opts.unstable_opts.metadata_crate_hash
@@ -4968,6 +5038,7 @@ fn native_hash_mode(tcx: TyCtxt<'_>) -> bool {
 fn crate_deps(
     tcx: TyCtxt<'_>,
     refreshes_dependency_hashes: bool,
+    terminal: bool,
 ) -> impl Iterator<Item = (CrateNum, CrateDep, Fingerprint)> + '_ {
     let native = native_hash_mode(tcx);
     tcx.crates(()).iter().map(move |&cnum| {
@@ -4989,7 +5060,14 @@ fn crate_deps(
             is_private: tcx.is_private_dep(cnum),
         };
         // Native hashes include the ordered globals in `combine_global`.
-        (cnum, dep, if native { Fingerprint::ZERO } else { tcx.public_global_hash(cnum) })
+        let global = if native {
+            Fingerprint::ZERO
+        } else if terminal {
+            tcx.extern_global_check_hash(cnum).unwrap_or_else(|| tcx.public_global_hash(cnum))
+        } else {
+            tcx.public_global_hash(cnum)
+        };
+        (cnum, dep, global)
     })
 }
 

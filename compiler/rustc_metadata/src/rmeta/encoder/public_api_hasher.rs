@@ -604,7 +604,7 @@ pub(crate) struct HashableCrateRoot {
 pub(super) fn crate_hashes<'tcx, 'h, const HASH: bool>(
     ecx: &mut EncodeContext<'_, 'tcx, DefPathHashDefIdEncoder<'tcx, HASH>>,
     hcx: &mut impl PublicApiHashState<'h>,
-    root: &HashableCrateRoot,
+    root: &mut HashableCrateRoot,
 ) -> (Option<Svh>, PublicHashes) {
     assert!(!root.header.is_proc_macro_crate);
     let graph = std::mem::take(&mut ecx.spec_encoder_data.reachability_graph_builder)
@@ -615,7 +615,7 @@ pub(super) fn crate_hashes<'tcx, 'h, const HASH: bool>(
     // Both can change even when the entire item prefix remains valid.
     let native = super::native_hash_mode(tcx);
     let local_global =
-        native.then(|| stable_hash(hcx.hcx_mut(), &(crate::rmeta::OHM_METADATA_EPOCH, root)));
+        native.then(|| stable_hash(hcx.hcx_mut(), &(crate::rmeta::OHM_METADATA_EPOCH, &*root)));
     let record = native
         && ecx.metadata_prefix_manifest.as_ref().is_some_and(|builder| {
             matches!(builder.dependency_hashes, super::DependencyHashMode::Native(_))
@@ -625,8 +625,9 @@ pub(super) fn crate_hashes<'tcx, 'h, const HASH: bool>(
         recipe.extend_from_slice(&local_global.unwrap().to_le_bytes());
     }
     let (hcx_mut, def_id_hashes) = hcx.hcx_with_def_id_hashes();
+    let sccs = Sccs::<_, SccIdx>::new(&graph);
     let (public_hashes, implicit_roots) =
-        build_public_hashes(&graph, hcx_mut, tcx, record.then_some(&mut recipe), |node| {
+        build_public_hashes(&graph, &sccs, hcx_mut, tcx, record.then_some(&mut recipe), |node| {
             if record
                 && let Node::DefId(id) = node
                 && !id.is_local()
@@ -635,7 +636,20 @@ pub(super) fn crate_hashes<'tcx, 'h, const HASH: bool>(
                 // after recording all edges needed to validate the stored bases.
                 return def_id_hashes.non_local.get(id).copied();
             }
-            def_id_hashes.get_node(node, tcx, &mut ecx.metadata_prefix_manifest)
+            let hash = def_id_hashes.get_node(
+                node,
+                tcx,
+                &mut ecx.metadata_prefix_manifest,
+                ecx.hash_declaration_text,
+            );
+            if ecx.dual_check
+                && let Node::DefId(id) = node
+                && let Some(local) = id.as_local()
+                && let Some(exact) = ecx.exact_locations.get(local)
+            {
+                return Some(hash.unwrap_or(Fingerprint::ZERO).combine_commutative(*exact));
+            }
+            hash
         });
     if record
         && let Some(builder) = &mut ecx.metadata_prefix_manifest
@@ -650,7 +664,7 @@ pub(super) fn crate_hashes<'tcx, 'h, const HASH: bool>(
     let mut public_global_hash = if let Some(local) = local_global {
         combine_global(tcx, local, implicit_roots)
     } else {
-        stable_hash(hcx.hcx_mut(), &(crate::rmeta::OHM_METADATA_EPOCH, root, implicit_roots))
+        stable_hash(hcx.hcx_mut(), &(crate::rmeta::OHM_METADATA_EPOCH, &*root, implicit_roots))
     };
     if tcx.sess.opts.unstable_opts.incremental_ignore_spans {
         // Per-item hashes omit spans in this mode. Invalidate readers on local source edits.
@@ -676,6 +690,18 @@ pub(super) fn crate_hashes<'tcx, 'h, const HASH: bool>(
         return (None, PublicHashes::TerminalCheck(public_hash));
     }
     let rdr_hashes = public_hashes.value.encode(ecx, public_global_hash);
+    if ecx.dual_check {
+        let (state, payloads) = hcx.hcx_with_def_id_hashes();
+        let (checks, implicit) = build_public_hashes(&graph, &sccs, state, tcx, None, |node| {
+            payloads.get_node(node, tcx, &mut ecx.metadata_prefix_manifest, true)
+        });
+        root.crate_deps.hash = ecx.check_deps;
+        let global =
+            stable_hash(hcx.hcx_mut(), &(crate::rmeta::OHM_METADATA_EPOCH, &*root, implicit));
+        let hints =
+            CheckItemHashes { local: checks.value.local.encode(ecx).0, public_global_hash: global };
+        return (Some(public_hash), PublicHashes::CheckedItems(rdr_hashes, hints));
+    }
     debug!("Hashed crate root: {root:#x?}");
     debug!("public api hash: {}", public_hash);
     (Some(public_hash), PublicHashes::Items(rdr_hashes))
@@ -683,11 +709,11 @@ pub(super) fn crate_hashes<'tcx, 'h, const HASH: bool>(
 
 impl HashableCrateRoot {
     pub(super) fn into_crate_root<'h, 'tcx, M: MetadataEncoder<'tcx>>(
-        self,
+        mut self,
         ecx: &mut EncodeContext<'_, 'tcx, M>,
         hcx: &mut impl PublicApiHashState<'h>,
     ) -> (CrateRoot, Option<Svh>) {
-        let (public_hash, rdr_hashes) = M::crate_hashes(ecx, hcx, &self);
+        let (public_hash, rdr_hashes) = M::crate_hashes(ecx, hcx, &mut self);
         let header = self.header;
         let header = CrateHeader {
             triple: header.triple,
@@ -1052,13 +1078,20 @@ impl ReachabilityGraphHashes {
         node: &Node<'_>,
         tcx: TyCtxt<'_>,
         prefix: &mut Option<MetadataPrefixManifestBuilder>,
+        terminal: bool,
     ) -> Option<Fingerprint> {
         match node {
             Node::DefId(id) => {
                 if let Some(local) = id.as_local() {
                     self.local.get(local).copied()
                 } else {
-                    let extern_hash = tcx.extern_def_public_hash(*id);
+                    let extern_hash =
+                        if terminal && tcx.extern_global_check_hash(id.krate).is_some() {
+                            tcx.extern_def_check_hash(*id)
+                                .unwrap_or_else(|| tcx.extern_def_public_hash(*id))
+                        } else {
+                            tcx.extern_def_public_hash(*id)
+                        };
                     Some(if let Some(local_hash) = self.non_local.get(id) {
                         local_hash.combine_commutative(extern_hash)
                     } else {
@@ -1275,13 +1308,13 @@ fn scc_fingerprints<'tcx>(
 /// expansions, together with the combined hash of the graph roots.
 fn build_public_hashes<'tcx>(
     graph: &ReachabilityGraph<'tcx>,
+    sccs: &Sccs<NodeIdx, SccIdx>,
     hcx: &mut StableHashState<'_, true>,
     tcx: TyCtxt<'tcx>,
     recipe: Option<&mut Vec<u8>>,
     payload_hash: impl FnMut(&Node<'tcx>) -> Option<Fingerprint>,
 ) -> (Hashed<ItemPublicHashesBuilder>, Fingerprint) {
-    let sccs = Sccs::<_, SccIdx>::new(graph);
-    let scc_fingerprints = scc_fingerprints(graph, &sccs, tcx, recipe, payload_hash);
+    let scc_fingerprints = scc_fingerprints(graph, sccs, tcx, recipe, payload_hash);
 
     let mut public_hashes = ItemPublicHashesBuilder::default();
     let mut hasher = StableHasher::new();
@@ -1344,6 +1377,13 @@ pub(crate) struct ItemPublicHashes {
     pub(crate) public_global_hash: Fingerprint,
 }
 
+/// Additional check-only fingerprints. Macro expansions always use their exact hash.
+#[derive(LazyDecodable, MetadataEncodable)]
+pub(crate) struct CheckItemHashes {
+    pub(crate) local: LazyTable<DefIndex, Option<Fingerprint>>,
+    pub(crate) public_global_hash: Fingerprint,
+}
+
 /// Keep the discriminants of the original `Option<ItemPublicHashes>` wire representation.
 /// A terminal check reports an auxiliary key to Cargo while rustc readers use the full SVH.
 #[derive(LazyDecodable, MetadataEncodable)]
@@ -1351,12 +1391,20 @@ pub(crate) enum PublicHashes {
     None,
     Items(ItemPublicHashes),
     TerminalCheck(Svh),
+    CheckedItems(ItemPublicHashes, CheckItemHashes),
 }
 
 impl PublicHashes {
+    pub(crate) fn check_items(&self) -> Option<&CheckItemHashes> {
+        match self {
+            Self::CheckedItems(_, checks) => Some(checks),
+            _ => None,
+        }
+    }
+
     pub(crate) fn as_ref(&self) -> Option<&ItemPublicHashes> {
         match self {
-            Self::Items(items) => Some(items),
+            Self::Items(items) | Self::CheckedItems(items, _) => Some(items),
             Self::None | Self::TerminalCheck(_) => None,
         }
     }
