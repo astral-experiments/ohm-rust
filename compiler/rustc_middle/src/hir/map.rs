@@ -317,7 +317,7 @@ impl<'tcx> TyCtxt<'tcx> {
         }
         let owner = body.hir_id.owner;
         let nodes = self.hir_owner_nodes(owner);
-        if nodes.nodes.len() < 128 || self.hir_body_owner_def_id(body) != owner.def_id {
+        if nodes.nodes.len() < 32 || self.hir_body_owner_def_id(body) != owner.def_id {
             return None;
         }
         let container = match self.def_kind(owner.def_id) {
