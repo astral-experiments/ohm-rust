@@ -79,6 +79,10 @@ fn main() {
                 );
             }
             compile("observations", strategy)
+                .env(
+                    "RUSTC_OHM_PURE_MACROS",
+                    "attrs::tracked_env,attrs::tracked_path,attrs::source_text,attrs::expanded_env",
+                )
                 .env("ATTR_CACHE_ENV", env)
                 .env("ATTR_CACHE_EXPANDED", expanded)
                 .run()

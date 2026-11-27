@@ -8,7 +8,7 @@ use rustc_proc_macro as pm;
 use rustc_session::Session;
 use rustc_session::config::ProcMacroExecutionStrategy;
 use rustc_span::profiling::SpannedEventArgRecorder;
-use rustc_span::{FileName, LocalExpnId, Span};
+use rustc_span::{FileName, LocalExpnId, SourceFileHash, Span};
 
 use crate::base::{self, *};
 use crate::{diagnostics, proc_macro_server};
@@ -58,6 +58,7 @@ impl base::BangProcMacro for BangProcMacro {
 }
 
 pub struct AttrProcMacro {
+    pub dylib_hash: Option<SourceFileHash>,
     pub client: pm::bridge::client::Client,
 }
 
@@ -71,8 +72,8 @@ impl base::AttrProcMacro for AttrProcMacro {
     ) -> Result<TokenStream, ErrorGuaranteed> {
         let _timer = record_expand_proc_macro(ecx, "expand_attr_proc_macro_outer", span);
 
-        if ecx.sess.opts.incremental.is_some() && ecx.sess.opts.unstable_opts.cache_proc_macros {
-            (*EXPAND_ATTRIBUTE_MACRO_CACHED)(annotation, annotated, ecx, self.client)
+        if let Some(hash) = self.dylib_hash {
+            (*EXPAND_ATTRIBUTE_MACRO_CACHED)(hash, annotation, annotated, ecx, self.client)
         } else {
             expand_attribute_macro(span, annotation, annotated, ecx, self.client)
         }
@@ -80,6 +81,7 @@ impl base::AttrProcMacro for AttrProcMacro {
 }
 
 pub struct DeriveProcMacro {
+    pub dylib_hash: Option<SourceFileHash>,
     pub client: ProcMacroClient,
 }
 
@@ -102,10 +104,8 @@ impl MultiItemModifier for DeriveProcMacro {
 
         let invoc_id = ecx.current_expansion.id;
 
-        let res = if ecx.sess.opts.incremental.is_some()
-            && ecx.sess.opts.unstable_opts.cache_proc_macros
-        {
-            (*EXPAND_DERIVE_MACRO_CACHED)(invoc_id, input, ecx, self.client)
+        let res = if let Some(hash) = self.dylib_hash {
+            (*EXPAND_DERIVE_MACRO_CACHED)(hash, invoc_id, input, ecx, self.client)
         } else {
             expand_derive_macro(invoc_id, input, ecx, self.client)
         };
@@ -209,9 +209,15 @@ pub fn expand_derive_macro(
 }
 
 pub static EXPAND_DERIVE_MACRO_CACHED: AtomicRef<
-    fn(LocalExpnId, TokenStream, &mut ExtCtxt<'_>, ProcMacroClient) -> Result<TokenStream, ()>,
+    fn(
+        SourceFileHash,
+        LocalExpnId,
+        TokenStream,
+        &mut ExtCtxt<'_>,
+        ProcMacroClient,
+    ) -> Result<TokenStream, ()>,
 > = AtomicRef::new(
-    &(|_, _, _: &mut ExtCtxt<'_>, _| -> Result<_, _> {
+    &(|_, _, _, _: &mut ExtCtxt<'_>, _| -> Result<_, _> {
         panic!(
             "`EXPAND_DERIVE_MACRO_CACHED` callback was not setup; it must be set in `rustc_interface::callbacks`"
         )
@@ -221,13 +227,14 @@ pub static EXPAND_DERIVE_MACRO_CACHED: AtomicRef<
 /// Runs an attribute expansion through the incremental query system.
 pub static EXPAND_ATTRIBUTE_MACRO_CACHED: AtomicRef<
     fn(
+        SourceFileHash,
         TokenStream,
         TokenStream,
         &mut ExtCtxt<'_>,
         ProcMacroClient,
     ) -> Result<TokenStream, ErrorGuaranteed>,
 > = AtomicRef::new(
-    &(|_, _, _: &mut ExtCtxt<'_>, _| -> Result<_, _> {
+    &(|_, _, _, _: &mut ExtCtxt<'_>, _| -> Result<_, _> {
         panic!("attribute proc macro cache callback was not set up")
     } as _),
 );
@@ -248,4 +255,12 @@ pub(super) fn proc_macro_source_code(src: &str) -> FileName {
 /// Intern the same hygiene contexts on a cache hit as a freshly constructed server.
 pub fn prepare_proc_macro_expansion_globals(ecx: &ExtCtxt<'_>) {
     proc_macro_server::Rustc::expansion_globals(ecx, &ecx.current_expansion.id.expn_data());
+}
+
+/// Eager expression expansion needs the resolver's dependency-tracking context.
+pub static EXPAND_EXPR: AtomicRef<fn(&mut ExtCtxt<'_>, Box<ast::Expr>) -> Box<ast::Expr>> =
+    AtomicRef::new(&(expand_expr as _));
+
+pub fn expand_expr(ecx: &mut ExtCtxt<'_>, expr: Box<ast::Expr>) -> Box<ast::Expr> {
+    ecx.expander().fully_expand_fragment(crate::expand::AstFragment::Expr(expr)).make_expr()
 }

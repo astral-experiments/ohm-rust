@@ -633,11 +633,7 @@ impl server::Server for Rustc<'_, '_> {
         })?;
 
         // Perform eager expansion on the expression.
-        let expr = self
-            .ecx
-            .expander()
-            .fully_expand_fragment(crate::expand::AstFragment::Expr(expr))
-            .make_expr();
+        let expr = (*crate::proc_macro::EXPAND_EXPR)(self.ecx, expr);
 
         // NOTE: For now, limit `expand_expr` to exclusively expand to literals.
         // This may be relaxed in the future.
