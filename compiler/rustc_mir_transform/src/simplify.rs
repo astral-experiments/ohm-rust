@@ -79,12 +79,28 @@ impl SimplifyCfg {
 }
 
 pub(super) fn simplify_cfg<'tcx>(tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) {
-    if CfgSimplifier::new(tcx, body).simplify() {
+    let mut simplifier = CfgSimplifier::new(tcx, body);
+    let changed = simplifier.simplify();
+    // If the graph is unchanged, the original predecessor counts already tell
+    // us which blocks are reachable. Nop removal can still expose duplicate
+    // empty unreachable blocks, so check for those after simplification.
+    let needs_cleanup = changed
+        || simplifier.pred_count.raw.contains(&0)
+        || simplifier
+            .basic_blocks
+            .iter()
+            .filter(|bb| should_deduplicate_unreachable(bb))
+            .nth(1)
+            .is_some();
+    drop(simplifier);
+    if changed {
         // `simplify` returns that it changed something. We must invalidate the CFG caches as they
         // are not consistent with the modified CFG any more.
         body.basic_blocks.invalidate_cfg_cache();
     }
-    remove_dead_blocks(body);
+    if needs_cleanup {
+        remove_dead_blocks(body);
+    }
 
     // FIXME: Should probably be moved into some kind of pass manager
     body.basic_blocks.as_mut_preserves_cfg().shrink_to_fit();
@@ -119,9 +135,16 @@ impl<'a, 'tcx> CfgSimplifier<'a, 'tcx> {
         // dead blocks, which we don't want to.
         pred_count[START_BLOCK] = 1;
 
-        for (_, data) in traversal::preorder(body) {
-            if let Some(ref term) = data.terminator {
+        // Zero also marks blocks that have not yet been enqueued. This lets
+        // us count edges and discover reachable blocks in one successor walk.
+        let mut pending = SmallVec::<[BasicBlock; 8]>::new();
+        pending.push(START_BLOCK);
+        while let Some(bb) = pending.pop() {
+            if let Some(ref term) = body[bb].terminator {
                 for tgt in term.successors() {
+                    if pred_count[tgt] == 0 {
+                        pending.push(tgt);
+                    }
                     pred_count[tgt] += 1;
                 }
             }
@@ -139,7 +162,7 @@ impl<'a, 'tcx> CfgSimplifier<'a, 'tcx> {
     /// Returns whether we actually simplified anything. In that case, the caller *must* invalidate
     /// the CFG caches of the MIR body.
     #[must_use]
-    fn simplify(mut self) -> bool {
+    fn simplify(&mut self) -> bool {
         self.strip_nops();
 
         // Vec of the blocks that should be merged. We store the indices here, instead of the
@@ -157,6 +180,28 @@ impl<'a, 'tcx> CfgSimplifier<'a, 'tcx> {
                 }
 
                 debug!("simplifying {:?}", bb);
+
+                // Avoid moving a terminator out and back when neither the
+                // branch nor any of its outgoing edges can be simplified.
+                let term =
+                    self.basic_blocks[bb].terminator.as_ref().expect("invalid terminator state");
+                let can_merge_or_simplify = match term.kind {
+                    TerminatorKind::Goto { target } => self.pred_count[target] == 1,
+                    TerminatorKind::SwitchInt { .. } => !self.preserve_switch_reads,
+                    _ => false,
+                };
+                if !can_merge_or_simplify
+                    && !term.successors().any(|target| {
+                        let block = &self.basic_blocks[target];
+                        block.statements.is_empty()
+                            && matches!(
+                                block.terminator,
+                                Some(Terminator { kind: TerminatorKind::Goto { .. }, .. })
+                            )
+                    })
+                {
+                    continue;
+                }
 
                 let mut terminator =
                     self.basic_blocks[bb].terminator.take().expect("invalid terminator state");
@@ -348,16 +393,16 @@ pub(super) fn simplify_duplicate_switch_targets(terminator: &mut Terminator<'_>)
     }
 }
 
-pub(super) fn remove_dead_blocks(body: &mut Body<'_>) {
-    let should_deduplicate_unreachable = |bbdata: &BasicBlockData<'_>| {
-        // CfgSimplifier::simplify leaves behind some unreachable basic blocks without a
-        // terminator. Those blocks will be deleted by remove_dead_blocks, but we run just
-        // before then so we need to handle missing terminators.
-        // We also need to prevent confusing cleanup and non-cleanup blocks. In practice we
-        // don't emit empty unreachable cleanup blocks, so this simple check suffices.
-        bbdata.terminator.is_some() && bbdata.is_empty_unreachable() && !bbdata.is_cleanup
-    };
+fn should_deduplicate_unreachable(bbdata: &BasicBlockData<'_>) -> bool {
+    // CfgSimplifier::simplify leaves behind some unreachable basic blocks without a
+    // terminator. Those blocks will be deleted by remove_dead_blocks, but we run just
+    // before then so we need to handle missing terminators.
+    // We also need to prevent confusing cleanup and non-cleanup blocks. In practice we
+    // don't emit empty unreachable cleanup blocks, so this simple check suffices.
+    bbdata.terminator.is_some() && bbdata.is_empty_unreachable() && !bbdata.is_cleanup
+}
 
+pub(super) fn remove_dead_blocks(body: &mut Body<'_>) {
     let reachable = traversal::reachable_as_bitset(body);
     let empty_unreachable_blocks = body
         .basic_blocks
