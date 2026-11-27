@@ -2205,6 +2205,21 @@ rustc_queries! {
         separate_provide_extern
     }
 
+    /// A terminal check projection of an external definition, when supplied alongside
+    /// the exact item hashes used by compiler queries.
+    query extern_def_check_hash(_: DefId) -> Option<Fingerprint> {
+        eval_always
+        desc { "looking up the terminal check hash of an external definition" }
+        separate_provide_extern
+    }
+
+    /// A terminal check projection of a dependency's global metadata and implicit roots.
+    query extern_global_check_hash(_: CrateNum) -> Option<Fingerprint> {
+        eval_always
+        desc { "looking up a dependency's global terminal check hash" }
+        separate_provide_extern
+    }
+
     /// Returns the public API hash of a reachable external `DefId`.
     ///
     /// Falls back to the crate public hash for legacy metadata and panics for local or private
