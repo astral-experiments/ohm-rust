@@ -337,6 +337,8 @@ jobs:
           --set rust.lto=off test --stage 1 tests/incremental/rdr
           tests/incremental/typed-body-uses.rs
           tests/incremental/body-uses-signature.rs
+          tests/incremental/implicit-trait-bound-span.rs
+          tests/ui/sized-hierarchy/overflow.rs
           tests/ui/const-generics/mgca/type_const-use.rs
           tests/incremental/mono_item_partition_body_change.rs
           tests/incremental/mono_item_partition_caller_local_body_change.rs
