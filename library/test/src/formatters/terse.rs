@@ -19,6 +19,7 @@ pub(crate) struct TerseFormatter<T> {
     /// Number of columns to fill when aligning names
     max_name_len: usize,
 
+    discovery_line: String,
     test_count: usize,
     test_column: usize,
     total_test_count: usize,
@@ -36,6 +37,7 @@ impl<T: Write> TerseFormatter<T> {
             use_color,
             max_name_len,
             is_multithreaded,
+            discovery_line: String::new(),
             test_count: 0,
             test_column: 0,
             total_test_count: 0, // initialized later, when write_run_start is called
@@ -190,7 +192,13 @@ impl<T: Write> OutputFormatter for TerseFormatter<T> {
     }
 
     fn write_test_discovered(&mut self, desc: &TestDesc, test_type: &str) -> io::Result<()> {
-        self.write_plain(format!("{}: {test_type}\n", desc.name))
+        self.discovery_line.clear();
+        self.discovery_line.push_str(desc.name.as_slice());
+        self.discovery_line.push_str(": ");
+        self.discovery_line.push_str(test_type);
+        self.discovery_line.push('\n');
+        self.out.write_all(self.discovery_line.as_bytes())?;
+        self.out.flush()
     }
 
     fn write_discovery_finish(&mut self, _state: &ConsoleTestDiscoveryState) -> io::Result<()> {

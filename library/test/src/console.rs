@@ -13,7 +13,7 @@ use super::formatters::{
 };
 use super::helpers::concurrency::get_concurrency;
 use super::helpers::metrics::MetricMap;
-use super::options::{Options, OutputFormat};
+use super::options::{Options, OutputFormat, RunIgnored};
 use super::test_result::TestResult;
 use super::time::{TestExecTime, TestSuiteExecTime};
 use super::types::{NamePadding, TestDesc, TestDescAndFn, TestList};
@@ -171,10 +171,8 @@ impl ConsoleTestState {
 
 // List the tests to console, and optionally to logfile. Filters are honored.
 pub(crate) fn list_tests_console(opts: &TestOpts, tests: TestList<'_>) -> io::Result<()> {
-    let output = match term::stdout() {
-        None => OutputLocation::Raw(io::stdout().lock()),
-        Some(t) => OutputLocation::Pretty(t),
-    };
+    // Discovery is always uncolored, so it does not need terminal capabilities.
+    let output = OutputLocation::Raw(io::stdout().lock());
 
     let mut out: Box<dyn OutputFormatter> = match opts.format {
         OutputFormat::Pretty | OutputFormat::Junit => {
@@ -186,7 +184,7 @@ pub(crate) fn list_tests_console(opts: &TestOpts, tests: TestList<'_>) -> io::Re
     let mut st = ConsoleTestDiscoveryState::new(opts)?;
 
     out.write_discovery_start()?;
-    for test in filter_tests(opts, tests) {
+    let mut report = |test: &TestDescAndFn| {
         use crate::TestFn::*;
 
         let TestDescAndFn { desc, testfn } = test;
@@ -208,8 +206,29 @@ pub(crate) fn list_tests_console(opts: &TestOpts, tests: TestList<'_>) -> io::Re
 
         st.ignored += if desc.ignore { 1 } else { 0 };
 
-        out.write_test_discovered(&desc, fntype)?;
-        st.write_log(|| format!("{fntype} {}\n", desc.name))?;
+        out.write_test_discovered(desc, fntype)?;
+        st.write_log(|| format!("{fntype} {}\n", desc.name))
+    };
+
+    // Test runners often request the full inventory and then the ignored
+    // inventory. Neither operation needs an owned copy of every descriptor.
+    if opts.filters.is_empty() && opts.skip.is_empty() && !opts.exclude_should_panic {
+        for &test in tests.tests {
+            if opts.run_ignored == RunIgnored::Only && !test.desc.ignore {
+                continue;
+            }
+            if test.desc.ignore && opts.run_ignored != RunIgnored::No {
+                let mut test = test.clone();
+                test.desc.ignore = false;
+                report(&test)?;
+            } else {
+                report(test)?;
+            }
+        }
+    } else {
+        for test in filter_tests(opts, tests) {
+            report(&test)?;
+        }
     }
 
     out.write_discovery_finish(&st)
@@ -286,9 +305,14 @@ fn on_test_event(
 }
 
 pub(crate) fn get_formatter(opts: &TestOpts, max_name_len: usize) -> Box<dyn OutputFormatter> {
-    let output = match term::stdout() {
-        None => OutputLocation::Raw(io::stdout()),
-        Some(t) => OutputLocation::Pretty(t),
+    // Loading terminfo for every test process is unnecessary when output is
+    // captured by a runner and the formatter will never use terminal colors.
+    let use_color =
+        matches!(opts.format, OutputFormat::Pretty | OutputFormat::Terse) && opts.use_color();
+    let output = if use_color && let Some(t) = term::stdout() {
+        OutputLocation::Pretty(t)
+    } else {
+        OutputLocation::Raw(io::stdout())
     };
 
     let is_multithreaded = opts.test_threads.unwrap_or_else(get_concurrency) > 1;
@@ -296,13 +320,13 @@ pub(crate) fn get_formatter(opts: &TestOpts, max_name_len: usize) -> Box<dyn Out
     match opts.format {
         OutputFormat::Pretty => Box::new(PrettyFormatter::new(
             output,
-            opts.use_color(),
+            use_color,
             max_name_len,
             is_multithreaded,
             opts.time_options,
         )),
         OutputFormat::Terse => {
-            Box::new(TerseFormatter::new(output, opts.use_color(), max_name_len, is_multithreaded))
+            Box::new(TerseFormatter::new(output, use_color, max_name_len, is_multithreaded))
         }
         OutputFormat::Json => Box::new(JsonFormatter::new(output)),
         OutputFormat::Junit => Box::new(JunitFormatter::new(output)),

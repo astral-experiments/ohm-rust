@@ -198,6 +198,38 @@ Test Attributes:
 /// returns `Some(Err(..))` if provided arguments are incorrect,
 /// otherwise creates a `TestOpts` object and returns it.
 pub fn parse_opts(args: &[String]) -> Option<OptRes> {
+    // Process-per-test runners repeatedly invoke this precise combination.
+    // Avoid constructing the option table and looking up every absent flag.
+    // With explicit no-capture and without -Z, parsing reads no environment
+    // variables. Leave anything that might be another option to getopts.
+    if let [_, exact, name, capture] = args
+        && exact == "--exact"
+        && !name.starts_with('-')
+        && matches!(capture.as_str(), "--no-capture" | "--nocapture")
+    {
+        return Some(Ok(TestOpts {
+            list: false,
+            filters: vec![name.clone()],
+            filter_exact: true,
+            force_run_in_process: false,
+            exclude_should_panic: false,
+            run_ignored: RunIgnored::No,
+            run_tests: true,
+            bench_benchmarks: false,
+            logfile: None,
+            nocapture: true,
+            color: ColorConfig::AutoColor,
+            format: OutputFormat::Pretty,
+            shuffle: false,
+            shuffle_seed: None,
+            test_threads: None,
+            skip: Vec::new(),
+            time_options: None,
+            fail_fast: false,
+            options: Options::new(),
+        }));
+    }
+
     // Parse matches.
     let mut opts = optgroups();
     // Flags hidden from `usage`

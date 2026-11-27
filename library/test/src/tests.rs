@@ -929,3 +929,18 @@ fn test_dyn_bench_returning_err_fails_when_run_as_test() {
     let result = rx.recv().unwrap().result;
     assert_eq!(result, TrFailed);
 }
+
+#[test]
+fn exact_no_capture_matches_general_parser() {
+    for capture in ["--no-capture", "--nocapture"] {
+        for name in ["module::test", "", "模块::test"] {
+            let mut args = ["test", "--exact", name, capture].map(String::from);
+            let fast = parse_opts(&args).unwrap().unwrap();
+            args.swap(1, 3);
+            let general = parse_opts(&args).unwrap().unwrap();
+            assert_eq!(format!("{fast:?}"), format!("{general:?}"));
+        }
+    }
+    let args = ["test", "--exact", "--unknown", "--nocapture"].map(String::from);
+    assert!(parse_opts(&args).unwrap().is_err());
+}
